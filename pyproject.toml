@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "athena"
+version = "0.1.0"
+description = "Agent-host plugins and skills imported by Claude Code / Codex / Pi."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["hephaestus"]
+
+[project.optional-dependencies]
+automation = ["hephaestus[automation]"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
