@@ -130,3 +130,62 @@ def test_duplicate_plugin_name(fake_repo: Path) -> None:
     assert any(
         e.plugin_name == "example" and "duplicate" in e.reason for e in errors
     )
+
+
+# ---------------------------------------------------------------------------
+# main() — CLI entry-point coverage.
+#
+# Tests above exercise `validate()` directly. `main()` adds the argparse
+# wrapper, the success/failure print contract, and `--quiet`. Pytest-cov
+# needs these to push coverage past the 80% floor in pyproject.toml.
+# ---------------------------------------------------------------------------
+
+
+def test_main_success_returns_zero(fake_repo: Path) -> None:
+    """Successful validation runs main() to exit code 0 and prints 'passed'."""
+    import contextlib
+    import io
+
+    import athena.validate_marketplace as vmod
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = vmod.main([])
+    assert rc == 0
+    assert "passed" in buf.getvalue()
+
+
+def test_main_quiet_suppresses_success_output(fake_repo: Path) -> None:
+    """The --quiet flag suppresses the "passed" line on success."""
+    import contextlib
+    import io
+
+    import athena.validate_marketplace as vmod
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = vmod.main(["--quiet"])
+    assert rc == 0
+    assert buf.getvalue() == ""
+
+
+def test_main_failure_returns_two(fake_repo: Path) -> None:
+    """A broken marketplace exits 2 and routes the reason to stderr."""
+    import contextlib
+    import io
+
+    import athena.validate_marketplace as vmod
+
+    marketplace = json.loads(vmod.MARKETPLACE_PATH.read_text(encoding="utf-8"))
+    marketplace["plugins"].append(
+        {"name": "ghost-skill", "source": "./", "description": "Does not exist"}
+    )
+    vmod.MARKETPLACE_PATH.write_text(json.dumps(marketplace), encoding="utf-8")
+
+    out_buf = io.StringIO()
+    err_buf = io.StringIO()
+    with contextlib.redirect_stdout(out_buf), contextlib.redirect_stderr(err_buf):
+        rc = vmod.main([])
+    assert rc == 2
+    assert out_buf.getvalue() == ""
+    assert "ghost-skill" in err_buf.getvalue()
