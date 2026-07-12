@@ -18,8 +18,18 @@ from athena.validate_marketplace import validate
 
 
 @pytest.fixture
-def fake_repo(tmp_path: Path) -> Path:
-    """Build a minimal fake repo: marketplace.json + one valid skill."""
+def fake_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Build a minimal fake repo: marketplace.json + one valid skill.
+
+    Uses ``monkeypatch.setattr`` so the validator's module-level path
+    constants revert to their real-repo values automatically after each
+    test. Without this, ``tmp_path`` cleans up its directory but the
+    module still points at the deleted path, breaking
+    ``python -m athena.validate_marketplace`` runs after the test
+    session ends.
+    """
+    import athena.validate_marketplace as vmod
+
     repo = tmp_path
 
     plugin_dir = repo / ".claude-plugin"
@@ -46,13 +56,8 @@ def fake_repo(tmp_path: Path) -> Path:
         json.dumps(marketplace), encoding="utf-8"
     )
 
-    # Patch the validator's module-level path constants to point at this
-    # fake repo. We mutate the module rather than refactoring for DI so
-    # the test stays short.
-    import athena.validate_marketplace as vmod
-
-    vmod.MARKETPLACE_PATH = plugin_dir / "marketplace.json"
-    vmod.SKILLS_DIR = skills_dir
+    monkeypatch.setattr(vmod, "MARKETPLACE_PATH", plugin_dir / "marketplace.json")
+    monkeypatch.setattr(vmod, "SKILLS_DIR", skills_dir)
     return repo
 
 
