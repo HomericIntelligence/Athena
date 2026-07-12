@@ -1,0 +1,26 @@
+{
+  "enabledPlugins": {
+    "athena@Athena": true
+  },
+  "permissions": {
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(rm -rf /)",
+      "Bash(git push --force*)",
+      "Bash(git push --force-with-lease*)",
+      "Bash(chmod -R 777 *)",
+      "Bash(sudo *)",
+      "Bash(curl * | bash*)",
+      "Bash(curl * | sh*)",
+      "Bash(curl * | sudo*)",
+      "Bash(eval *)",
+      "Write(~/.ssh/**)",
+      "Write(~/.aws/**)",
+      "Write(~/.kube/**)",
+      "Write(~/.docker/**)",
+      "Write(~/.gnupg/**)",
+      "Write(.env)",
+      "Write(.env.*)"
+    ]
+  }
+}

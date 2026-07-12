@@ -1,0 +1,53 @@
+# Plugin scanner config — defines paths the HomericIntelligence marketplace
+# scanner should ignore when scanning the Athena working tree.
+#
+# Mirrors a subset of `.gitignore` plus scanner-specific paths. The scanner
+# walks the repo to find plugin.json + marketplace.json; this file prevents
+# spurious hits in build artefacts and dependencies.
+
+[scanner]
+ignore_paths = [
+  # Version control
+  ".git/",
+
+  # Build / dist
+  "build/",
+  "dist/",
+  "*.egg-info/",
+
+  # Python caches
+  "__pycache__/",
+  ".mypy_cache/",
+  ".ruff_cache/",
+  ".pytest_cache/",
+  ".pixi/",
+
+  # Lock files
+  "pixi.lock",
+  "uv.lock",
+  "poetry.lock",
+
+  # IDE / OS
+  ".idea/",
+  ".vscode/",
+  ".DS_Store",
+
+  # Secrets (defence in depth — none should ever be committed)
+  ".env",
+  ".env.*",
+  "secrets/",
+
+  # Internal iteration artefacts (see ADR 0001)
+  "scripts/_local/",
+  "tests/_local/",
+]
+
+# Plugin-specific: the scanner should emit a finding if `from athena`
+# appears outside the expected roots — that means a boundary violation.
+# Skill bodies compose `hephaestus.automation` so `from hephaestus …` in
+# `skills/` is expected; `from athena …` anywhere is the violation we care
+# about, per ADR 0001.
+[scanner.python]
+boundary_violations_emit_finding = true
+hephaestus_imports_allowed_in = ["skills/"]
+athena_self_import_root_warning = true

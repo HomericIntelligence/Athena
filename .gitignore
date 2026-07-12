@@ -1,12 +1,55 @@
+# Python build / dist
+build/
+dist/
+*.egg-info/
 __pycache__/
 *.py[cod]
-*$py.class
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-dist/
-build/
+*.egg
+*.whl
+
+# Python virtual environments
 .venv/
 venv/
-env/
+.pixi/
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Lock files (large; reproduce locally)
+pixi.lock
+uv.lock
+poetry.lock
+
+# Secrets / credentials — defence in depth. .gitattributes marks these as
+# binary if they ever sneak in, but the repo must be tolerant of an
+# accidental .env file being committed (.gitignore catches it pre-commit).
+.env
+.env.*
+*.pem
+*.key
+secrets/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+*~
+Thumbs.db
+
+# Hatch / build artefacts
+_version.py
+/src/
+
+# Athena-specific: skill dumps from local iteration
+skills/_out/
+skills/_drafts/
+
+# Local plugin scanner output (the scanner writes here; we do not commit)
+.scanner-out/

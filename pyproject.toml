@@ -1,17 +1,207 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27.0,<2", "hatch-vcs>=0.4.0,<1"]
 build-backend = "hatchling.build"
 
 [project]
-name = "athena"
-version = "0.1.0"
-description = "Agent-host plugins and skills imported by Claude Code / Codex / Pi."
+name = "HomericIntelligence-Athena"
+dynamic = ["version"]
+description = "Reusable Claude Code / Codex / Pi plugins and skills for the HomericIntelligence ecosystem."
 readme = "README.md"
+license = "BSD-3-Clause"
 requires-python = ">=3.10"
-dependencies = ["hephaestus"]
+authors = [
+    { name = "Micah Villmow <research@villmow.us>" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+keywords = ["agents", "skills", "claude-code", "codex", "pi", "homericintelligence"]
 
+# Cross-repo dependency. Bumping is a coordination event per Odysseus/AGENTS.md.
+# Pin floor matches the minimum version Hephaestus publishes; upper cap follows
+# the parity-review cycle (one major per quarter).
+dependencies = [
+    "hephaestus>=3.0,<4",
+]
+
+# Optional-dependency groups. The `automation` extra mirrors Hephaestus's
+# contract — it pulls pydantic via hephaestus[automation]. The `dev` extra is
+# kept separate so production installs of the base package do not pull
+# pytest/ruff/mypy/markdownlint.
 [project.optional-dependencies]
-automation = ["hephaestus[automation]"]
+dev = [
+    # pytest 9.x and pytest-cov 7.x are the latest majors; tight floors are
+    # intentional so CI tests against the same majors the install contract
+    # advertises. See docs/adr/0002-dependency-floor-policy.md for the rationale.
+    "pytest>=9.0,<10",
+    "pytest-cov>=7.0,<8",
+    "pre-commit>=3.0,<5",
+    "ruff>=0.15,<1",
+    "mypy>=1.8.0,<3",
+    "build>=1.0,<2",
+    "hatchling>=1.27.0,<2",
+    "hatch-vcs>=0.4.0,<1",
+    "pip-audit>=2.7,<3",
+    "tomli>=2.0,<3;python_version<'3.11'",
+]
+automation = [
+    # Product layer; matches `hephaestus[automation]`.
+    "hephaestus[automation]>=3.0,<4",
+]
+all = [
+    "HomericIntelligence-Athena[automation]",
+]
+
+[project.scripts]
+# One shipped script: validate that .claude-plugin/marketplace.json matches
+# skills/<name>/ folders on disk. Invoked by `just validate-marketplace` and
+# by the pre-commit `marketplace-consistency` hook.
+athena-validate-marketplace = "athena.validate_marketplace:main"
+
+[project.urls]
+Homepage = "https://github.com/HomericIntelligence/Athena"
+Repository = "https://github.com/HomericIntelligence/Athena"
+Issues = "https://github.com/HomericIntelligence/Athena/issues"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "athena/_version.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["."]
+packages = ["athena"]
+
+[tool.hatch.build.targets.sdist]
+# Ship only the package source plus essential metadata. Matches Hephaestus's
+# convention so marketplace scanners and skill authoring tools see a small,
+# predictable surface.
+only-include = [
+    "athena",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "CLAUDE.md",
+    "CONTRIBUTING.md",
+    "pyproject.toml",
+    ".claude-plugin",
+    ".codex-plugin",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+# Athena has no Python library under `athena/` yet (everything is skills
+# metadata + marketplace validators). Exclude the versioneer output.
+exclude = ["athena/_version.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "D", "UP", "S101", "S102", "S105", "S106", "B", "SIM", "C4", "C901", "RUF"]
+ignore = [
+    "D100",   # Missing docstring in public module
+    "D104",   # Missing docstring in public package
+    "D203",   # 1 blank line before class (conflicts with D211)
+    "D213",   # Multi-line summary second line (conflicts with D212)
+    "D417",   # Missing argument descriptions in docstring
+    "SIM117", # Cannot merge nested with statements in all cases
+    "RUF001", # Intentional Unicode in strings/docstrings
+    "RUF002", # Intentional Unicode in docstrings
+    "RUF003", # Intentional Unicode in comments
+]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+
+[tool.ruff.lint.mccabe]
+max-complexity = 12
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "D102", "D107"]
+"scripts/**" = ["C901", "S101", "D102", "D107", "D401"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit", "tests/integration"]
+pythonpath = ["."]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--cov=athena",
+    "--cov-report=term-missing",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+    "unit: marks tests as unit tests",
+    "requires_posix: requires POSIX coreutils (echo, false, ls) and/or git on PATH; skipped on win32",
+]
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+ignore_missing_imports = true
+show_error_codes = true
+check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_any_generics = true
+warn_return_any = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+allow_redefinition = false
+implicit_reexport = false
+# Allow scripts/ (no __init__.py) to be discovered without "found twice" errors.
+explicit_package_bases = true
+
+# Incremental type-checking — keeps the full scan fast locally and gives CI a
+# single canonical cache path to persist.
+incremental = true
+cache_dir = ".mypy_cache"
+
+# Relax strict typing requirements for test and script code.
+[[tool.mypy.overrides]]
+module = ["tests.*", "scripts.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_any_generics = false
+warn_return_any = false
+check_untyped_defs = false
+
+[tool.coverage.run]
+branch = true
+source = ["athena"]
+omit = [
+    "*/tests/*",
+    "*/__init__.py",
+    "athena/_version.py",
+]
+
+[tool.coverage.report]
+fail_under = 80
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.bandit]
+exclude_dirs = ["tests", "build", ".pixi"]
+# LOW findings (B404 import-subprocess, B603 subprocess-list, B607 partial-path)
+# are noise for an automation codebase that legitimately calls system tools
+# via subprocess with fixed literal argument lists. Genuine injection risk
+# (shell=True) is HIGH severity and is unaffected by this threshold.

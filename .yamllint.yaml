@@ -1,0 +1,17 @@
+---
+# yamllint config — mirrors Hephaestus's defaults.
+extends: default
+
+rules:
+  line-length:
+    max: 100
+    level: warning
+  document-start:
+    present: false  # skill manifest JSON files do not need ---
+  truthy:
+    level: warning
+  comments:
+    min-spaces-from-content: 1
+  indentation:
+    spaces: 2
+    indent-sequences: consistent
