@@ -1,14 +1,14 @@
 {
-  "name": "project-hephaestus",
+  "name": "athena",
   "interface": {
-    "displayName": "ProjectHephaestus"
+    "displayName": "Athena"
   },
   "plugins": [
     {
-      "name": "hephaestus",
+      "name": "athena",
       "source": {
         "source": "local",
-        "path": "./plugins/hephaestus"
+        "path": "./plugins/athena"
       },
       "policy": {
         "installation": "AVAILABLE",

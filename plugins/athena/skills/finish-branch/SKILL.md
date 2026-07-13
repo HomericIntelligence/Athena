@@ -13,7 +13,7 @@ Guide completion of development work by verifying work is done, then presenting 
 
 **Core principle:** Verify tests → Run verification → Present options → Execute choice → Clean up.
 
-**Prerequisite:** Run `/hephaestus:verification` BEFORE invoking this skill. If verification fails, fix the issues first.
+**Prerequisite:** Run `/athena:verification` BEFORE invoking this skill. If verification fails, fix the issues first.
 
 ## The Process
 

@@ -5,7 +5,7 @@ argument-hint: "<optional: --dry-run | --no-swarm | --trunk BRANCH | --max-concu
 allowed-tools: [Bash, Read]
 ---
 
-# /hephaestus:tidy
+# /athena:tidy
 
 Tidy local branches and fix failed rebases with a Myrmidon swarm.
 
@@ -61,9 +61,9 @@ hephaestus-tidy --max-concurrent 3
 
 ```bash
 # In Claude Code, this skill runs hephaestus-tidy with any arguments you provide:
-/hephaestus:tidy
-/hephaestus:tidy --dry-run
-/hephaestus:tidy --no-swarm
+/athena:tidy
+/athena:tidy --dry-run
+/athena:tidy --no-swarm
 ```
 
 ## Implementation

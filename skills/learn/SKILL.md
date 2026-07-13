@@ -711,7 +711,7 @@ rm -rf $HOME/.agent-brain/ProjectMnemosyne
 ## Example
 
 ```
-/hephaestus:learn
+/athena:learn
 ```
 
 Claude will analyze the session, check for existing skills to amend, and either update an existing skill (with history) or create a new one.

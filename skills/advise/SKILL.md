@@ -223,7 +223,7 @@ param1: value1
 ### Invocation
 
 ```bash
-/hephaestus:advise training a model with GRPO
+/athena:advise training a model with GRPO
 ```
 
 ### Output
