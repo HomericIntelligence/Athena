@@ -1,0 +1,29 @@
+# CODEOWNERS — Athena repository.
+# The order matters: later rules override earlier ones.
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default: Athena core maintainers review everything.
+*                          @mvillmow
+
+# Skills + marketplaces are the surface AI agents invoke; require the
+# plugin-distro maintainer plus library-side reviewer.
+/skills/                    @mvillmow
+/.claude-plugin/            @mvillmow
+/.codex-plugin/             @mvillmow
+/.claude/settings.json      @mvillmow
+
+# Quality infrastructure is owned by the standard-tooling reviewer.
+/pyproject.toml             @mvillmow
+/pixi.toml                  @mvillmow
+/.pre-commit-config.yaml    @mvillmow
+/justfile                   @mvillmow
+
+# Docs governance lives with the documentation reviewer.
+/docs/                      @mvillmow
+/*.md                       @mvillmow
+
+# NOTE on /pyproject.toml: bumping the Hephaestus pin is a cross-repo
+# integration event per Odysseus/AGENTS.md. Any PR that bumps the
+# `hephaestus>=` line must include a coordination PR link in its body
+# before this code-owner rule will approve. No code-owner-level
+# enforcement beyond a comment is possible via CODEOWNERS today.

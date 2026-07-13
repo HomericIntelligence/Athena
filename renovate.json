@@ -1,0 +1,43 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "schedule": [
+    "before 5am on monday"
+  ],
+  "timezone": "America/Los_Angeles",
+  "labels": [
+    "renovate",
+    "dependency"
+  ],
+  "packageRules": [
+    {
+      "description": "Group non-breaking dev tooling updates weekly.",
+      "matchManagers": [
+        "pip_requirements",
+        "pep621"
+      ],
+      "matchDepTypes": [
+        "dev"
+      ],
+      "groupName": "dev-deps (weekly)",
+      "schedule": [
+        "before 5am on monday"
+      ]
+    },
+    {
+      "description": "Athena pins Hephaestus tightly; any bump is a cross-repo coordination event.",
+      "matchPackageNames": [
+        "hephaestus"
+      ],
+      "enabled": false
+    }
+  ],
+  "ignorePaths": [
+    "**/node_modules/**",
+    ".pixi/**",
+    "build/**",
+    "dist/**"
+  ]
+}

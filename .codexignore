@@ -1,0 +1,48 @@
+# Codex marketplace-scanner ignore file.
+# Mirrors .gitignore for paths that should not be parsed/skipped by Codex when
+# scanning the Athena marketplace for plugin metadata.
+
+# Build/dist
+build/
+dist/
+*.egg-info/
+__pycache__/
+
+# Python virtual environments
+.venv/
+venv/
+.pixi/
+
+# Lock files (large; not source)
+pixi.lock
+uv.lock
+poetry.lock
+
+# Caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# Secrets / credentials
+.env
+.env.*
+*.pem
+*.key
+secrets/
+
+# Git internals
+.git/
+.github/
+
+# Athena internal iteration artefacts (see ADR 0001 — not user-facing)
+scripts/_local/
+tests/_local/

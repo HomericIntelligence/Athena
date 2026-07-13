@@ -1,0 +1,39 @@
+Athena
+Copyright (c) HomericIntelligence contributors. All rights reserved.
+
+This product includes software developed by the HomericIntelligence project
+(https://github.com/HomericIntelligence).
+
+License: BSD-3-Clause. See LICENSE.
+
+Runtime dependencies
+--------------------
+
+  - hephaestus — Apache-2.0 / BSD-3-Clause (cross-repo dependency, library
+    code only; skills compose it via `from hephaestus.automation import …`).
+    See https://github.com/HomericIntelligence/Hephaestus for full attribution.
+
+Optional dependencies
+---------------------
+
+  - via hephaestus[automation]: pydantic — MIT.
+  - via hephaestus[dev]: pytest, pytest-cov, ruff, mypy, pip-audit, pre-commit,
+    hatchling, hatch-vcs, hypothesis, tomli, build — see each project's license.
+
+Reproducibility
+---------------
+
+This repository pins versions in pyproject.toml [project.dependencies] and the
+lock files `pixi.lock` and `uv.lock`. The bounds are intentionally narrow and
+deliberately mirror Hephaestus's floor/upper-cap policy to keep CI, myrmidon,
+and pip-install environments on the same major versions.
+
+Trademarks
+----------
+
+"HomericIntelligence", "Hephaestus", "Athena", "ProjectArgus", "ProjectHermes",
+"ProjectTelemachy", "ProjectKeystone", "ProjectProteus", "ProjectCharybdis",
+"ProjectScylla", "ProjectOdyssey", "ProjectMnemosyne", "ProjectAgamemnon",
+"ProjectNestor", and "Myrmidons" are project names, not registered trademarks.
+The names refer to the corresponding repositories under
+https://github.com/HomericIntelligence.

@@ -1,0 +1,38 @@
+# Normalize text files to LF on commit and prevent mixed line endings.
+# CRLF is opted-in per file pattern below.
+
+# Default for text files: LF.
+*                 text=auto eol=lf
+
+# Python source and build configs.
+*.py              text eol=lf
+*.pyi             text eol=lf
+*.toml            text eol=lf
+*.cfg             text eol=lf
+*.ini             text eol=lf
+
+# YAML/JSON/Markdown.
+*.yml             text eol=lf
+*.yaml            text eol=lf
+*.json            text eol=lf
+*.md              text eol=lf
+
+# Shell scripts.
+*.sh              text eol=lf
+
+# Windows batch scripts (legitimately CRLF).
+*.bat             text eol=crlf
+*.cmd             text eol=crlf
+*.ps1             text eol=crlf
+
+# Binary.
+*.png             binary
+*.jpg             binary
+*.jpeg            binary
+*.gif             binary
+*.ico             binary
+*.pdf             binary
+*.gz              binary
+*.zip             binary
+*.tar             binary
+*.whl             binary

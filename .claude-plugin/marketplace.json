@@ -1,18 +1,129 @@
 {
-  "name": "ProjectHephaestus",
+  "_comment_source_convention": "Athena is a single-plugin-per-skill marketplace: every entry under `plugins[*].source` points to `./` (the marketplace root) and the platform resolves the plugin by matching `name` against `skills/<name>/SKILL.md`. This differs from multi-plugin marketplaces whose entries each reference a sub-directory (e.g. `./plugins/<name>/`) — Athena's surface is intentionally one-plugin-per-skill under `skills/`, validated by `athena/validate_marketplace.py`.",
+  "name": "Athena",
   "owner": {
     "name": "HomericIntelligence",
     "url": "https://github.com/HomericIntelligence"
   },
-  "description": "Shared tooling and commands for the HomericIntelligence agentic ecosystem",
+  "metadata": {
+    "description": "Reusable Claude Code / Codex / Pi plugins and skills for the HomericIntelligence ecosystem. Library-side code lives in Hephaestus; skill bodies compose it via `from hephaestus.automation import …`.",
+    "version": "0.1.0"
+  },
   "plugins": [
     {
-      "name": "hephaestus",
-      "description": "Shared tooling plugin for the HomericIntelligence ecosystem (23 skills). Routing/orchestration: /skill-advisor (task routing), /advise (search skills registry), /learn (capture session learnings), /myrmidon-swarm (hierarchical agent orchestration). Workflow: /brainstorm (design before code), /test-driven-development (RED-GREEN-REFACTOR), /systematic-debugging (root cause first), /verification (evidence before claims), /git-worktrees (isolated workspaces), /finish-branch (branch completion), /code-review (Sonnet reviewer + feedback). Auditing: /repo-analyze, /repo-analyze-quick, /repo-analyze-strict and their full-coverage swarm variants /repo-analyze-full, /repo-analyze-quick-full, /repo-analyze-strict-full, plus /review-pr-strict (PR alignment audit). Maintenance: /worktree-cleanup (audit + prune worktrees without deleting branches), /tidy (rebase all branches with swarm conflict resolution). Knowledge skills: create-reusable-utilities, github-actions-python-cicd, python-repo-modernization.",
-      "version": "3.0.0",
+      "name": "advise",
       "source": "./",
-      "category": "tooling",
-      "tags": ["skill-advisor", "advise", "learn", "myrmidon-swarm", "brainstorm", "tdd", "test-driven-development", "debugging", "systematic-debugging", "verification", "git-worktrees", "finish-branch", "code-review", "repo-analyze", "repo-analyze-quick", "repo-analyze-strict", "repo-analyze-full", "repo-analyze-quick-full", "repo-analyze-strict-full", "review-pr-strict", "worktree-cleanup", "tidy", "create-reusable-utilities", "github-actions-python-cicd", "python-repo-modernization", "orchestration", "skills"]
+      "description": "Search the ProjectMnemosyne skills registry for prior learnings before starting a task."
+    },
+    {
+      "name": "brainstorm",
+      "source": "./",
+      "description": "Design a feature before writing code — explore approaches, tradeoffs, and risks first."
+    },
+    {
+      "name": "code-review",
+      "source": "./",
+      "description": "Review completed work with a Sonnet reviewer and structured feedback reception."
+    },
+    {
+      "name": "create-reusable-utilities",
+      "source": "./",
+      "description": "Port or generalize utility scripts for cross-project reuse."
+    },
+    {
+      "name": "finish-branch",
+      "source": "./",
+      "description": "Branch completion workflow — run when implementation is complete."
+    },
+    {
+      "name": "git-worktrees",
+      "source": "./",
+      "description": "Create and manage isolated git worktree workspaces for parallel branch work."
+    },
+    {
+      "name": "github-actions-python-cicd",
+      "source": "./",
+      "description": "Set up a Python GitHub Actions CI/CD pipeline."
+    },
+    {
+      "name": "learn",
+      "source": "./",
+      "description": "Capture session learnings as skills in the ProjectMnemosyne marketplace."
+    },
+    {
+      "name": "myrmidon-swarm",
+      "source": "./",
+      "description": "Hierarchical multi-agent orchestration for complex multi-step tasks."
+    },
+    {
+      "name": "python-repo-modernization",
+      "source": "./",
+      "description": "Bring a Python repository to production-grade quality."
+    },
+    {
+      "name": "repo-analyze",
+      "source": "./",
+      "description": "Comprehensive 15-dimension repository audit."
+    },
+    {
+      "name": "repo-analyze-full",
+      "source": "./",
+      "description": "Full-coverage repository audit — one swarm agent per section, no sampling cap."
+    },
+    {
+      "name": "repo-analyze-quick",
+      "source": "./",
+      "description": "Quick repository health check."
+    },
+    {
+      "name": "repo-analyze-quick-full",
+      "source": "./",
+      "description": "Quick repository health check with full file coverage."
+    },
+    {
+      "name": "repo-analyze-strict",
+      "source": "./",
+      "description": "Ruthlessly thorough repository audit."
+    },
+    {
+      "name": "repo-analyze-strict-full",
+      "source": "./",
+      "description": "Strict repository audit with full file coverage (swarm per section)."
+    },
+    {
+      "name": "review-pr-strict",
+      "source": "./",
+      "description": "Ruthlessly thorough PR-alignment audit with full coverage."
+    },
+    {
+      "name": "skill-advisor",
+      "source": "./",
+      "description": "Route a task to the correct skill before beginning work."
+    },
+    {
+      "name": "systematic-debugging",
+      "source": "./",
+      "description": "Root-cause-first debugging before proposing fixes."
+    },
+    {
+      "name": "test-driven-development",
+      "source": "./",
+      "description": "RED-GREEN-REFACTOR discipline before writing implementation code."
+    },
+    {
+      "name": "tidy",
+      "source": "./",
+      "description": "Rebase all local branches onto trunk with swarm conflict resolution."
+    },
+    {
+      "name": "verification",
+      "source": "./",
+      "description": "Audit a claim (metric, CI result, benchmark) and report whether it is backed by runnable evidence per Odysseus ADR-014."
+    },
+    {
+      "name": "worktree-cleanup",
+      "source": "./",
+      "description": "Audit and prune git worktrees without deleting branches."
     }
   ]
 }

@@ -1,0 +1,25 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{py,pyi}]
+indent_style = space
+indent_size = 4
+
+[*.{md,markdown}]
+indent_style = space
+indent_size = 4
+# Long lines are accepted in skill bodies (embedded agent prompts).
+trim_trailing_whitespace = false
+
+[*.{yaml,yml,toml,json}]
+indent_style = space
+indent_size = 2
+
+[*.sh]
+indent_style = space
+indent_size = 4
