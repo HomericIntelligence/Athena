@@ -5,7 +5,7 @@
 > Codex, and Pi host-side plugins and skills. The **Python library code**
 > that these skills interact with lives in \`Hephaestus\`.
 
-## Design Philosophy
+## Design philosophy
 
 Athena's design philosophy is inherited from [Hephaestus], the
 repository Athena was carved out of under [ADR-016], and from the
