@@ -5,19 +5,19 @@ argument-hint: "<optional: --dry-run>"
 allowed-tools: [Bash, Read]
 ---
 
-# /hephaestus:worktree-cleanup
+# /athena:worktree-cleanup
 
 Audit every git worktree for uncommitted state, classify each one, and prune those that are safe to remove.
 
 > **Usage:** Run this from any directory in the repository. This skill audits ALL worktrees registered to the current repo.
 >
-> **Philosophy:** State preservation first. Every worktree is proven safe to remove before it is touched. This skill NEVER deletes branches — branch deletion is `gh tidy`'s exclusive responsibility. Pair this with `/hephaestus:tidy` for a complete cleanup flow.
+> **Philosophy:** State preservation first. Every worktree is proven safe to remove before it is touched. This skill NEVER deletes branches — branch deletion is `gh tidy`'s exclusive responsibility. Pair this with `/athena:tidy` for a complete cleanup flow.
 
 ## When to Use
 
 - `git worktree list` shows many entries after a parallel agent session
 - You suspect uncommitted work is stranded in one or more worktrees
-- You want to clean up before running `/hephaestus:tidy`
+- You want to clean up before running `/athena:tidy`
 - A prior `git worktree prune` left stale entries that won't remove cleanly
 - You're onboarding onto a repo and want to understand its worktree state before touching anything
 
@@ -166,23 +166,23 @@ List all worktrees with their classification and the actions taken or recommende
 
 ```bash
 # Standard: audit all worktrees, commit real work, ask about ambiguous files, prune safe ones
-/hephaestus:worktree-cleanup
+/athena:worktree-cleanup
 
 # Dry run: report only, no commits or removals at all
-/hephaestus:worktree-cleanup --dry-run
+/athena:worktree-cleanup --dry-run
 ```
 
 ## Recommended Workflow
 
-Chain this with `/hephaestus:tidy` for a complete cleanup flow:
+Chain this with `/athena:tidy` for a complete cleanup flow:
 
 ```
-Step 1: /hephaestus:worktree-cleanup
+Step 1: /athena:worktree-cleanup
         → Ensures all state is committed or documented
         → Prunes CLEAN_PRUNE_OK worktrees
         → Leaves branches intact for gh-tidy to decide
 
-Step 2: /hephaestus:tidy
+Step 2: /athena:tidy
         → gh-tidy rebases all branches onto trunk
         → You answer its y/N prompts to delete stale branches
         → Swarm fixes any rebases that gh-tidy couldn't complete

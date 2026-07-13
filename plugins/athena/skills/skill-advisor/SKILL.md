@@ -21,29 +21,29 @@ Routes your current task to the appropriate Hephaestus skill.
 What are you about to do?
 │
 ├─ Implementing a new feature or fixing a bug?
-│   └─ → /hephaestus:test-driven-development (BEFORE writing any code)
+│   └─ → /athena:test-driven-development (BEFORE writing any code)
 │
 ├─ Debugging an unexpected failure, bug, or error?
-│   └─ → /hephaestus:systematic-debugging (BEFORE proposing fixes)
+│   └─ → /athena:systematic-debugging (BEFORE proposing fixes)
 │
 ├─ About to claim work is "done", "passing", or "fixed"?
-│   └─ → /hephaestus:verification (BEFORE making any success claims)
+│   └─ → /athena:verification (BEFORE making any success claims)
 │
 ├─ Starting a complex or ambiguous feature from scratch?
-│   └─ → /hephaestus:brainstorm (BEFORE writing any code or plan)
+│   └─ → /athena:brainstorm (BEFORE writing any code or plan)
 │
 ├─ Needing an isolated workspace for a new branch?
-│   └─ → /hephaestus:git-worktrees
+│   └─ → /athena:git-worktrees
 │       (skip if using myrmidon-swarm — it handles isolation automatically)
 │
 ├─ Implementation complete, ready to merge or create PR?
-│   └─ → /hephaestus:finish-branch (AFTER running /hephaestus:verification)
+│   └─ → /athena:finish-branch (AFTER running /athena:verification)
 │
 ├─ Completed a major task and want quality assurance?
-│   └─ → /hephaestus:code-review (dispatches a Sonnet reviewer)
+│   └─ → /athena:code-review (dispatches a Sonnet reviewer)
 │
 └─ Received code review feedback to act on?
-    └─ → /hephaestus:code-review (Part 2: Receiving)
+    └─ → /athena:code-review (Part 2: Receiving)
 ```
 
 ## Skill Priority

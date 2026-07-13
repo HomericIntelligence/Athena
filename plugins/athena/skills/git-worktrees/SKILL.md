@@ -127,8 +127,8 @@ git worktree prune
 
 **Pairs with:**
 
-- `/hephaestus:finish-branch` — REQUIRED for cleanup after work is complete
-- `/hephaestus:verification` — run before finishing and cleaning up
+- `/athena:finish-branch` — REQUIRED for cleanup after work is complete
+- `/athena:verification` — run before finishing and cleaning up
 
 ---
 

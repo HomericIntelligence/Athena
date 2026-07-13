@@ -21,7 +21,7 @@ Every feature goes through this process. "Simple" projects are where unexamined 
 
 Complete in order:
 
-1. **Run `/hephaestus:advise`** with the feature description — check ProjectMnemosyne for prior learnings on this topic
+1. **Run `/athena:advise`** with the feature description — check ProjectMnemosyne for prior learnings on this topic
 2. **Explore project context** — check files, docs, recent commits
 3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
 4. **Propose 2-3 approaches** — with trade-offs and your recommendation
@@ -84,7 +84,7 @@ Wait for approval. Only proceed once approved.
 **Implementation:**
 
 - Invoke the `planning` skill for task tracking, or
-- Invoke `/hephaestus:myrmidon-swarm` for complex multi-agent work
+- Invoke `/athena:myrmidon-swarm` for complex multi-agent work
 
 ## Key Principles
 

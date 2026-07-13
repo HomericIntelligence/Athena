@@ -17,7 +17,7 @@ Random fixes waste time and create new bugs. Quick patches mask underlying issue
 
 ## Before Starting
 
-Run `/hephaestus:advise` with the error description to search ProjectMnemosyne for prior debugging sessions on similar errors. Prior learnings may immediately identify the root cause or rule out dead ends.
+Run `/athena:advise` with the error description to search ProjectMnemosyne for prior debugging sessions on similar errors. Prior learnings may immediately identify the root cause or rule out dead ends.
 
 ## The Iron Law
 
@@ -121,7 +121,7 @@ You MUST complete each phase before proceeding to the next.
 
 **Fix the root cause, not the symptom:**
 
-1. **Create failing test case** using `/hephaestus:test-driven-development` — must exist BEFORE fixing
+1. **Create failing test case** using `/athena:test-driven-development` — must exist BEFORE fixing
 2. **Implement single fix** addressing the root cause
 3. **Verify fix**: Test passes? No other tests broken? Issue actually resolved?
 
@@ -182,9 +182,9 @@ pixi run mypy hephaestus/
 
 ## After Resolution
 
-Run `/hephaestus:verification` before claiming the bug is fixed.
+Run `/athena:verification` before claiming the bug is fixed.
 
-Run `/hephaestus:learn` to capture the debugging session in ProjectMnemosyne — especially:
+Run `/athena:learn` to capture the debugging session in ProjectMnemosyne — especially:
 
 - Root cause category and symptoms
 - What diagnostic steps revealed it

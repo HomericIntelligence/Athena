@@ -185,8 +185,8 @@ Can't check all boxes? You skipped TDD. Start over.
 
 ## After Completion
 
-Run `/hephaestus:verification` before claiming work complete.
-Consider running `/hephaestus:learn` to capture novel testing patterns in ProjectMnemosyne.
+Run `/athena:verification` before claiming work complete.
+Consider running `/athena:learn` to capture novel testing patterns in ProjectMnemosyne.
 
 ---
 
