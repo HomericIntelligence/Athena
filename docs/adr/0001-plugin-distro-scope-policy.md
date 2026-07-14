@@ -2,6 +2,11 @@
 
 **Status:** Accepted
 
+**Bootstrap exception:** Athena had no supported release before this cleanup. Maintainers explicitly
+authorized PR #9 to replace the earlier ADR 0001 draft while defining the first supported product
+boundary. The append-only rule applies to this accepted version after it lands; later changes must
+use a superseding ADR.
+
 ## Context
 
 Athena distributes portable workflow skills to multiple AI coding harnesses. Earlier layouts mixed

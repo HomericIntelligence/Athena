@@ -28,6 +28,13 @@ class DistributionTests(unittest.TestCase):
         self.assertIn("tidy", validator.AUTOMATION_SKILLS)
         self.assertIn("finish-branch", validator.AUTOMATION_SKILLS)
 
+    def test_review_scoring_starts_at_zero(self) -> None:
+        root = MODULE_PATH.parents[1]
+        for skill in ("pr-review", "repo-review"):
+            text = (root / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("0%", text)
+            self.assertNotIn("starts at F", text)
+
 
 if __name__ == "__main__":
     unittest.main()

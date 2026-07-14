@@ -7,9 +7,9 @@ allowed-tools: [Read, Bash, Grep, Glob, Agent]
 
 # Repository review
 
-Evaluate an entire repository against concrete engineering evidence. Every grade starts at F and
-is raised only by files, commands, history, or live configuration that the reviewer actually
-inspected.
+Evaluate an entire repository against concrete engineering evidence. Every section starts at 0
+points and earns percentage credit only from files, commands, history, or live configuration that
+the reviewer actually inspected. Assign the letter grade only after calculating the percentage.
 
 ## Modes
 
@@ -46,7 +46,10 @@ do not silently sample.
 Run safe, repository-defined checks when dependencies are available. Capture commands and exit
 codes. A documented command is not evidence until it runs successfully.
 
-### 3. Grade from F
+### 3. Score from zero
+
+Begin every section at **0%**. Add earned points criterion by criterion, total the percentage, and
+only then assign a letter grade. Do not use a provisional letter grade as the scoring baseline.
 
 Use this scale without rounding up:
 
@@ -60,6 +63,11 @@ Use this scale without rounding up:
 
 Absence of evidence earns no credit. Intent, TODOs, filenames, and static badges do not prove a
 criterion. Mark a criterion N/A only with a project-specific reason.
+
+Establish the product-maturity baseline before scoring. Versioning, migration, and backwards-
+compatibility criteria apply only to established supported releases or public contracts. When the
+maintainer explicitly identifies the evaluated state as the first supported release, record that
+assumption and treat earlier bootstrap interfaces as N/A for compatibility scoring.
 
 ### 4. Evaluate all sections
 

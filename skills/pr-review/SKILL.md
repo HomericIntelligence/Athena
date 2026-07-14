@@ -66,12 +66,14 @@ content, not commit ancestry alone on squash-merge repositories.
 
 ## Review dimensions
 
-Grade each dimension from F upward with exact `path:line` and command evidence:
+Score each dimension from 0 points upward with exact `path:line` and command evidence. Award points
+only for criteria supported by inspected evidence; do not assign a provisional letter grade before
+calculating the percentage:
 
 1. **Issue and scope alignment (25%)** — every acceptance criterion covered; no hidden scope;
    user-visible behavior and docs match the issue.
 2. **Architecture and design (20%)** — repository boundaries, ADRs, interfaces, KISS/YAGNI,
-   dependency direction, compatibility and migrations.
+   dependency direction, and applicable compatibility or migration requirements.
 3. **Implementation quality (20%)** — correctness, error paths, types, maintainability, DRY,
    dead code, portability, surprising behavior.
 4. **Testing and evidence (15%)** — behavior-first tests, regression/error coverage, meaningful
@@ -79,10 +81,18 @@ Grade each dimension from F upward with exact `path:line` and command evidence:
 5. **Security and safety (10%)** — secrets/PII, untrusted inputs, permissions, destructive actions,
    supply chain, rollback and failure behavior.
 6. **Integration and release readiness (10%)** — base staleness, conflicts, CI, packaging, docs,
-   backwards compatibility and operational handoff.
+   applicable backwards compatibility, and operational handoff.
 
-Apply this strict scale: A 93–100, B 80–92, C 70–79, D 60–69, F 0–59. A requires no critical or
-major findings. B requires no critical findings and at most one major finding.
+For each dimension, begin at **0%**, add earned points criterion by criterion, total the percentage,
+and only then map it to this strict scale: A 93–100, B 80–92, C 70–79, D 60–69, F 0–59. A requires
+no critical or major findings. B requires no critical findings and at most one major finding. Never
+award or deduct points merely because a letter grade is the starting assumption.
+
+Record the product-maturity baseline before scoring. Compatibility, migration, and version-bump
+criteria apply only when an established supported release or public contract exists. An explicit
+maintainer declaration that the change is the first supported release may make those criteria N/A;
+state that assumption in the report instead of treating bootstrap interfaces as backwards-compatible
+obligations.
 
 ## Required checks
 
