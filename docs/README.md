@@ -1,39 +1,22 @@
-# Athena docs
+# Athena documentation
 
-This directory holds canonical Athena documentation. Athena is a
-plugin/skill distribution repo; the docs here describe the boundary, the
-boundary's enforcement, and operational notes.
+Athena is a self-contained AI-harness plugin distribution. These documents define its local
+architecture, dependency contracts, and governance.
 
-## ADRs
+## Architecture
 
-- [ADR 0001 — Plugin-distribution scope policy](adr/0001-plugin-distro-scope-policy.md).
-  The authoritative scope contract for this repo. Athena owns
-  `.claude-plugin/`, `.codex-plugin/`, `.agents/`, `plugins/`, `skills/`,
-  `assets/`. Library code lives in Hephaestus — never re-introduce
-  `hephaestus.*` packages here.
+- [`adr/0001-plugin-distro-scope-policy.md`](adr/0001-plugin-distro-scope-policy.md): the accepted
+  plugin-only distribution boundary.
+- [`host-compatibility.md`](host-compatibility.md): Claude Code, Codex, and Pi capability mapping.
+- [`dependency-resolution.md`](dependency-resolution.md): mandatory Mnemosyne and Hephaestus owner
+  and checkout resolution.
 
-## Runbooks
+## Policies
 
-None yet. Runbook-style docs apply to operational systems, and Athena is
-metadata-driven (skills + manifests). If we add operational surfaces
-later (e.g. a marketplace validation daemon), runbooks will go here.
+- [`policies/development.md`](policies/development.md): Git, PR, safety, and human-review rules.
+- [`policies/evidence-integrity.md`](policies/evidence-integrity.md): runnable evidence and truthful
+  failure requirements.
+- [`policies/required-checks.md`](policies/required-checks.md): merge-gate and release contexts.
 
-## Plugin installation
-
-The plugin manifest sits at
-[`.claude-plugin/marketplace.json`](../.claude-plugin/marketplace.json).
-The marketplace is registered at user scope in `~/.claude/settings.json`
-under `extraKnownMarketplaces.Athena` (git source pointing at this repo).
-
-Project-level enablement lives in
-[`.claude/settings.json`](../.claude/settings.json) with the
-strict-permission deny list that mirrors Hephaestus's posture.
-
-## Cross-repo references
-
-- [Hephaestus docs](https://github.com/HomericIntelligence/Hephaestus/tree/main/docs)
-  — library-side ADRs and runbooks.
-- [ProjectMnemosyne](https://github.com/HomericIntelligence/ProjectMnemosyne)
-  — the cross-cutting skill marketplace catalog.
-- [Odysseus](https://github.com/HomericIntelligence/Odysseus) — the
-  meta-repo that coordinates submodule pins.
+The root [`AGENTS.md`](../AGENTS.md) is the authoritative repository-agent contract. Installation
+and lifecycle commands are maintained in [`README.md`](../README.md).

@@ -28,17 +28,18 @@ ls -d worktrees 2>/dev/null      # Alternative
 
 If found: Use that directory. If both exist, `.worktrees` wins.
 
-### 2. Check CLAUDE.md
+### 2. Check repository guidance
 
 ```bash
-grep -i "worktree" CLAUDE.md 2>/dev/null
+rg -i "worktree" AGENTS.md CLAUDE.md 2>/dev/null
 ```
 
 If preference specified: Use it without asking.
 
-### 3. Default for HomericIntelligence Repos
+### 3. Portable default
 
-For all HomericIntelligence repos, worktrees go in `/tmp/<project>-<branch>` unless the repo has an existing `.worktrees/` directory. This avoids polluting the project directory.
+When no repository preference exists, use `/tmp/<project>-<branch>`. This avoids polluting the
+project directory.
 
 ```bash
 project=$(basename "$(git rev-parse --show-toplevel)")
@@ -73,7 +74,7 @@ No `.gitignore` verification needed — outside the project entirely.
 project=$(basename "$(git rev-parse --show-toplevel)")
 
 # 2. Create worktree with new branch
-# Option A: /tmp location (default for HomericIntelligence)
+# Option A: portable /tmp default
 git worktree add "/tmp/${project}-${BRANCH_NAME}" -b "${BRANCH_NAME}"
 cd "/tmp/${project}-${BRANCH_NAME}"
 
@@ -81,11 +82,11 @@ cd "/tmp/${project}-${BRANCH_NAME}"
 git worktree add ".worktrees/${BRANCH_NAME}" -b "${BRANCH_NAME}"
 cd ".worktrees/${BRANCH_NAME}"
 
-# 3. Install dependencies
-pixi install
+# 3. Run the repository-defined bootstrap when one exists
+<repository-bootstrap-command>
 
-# 4. Verify clean baseline
-pixi run pytest tests/unit -v
+# 4. Verify a clean baseline with repository-defined tests
+<repository-test-command>
 
 # 5. Report status
 echo "Worktree ready at $(pwd)"

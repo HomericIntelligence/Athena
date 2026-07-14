@@ -17,7 +17,8 @@ Random fixes waste time and create new bugs. Quick patches mask underlying issue
 
 ## Before Starting
 
-Run `/athena:advise` with the error description to search ProjectMnemosyne for prior debugging sessions on similar errors. Prior learnings may immediately identify the root cause or rule out dead ends.
+Run `advise` with the error description. Failure to prepare the required knowledge backend is a
+blocking error, not permission to skip prior-knowledge search.
 
 ## The Iron Law
 
@@ -163,7 +164,7 @@ You MUST complete each phase before proceeding to the next.
 | "Multiple fixes at once saves time" | Can't isolate what worked. Causes new bugs. |
 | "One more fix attempt" (after 2+ failures) | 3+ failures = architectural problem. Don't fix again. |
 
-## Hephaestus Tooling
+## Repository tooling
 
 ```bash
 # Run failing tests with full output
@@ -174,17 +175,18 @@ git diff HEAD~3
 git log --oneline -10
 
 # Find similar patterns in codebase
-grep -r "pattern" hephaestus/ --include="*.py"
+rg "pattern" <source-root>
 
 # Run type checker for type-related bugs
-pixi run mypy hephaestus/
+<repository-typecheck-command>
 ```
 
 ## After Resolution
 
 Run `/athena:verification` before claiming the bug is fixed.
 
-Run `/athena:learn` to capture the debugging session in ProjectMnemosyne — especially:
+Run `learn` to submit durable debugging knowledge through its mandatory pull-request workflow,
+especially:
 
 - Root cause category and symptoms
 - What diagnostic steps revealed it

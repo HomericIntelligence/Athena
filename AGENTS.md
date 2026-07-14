@@ -1,107 +1,106 @@
 # AGENTS.md — Athena
 
-> **AI agents:** Companion to \`Hephaestus/AGENTS.md\`. Athena is a
-> *plugin/skill distribution* repo, not a library. It ships Claude Code,
-> Codex, and Pi host-side plugins and skills. The **Python library code**
-> that these skills interact with lives in \`Hephaestus\`.
+This is the authoritative contract for every AI coding harness operating in Athena. Host-specific
+files point here rather than duplicate it.
 
-## Design philosophy
+## Purpose and scope
 
-Athena's design philosophy is inherited from [Hephaestus], the
-repository Athena was carved out of under [ADR-016], and from the
-[seven development principles] applied across the HomericIntelligence
-ecosystem.
+Athena is a self-contained, host-neutral distribution of workflow skills for Claude Code, Codex,
+and Pi. The product is the top-level `skills/` corpus plus its host manifests and documentation. It
+does not publish a Python package.
 
-### Repository role and rhythm
+Athena owns:
 
-Athena is a **plugin/skill distribution repository**, not a Python
-library. ADR-016 separates it from Hephaestus so the plugin surface moves
-at a fast release cadence (a new skill may land and ship this week) while
-Hephaestus keeps its slow, semver-stable cadence. The split is enforced by
-tooling: the Hephaestus library MUST NOT import from Athena, and Athena's
-`pyproject.toml` declares `hephaestus` (plus the `[automation]` extra) as
-the only library dependency. A contributor to Athena writes **skill
-descriptions** that agent hosts (Claude Code, Codex, Pi) discover and
-execute via a plugin install contract; the artifact shipped from this
-repo is the plugin manifest plus the contents of `.claude-plugin/`,
-`.codex-plugin/`, `.agents/`, `plugins/`, `skills/`, and `assets/`.
+- `skills/`: canonical portable skill sources.
+- `.claude-plugin/`, `.codex-plugin/`, and `.agents/plugins/`: host metadata.
+- `scripts/`: repository validation tools, not a distributable runtime library.
+- `tests/`: validator contract tests.
+- `docs/`, `assets/`, and `.github/`: policy, documentation, media, ownership, and automation.
 
-### Core principles
+`skills/` is the only skill source. Do not create a nested plugin mirror or host-specific copy.
+Runtime repository requirements belong in the relevant skill descriptions and workflows, not in
+this repository-agent contract.
 
-The seven HomericIntelligence principles apply to this surface as
-follows.
+## Multi-harness contract
 
-- **KISS** — A skill body should solve one user intent with the smallest
-  defensible scaffold. Reject novel abstractions whose only justification
-  is "we might need them later."
-- **YAGNI** — A skill ships only when at least one agent host can drive
-  it today. Don't add a `.codex-plugin/` capability before a Codex
-  integration is wired and tested.
-- **TDD** — A skill's behaviour contract is encoded in a fixture before
-  its prose is finalised. The same fixtures double as documentation for
-  future maintainers and as the regression net for host-version drift.
-- **DRY** — Shared skill scaffolding lives in a single plugin-utility
-  snippet, not duplicated host-by-host. Skill bodies differ in intent,
-  not in boilerplate.
-- **SOLID** — Each skill's input handling, tool orchestration, and
-  output formatting belongs to one operational concern. Cross-skill
-  reuse goes through declared dependencies in `pyproject.toml`, never
-  through cross-plugin imports.
-- **Modularity** — Athena's plugin manifests and Hephaestus's library
-  subpackages are **separately versioned**, with Athena explicitly
-  depending on Hephaestus's stable API and never the reverse. This module
-  boundary is the file system itself, per ADR-016.
-- **POLA** — Plugin manifest field names, host-side install paths, and
-  skill invocation names match the agent host's vocabulary, not our
-  internal one. The roadmap marketplace entry is `athena@Athena` per
-  ADR-016 (contingent on packaging Athena as a Claude Code plugin);
-  deviations must carry a written reason.
+- Express capabilities, not fixed vendor APIs.
+- Use coordinator, specialist, executor, skill invocation, and subagent rather than branded model
+  tiers.
+- Use the host default model when tier selection is unavailable.
+- Run independent work sequentially when the host cannot delegate.
+- Treat invocation syntax as an example: Claude uses `/athena:<skill>`, Codex uses `$<skill>` or
+  natural language, and Pi uses `/skill:<skill>`.
+- Read `AGENTS.md` for repository guidance. `CLAUDE.md` is only a pointer.
+- Frontmatter tool names describe required capabilities; every skill documents a safe failure or
+  fallback when a host lacks one.
 
-### Boundaries with Hephaestus
+## Permitted actions
 
-Per ADR-016 the dependency direction is one-way and is structural in the
-meta-repo: `Athena → Hephaestus`. Any code that implies the inverse (a
-Hephaestus library submodule path that resolves through `athena`) is
-rejected at Hephaestus's static-analysis gate, not at Athena's. The
-meta-repo's `AGENTS.md` mirrors this rule and treats cross-submodule
-integration pin bumps as a human-driven event that requires explicit
-operator approval.
+Agents may read repository files, edit files within the user's requested scope, run deterministic
+validation, and create isolated local branches or worktrees needed for that work. Read-only GitHub
+inspection is allowed when relevant.
 
-### Naming convention
-
-Per [ADR-015] every identifier in this repo uses the bare myth-name
-(`Athena`), never `ProjectAthena`. This applies to PyPI distribution
-names, marketplace entries, plugin path strings, and the `description:`
-field of each skill manifest.
-
-[Hephaestus]: https://github.com/HomericIntelligence/Hephaestus
-[ADR-016]: https://github.com/HomericIntelligence/Odysseus/blob/main/docs/adr/016-split-hephaestus.md
-[seven development principles]: https://github.com/HomericIntelligence/Odysseus/blob/main/shared/Hephaestus/skills/_repo_analyze_common/principles.md
-[ADR-015]: https://github.com/HomericIntelligence/Odysseus/blob/main/docs/adr/015-drop-project-prefix.md
-
-## Dependency direction
-
-- **Athena → Hephaestus (one-way).** Athena's \`pyproject.toml\` declares
-  \`hephaestus\` (and the \`[automation]\` extra) as a dependency.
-- **Hephaestus NEVER imports from Athena.** Library-side
-  \`test_import_surface.py\` enforces this. Do not add any
-  \`from athena\` / \`import athena\` statement under \`hephaestus/\`.
-
-## Boundaries
-
-- Anything under \`.claude-plugin/\`, \`.codex-plugin/\`, \`.agents/\`,
-  \`plugins/\`, \`skills/\`, \`assets/\` — owned by Athena.
-- Anything under \`hephaestus/*\` — owned by Hephaestus (NOT Athena).
-  Skills that need orchestrator functionality do
-  \`from hephaestus.automation import …\` from inside the skill body.
-
-## Permitted tools
-
-Bash, Read, Write, Edit, Glob, Grep (same as Hephaestus myrmidons).
+External writes, PR creation, publishing, releases, merges, auto-merge, destructive operations, and
+changes outside the requested repositories require explicit authority.
 
 ## Prohibited actions
 
-- Edit anything under \`hephaestus/\` — that lives in the Hephaestus repo.
-- Add a Python package under \`hephaestus.*\` from this repo.
-- Bump the Hephaestus pin in \`pyproject.toml\` without coordination
-  (cross-repo integration event per Odysseus/AGENTS.md).
+- Never fabricate logs, metrics, tests, benchmarks, releases, or successful command output.
+- Never commit secrets, credentials, private keys, `.env` files, or personal data.
+- Never bypass hooks or required checks with `--no-verify`, silent shell fallbacks, or
+  `continue-on-error: true`.
+- Never force-push, merge, release, delete branches/worktrees, or weaken permissions without the
+  required authority.
+- Never edit an accepted ADR in place; write a superseding ADR.
+- Never overwrite unrelated user changes or silently retarget an existing dependency checkout.
+
+## Evidence and delivery
+
+Follow the local policies:
+
+- [`docs/policies/evidence-integrity.md`](docs/policies/evidence-integrity.md)
+- [`docs/policies/development.md`](docs/policies/development.md)
+- [`docs/policies/required-checks.md`](docs/policies/required-checks.md)
+
+Every completion claim includes runnable evidence. A blocked or timed-out run is reported honestly.
+Pull requests use signed, DCO-attested Conventional Commits and must pass the current-head required
+gate.
+
+## Authoring a skill
+
+Create `skills/<name>/SKILL.md`:
+
+```yaml
+---
+name: <skill-name>
+description: State the triggering intent, required dependency or capability, and failure behavior.
+allowed-tools: []
+---
+```
+
+The body defines when to use the skill, inputs, a host-neutral verified workflow, dependency and
+capability failure behavior, failed approaches, an output contract, and attribution. Use
+placeholders for target-repository paths and commands. Keep repository-specific case studies in a
+`references/` file and label them as examples.
+
+After editing, run:
+
+```bash
+just all
+```
+
+## Escalation
+
+Stop and request human direction for conflicting requirements, an unsafe or destructive next step,
+workflow/required-check policy changes beyond the requested scope, inability to preserve user work,
+an invalid hard-dependency override, or any proposal to weaken a security or evidence control.
+
+## Task entry points
+
+| Command | Purpose |
+| --- | --- |
+| `just validate` | Validate canonical skills and host manifests. |
+| `just test` | Run validator contract tests. |
+| `just markdownlint` | Validate public documentation. |
+| `just package` | Build and inspect the portable plugin archive. |
+| `just all` | Run the complete local required-check equivalent. |

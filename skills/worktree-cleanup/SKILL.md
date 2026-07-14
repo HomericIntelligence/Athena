@@ -42,7 +42,7 @@ git -C <path> log origin/<branch>..HEAD --oneline 2>/dev/null || \
 
 ### Step 3 — 3-method classification
 
-Lifted verbatim from ProjectMnemosyne `git-worktree-cleanup-preservation-audit` v1.0.0:
+Lifted verbatim from Mnemosyne `git-worktree-cleanup-preservation-audit` v1.0.0:
 
 | Method | Command | Positive Signal |
 |--------|---------|-----------------|

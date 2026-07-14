@@ -30,7 +30,8 @@ Write the test first. Watch it fail. Write minimal code to pass.
 - Generated code
 - Configuration files
 
-**Integration with myrmidon-swarm:** When invoked from a myrmidon-swarm Phase 2 (Test) agent, apply this cycle to each test sub-task. Each Sonnet specialist writes failing tests before any Haiku engineer writes implementation.
+**Integration with myrmidon-swarm:** apply this cycle to each test sub-task. A specialist writes
+failing tests before an executor writes implementation.
 
 Thinking "skip TDD just this once"? Stop. That's rationalization.
 
@@ -68,7 +69,7 @@ Write one minimal test showing what should happen.
 **MANDATORY. Never skip.**
 
 ```bash
-# Hephaestus test runner
+# Repository test runner
 pixi run pytest tests/ -k "<test_name>" -v
 ```
 
@@ -120,23 +121,23 @@ Keep tests green throughout. Don't add behavior.
 
 Next failing test for next behavior.
 
-## Hephaestus Tooling
+## Repository tooling
 
 ```bash
 # Run all unit tests
-pixi run pytest tests/unit -v
+pixi run pytest tests -v
 
 # Run specific test file
-pixi run pytest tests/unit/utils/test_general_utils.py -v
+pixi run pytest tests/utils/test_general_utils.py -v
 
 # Run with coverage
-pixi run pytest tests/unit --cov=hephaestus --cov-report=html
+<repository-test-command-with-coverage>
 
 # Type check
-pixi run mypy hephaestus/
+<repository-typecheck-command>
 
 # Lint
-pixi run ruff check hephaestus/ tests/
+<repository-lint-command>
 ```
 
 ## Good Tests
@@ -177,16 +178,16 @@ Before marking work complete:
 - [ ] Watched each test fail before implementing
 - [ ] Each test failed for the expected reason
 - [ ] Wrote minimal code to pass each test
-- [ ] All tests pass (`pixi run pytest tests/unit -v`)
-- [ ] Type check passes (`pixi run mypy hephaestus/`)
-- [ ] Linter clean (`pixi run ruff check hephaestus/ tests/`)
+- [ ] All tests pass (`pixi run pytest tests -v`)
+- [ ] The repository-defined type check passes
+- [ ] The repository-defined linter passes
 
 Can't check all boxes? You skipped TDD. Start over.
 
 ## After Completion
 
 Run `/athena:verification` before claiming work complete.
-Consider running `/athena:learn` to capture novel testing patterns in ProjectMnemosyne.
+Run `learn` when the session produced a durable testing lesson; it must publish through a PR.
 
 ---
 

@@ -1,29 +1,14 @@
-# Python build / dist
-build/
+# Generated plugin archive
 dist/
-*.egg-info/
+
+# Python validation caches
 __pycache__/
 *.py[cod]
-*.egg
-*.whl
 
 # Python virtual environments
 .venv/
 venv/
 .pixi/
-
-# Tool caches
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
-.coverage
-htmlcov/
-coverage.xml
-
-# Lock files (large; reproduce locally)
-pixi.lock
-uv.lock
-poetry.lock
 
 # Secrets / credentials — defence in depth. .gitattributes marks these as
 # binary if they ever sneak in, but the repo must be tolerant of an
@@ -42,10 +27,6 @@ secrets/
 *.swo
 *~
 Thumbs.db
-
-# Hatch / build artefacts
-_version.py
-/src/
 
 # Athena-specific: skill dumps from local iteration
 skills/_out/

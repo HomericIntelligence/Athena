@@ -13,7 +13,7 @@ a Claude Code skills framework by Jesse Vincent / Prime Radiant.
 
 The following skills were adapted from obra/superpowers source material:
 
-| Hephaestus Skill | Source Skill(s) |
+| Athena Skill | Source Skill(s) |
 |---|---|
 | `test-driven-development` | `skills/test-driven-development/SKILL.md` |
 | `systematic-debugging` | `skills/systematic-debugging/SKILL.md` |
@@ -24,8 +24,8 @@ The following skills were adapted from obra/superpowers source material:
 | `code-review` | `skills/requesting-code-review/SKILL.md`, `skills/receiving-code-review/SKILL.md`, `agents/code-reviewer.md` |
 | `skill-advisor` | `skills/using-superpowers/SKILL.md` |
 
-Each derived skill has been modified to integrate with the HomericIntelligence ecosystem
-(Mnemosyne knowledge base, myrmidon-swarm orchestration, Hephaestus tooling conventions).
+Each derived skill has been modified for Athena's host-neutral invocation, local policy, mandatory
+knowledge workflow, and Greek-themed orchestration.
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: verification
-description: Audit a metric, CI result, or benchmark claim and report whether it is backed by runnable evidence per Odysseus ADR-014 (truthful failure acceptable, invented success is not). Use when a user posts a measurement assertion and asks whether to trust it.
+description: Audit a metric, CI result, or benchmark claim under Athena's local evidence-integrity policy; truthful failure is acceptable and invented success is not.
 allowed-tools: [Read, Glob, Grep]
 ---
 
@@ -11,7 +11,7 @@ measured value: a metric, a CI gate result, a benchmark number, a training
 loss, or a "this ran successfully" claim. The skill's job is **not** to
 re-execute the run — that is a slow, out-of-band step. The skill's job is to
 determine whether the claim is backed by **runnable evidence** per
-[Odysseus ADR-014](https://github.com/HomericIntelligence/Odysseus/blob/main/docs/adr/014-runnable-evidence-for-metric-claims.md).
+[`docs/policies/evidence-integrity.md`](../../docs/policies/evidence-integrity.md).
 
 # Inputs the skill expects
 
@@ -57,12 +57,12 @@ The user must supply, or the skill must collect:
 
 # Failed attempts
 
-- Do NOT call `/repo-analyze*` skills — those audit code structure, not claims.
+- Do NOT call `repo-review` for claim verification; it audits repositories, not individual claims.
 - Do NOT accept a "✓" emoji in a comment as evidence.
 - Do NOT re-read the same PR body line to "find" the evidence the user
   already pasted — re-running the gate is the whole point.
 - Do NOT claim "looks good" because the PR is from a trusted author.
-  Per ADR-014, evidentiary channel matters, not source reputation.
+  Under Athena's evidence policy, evidentiary channel matters, not source reputation.
 
 # Output contract
 
@@ -79,16 +79,15 @@ Return a markdown table:
 | Evidence channel | CI-produced artifact / re-executed run / committed file (NOT EVIDENCE) / none |
 | Verdict | GO / CONDITIONAL / NO-GO |
 | Action | <one-line "what would change the verdict"> |
-| ADR reference | ADR-014 |
+| Policy reference | `docs/policies/evidence-integrity.md` |
 ```
 
 Then a short paragraph (≤ 4 lines) explaining the verdict.
 
 # References
 
-- [Odysseus ADR-014](https://github.com/HomericIntelligence/Odysseus/blob/main/docs/adr/014-runnable-evidence-for-metric-claims.md) — governing policy.
-- Hephaestus `hephaestus.audit.filter` — programmatic filter for the same
-  audit, callable without invoking a skill.
+- [`docs/policies/evidence-integrity.md`](../../docs/policies/evidence-integrity.md) — governing
+  policy.
 - Skill catalog: see
   [`.claude-plugin/marketplace.json`](../../.claude-plugin/marketplace.json)
   for the latest published skills.

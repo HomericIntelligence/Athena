@@ -1,17 +1,18 @@
 ---
 name: skill-advisor
-description: Use when starting any task to determine which Hephaestus skill applies — routes tasks to the correct procedural skill before you begin
+description: Use when starting a task to determine which Athena procedural skill applies before work begins.
 argument-hint: <task description>
 allowed-tools: []
 ---
 
 # Skill Advisor
 
-Routes your current task to the appropriate Hephaestus skill.
+Routes the current task to the appropriate Athena skill.
 
 **Core principle:** Check for a relevant skill BEFORE beginning any substantive work. If there is even a 1% chance a skill applies, invoke it.
 
-**Difference from `/advise`:** The `advise` skill searches ProjectMnemosyne for *prior learnings* (what worked before, what failed, team knowledge). This skill routes to *procedural skills* (how to approach a class of task). Use both: advise first for knowledge, then skill-advisor for process.
+**Difference from `advise`:** `advise` searches the required knowledge backend for prior lessons;
+this skill routes to procedural skills. Use both: knowledge first, then process.
 
 ---
 
@@ -40,7 +41,7 @@ What are you about to do?
 │   └─ → /athena:finish-branch (AFTER running /athena:verification)
 │
 ├─ Completed a major task and want quality assurance?
-│   └─ → /athena:code-review (dispatches a Sonnet reviewer)
+│   └─ → /athena:code-review (uses an independent reviewer when available)
 │
 └─ Received code review feedback to act on?
     └─ → /athena:code-review (Part 2: Receiving)

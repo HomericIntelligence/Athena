@@ -21,7 +21,7 @@ Every feature goes through this process. "Simple" projects are where unexamined 
 
 Complete in order:
 
-1. **Run `/athena:advise`** with the feature description — check ProjectMnemosyne for prior learnings on this topic
+1. **Run `advise`** with the feature description to check the required knowledge backend.
 2. **Explore project context** — check files, docs, recent commits
 3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
 4. **Propose 2-3 approaches** — with trade-offs and your recommendation
@@ -46,18 +46,18 @@ Complete in order:
 
 - Propose 2-3 different approaches with trade-offs
 - Lead with your recommended option and explain why
-- Reference existing patterns in the Hephaestus codebase
+- Reference existing patterns in the target codebase
 
 **Presenting the design:**
 
 - Present in sections, ask after each whether it looks right
 - Scale each section to its complexity
 - Cover: architecture, components, data flow, error handling, testing strategy
-- Follow Hephaestus principles: KISS, YAGNI, DRY, SOLID
+- Follow Athena's local development principles: KISS, YAGNI, DRY, SOLID, modularity, and POLA
 
 **Working in existing codebases:**
 
-- Follow existing patterns in `hephaestus/`
+- Follow existing patterns in the target repository
 - Run `/advise` first to check for existing implementations
 - Don't propose unrelated refactoring — stay focused on the current goal
 

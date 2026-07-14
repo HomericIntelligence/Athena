@@ -8,7 +8,7 @@
       "name": "athena",
       "source": {
         "source": "local",
-        "path": "./plugins/athena"
+        "path": "./"
       },
       "policy": {
         "installation": "AVAILABLE",

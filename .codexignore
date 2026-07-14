@@ -2,28 +2,16 @@
 # Mirrors .gitignore for paths that should not be parsed/skipped by Codex when
 # scanning the Athena marketplace for plugin metadata.
 
-# Build/dist
-build/
+# Generated plugin archive
 dist/
-*.egg-info/
+
+# Python validation caches
 __pycache__/
 
 # Python virtual environments
 .venv/
 venv/
 .pixi/
-
-# Lock files (large; not source)
-pixi.lock
-uv.lock
-poetry.lock
-
-# Caches
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
-.coverage
-htmlcov/
 
 # Editor / OS
 .idea/
@@ -43,6 +31,6 @@ secrets/
 .git/
 .github/
 
-# Athena internal iteration artefacts (see ADR 0001 — not user-facing)
+# Athena internal iteration artefacts
 scripts/_local/
 tests/_local/

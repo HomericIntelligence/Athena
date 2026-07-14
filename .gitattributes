@@ -4,7 +4,7 @@
 # Default for text files: LF.
 *                 text=auto eol=lf
 
-# Python source and build configs.
+# Validation scripts and configuration.
 *.py              text eol=lf
 *.pyi             text eol=lf
 *.toml            text eol=lf
@@ -35,4 +35,3 @@
 *.gz              binary
 *.zip             binary
 *.tar             binary
-*.whl             binary
