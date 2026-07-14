@@ -7,7 +7,7 @@ allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
 
 # /learn
 
-Capture session learnings and amend an existing skill or create a new one in the ProjectMnemosyne marketplace. Always searches for an existing skill to update before creating a new file.
+Capture session learnings and amend an existing skill or create a new one in the ProjectMnemosyne skills/memory store. Always searches for an existing skill to update before creating a new file.
 
 ## Target Repository
 
@@ -68,7 +68,13 @@ Agent(
 )
 ```
 
-**Why sub-agents + worktrees:**
+> **Scope — write ONLY the skill corpus.** ProjectMnemosyne is a skills/memory
+> store, not a plugin marketplace. `/learn` must only create or amend
+> `skills/<name>.md` (and its optional `skills/<name>.history` /
+> `skills/<name>.notes.md` siblings). **Never** create, regenerate, or stage a
+> `.claude-plugin/marketplace.json`, `.claude-plugin/plugin.json`, or any
+> marketplace index — those were intentionally removed. There is no
+> "regenerate the marketplace" step; committing the skill file is the whole job.
 
 - The shared clone at `$HOME/.agent-brain/ProjectMnemosyne/` may be on a different branch from a
   prior `/learn` or `/advise` invocation
@@ -580,7 +586,7 @@ Agent(description="Create skill C", prompt="...skill C content...")
     ## Test Plan
 
     - [ ] Validate with \`python3 scripts/validate_plugins.py\`
-    - [ ] Verify skill appears in marketplace
+    - [ ] Verify skill file is committed at `skills/<name>.md`
     - [ ] Test skill discovery with relevant keywords
 
     Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
@@ -665,7 +671,7 @@ Existing skill found?
 | "Missing required section: X" | Missing Overview/When/Workflow/Failed/Results | Add all 5 sections with `##` headers |
 | "Failed Attempts table missing required columns" | Table format incorrect | Use: \| Attempt \| What Was Tried \| Why It Failed \| Lesson Learned \| |
 | "Quick Reference should use ###" | Using `## Quick Reference` instead of `###` | Demote to `### Quick Reference` (subsection of Verified Workflow) |
-| Skill not in marketplace | File not committed or in wrong location | Verify in `skills/<name>.md` (root of skills dir, not nested) |
+| Skill not found by `/advise` | File not committed or in wrong location | Verify in `skills/<name>.md` (root of skills dir, not nested) |
 | markdownlint `MD056/table-column-count` "Too many cells" | An unescaped literal `\|` inside a table cell (regex, shell pipe, `a\|b`) is parsed as a column separator | Escape inline pipes as `\|`, or balance the row so its cell count matches the header. **Not caught by `validate_plugins.py`** — only the CI `markdownlint` gate; run markdownlint locally first |
 | markdownlint `MD012/no-multiple-blanks` | Two or more consecutive blank lines (often left between generated sections) | Collapse to a single blank line. Run markdownlint locally — it flags **all** rules (MD012, MD040, …), not just MD056 |
 | `validate` "Missing required section: ## X" on **your own new file** | `/learn` generated the skill without all 5 required sections | Generate from the full Step 6 template; run the Step 7 required-section self-check (grep for all 5 `##` headers) before committing |
@@ -701,7 +707,7 @@ rm -rf $HOME/.agent-brain/ProjectMnemosyne
 
 | Section | Format | Purpose |
 |---------|--------|---------|
-| **YAML frontmatter** | Starts with `---`, includes name/description/category/date/version/verification | Metadata for marketplace |
+| **YAML frontmatter** | Starts with `---`, includes name/description/category/date/version/verification | Metadata for `/advise` discovery |
 | **Overview** | `## Overview` with table (date, objective, outcome, verification) | Quick context |
 | **When to Use** | Bullet points with trigger conditions | Discoverability |
 | **Verified Workflow** | Steps that worked + `### Quick Reference` subsection | The actual solution |

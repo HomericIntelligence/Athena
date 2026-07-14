@@ -101,8 +101,13 @@ When the user invokes this command:
    `gh pr ...` calls in this skill.
 
 2. **Parse the user's goal** from $ARGUMENTS
-3. **Read `.claude-plugin/marketplace.json`** to find available plugins
-4. **Search matching plugins** by:
+3. **Scan the `skills/` corpus directly** — Mnemosyne is a memory store, not a
+   plugin marketplace, so there is no `marketplace.json` to read. Enumerate the
+   flat skill files (`ls skills/*.md`, excluding `*.notes.md` / `*.history*`) and
+   read their YAML frontmatter (`name`, `description`, `category`, `tags`) to
+   build the candidate set. A quick `grep -l` over `skills/*.md` for the goal's
+   keywords is the fastest first pass.
+4. **Search matching skills** by:
    - Category first (if user's query implies one)
    - Description keywords and trigger conditions
    - Tags (if present)
