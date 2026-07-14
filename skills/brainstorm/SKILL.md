@@ -29,7 +29,9 @@ Complete in order:
 6. **Write design doc** — save to `docs/specs/YYYY-MM-DD-<topic>-design.md` and commit
 7. **Spec self-review** — scan for placeholders, contradictions, ambiguity, scope issues
 8. **User reviews written spec** — ask user to review the spec file before proceeding
-9. **Transition to implementation** — invoke the `planning` skill or `myrmidon-swarm` for implementation
+9. **Transition to implementation** — invoke `myrmidon-swarm` for complex implementation. If an
+   installed planning skill is available, it may track the approved design; otherwise write a short
+   numbered implementation plan in the current conversation and proceed sequentially.
 
 ## The Process
 
@@ -58,7 +60,7 @@ Complete in order:
 **Working in existing codebases:**
 
 - Follow existing patterns in the target repository
-- Run `/advise` first to check for existing implementations
+- Invoke the `advise` skill first to check for existing implementations
 - Don't propose unrelated refactoring — stay focused on the current goal
 
 ## After the Design
@@ -83,8 +85,9 @@ Wait for approval. Only proceed once approved.
 
 **Implementation:**
 
-- Invoke the `planning` skill for task tracking, or
-- Invoke `/athena:myrmidon-swarm` for complex multi-agent work
+- Use an installed planning skill for task tracking, or write the numbered plan inline when none is
+  installed.
+- Invoke the `myrmidon-swarm` skill for complex multi-agent work.
 
 ## Key Principles
 
@@ -92,7 +95,7 @@ Wait for approval. Only proceed once approved.
 - **YAGNI ruthlessly** — remove unnecessary features from all designs
 - **Explore alternatives** — always propose 2-3 approaches
 - **Incremental validation** — present design sections, get approval before moving on
-- **Run `/advise` first** — don't propose what's already been built or debugged
+- **Invoke `advise` first** — don't propose what's already been built or debugged
 
 ---
 

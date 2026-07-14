@@ -68,10 +68,8 @@ Write one minimal test showing what should happen.
 
 **MANDATORY. Never skip.**
 
-```bash
-# Repository test runner
-pixi run pytest tests/ -k "<test_name>" -v
-```
+Discover the target repository's focused test command from its guidance, task runner, manifests,
+lockfiles, and required CI, then run `<repository-focused-test-command>`.
 
 Confirm:
 
@@ -93,9 +91,7 @@ Don't add features, refactor other code, or "improve" beyond what the test deman
 
 **MANDATORY.**
 
-```bash
-pixi run pytest tests/ -v
-```
+Run the repository's discovered full relevant suite: `<repository-test-command>`.
 
 Confirm:
 
@@ -123,22 +119,10 @@ Next failing test for next behavior.
 
 ## Repository tooling
 
-```bash
-# Run all unit tests
-pixi run pytest tests -v
-
-# Run specific test file
-pixi run pytest tests/utils/test_general_utils.py -v
-
-# Run with coverage
-<repository-test-command-with-coverage>
-
-# Type check
-<repository-typecheck-command>
-
-# Lint
-<repository-lint-command>
-```
+Discover commands from `AGENTS.md`, task runners, manifests, lockfiles, and required CI. Prefer the
+same entry points CI uses. Record the focused test, relevant suite, coverage, typing, and lint
+commands when applicable. If repository sources conflict or no safe command is discoverable, ask
+the user; never substitute Athena's Pixi/Pytest commands into an unrelated target.
 
 ## Good Tests
 
@@ -178,7 +162,7 @@ Before marking work complete:
 - [ ] Watched each test fail before implementing
 - [ ] Each test failed for the expected reason
 - [ ] Wrote minimal code to pass each test
-- [ ] All tests pass (`pixi run pytest tests -v`)
+- [ ] All relevant tests pass with the repository's discovered test command
 - [ ] The repository-defined type check passes
 - [ ] The repository-defined linter passes
 
@@ -186,7 +170,7 @@ Can't check all boxes? You skipped TDD. Start over.
 
 ## After Completion
 
-Run `/athena:verification` before claiming work complete.
+Invoke the `verification` skill before claiming work complete.
 Run `learn` when the session produced a durable testing lesson; it must publish through a PR.
 
 ---

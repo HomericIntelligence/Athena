@@ -98,9 +98,10 @@ just bootstrap
 just all
 ```
 
-`just all` validates skills and manifests, runs standard-library contract tests, lints public
-documentation and workflows, and builds the portable plugin archive. It never builds Python
-distribution artifacts.
+`just all` validates skills and manifests, enforces at least 80% branch coverage for the retained
+repository tooling, runs Ruff and strict mypy, lints public documentation and workflows, and builds
+a deterministic plugin archive with a SHA-256 checksum. It never builds Python distribution
+artifacts.
 
 ## Layout
 

@@ -122,7 +122,7 @@ You MUST complete each phase before proceeding to the next.
 
 **Fix the root cause, not the symptom:**
 
-1. **Create failing test case** using `/athena:test-driven-development` — must exist BEFORE fixing
+1. **Create failing test case** using the `test-driven-development` skill — it must exist before fixing
 2. **Implement single fix** addressing the root cause
 3. **Verify fix**: Test passes? No other tests broken? Issue actually resolved?
 
@@ -164,11 +164,15 @@ You MUST complete each phase before proceeding to the next.
 | "Multiple fixes at once saves time" | Can't isolate what worked. Causes new bugs. |
 | "One more fix attempt" (after 2+ failures) | 3+ failures = architectural problem. Don't fix again. |
 
-## Repository tooling
+## Repository command discovery
+
+Before running a check, discover the target repository's commands from `AGENTS.md`, task runners,
+manifests, lockfiles, and CI. Prefer the command used by required CI. If sources conflict or no safe
+command is discoverable, ask the user rather than substituting Athena's own tooling.
 
 ```bash
-# Run failing tests with full output
-pixi run pytest tests/ -v --tb=long
+# Run the smallest reproducer with full output
+<repository-focused-test-command>
 
 # Check recent changes
 git diff HEAD~3
@@ -183,7 +187,7 @@ rg "pattern" <source-root>
 
 ## After Resolution
 
-Run `/athena:verification` before claiming the bug is fixed.
+Invoke the `verification` skill before claiming the bug is fixed.
 
 Run `learn` to submit durable debugging knowledge through its mandatory pull-request workflow,
 especially:

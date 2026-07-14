@@ -22,29 +22,29 @@ this skill routes to procedural skills. Use both: knowledge first, then process.
 What are you about to do?
 │
 ├─ Implementing a new feature or fixing a bug?
-│   └─ → /athena:test-driven-development (BEFORE writing any code)
+│   └─ → invoke `test-driven-development` (BEFORE writing any code)
 │
 ├─ Debugging an unexpected failure, bug, or error?
-│   └─ → /athena:systematic-debugging (BEFORE proposing fixes)
+│   └─ → invoke `systematic-debugging` (BEFORE proposing fixes)
 │
 ├─ About to claim work is "done", "passing", or "fixed"?
-│   └─ → /athena:verification (BEFORE making any success claims)
+│   └─ → invoke `verification` (BEFORE making any success claims)
 │
 ├─ Starting a complex or ambiguous feature from scratch?
-│   └─ → /athena:brainstorm (BEFORE writing any code or plan)
+│   └─ → invoke `brainstorm` (BEFORE writing any code or plan)
 │
 ├─ Needing an isolated workspace for a new branch?
-│   └─ → /athena:git-worktrees
+│   └─ → invoke `git-worktrees`
 │       (skip if using myrmidon-swarm — it handles isolation automatically)
 │
 ├─ Implementation complete, ready to merge or create PR?
-│   └─ → /athena:finish-branch (AFTER running /athena:verification)
+│   └─ → invoke `finish-branch` (AFTER running `verification`)
 │
 ├─ Completed a major task and want quality assurance?
-│   └─ → /athena:code-review (uses an independent reviewer when available)
+│   └─ → invoke `code-review` (uses an independent reviewer when available)
 │
 └─ Received code review feedback to act on?
-    └─ → /athena:code-review (Part 2: Receiving)
+    └─ → evaluate each comment with evidence, then invoke `code-review` for an independent recheck
 ```
 
 ## Skill Priority

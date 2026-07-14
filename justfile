@@ -13,6 +13,15 @@ validate:
 test:
     pixi run test
 
+lint:
+    pixi run lint
+
+format-check:
+    pixi run format-check
+
+typecheck:
+    pixi run typecheck
+
 markdownlint:
     pixi run markdownlint
 

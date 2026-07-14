@@ -100,7 +100,10 @@ an invalid hard-dependency override, or any proposal to weaken a security or evi
 | Command | Purpose |
 | --- | --- |
 | `just validate` | Validate canonical skills and host manifests. |
-| `just test` | Run validator contract tests. |
+| `just test` | Run isolated validator contracts with the coverage floor. |
+| `just lint` | Lint retained repository tooling. |
+| `just format-check` | Check retained repository-tool formatting. |
+| `just typecheck` | Run strict static typing over repository tooling. |
 | `just markdownlint` | Validate public documentation. |
 | `just package` | Build and inspect the portable plugin archive. |
 | `just all` | Run the complete local required-check equivalent. |

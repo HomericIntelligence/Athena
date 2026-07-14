@@ -6,12 +6,14 @@ immutable commits with readable version comments and have minimum permissions an
 ## Canonical contexts
 
 - `forbid-suppressions`: rejects silent-failure workarounds and `continue-on-error: true`.
-- `validate`: validates every skill and host manifest and runs validator tests.
+- `validate`: validates every skill and host manifest and runs isolated contract tests with an 80%
+  branch-coverage floor.
 - `markdownlint`: validates public documentation.
 - `workflow-schema`: validates GitHub workflow syntax.
 - `justfile-check`: ensures documented task entry points parse.
 - `security/secrets-scan`: scans the complete Git history for secrets.
-- `package`: builds and inspects the portable plugin archive; no Python artifacts are produced.
+- `package`: builds and inspects a deterministic portable plugin archive, rejects unsafe or
+  Python/credential-like members, and emits a SHA-256 checksum.
 - `pr-policy`: on pull requests, enforces issue linkage when applicable, signed commits, DCO
   sign-offs, and Conventional Commit subjects.
 - `required-checks-gate`: depends on every gating job and fails if any is not successful.
@@ -19,5 +21,7 @@ immutable commits with readable version comments and have minimum permissions an
 New gating jobs must be added to `required-checks-gate`. Advisory jobs must never be represented as
 required. Branch rules should require `required-checks-gate` after the workflow has run on `main`.
 
-Tag releases rerun validation, build the same portable archive contract, and publish a GitHub
-release. A release workflow never manufactures an artifact that did not pass the required checks.
+Tag releases require a GitHub-verified signed annotated SemVer tag whose target is reachable from
+protected `main`. They invoke the complete required workflow and publish its archive and checksum
+only after the aggregate gate succeeds. A release workflow never manufactures an artifact that did
+not pass the required checks.

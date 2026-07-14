@@ -11,8 +11,10 @@ invocation and delegation APIs, so skill instructions follow this mapping.
 | Model selection | Use an available model | Use an available model | Use the selected/default model |
 | Repository contract | `AGENTS.md` | `AGENTS.md` | `AGENTS.md` |
 
-Skills use the neutral terms coordinator, specialist, executor, skill invocation, and subagent.
-Every delegated workflow retains a sequential fallback.
+Canonical skill bodies say `invoke the <name> skill`; the table above supplies host-specific syntax
+examples. Skills use the neutral terms coordinator, specialist, executor, skill invocation, and
+subagent. Every delegated workflow retains a sequential fallback. A reference to a skill that the
+host has not installed must include an inline fallback rather than silently assuming it exists.
 
 Installation, verification, update, and removal commands are maintained in the root
 [`README.md`](../README.md).

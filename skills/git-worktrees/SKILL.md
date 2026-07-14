@@ -128,8 +128,8 @@ git worktree prune
 
 **Pairs with:**
 
-- `/athena:finish-branch` — REQUIRED for cleanup after work is complete
-- `/athena:verification` — run before finishing and cleaning up
+- Invoke `finish-branch` for cleanup after work is complete.
+- Invoke `verification` before finishing and cleaning up.
 
 ---
 

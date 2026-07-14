@@ -4,6 +4,10 @@ dist/
 # Python validation caches
 __pycache__/
 *.py[cod]
+.coverage
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 
 # Python virtual environments
 .venv/

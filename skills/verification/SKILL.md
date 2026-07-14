@@ -1,7 +1,7 @@
 ---
 name: verification
 description: Audit a metric, CI result, or benchmark claim under Athena's local evidence-integrity policy; truthful failure is acceptable and invented success is not.
-allowed-tools: [Read, Glob, Grep]
+allowed-tools: [Read, Bash, Glob, Grep, Agent]
 ---
 
 # When to use
@@ -30,25 +30,26 @@ The user must supply, or the skill must collect:
    - **Measured metric / benchmark**: the evidence is a CI-produced artifact
      or an independently-reproduced log; a file committed into a PR does NOT
      count.
-   - **Training/optimization result**: per ADR-014, the only accepted
-     evidence is a CI-produced artifact or a detached-execution run record.
+   - **Training/optimization result**: the accepted evidence is a CI-produced artifact or a
+     detached-execution run record bound to the reviewed revision.
    - **Operational status** (e.g., "the daemon is running"):
      `systemctl status` or `podman ps` output.
 
-2. **Locate the evidence.** Use `Read` / `Glob` / `Grep` to inspect the cited
-   pointer in the workspace. For any external command (e.g. `gh pr checks`,
-   `systemctl status`, a benchmark re-run), INVOKE THE COMMAND VIA ANOTHER
-   SKILL OR AGENT WAVE — do not run it from inside this skill's invocation,
-   because this skill's `allowed-tools` does not include `Bash`. Capture the
-   verbatim output the caller returns.
+2. **Locate the evidence.** Use read-only file inspection for workspace evidence. Run read-only
+   commands such as `gh pr checks`, `systemctl status`, or `podman ps` directly when the host grants
+   Bash. Quote user-provided identifiers, reject values beginning with `-`, and prefer structured
+   output. Delegate an independent or long-running check when the host grants subagents. If neither
+   execution nor delegation is available, return `CONDITIONAL` or `NO-GO` with the exact command the
+   caller must run; never present an unexecuted command as evidence. Any command with side effects,
+   credentials beyond read access, or material cost requires explicit user authority.
 
-3. **Apply the ADR-014 audit table.**
+3. **Apply the evidence audit table.**
 
    | Claim type | Accepted evidence | Default verdict |
    |------------|-------------------|-----------------|
    | CI gate result | `gh pr checks <pr> --json name,state` showing the named gate in SUCCESS state | Run `gh pr checks`; report gate state verbatim |
    | Measured metric in PR body | (a) CI-produced artifact URL, OR (b) re-executed run output | NO-GO unless either is present |
-   | Committed `epoch*.log` file in PR | n/a | **NEVER** evidence (per ADR-014 §1) |
+   | Committed `epoch*.log` file in PR | n/a | **NEVER** independent evidence |
    | Training result on slow path | detached-execution run record | NO-GO unless a follow-up evidence-collection task has landed |
 
 4. **Report.** Use the Output contract below. **Do not soften the verdict.**
@@ -88,6 +89,5 @@ Then a short paragraph (≤ 4 lines) explaining the verdict.
 
 - [`docs/policies/evidence-integrity.md`](../../docs/policies/evidence-integrity.md) — governing
   policy.
-- Skill catalog: see
-  [`.claude-plugin/marketplace.json`](../../.claude-plugin/marketplace.json)
-  for the latest published skills.
+- Skill catalog: see the canonical [`skills/`](../) directory and the root
+  [`README.md`](../../README.md).

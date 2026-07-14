@@ -1,6 +1,6 @@
 ---
 name: github-actions-python-cicd
-description: Set up Python GitHub Actions using required Hephaestus automation as the reference. Resolves HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER, a verified fork in the current repository owner, or HomericIntelligence/Hephaestus at ~/.agent_brain/automation and fails when unavailable.
+description: Set up Python GitHub Actions using required Hephaestus automation as the reference. Resolves HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER, a canonically forked repository in the current Organization when the viewer has push/maintain/admin permission, or HomericIntelligence/Hephaestus at ~/.agent_brain/automation and fails when unavailable.
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
 ---
 
@@ -11,10 +11,13 @@ repository remains authoritative for its languages, package layout, commands, an
 
 ## Required reference
 
-Resolve Hephaestus through explicit `HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER`, a GitHub-verified fork
-in the current repository owner, or `HomericIntelligence/Hephaestus`, in that order. Prepare it at
+Resolve Hephaestus through explicit `HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER`, then a canonical fork
+in the current Organization only when the viewer has push/maintain/admin permission on the current
+repository, or `HomericIntelligence/Hephaestus`, in that order. Prepare it at
 `$HOME/.agent_brain/automation` under
 [`docs/dependency-resolution.md`](../../docs/dependency-resolution.md). Failure is blocking.
+Report repository, SHA, and trust basis. Before using an automatic fork, reverify Organization
+ownership, viewer permission, `parent.full_name`, identity, default branch, tip SHA, and checkout.
 
 Read the resolved checkout's current `_required.yml`, release workflow, `.github/CODEOWNERS`, and
 local policies. Treat them as control-pattern guidance, not copy-ready package commands.
