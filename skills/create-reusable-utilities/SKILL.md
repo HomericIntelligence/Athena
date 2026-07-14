@@ -27,6 +27,14 @@ Report the exact repository, SHA, and trust basis. For an automatic fork, immedi
 reverify Organization ownership, viewer permission, `parent.full_name`, repository identity,
 default branch, tip SHA, and checkout SHA; any mismatch is blocking.
 
+## External-write authority checkpoint
+
+A direct user request to port a utility into the resolved Hephaestus repository authorizes the
+declared branch, edit, commit, push, and PR workflow. An indirect recommendation or invocation does
+not. Before creating mutable state, show the resolved repository/SHA/trust basis, proposed branch,
+owned files, validation, and PR target, then obtain explicit approval. Read-only overlap analysis
+never authorizes a later write.
+
 ## Workflow
 
 1. Read the source utility, its callers, tests, configuration, error behavior, and license.

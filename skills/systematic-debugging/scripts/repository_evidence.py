@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 
-def run(*arguments: str, accepted_codes: tuple[int, ...] = (0, 1)) -> str:
+def run(*arguments: str, accepted_codes: tuple[int, ...] = (0,)) -> str:
     result = subprocess.run(arguments, capture_output=True, text=True, check=False)
     if result.returncode not in accepted_codes:
         raise RuntimeError(result.stderr.strip() or f"{' '.join(arguments)} failed")
@@ -22,11 +22,17 @@ def main() -> int:
     parser.add_argument("--source-root", default=".")
     arguments = parser.parse_args()
     try:
+        try:
+            recent_revisions = run(
+                "git", "rev-list", "--max-count=10", "HEAD"
+            ).splitlines()
+        except RuntimeError as error:
+            raise RuntimeError(f"cannot resolve HEAD: {error}") from error
+        if not recent_revisions:
+            raise RuntimeError("cannot resolve HEAD: repository has no commits")
         recent_commits = run("git", "log", "--oneline", "-10")
-        oldest_commit = run("git", "rev-list", "--max-parents=0", "HEAD").splitlines()[
-            0
-        ]
-        recent_diff = run("git", "diff", "--stat", oldest_commit, "HEAD")
+        recent_range = f"{recent_revisions[-1]}..HEAD"
+        recent_diff = run("git", "diff", "--stat", recent_range)
         pattern_matches = run(
             "git",
             "grep",
@@ -35,6 +41,7 @@ def main() -> int:
             arguments.pattern,
             "--",
             arguments.source_root,
+            accepted_codes=(0, 1),
         )
     except RuntimeError as error:
         print(error, file=sys.stderr)
@@ -45,6 +52,7 @@ def main() -> int:
                 "pattern_matches": pattern_matches,
                 "recent_commits": recent_commits,
                 "recent_diff": recent_diff,
+                "recent_range": recent_range,
             },
             sort_keys=True,
         )

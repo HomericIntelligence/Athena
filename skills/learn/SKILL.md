@@ -35,12 +35,29 @@ Authentication, detection, checkout, or update failure is fatal.
 1. Run `advise` with the proposed lesson.
 2. Search flat `skills/*.md`, excluding notes and history, for semantic overlap.
 3. Search `.history` and Git history for prior consolidation.
-4. Amend the canonical entry when its intent matches; create a new entry only for a distinct search
+4. Query open pull requests in the resolved Mnemosyne repository by candidate title and changed
+   `skills/<name>.md` path. If one already changes the canonical entry, inspect it and either stack on
+   its branch with explicit authority or stop for user direction; never create a conflicting PR.
+5. Amend the canonical entry when its intent matches; create a new entry only for a distinct search
    intent. If the proposed lesson contains no material knowledge or verification change, fail with
    `no learnable change` before mutating anything. Do not report `learn` as completed.
 
 Repository audits belong in `repo-review`; PR audits belong in `pr-review`; review depth is a mode,
 not another skill.
+
+Learn records verified knowledge; it does not embed executable Athena behavior in Mnemosyne. When a
+lesson requires an Athena implementation, first make that change through normal Athena development:
+put each Bash or Python helper in `skills/<name>/scripts/`, reference it from the owning `SKILL.md`,
+and add executable behavior tests under `tests/unit/`. Never paste an inline Bash or Python program
+into skill Markdown. Run the complete Athena gates before learning the verified result through the
+mandatory Mnemosyne PR.
+
+Athena skill guidance must follow [`../../docs/policies/development.md`](../../docs/policies/development.md).
+Do not teach agents to create prose-string tests, documentation snapshots, manually maintained
+changelogs, generated documentation, duplicated registries/catalogs/inventories, or unrelated files.
+Tests must exercise computable behavior or executable artifact contracts and fail for the defect
+they claim to detect. Apply KISS, YAGNI, TDD, DRY, SOLID, modularity, and least astonishment when
+deciding whether a lesson should cause repository work at all.
 
 ## External-write authority checkpoint
 
@@ -66,8 +83,10 @@ Every writing subagent receives an isolated worktree based on the same resolved 
 branch revision and an explicit, non-overlapping file ownership set. Shared history or catalog files
 belong to the coordinator or one designated integration item. Read-only agents may inspect shared
 evidence but must not edit it. Stop concurrent work on any ownership overlap, changed base revision,
-or unexpected scope. Use Athena's tested `../git-worktrees/scripts/prepare_worktree.py` helper when
-the host does not provide native worktree isolation.
+or unexpected scope. When the host does not provide native isolation, invoke Athena's tested
+`../git-worktrees/scripts/prepare_worktree.py` with the exact `skill/<slug>` branch,
+`--path $HOME/.agent_brain/worktrees/knowledge-<slug>`,
+`--path-root $HOME/.agent_brain/worktrees`, and `--start-point <resolved-default-SHA>`.
 
 The coordinator reviews each result and diff, rejects unrelated edits, and integrates accepted work
 sequentially into the single delivery worktree described below. Run focused validation after each

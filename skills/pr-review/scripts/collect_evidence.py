@@ -14,11 +14,11 @@ FIELDS = (
 )
 
 
-def gh(*arguments: str) -> str:
+def gh(*arguments: str, accepted_codes: tuple[int, ...] = (0,)) -> str:
     result = subprocess.run(
         ["gh", *arguments], capture_output=True, text=True, check=False
     )
-    if result.returncode != 0:
+    if result.returncode not in accepted_codes:
         raise RuntimeError(result.stderr.strip() or f"gh {' '.join(arguments)} failed")
     return result.stdout
 
@@ -30,12 +30,34 @@ def main() -> int:
     pull_request = sys.argv[1]
     try:
         metadata = json.loads(gh("pr", "view", pull_request, "--json", FIELDS))
+        repository_data = json.loads(gh("repo", "view", "--json", "nameWithOwner"))
+        repository = repository_data.get("nameWithOwner")
+        number = metadata.get("number")
+        if not isinstance(repository, str) or not isinstance(number, int):
+            raise RuntimeError("GitHub returned incomplete repository or PR identity")
         changed_files = [
             line
-            for line in gh("pr", "diff", pull_request, "--name-only").splitlines()
+            for line in gh(
+                "api",
+                "--paginate",
+                f"repos/{repository}/pulls/{number}/files",
+                "--jq",
+                ".[].filename",
+            ).splitlines()
             if line
         ]
-        checks = gh("pr", "checks", pull_request)
+        checks = json.loads(
+            gh(
+                "pr",
+                "checks",
+                pull_request,
+                "--json",
+                "name,state,startedAt,completedAt,link,workflow",
+                accepted_codes=(0, 1, 8),
+            )
+        )
+        if not isinstance(checks, list):
+            raise RuntimeError("GitHub returned invalid check evidence")
     except (RuntimeError, json.JSONDecodeError) as error:
         print(error, file=sys.stderr)
         return 1

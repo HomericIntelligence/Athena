@@ -92,6 +92,13 @@ class DistributionTests(unittest.TestCase):
         )
         self.assert_invalid("self-contained", repository)
 
+    def test_unapproved_ecosystem_repository_is_case_insensitive(self) -> None:
+        repository = "hOmErIc" + "InTeLlIgEnCe/" + "UnapprovedRepository"
+        (self.fixture / "docs" / "bad.md").write_text(
+            f"depends on https://github.com/{repository}", encoding="utf-8"
+        )
+        self.assert_invalid("self-contained", repository)
+
     def test_obsolete_distribution_path_fails(self) -> None:
         (self.fixture / "pyproject.toml").write_text(
             "[project]\nname='forbidden'\n", encoding="utf-8"

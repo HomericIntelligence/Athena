@@ -102,9 +102,9 @@ just all
 ```
 
 `just all` validates skills and manifests, runs executable unit tests, enforces at least 80% branch
-coverage for repository tooling, runs Ruff and strict mypy over repository and skill-local scripts,
-lints public documentation and workflows, and builds a deterministic plugin archive with a SHA-256
-checksum. It never builds Python distribution artifacts.
+coverage for every repository and skill-local executable script, runs Ruff and strict mypy over the
+same tooling, lints public documentation and workflows, and builds a deterministic plugin archive
+with a SHA-256 checksum. It never builds Python distribution artifacts.
 
 ## Layout
 

@@ -27,6 +27,10 @@ Use native subagents when available, one per independent review dimension. If th
 delegation, run the dimensions sequentially. Use capability terms, not branded models or fixed
 vendor APIs.
 
+Every dimension must return a full-coverage result. If a reviewer fails, times out, or samples its
+bucket, redispatch that dimension or complete it sequentially before finalizing. A coverage gap may
+describe genuinely inaccessible evidence; it may not substitute for retrying available evidence.
+
 ## Evidence collection
 
 Run `scripts/collect_evidence.py PR_NUMBER_OR_URL` from this skill directory and retain its JSON
@@ -35,6 +39,19 @@ output. The tested helper collects PR metadata, changed paths, and current check
 Read every changed file in full, not only diff hunks. Read linked issues, acceptance criteria,
 `AGENTS.md`, ADRs, public contracts, and affected tests. Treat the PR body and issue as claims that
 must be verified against code and executable evidence.
+
+Read and apply every item in [`references/criteria.md`](references/criteria.md). The checklist is
+part of this skill's required workflow, not optional background material. Before grading, reconcile
+the linked issue and proposed follow-ups against issue comments, current-base code, matching commits,
+all-state pull requests, and the existing issue backlog.
+
+Read and explicitly apply
+[`../../docs/policies/development.md`](../../docs/policies/development.md). Review the change against
+KISS, YAGNI, TDD, DRY, SOLID, modularity, least astonishment, durable-artifact discipline, and
+behavior-first testing. Treat prose-string/document-count tests, documentation snapshots, flaky
+implementation-detail assertions, manual changelogs, generated docs, duplicated registries or
+inventories, and unrelated generated files as findings unless a current product consumer and stable
+update mechanism justify them.
 
 ### Use both diff lenses
 

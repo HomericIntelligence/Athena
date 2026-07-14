@@ -27,8 +27,9 @@ Before dispatch, record the integration base revision and assign every work item
 
 - One isolated worktree based on that revision. Never let a subagent edit the coordinator's active
   worktree or reuse a worktree owned by another agent. Use the tested
-  `../git-worktrees/scripts/prepare_worktree.py` helper from Athena's `git-worktrees` skill when the
-  host does not provide native worktree isolation.
+  `../git-worktrees/scripts/prepare_worktree.py` helper from Athena's `git-worktrees` skill with an
+  exact non-overlapping `--path`, its trusted `--path-root`, and `--start-point <integration-SHA>`
+  when the host does not provide native worktree isolation.
 - An explicit file and directory ownership set. Concurrent write sets must not overlap. Shared files
   belong to the coordinator or to one designated integration item after dependent work completes.
 - A bounded objective, dependencies, acceptance criteria, validation commands, and mutation limits.

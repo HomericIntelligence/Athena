@@ -44,6 +44,19 @@ def flatten_commit_pages(pages: object) -> list[dict[str, Any]]:
             ) from error
         if not isinstance(nodes, list):
             raise ValueError(f"commit pagination page {page_number} has invalid nodes")
+        if not isinstance(page_info, dict) or not isinstance(
+            page_info.get("hasNextPage"), bool
+        ):
+            raise ValueError(
+                f"commit pagination page {page_number} has invalid pageInfo"
+            )
+        if any(
+            not isinstance(node, dict) or not isinstance(node.get("commit"), dict)
+            for node in nodes
+        ):
+            raise ValueError(
+                f"commit pagination page {page_number} has invalid commit node"
+            )
         page_total = connection.get("totalCount")
         if not isinstance(page_total, int):
             raise ValueError(

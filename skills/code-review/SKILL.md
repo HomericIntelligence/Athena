@@ -22,6 +22,10 @@ the author's confidence.
    model. If delegation is unavailable, review sequentially in the current agent.
 4. Inspect correctness, requirement alignment, security boundaries, error handling, public API
    compatibility, tests, documentation, and unnecessary complexity.
+   Apply the KISS, YAGNI, TDD, DRY, SOLID, modularity, least-astonishment, durable-artifact, and
+   behavior-test rules in [`../../docs/policies/development.md`](../../docs/policies/development.md).
+   Flag tests that pin prose or flaky implementation detail and artifacts that create ongoing
+   manual synchronization without a demonstrated product consumer.
 5. Run the repository-defined focused tests and quality gates. Never invent successful output.
 6. Rank findings as critical, important, or suggestion. Include a path and line, impact, evidence,
    and concrete remediation for each finding.

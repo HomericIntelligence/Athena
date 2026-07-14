@@ -13,7 +13,12 @@ from typing import NamedTuple
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 ALLOWED_ECOSYSTEM_REPOSITORIES = {"Athena", "Hephaestus", "Mnemosyne"}
-ECOSYSTEM_REPOSITORY = re.compile(r"\bHomericIntelligence/([A-Za-z0-9_.-]+)\b")
+ECOSYSTEM_REPOSITORY = re.compile(
+    r"\bHomericIntelligence/([A-Za-z0-9_.-]+)\b", re.IGNORECASE
+)
+ALLOWED_ECOSYSTEM_REPOSITORY_KEYS = {
+    repository.casefold() for repository in ALLOWED_ECOSYSTEM_REPOSITORIES
+}
 
 
 class ValidationError(NamedTuple):
@@ -223,7 +228,7 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
     for path in repo_root.rglob("*"):
         if (
             not path.is_file()
-            or path.name == ".coverage"
+            or path.name.startswith(".coverage")
             or any(part in ignored_parts for part in path.parts)
         ):
             continue
@@ -251,7 +256,7 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
             continue
         for match in ECOSYSTEM_REPOSITORY.finditer(text):
             repository = match.group(1)
-            if repository not in ALLOWED_ECOSYSTEM_REPOSITORIES:
+            if repository.casefold() not in ALLOWED_ECOSYSTEM_REPOSITORY_KEYS:
                 errors.append(
                     ValidationError(
                         "self-contained",

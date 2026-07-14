@@ -45,6 +45,9 @@ authentication, clone, fetch, or fast-forward fails.
 - Select at most five relevant entries, read each completely, and report its version and
   verification level.
 - Prefer newer, better-verified guidance and expose contradictions and failed approaches.
+- Query open Mnemosyne pull requests by matched skill path and candidate title. Report an open
+  amendment with its branch and URL so a later Learn invocation can stack or stop instead of opening
+  a conflicting pull request.
 
 ## Consolidation rules
 

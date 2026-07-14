@@ -58,12 +58,14 @@ No `.gitignore` verification needed — outside the project entirely.
 
 ## Creation Steps
 
-1. Preview selection and validation with `scripts/prepare_worktree.py BRANCH_NAME --dry-run` from
-   this skill directory.
-2. Create it with `scripts/prepare_worktree.py BRANCH_NAME`, optionally supplying the documented
-   repository preference through `--directory`.
-3. Change to the returned path and run the repository-defined bootstrap when one exists.
-4. Verify a clean baseline with the repository-defined tests and report the path and result.
+1. Resolve and record the intended base commit SHA.
+2. Preview with `scripts/prepare_worktree.py BRANCH_NAME --start-point BASE_SHA --dry-run` from this
+   skill directory. For a contract requiring a distinct branch and path, also pass exact `--path`
+   and `--path-root` values.
+3. Create it with the same arguments without `--dry-run`, optionally supplying the documented
+   repository preference through `--directory`. Never replace the recorded SHA with ambient HEAD.
+4. Change to the returned path and run the repository-defined bootstrap when one exists.
+5. Verify a clean baseline with the repository-defined tests and report the path, start SHA, and result.
 
 **If tests fail:** Report failures, ask whether to proceed or investigate.
 

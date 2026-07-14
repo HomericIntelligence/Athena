@@ -133,6 +133,34 @@ class PullRequestPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "count changed"):
             ci_policy.flatten_commit_pages(changing_totals)
 
+    def test_rejects_malformed_page_info_and_commit_nodes(self) -> None:
+        base = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "commits": {
+                            "totalCount": 1,
+                            "nodes": [{"commit": {"oid": "one"}}],
+                            "pageInfo": {"hasNextPage": False},
+                        }
+                    }
+                }
+            }
+        }
+        malformed_page_info = json.loads(json.dumps(base))
+        malformed_page_info["data"]["repository"]["pullRequest"]["commits"][
+            "pageInfo"
+        ] = []
+        with self.assertRaisesRegex(ValueError, "invalid pageInfo"):
+            ci_policy.flatten_commit_pages([malformed_page_info])
+
+        malformed_node = json.loads(json.dumps(base))
+        malformed_node["data"]["repository"]["pullRequest"]["commits"]["nodes"] = [
+            {"commit": []}
+        ]
+        with self.assertRaisesRegex(ValueError, "invalid commit node"):
+            ci_policy.flatten_commit_pages([malformed_node])
+
     def test_enforces_link_signature_dco_and_subject(self) -> None:
         errors = ci_policy.evaluate_pull_request(
             body="No issue link",
@@ -284,6 +312,79 @@ class SuppressionPolicyTests(unittest.TestCase):
 
 
 class CommandTests(unittest.TestCase):
+    def test_pr_policy_command_collects_paginated_github_evidence(self) -> None:
+        environment = {
+            "GITHUB_REPOSITORY": "owner/repository",
+            "PR_NUMBER": "9",
+            "REPO_OWNER": "owner",
+            "REPO_NAME": "repository",
+            "PR_AUTHOR": "contributor",
+        }
+        pages = [
+            {
+                "data": {
+                    "repository": {
+                        "pullRequest": {
+                            "commits": {
+                                "totalCount": 1,
+                                "nodes": [
+                                    {
+                                        "commit": {
+                                            "oid": "abc",
+                                            "message": "fix: valid\n\nSigned-off-by: A <a@example.invalid>",
+                                            "signature": {"isValid": True},
+                                        }
+                                    }
+                                ],
+                                "pageInfo": {"hasNextPage": False},
+                            }
+                        }
+                    }
+                }
+            }
+        ]
+        with (
+            patch.dict(os.environ, environment, clear=False),
+            patch(
+                "scripts.ci_policy._run_json",
+                side_effect=[{"body": "Closes #1\n"}, pages],
+            ) as run_json,
+        ):
+            self.assertEqual(0, ci_policy.main(["pr-policy"]))
+
+        self.assertEqual(2, run_json.call_count)
+        self.assertIn("--paginate", run_json.call_args_list[1].args[0])
+
+    def test_pr_policy_command_fails_on_policy_violation(self) -> None:
+        environment = {
+            "GITHUB_REPOSITORY": "owner/repository",
+            "PR_NUMBER": "9",
+            "REPO_OWNER": "owner",
+            "REPO_NAME": "repository",
+            "PR_AUTHOR": "contributor",
+        }
+        pages = [
+            {
+                "data": {
+                    "repository": {
+                        "pullRequest": {
+                            "commits": {
+                                "totalCount": 0,
+                                "nodes": [],
+                                "pageInfo": {"hasNextPage": False},
+                            }
+                        }
+                    }
+                }
+            }
+        ]
+        with (
+            patch.dict(os.environ, environment, clear=False),
+            patch("scripts.ci_policy._run_json", side_effect=[{"body": ""}, pages]),
+            self.assertRaisesRegex(SystemExit, "Closes #N"),
+        ):
+            ci_policy.main(["pr-policy"])
+
     def test_required_jobs_command_reads_environment(self) -> None:
         environment = {
             "EVENT_NAME": "push",
@@ -321,6 +422,80 @@ class CommandTests(unittest.TestCase):
             versions = ci_policy._manifest_versions(root)
 
         self.assertEqual({"claude": "1.2.3", "codex": "1.2.3"}, versions)
+
+    def test_release_command_validates_github_and_git_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            for directory in (".claude-plugin", ".codex-plugin"):
+                path = root / directory
+                path.mkdir()
+                (path / "plugin.json").write_text(
+                    '{"version": "1.2.3"}\n', encoding="utf-8"
+                )
+            environment = {
+                "GITHUB_REPOSITORY": "owner/repository",
+                "GITHUB_REF_NAME": "v1.2.3",
+                "GITHUB_SHA": "commit",
+            }
+            responses = [
+                {"object": {"type": "tag", "sha": "tag-object"}},
+                {
+                    "object": {"sha": "commit"},
+                    "verification": {"verified": True},
+                },
+                {"protected": True},
+            ]
+            with (
+                patch.dict(os.environ, environment, clear=False),
+                patch("scripts.ci_policy._run_json", side_effect=responses),
+                patch("scripts.ci_policy.subprocess.run") as run,
+            ):
+                run.return_value.returncode = 0
+                self.assertEqual(0, ci_policy.main(["release", "--root", str(root)]))
+
+        run.assert_called_once_with(
+            ["git", "merge-base", "--is-ancestor", "commit", "origin/main"]
+        )
+
+    def test_release_command_rejects_lightweight_tag(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            for directory in (".claude-plugin", ".codex-plugin"):
+                path = root / directory
+                path.mkdir()
+                (path / "plugin.json").write_text(
+                    '{"version": "1.2.3"}\n', encoding="utf-8"
+                )
+            environment = {
+                "GITHUB_REPOSITORY": "owner/repository",
+                "GITHUB_REF_NAME": "v1.2.3",
+                "GITHUB_SHA": "commit",
+            }
+            with (
+                patch.dict(os.environ, environment, clear=False),
+                patch(
+                    "scripts.ci_policy._run_json",
+                    side_effect=[
+                        {"object": {"type": "commit", "sha": "commit"}},
+                        {"protected": True},
+                    ],
+                ),
+                self.assertRaisesRegex(SystemExit, "annotated"),
+            ):
+                ci_policy.main(["release", "--root", str(root)])
+
+    def test_suppression_command_scans_tracked_configuration(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            workflow = root / "workflow.yml"
+            workflow.write_text("run: safe-command\n", encoding="utf-8")
+            with patch("scripts.ci_policy.subprocess.run") as run:
+                run.return_value.stdout = "workflow.yml\n"
+                self.assertEqual(
+                    0, ci_policy.main(["suppressions", "--root", str(root)])
+                )
+
+        run.assert_called_once()
 
     def test_publish_release_verifies_assets_before_gh(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

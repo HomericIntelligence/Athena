@@ -1,14 +1,15 @@
 ---
 name: verification
-description: Audit a metric, CI result, or benchmark claim under Athena's local evidence-integrity policy; truthful failure is acceptable and invented success is not.
+description: Verify every completion, fix, passing-check, metric, CI, or benchmark claim with fresh runnable evidence under Athena's evidence-integrity policy.
 allowed-tools: [Read, Bash, Glob, Grep, Agent]
 ---
 
 # When to use
 
-Invoke this skill whenever the user posts an assertion that names a specific
-measured value: a metric, a CI gate result, a benchmark number, a training
-loss, or a "this ran successfully" claim. The skill does not automatically reproduce an expensive
+Invoke this skill before any claim that work is complete, fixed, passing, or ready, and whenever the
+user posts a measured value, CI result, benchmark, training loss, or successful-run claim. For a
+completion claim, discover and freshly run the repository-defined relevant validation; a prior run,
+badge, or implementation diff is not evidence of the current state. The skill does not automatically reproduce an expensive
 or side-effecting run. It does query current read-only evidence and may re-execute safe, bounded
 verification commands. Its job is to determine whether the claim is backed by **runnable evidence** per
 [`docs/policies/evidence-integrity.md`](../../docs/policies/evidence-integrity.md).
@@ -25,6 +26,8 @@ The user must supply, or the skill must collect:
 # Verified workflow
 
 1. **Classify the claim type.**
+   - **Completion/fix claim**: the evidence is fresh output from the repository-defined relevant
+     tests, validation, lint, type, build, or package commands at the claimed revision.
    - **CI gate result** (e.g., "all checks pass"): the evidence is the
      `gh pr checks` JSON, not a PR body line.
    - **Measured metric / benchmark**: the evidence is a CI-produced artifact

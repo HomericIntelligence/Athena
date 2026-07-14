@@ -29,6 +29,7 @@ Write the test first. Watch it fail. Write minimal code to pass.
 - Throwaway prototypes
 - Generated code
 - Configuration files
+- Documentation-only wording and layout changes
 
 **Integration with myrmidon-swarm:** apply this cycle to each test sub-task. A specialist writes
 failing tests before an executor writes implementation.
@@ -63,6 +64,8 @@ Write one minimal test showing what should happen.
 - One behavior per test
 - Clear descriptive name
 - Test real code (no mocks unless unavoidable)
+- Assert a computable product outcome, data contract, security property, or executable artifact
+  structure; never freeze documentation prose, headings, counts, or paragraph presence
 
 ### Verify RED — Watch It Fail
 
@@ -80,6 +83,10 @@ Confirm:
 **Test passes?** You're testing existing behavior. Fix the test.
 
 **Test errors?** Fix the error, re-run until it fails correctly.
+
+Do not invent production code or a test harness to force a RED phase for documentation-only work.
+Use existing markdown lint and link validation for syntax and navigation. A link checker may prove a
+target resolves; a text assertion must not dictate what the documentation says.
 
 ### GREEN — Minimal Code
 
@@ -159,6 +166,7 @@ the user; never substitute Athena's Pixi/Pytest commands into an unrelated targe
 Before marking work complete:
 
 - [ ] Every new function/method has a test
+- [ ] No test pins documentation wording or another non-behavioral string
 - [ ] Watched each test fail before implementing
 - [ ] Each test failed for the expected reason
 - [ ] Wrote minimal code to pass each test

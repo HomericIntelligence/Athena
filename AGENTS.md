@@ -83,7 +83,10 @@ allowed-tools: []
 The body defines when to use the skill, inputs, a host-neutral verified workflow, dependency and
 capability failure behavior, failed approaches, an output contract, and attribution. Use
 placeholders for target-repository paths and commands. Keep repository-specific case studies in a
-`references/` file and label them as examples.
+`references/` file and label them as examples. Follow the durable-artifact and behavior-test rules
+in [`docs/policies/development.md`](docs/policies/development.md): never direct an agent to pin prose
+with text-string tests or create changelogs, generated docs, registries, inventories, or unrelated
+files without a demonstrated product consumer.
 
 After editing, run:
 

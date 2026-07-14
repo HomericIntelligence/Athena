@@ -43,6 +43,10 @@ opened by at least one reviewer. Read all source, tests, manifests, workflows, a
 Inspect relevant Git history and live GitHub configuration when access exists. Report any read gap;
 do not silently sample.
 
+Read and apply every criterion in [`references/criteria.md`](references/criteria.md). If a delegated
+section fails, times out, or samples its bucket, redispatch it or complete it sequentially before
+grading. Reporting an available file as unread is not a substitute for completing the review.
+
 Run safe, repository-defined checks when dependencies are available. Capture commands and exit
 codes. A documented command is not evidence until it runs successfully.
 
@@ -102,7 +106,12 @@ assumption and treat earlier bootstrap interfaces as N/A for compatibility scori
 15. **Compliance and governance** — valid license, third-party notices, conduct/security policy,
     privacy/accessibility/data rules where relevant, ownership and audit trail.
 
-Apply KISS, YAGNI, TDD, DRY, SOLID, modularity, and least astonishment throughout.
+Read and explicitly apply every decision rule in
+[`../../docs/policies/development.md`](../../docs/policies/development.md): KISS, YAGNI, TDD, DRY,
+SOLID, modularity, least astonishment, durable-artifact discipline, and behavior-first testing.
+Flag prose-string/document-count tests, documentation snapshots, flaky implementation-detail
+assertions, generated documentation, manual changelogs, duplicated registries/catalogs/inventories,
+and unrelated generated files unless a demonstrated product consumer requires them.
 
 ### 5. Calculate the overall score
 

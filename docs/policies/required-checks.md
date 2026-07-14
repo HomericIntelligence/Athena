@@ -7,8 +7,8 @@ immutable commits with readable version comments and have minimum permissions an
 
 - `forbid-suppressions`: rejects silent-failure workarounds and `continue-on-error: true`.
 - `validate`: validates every skill and host manifest, runs executable-script unit tests with an 80%
-  repository-tooling branch-coverage floor, and enforces Ruff, formatting, and strict mypy over
-  repository and skill-local scripts.
+  per-script branch-coverage floor, and enforces Ruff, formatting, and strict mypy over repository
+  and skill-local scripts.
 - `markdownlint`: validates public documentation.
 - `workflow-schema`: validates GitHub workflow syntax.
 - `justfile-check`: ensures documented task entry points parse.

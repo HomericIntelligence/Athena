@@ -171,7 +171,8 @@ manifests, lockfiles, and CI. Prefer the command used by required CI. If sources
 command is discoverable, ask the user rather than substituting Athena's own tooling.
 
 Run `scripts/repository_evidence.py PATTERN --source-root SOURCE_ROOT` from this skill directory to
-collect recent commits, the recent diff summary, and matching source locations as JSON. Run the
+collect the latest ten commits, a diff bounded to that revision window, and matching source
+locations as JSON. Run the
 discovered repository-focused test and type-check commands directly through the host execution
 tool, retaining their complete output as evidence.
 
