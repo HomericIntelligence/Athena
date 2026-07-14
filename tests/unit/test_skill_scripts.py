@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -364,6 +366,34 @@ class WorktreeScriptTests(unittest.TestCase):
 
 
 class DebuggingScriptTests(unittest.TestCase):
+    def test_repository_evidence_does_not_require_ripgrep(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            repository = root / "repo"
+            initialize_repository(repository)
+            bin_directory = root / "bin"
+            bin_directory.mkdir()
+            git_executable = shutil.which("git")
+            self.assertIsNotNone(git_executable)
+            (bin_directory / "git").symlink_to(str(git_executable))
+            (bin_directory / "python3").symlink_to(sys.executable)
+            environment = os.environ.copy()
+            environment["PATH"] = str(bin_directory)
+
+            result = run_script(
+                "skills/systematic-debugging/scripts/repository_evidence.py",
+                "base",
+                "--source-root",
+                ".",
+                cwd=repository,
+                env=environment,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn(
+            "tracked.txt:1:base", json.loads(result.stdout)["pattern_matches"]
+        )
+
     def test_repository_evidence_reports_recent_commits_and_matches(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             repository = Path(temporary_directory) / "repo"

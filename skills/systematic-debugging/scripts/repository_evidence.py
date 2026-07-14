@@ -28,7 +28,13 @@ def main() -> int:
         ]
         recent_diff = run("git", "diff", "--stat", oldest_commit, "HEAD")
         pattern_matches = run(
-            "rg", "--line-number", "--", arguments.pattern, arguments.source_root
+            "git",
+            "grep",
+            "--line-number",
+            "-e",
+            arguments.pattern,
+            "--",
+            arguments.source_root,
         )
     except RuntimeError as error:
         print(error, file=sys.stderr)
