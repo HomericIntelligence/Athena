@@ -170,20 +170,10 @@ Before running a check, discover the target repository's commands from `AGENTS.m
 manifests, lockfiles, and CI. Prefer the command used by required CI. If sources conflict or no safe
 command is discoverable, ask the user rather than substituting Athena's own tooling.
 
-```bash
-# Run the smallest reproducer with full output
-<repository-focused-test-command>
-
-# Check recent changes
-git diff HEAD~3
-git log --oneline -10
-
-# Find similar patterns in codebase
-rg "pattern" <source-root>
-
-# Run type checker for type-related bugs
-<repository-typecheck-command>
-```
+Run `scripts/repository_evidence.py PATTERN --source-root SOURCE_ROOT` from this skill directory to
+collect recent commits, the recent diff summary, and matching source locations as JSON. Run the
+discovered repository-focused test and type-check commands directly through the host execution
+tool, retaining their complete output as evidence.
 
 ## After Resolution
 

@@ -19,13 +19,15 @@ ruff = ">=0.12,<1"
 [tasks]
 validate = "python scripts/validate_skills.py"
 test = "coverage erase && coverage run --branch --source=scripts -m unittest discover -s tests -v && coverage report --show-missing --fail-under=80"
-lint = "ruff check scripts tests"
-format-check = "ruff format --check scripts tests"
-typecheck = "mypy --strict scripts/validate_skills.py tests/test_validate_skills.py tests/test_package_plugin.py"
+lint = "ruff check scripts tests skills"
+format-check = "ruff format --check scripts tests skills"
+typecheck = "mypy --strict scripts tests skills/*/scripts/*.py"
 markdownlint = "markdownlint README.md AGENTS.md CLAUDE.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md docs"
 workflow-lint = "yamllint .github/workflows"
 workflow-schema = "check-jsonschema --builtin-schema vendor.github-workflows .github/workflows/*.yml"
-package = "bash scripts/package-plugin.sh"
-check = { depends-on = ["validate", "test", "lint", "format-check", "typecheck", "markdownlint", "workflow-lint", "workflow-schema"] }
+package = "python scripts/package_plugin.py"
+static = { depends-on = ["lint", "format-check", "typecheck"] }
+workflow-check = { depends-on = ["workflow-lint", "workflow-schema"] }
+check = { depends-on = ["validate", "test", "static", "markdownlint", "workflow-check"] }
 all = { depends-on = ["check", "package"] }
 clean = { cmd = "rm -rf dist .coverage .pytest_cache __pycache__ scripts/__pycache__ tests/__pycache__" }

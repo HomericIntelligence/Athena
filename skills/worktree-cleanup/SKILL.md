@@ -14,15 +14,9 @@ commit, push, create a PR, discard files, or remove a worktree.
 ## Read-only audit
 
 1. Confirm the repository root and remote identity.
-2. Run `git worktree list --porcelain` and retain every registered path, branch, lock reason, and
-   detached state.
-3. For each worktree, quote its path and inspect:
-
-   ```bash
-   git -C "<path>" status --short
-   git -C "<path>" log --oneline --decorate -5
-   git -C "<path>" rev-parse --verify HEAD
-   ```
+2. Run `scripts/audit_worktrees.py` from this skill directory. Retain its JSON inventory containing
+   every registered path, branch, lock reason, detached state, status, recent commits, and HEAD.
+3. Quote each path when presenting the inventory and preserve the machine-readable evidence.
 
 4. Determine remote/PR state with read-only Git and `gh` queries. Do not assume `origin/main`;
    discover the remote default branch.
@@ -68,13 +62,10 @@ authorized, follow repository policy, and never enable auto-merge.
 
 ### Gate C: worktree removal
 
-Require a third explicit approval for each `REMOVABLE_CANDIDATE`. Immediately before removal,
-recheck status and HEAD; if either changed, return to audit. Remove only with:
-
-```bash
-git worktree remove "<path>"
-git worktree prune
-```
+Require a third explicit approval for each `REMOVABLE_CANDIDATE`. Immediately before removal, run
+`scripts/remove_worktree.py PATH --expected-head AUDITED_HEAD` from this skill directory. The
+tested helper rechecks registration, current location, cleanliness, and HEAD before removing and
+pruning. If any check changed, return to audit.
 
 Never use `--force`. A locked worktree must be re-audited; unlocking it also requires explicit
 approval. Never remove the user's current worktree or a worktree created by another active process.

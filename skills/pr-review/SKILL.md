@@ -12,17 +12,11 @@ rebase, or push without explicit user approval after presenting the report.
 
 ## Resolve the PR
 
-1. If the user supplied a PR number or URL, resolve it with `gh pr view <value>`.
-2. Otherwise inspect the current branch:
-
-   ```bash
-   branch=$(git branch --show-current)
-   gh pr view --json number,url,state,headRefName,baseRefName 2>/dev/null || \
-     gh pr list --state open --head "$branch" --json number,url,state,headRefName,baseRefName --limit 2
-   ```
-
-3. Accept exactly one open PR for the current branch. If there is none, stop and ask the user for
-   a PR number or URL. If there are multiple candidates, show them and ask the user to choose.
+1. Preserve a PR number or URL supplied by the user as the helper argument.
+2. Run `scripts/resolve_pr.py [PR_NUMBER_OR_URL]` from this skill directory. With no argument, the
+   helper discovers the current branch and accepts exactly one open PR for that branch.
+3. Exit status 2 means no PR was found: stop and ask for a number or URL. Exit status 3 means the
+   helper printed multiple candidates: show them and ask the user to choose.
 4. Confirm repository identity and fetch the PR head and base before reviewing.
 
 Do not guess a PR from title similarity or recent activity.
@@ -35,13 +29,8 @@ vendor APIs.
 
 ## Evidence collection
 
-Collect and retain:
-
-```bash
-gh pr view <PR> --json number,title,body,state,isDraft,author,baseRefName,headRefName,commits,files,reviews,statusCheckRollup,closingIssuesReferences,url
-gh pr diff <PR> --name-only
-gh pr checks <PR>
-```
+Run `scripts/collect_evidence.py PR_NUMBER_OR_URL` from this skill directory and retain its JSON
+output. The tested helper collects PR metadata, changed paths, and current check output.
 
 Read every changed file in full, not only diff hunks. Read linked issues, acceptance criteria,
 `AGENTS.md`, ADRs, public contracts, and affected tests. Treat the PR body and issue as claims that
@@ -49,15 +38,12 @@ must be verified against code and executable evidence.
 
 ### Use both diff lenses
 
-First measure staleness:
+Run `scripts/diff_context.py BASE_REF HEAD_REF` from this skill directory. It verifies both refs and
+returns the behind count, merge base, author-intent range, and current-base range as JSON.
 
-```bash
-git rev-list --count <head-ref>..<base-ref>
-```
-
-- **Author intent:** `git diff $(git merge-base <base-ref> <head-ref>)..<head-ref>` (equivalent to
-  three-dot) shows work introduced since the merge base.
-- **Current-main impact:** `git diff <base-ref>..<head-ref>` (two-dot) shows the literal difference
+- **Author intent:** diff the returned `author_intent_range`; it shows work introduced since the
+  merge base.
+- **Current-main impact:** diff the returned `current_base_range`; it shows the literal difference
   from the current base and reveals revert/deletion risk on a stale branch.
 
 Never substitute one lens for the other. If the branch is behind, require a rebase and fresh CI

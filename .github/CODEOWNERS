@@ -1,4 +1,4 @@
-# Default: all changes require maintainer review.
+# Default ownership routing; the baseline ruleset does not require approvals.
 * @mvillmow
 
 # Plugin distribution surfaces.

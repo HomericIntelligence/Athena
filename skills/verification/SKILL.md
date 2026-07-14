@@ -8,9 +8,9 @@ allowed-tools: [Read, Bash, Glob, Grep, Agent]
 
 Invoke this skill whenever the user posts an assertion that names a specific
 measured value: a metric, a CI gate result, a benchmark number, a training
-loss, or a "this ran successfully" claim. The skill's job is **not** to
-re-execute the run — that is a slow, out-of-band step. The skill's job is to
-determine whether the claim is backed by **runnable evidence** per
+loss, or a "this ran successfully" claim. The skill does not automatically reproduce an expensive
+or side-effecting run. It does query current read-only evidence and may re-execute safe, bounded
+verification commands. Its job is to determine whether the claim is backed by **runnable evidence** per
 [`docs/policies/evidence-integrity.md`](../../docs/policies/evidence-integrity.md).
 
 # Inputs the skill expects
@@ -60,8 +60,9 @@ The user must supply, or the skill must collect:
 
 - Do NOT call `repo-review` for claim verification; it audits repositories, not individual claims.
 - Do NOT accept a "✓" emoji in a comment as evidence.
-- Do NOT re-read the same PR body line to "find" the evidence the user
-  already pasted — re-running the gate is the whole point.
+- Do NOT re-read the same PR body line to "find" the evidence the user already pasted. Query the
+  current gate state or run the safe verification command; reproduce an expensive run only with the
+  required authority and resource budget.
 - Do NOT claim "looks good" because the PR is from a trusted author.
   Under Athena's evidence policy, evidentiary channel matters, not source reputation.
 

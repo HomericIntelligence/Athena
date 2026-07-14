@@ -2,7 +2,7 @@
 name: learn
 description: Preserve a verified lesson in the required Mnemosyne knowledge repository and always deliver it through a pull request. Resolves HOMERIC_INTELLIGENCE_MNEMOSYNE_OWNER, a canonically forked repository in the current Organization when the viewer has push/maintain/admin permission, or HomericIntelligence/Mnemosyne, and fails if ~/.agent_brain/knowledge cannot be prepared.
 argument-hint: <lesson or session summary>
-allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
+allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 ---
 
 # Learn
@@ -42,6 +42,38 @@ Authentication, detection, checkout, or update failure is fatal.
 Repository audits belong in `repo-review`; PR audits belong in `pr-review`; review depth is a mode,
 not another skill.
 
+## External-write authority checkpoint
+
+Before creating a branch or worktree, editing Mnemosyne, committing, pushing, or opening the
+mandatory pull request, establish explicit user authority for the resolved repository and the
+complete branch, commit, push, and PR workflow. A direct user request to invoke `learn` supplies
+that authority. An indirect recommendation or invocation by another skill does not: show the
+repository, trust basis, base revision, proposed branch, intended files, and PR target, then obtain
+explicit user approval before mutation.
+
+Read-only resolution, search, and planning do not authorize later mutation. If authority is absent,
+stop before creating mutable state and report that Learn has not run successfully. Once authorized,
+the workflow may not substitute a local-only edit for its mandatory PR outcome.
+
+## Delegation and integration
+
+When the host supports subagents, partition independent discovery, overlap analysis, drafting, and
+verification into bounded work items. Run dependency-independent items concurrently in the
+background, up to the host's safe limit. If delegation or background execution is unavailable, run
+the same items sequentially without weakening their evidence requirements.
+
+Every writing subagent receives an isolated worktree based on the same resolved Mnemosyne default-
+branch revision and an explicit, non-overlapping file ownership set. Shared history or catalog files
+belong to the coordinator or one designated integration item. Read-only agents may inspect shared
+evidence but must not edit it. Stop concurrent work on any ownership overlap, changed base revision,
+or unexpected scope. Use Athena's tested `../git-worktrees/scripts/prepare_worktree.py` helper when
+the host does not provide native worktree isolation.
+
+The coordinator reviews each result and diff, rejects unrelated edits, and integrates accepted work
+sequentially into the single delivery worktree described below. Run focused validation after each
+integration and the resolved repository's complete relevant validation after the combined result.
+Only the coordinator performs the authorized commit, push, and PR creation.
+
 ## Isolated write contract
 
 Never modify the shared checkout's active worktree. From its fetched default branch:
@@ -68,3 +100,10 @@ Never modify the shared checkout's active worktree. From its fetched default bra
 If a push or PR cannot be created, preserve the isolated worktree and report the blocker. A Learn
 run is successful only when it returns a PR URL. Never fall back to writing inside Athena or a
 different repository.
+
+Preserve all delegated and delivery worktrees until their unique work is integrated or explicitly
+rejected. Cleanup is a separate mutation: remove only worktrees created by this Learn invocation,
+only with user authority, and only after rechecking that no uncommitted or unintegrated state
+remains. Otherwise report each worktree's path, owner, revision, cleanliness, and integration state
+and leave it intact. Never delete branches, discard changes, force removal, or touch a pre-existing
+worktree.

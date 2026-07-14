@@ -13,7 +13,8 @@ Git worktrees create isolated workspaces sharing the same repository, allowing w
 
 **Core principle:** Systematic directory selection + safety verification = reliable isolation.
 
-**When NOT to use this skill manually:** The `myrmidon-swarm` skill automatically provides worktree isolation for each agent via `isolation: "worktree"` on the Agent tool. Use this skill for your own manual development work, not when orchestrating a swarm.
+**When NOT to use this skill manually:** The `myrmidon-swarm` skill owns worktree creation for its
+background subagents. Use this skill for manual development work, not to duplicate swarm setup.
 
 ## Directory Selection
 
@@ -21,39 +22,27 @@ Follow this priority order:
 
 ### 1. Check Existing Directories
 
-```bash
-ls -d .worktrees 2>/dev/null     # Preferred (hidden, project-local)
-ls -d worktrees 2>/dev/null      # Alternative
-```
-
-If found: Use that directory. If both exist, `.worktrees` wins.
+The tested `scripts/prepare_worktree.py` helper checks `.worktrees` and then `worktrees`. If both
+exist, `.worktrees` wins.
 
 ### 2. Check repository guidance
 
-```bash
-rg -i "worktree" AGENTS.md CLAUDE.md 2>/dev/null
-```
-
-If preference specified: Use it without asking.
+Read `AGENTS.md` and its referenced repository guidance. If a preference is specified, pass it to
+the helper with `--directory DIRECTORY`.
 
 ### 3. Portable default
 
 When no repository preference exists, use `/tmp/<project>-<branch>`. This avoids polluting the
 project directory.
 
-```bash
-project=$(basename "$(git rev-parse --show-toplevel)")
-```
+The helper computes the project name from the repository root.
 
 ## Safety Verification
 
 ### For Project-Local Directories (.worktrees or worktrees)
 
-**MUST verify directory is ignored before creating worktree:**
-
-```bash
-git check-ignore -q .worktrees 2>/dev/null || echo "NOT IGNORED - add to .gitignore first"
-```
+**MUST verify directory is ignored before creating worktree.** The helper fails closed when its
+project-local directory is not ignored.
 
 **If NOT ignored:**
 
@@ -69,28 +58,12 @@ No `.gitignore` verification needed — outside the project entirely.
 
 ## Creation Steps
 
-```bash
-# 1. Determine project name
-project=$(basename "$(git rev-parse --show-toplevel)")
-
-# 2. Create worktree with new branch
-# Option A: portable /tmp default
-git worktree add "/tmp/${project}-${BRANCH_NAME}" -b "${BRANCH_NAME}"
-cd "/tmp/${project}-${BRANCH_NAME}"
-
-# Option B: project-local (if .worktrees/ exists and is ignored)
-git worktree add ".worktrees/${BRANCH_NAME}" -b "${BRANCH_NAME}"
-cd ".worktrees/${BRANCH_NAME}"
-
-# 3. Run the repository-defined bootstrap when one exists
-<repository-bootstrap-command>
-
-# 4. Verify a clean baseline with repository-defined tests
-<repository-test-command>
-
-# 5. Report status
-echo "Worktree ready at $(pwd)"
-```
+1. Preview selection and validation with `scripts/prepare_worktree.py BRANCH_NAME --dry-run` from
+   this skill directory.
+2. Create it with `scripts/prepare_worktree.py BRANCH_NAME`, optionally supplying the documented
+   repository preference through `--directory`.
+3. Change to the returned path and run the repository-defined bootstrap when one exists.
+4. Verify a clean baseline with the repository-defined tests and report the path and result.
 
 **If tests fail:** Report failures, ask whether to proceed or investigate.
 
@@ -98,13 +71,8 @@ echo "Worktree ready at $(pwd)"
 
 ## Cleanup
 
-```bash
-# When work is done (or use finish-branch skill)
-git worktree remove /tmp/${project}-${BRANCH_NAME}
-
-# Prune stale worktree references
-git worktree prune
-```
+When work is done, invoke `finish-branch` or use the separately approved removal flow in
+`worktree-cleanup`; do not improvise deletion commands.
 
 **For Options merge/discard:** Clean up immediately.
 **For Option keep/PR open:** Preserve the worktree.

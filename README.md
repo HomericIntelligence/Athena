@@ -28,6 +28,9 @@ fatal. See [`docs/dependency-resolution.md`](docs/dependency-resolution.md).
 The knowledge backend is mandatory. `learn` always uses an isolated worktree and creates a pull
 request; it never writes directly to the knowledge repository's default branch.
 
+Script-backed skills require Git, GitHub CLI, and Python 3.10 or newer on the host. Athena ships the
+scripts as plugin resources; it does not install a Python package or third-party runtime library.
+
 ## Install
 
 Install the section for your harness, then restart it so the skill catalog reloads.
@@ -98,20 +101,20 @@ just bootstrap
 just all
 ```
 
-`just all` validates skills and manifests, enforces at least 80% branch coverage for the retained
-repository tooling, runs Ruff and strict mypy, lints public documentation and workflows, and builds
-a deterministic plugin archive with a SHA-256 checksum. It never builds Python distribution
-artifacts.
+`just all` validates skills and manifests, runs executable unit tests, enforces at least 80% branch
+coverage for repository tooling, runs Ruff and strict mypy over repository and skill-local scripts,
+lints public documentation and workflows, and builds a deterministic plugin archive with a SHA-256
+checksum. It never builds Python distribution artifacts.
 
 ## Layout
 
 ```text
-skills/                  canonical portable skills
+skills/                  canonical skills and their tested local helpers
 .claude-plugin/          Claude Code marketplace and plugin metadata
 .codex-plugin/           Codex plugin metadata
 .agents/plugins/         Codex marketplace metadata
-scripts/                 distribution validation and archive tooling
-tests/                   validator contract tests
+scripts/                 typed validation, CI-policy, and archive tooling
+tests/unit/              executable-script behavior tests
 docs/                    local policies and dependency contracts
 .github/                 ownership and required/release workflows
 ```

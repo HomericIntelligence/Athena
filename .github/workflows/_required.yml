@@ -24,26 +24,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Reject silent failures and advisory gates
-        run: |
-          set -euo pipefail
-          mapfile -t files < <(git ls-files '*.sh' '*.yml' '*.yaml' 'justfile')
-          scan=()
-          for file in "${files[@]}"; do
-            case "$file" in
-              .github/workflows/_required.yml) continue ;;
-            esac
-            scan+=("$file")
-          done
-          if grep -nE '\|\|[[:space:]]*true([[:space:]]*$|[[:space:]]+#)' "${scan[@]}"; then
-            echo '::error::Silent-failure workaround found.'
-            exit 1
-          fi
-          if grep -nE \
-            '^[[:space:]]*continue-on-error:[[:space:]]*true[[:space:]]*$' \
-            "${scan[@]}"; then
-            echo '::error::Required workflows may not continue on error.'
-            exit 1
-          fi
+        run: python scripts/ci_policy.py suppressions
 
   validate:
     name: validate
@@ -63,6 +44,8 @@ jobs:
         run: pixi run validate
       - name: Run contract tests with coverage threshold
         run: pixi run test
+      - name: Run lint, format, and type checks
+        run: pixi run static
 
   markdownlint:
     name: markdownlint
@@ -99,9 +82,7 @@ jobs:
       - name: Install locked validation tools
         run: pixi install --locked
       - name: Validate workflow syntax and schema
-        run: |
-          pixi run workflow-lint
-          pixi run workflow-schema
+        run: pixi run workflow-check
 
   justfile-check:
     name: justfile-check
@@ -115,9 +96,7 @@ jobs:
         with:
           just-version: "1.36.0"
       - name: Validate task entry points
-        run: |
-          just --evaluate > /dev/null
-          just --list > /dev/null
+        run: just ci-entrypoints
 
   security-secrets-scan:
     name: security/secrets-scan
@@ -132,9 +111,9 @@ jobs:
         env:
           GITLEAKS_IMAGE: >-
             ghcr.io/gitleaks/gitleaks:v8.30.0@sha256:691af3c7c5a48b16f187ce3446d5f194838f91238f27270ed36eef6359a574d9
-        run: |
-          docker run --rm -v "$PWD:/repo:ro" -w /repo "$GITLEAKS_IMAGE" \
-            detect --source=. --verbose --exit-code=1
+        run: >-
+          docker run --rm -v "$PWD:/repo:ro" -w /repo "$GITLEAKS_IMAGE"
+          detect --source=. --verbose --exit-code=1
 
   package:
     name: package
@@ -148,7 +127,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Build portable plugin archive
-        run: bash scripts/package-plugin.sh
+        run: python scripts/package_plugin.py
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: athena-plugin
@@ -172,85 +151,11 @@ jobs:
       REPO_NAME: ${{ github.event.repository.name }}
       PR_AUTHOR: ${{ github.event.pull_request.user.login }}
     steps:
-      - name: Fetch PR and commit policy evidence
-        run: |
-          set -euo pipefail
-          gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body > pr.json
-          gh api graphql --paginate --slurp \
-            -f query='query($owner:String!,$name:String!,$pr:Int!,$endCursor:String) {
-              repository(owner:$owner,name:$name) { pullRequest(number:$pr) {
-                commits(first:100,after:$endCursor) {
-                  totalCount
-                  nodes { commit { oid message signature { isValid } } }
-                  pageInfo { hasNextPage endCursor }
-                }
-              } }
-            }' \
-            -F owner="$REPO_OWNER" -F name="$REPO_NAME" -F pr="$PR_NUMBER" > commits.json
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
       - name: Enforce issue linkage, signatures, DCO, and Conventional Commits
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          import re
-
-          body = json.load(open("pr.json", encoding="utf-8")).get("body") or ""
-          pages = json.load(open("commits.json", encoding="utf-8"))
-          if not isinstance(pages, list) or not pages:
-              raise SystemExit("commit pagination returned no pages")
-          commits = []
-          total_count = None
-          for page_number, page in enumerate(pages, start=1):
-              try:
-                  connection = page["data"]["repository"]["pullRequest"]["commits"]
-                  nodes = connection["nodes"]
-                  page_info = connection["pageInfo"]
-              except (KeyError, TypeError) as error:
-                  raise SystemExit(
-                      f"commit pagination page {page_number} is malformed: {error}"
-                  ) from error
-              if not isinstance(nodes, list):
-                  raise SystemExit(f"commit pagination page {page_number} has invalid nodes")
-              if total_count is None:
-                  total_count = connection.get("totalCount")
-              elif connection.get("totalCount") != total_count:
-                  raise SystemExit("commit count changed during pagination")
-              commits.extend(nodes)
-              if page_number < len(pages) and not page_info.get("hasNextPage"):
-                  raise SystemExit("commit pagination returned an unexpected extra page")
-              if page_number == len(pages) and page_info.get("hasNextPage"):
-                  raise SystemExit("commit pagination stopped before the final page")
-          if total_count is None or len(commits) != total_count:
-              raise SystemExit(
-                  f"commit pagination incomplete: expected {total_count}, got {len(commits)}"
-              )
-          author = os.environ["PR_AUTHOR"]
-          errors = []
-          if author != "dependabot[bot]" and not re.search(r"(?m)^Closes #[0-9]+\s*$", body):
-              errors.append("PR body must contain a standalone 'Closes #N' line")
-          conventional = re.compile(
-              r"^(feat|fix|docs|refactor|test|chore|revert|ci|build|perf)"
-              r"(\([a-z0-9._/-]+\))?!?: .+"
-          )
-          for node in commits:
-              commit = node["commit"]
-              oid = commit["oid"]
-              message = commit["message"]
-              if not (commit.get("signature") or {}).get("isValid", False):
-                  errors.append(f"{oid}: commit signature is missing or invalid")
-              if (
-                  author != "dependabot[bot]"
-                  and not conventional.match(message.splitlines()[0])
-              ):
-                  errors.append(f"{oid}: subject is not Conventional Commits")
-              if author != "dependabot[bot]" and not re.search(
-                  r"(?mi)^Signed-off-by: .+ <.+>$", message
-              ):
-                  errors.append(f"{oid}: DCO Signed-off-by trailer is missing")
-          if errors:
-              raise SystemExit("\n".join(errors))
-          print("PR policy passed")
-          PY
+        run: python scripts/ci_policy.py pr-policy
 
   required-checks-gate:
     name: required-checks-gate
@@ -267,23 +172,11 @@ jobs:
       - package
       - pr-policy
     steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
       - name: Verify every required job
         env:
           EVENT_NAME: ${{ github.event_name }}
           RESULTS: ${{ toJSON(needs) }}
-        run: |
-          echo "$RESULTS" | python3 -c '
-          import json, sys
-          results = json.load(sys.stdin)
-          event_name = __import__("os").environ["EVENT_NAME"]
-          bad = {}
-          for name, item in results.items():
-              result = item["result"]
-              allowed_skip = name == "pr-policy" and event_name != "pull_request"
-              if result != "success" and not (result == "skipped" and allowed_skip):
-                  bad[name] = result
-          if bad:
-              print("Required jobs not green:", json.dumps(bad, sort_keys=True))
-              raise SystemExit(1)
-          print("All required jobs are green; PR policy was skipped only if inapplicable.")
-          '
+        run: python scripts/ci_policy.py required-jobs

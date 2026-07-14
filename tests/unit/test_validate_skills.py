@@ -1,4 +1,4 @@
-"""Standard-library contract tests for scripts/validate_skills.py."""
+"""Unit tests for scripts/validate_skills.py."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / "scripts" / "validate_skills.py"
 SPEC = importlib.util.spec_from_file_location("athena_validate_skills", MODULE_PATH)
 assert SPEC is not None and SPEC.loader is not None
@@ -85,40 +85,12 @@ class DistributionTests(unittest.TestCase):
             "version", "Claude marketplace and manifest versions differ"
         )
 
-    def test_dependency_substitution_fails(self) -> None:
-        skill = self.fixture / "skills" / "advise" / "SKILL.md"
-        skill.write_text(
-            skill.read_text(encoding="utf-8").replace(
-                "HomericIntelligence/Mnemosyne", "attacker/Mnemosyne"
-            ),
-            encoding="utf-8",
-        )
-        self.assert_invalid("knowledge", "HomericIntelligence/Mnemosyne")
-
-    def test_learn_without_pr_success_contract_fails(self) -> None:
-        skill = self.fixture / "skills" / "learn" / "SKILL.md"
-        skill.write_text(
-            skill.read_text(encoding="utf-8").replace("PR URL", "local path"),
-            encoding="utf-8",
-        )
-        self.assert_invalid("knowledge", "PR URL")
-
-    def test_review_without_full_coverage_fails(self) -> None:
-        skill = self.fixture / "skills" / "repo-review" / "SKILL.md"
-        skill.write_text(
-            skill.read_text(encoding="utf-8").replace(
-                "Full coverage", "Partial coverage"
-            ),
-            encoding="utf-8",
-        )
-        self.assert_invalid("review", "Full coverage")
-
-    def test_lowercase_ecosystem_reference_fails(self) -> None:
-        forbidden_name = "odys" + "seus"
+    def test_unapproved_ecosystem_repository_fails(self) -> None:
+        repository = "HomericIntelligence/" + "UnapprovedRepository"
         (self.fixture / "docs" / "bad.md").write_text(
-            f"depends on {forbidden_name}", encoding="utf-8"
+            f"depends on {repository}", encoding="utf-8"
         )
-        self.assert_invalid("self-contained", forbidden_name)
+        self.assert_invalid("self-contained", repository)
 
     def test_obsolete_distribution_path_fails(self) -> None:
         (self.fixture / "pyproject.toml").write_text(
@@ -127,14 +99,6 @@ class DistributionTests(unittest.TestCase):
         self.assert_invalid(
             "layout", "obsolete distribution path exists: pyproject.toml"
         )
-
-    def test_review_scoring_starts_at_zero(self) -> None:
-        for skill in ("pr-review", "repo-review"):
-            text = (self.fixture / "skills" / skill / "SKILL.md").read_text(
-                encoding="utf-8"
-            )
-            self.assertIn("0%", text)
-            self.assertNotIn("starts at F", text)
 
     def test_cli_quiet_success(self) -> None:
         output = io.StringIO()

@@ -13,8 +13,9 @@ Athena owns:
 
 - `skills/`: canonical portable skill sources.
 - `.claude-plugin/`, `.codex-plugin/`, and `.agents/plugins/`: host metadata.
-- `scripts/`: repository validation tools, not a distributable runtime library.
-- `tests/`: validator contract tests.
+- `scripts/`: typed repository validation, CI-policy, and packaging tools; not a distributable
+  runtime library.
+- `tests/unit/`: behavior tests for executable repository and skill-local scripts.
 - `docs/`, `assets/`, and `.github/`: policy, documentation, media, ownership, and automation.
 
 `skills/` is the only skill source. Do not create a nested plugin mirror or host-specific copy.
@@ -68,7 +69,8 @@ gate.
 
 ## Authoring a skill
 
-Create `skills/<name>/SKILL.md`:
+Create `skills/<name>/SKILL.md`. Put executable helpers in `skills/<name>/scripts/`; reference those
+tested files from the skill instead of embedding Bash or Python programs in Markdown.
 
 ```yaml
 ---
@@ -104,6 +106,7 @@ an invalid hard-dependency override, or any proposal to weaken a security or evi
 | `just lint` | Lint retained repository tooling. |
 | `just format-check` | Check retained repository-tool formatting. |
 | `just typecheck` | Run strict static typing over repository tooling. |
+| `just static` | Run lint, format, and strict type checks over every executable script. |
 | `just markdownlint` | Validate public documentation. |
 | `just package` | Build and inspect the portable plugin archive. |
 | `just all` | Run the complete local required-check equivalent. |

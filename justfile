@@ -22,11 +22,17 @@ format-check:
 typecheck:
     pixi run typecheck
 
+static:
+    pixi run static
+
 markdownlint:
     pixi run markdownlint
 
 workflow-lint:
     pixi run workflow-lint
+
+workflow-check:
+    pixi run workflow-check
 
 package:
     pixi run package
@@ -42,3 +48,7 @@ clean:
 
 catalog:
     @find skills -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort | sed 's/^/  - /'
+
+ci-entrypoints:
+    @just --evaluate > /dev/null
+    @just --list > /dev/null

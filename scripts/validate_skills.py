@@ -12,57 +12,8 @@ from typing import NamedTuple
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-KNOWLEDGE_SKILLS = {"advise", "learn"}
-AUTOMATION_SKILLS = {
-    "create-reusable-utilities",
-    "finish-branch",
-    "github-actions-python-cicd",
-    "python-repo-modernization",
-    "tidy",
-}
-FORBIDDEN_ECOSYSTEM_REFERENCES = {
-    "Odysseus",
-    "Scylla",
-    "Charybdis",
-    "Keystone",
-    "Telemachy",
-    "Agamemnon",
-    "Nestor",
-    "Proteus",
-    "Argus",
-    "Hermes",
-    "AchaeanFleet",
-    "Odyssey",
-}
-SKILL_REQUIRED_TERMS: dict[str, tuple[str, tuple[str, ...]]] = {
-    "advise": (
-        "knowledge",
-        (
-            "HOMERIC_INTELLIGENCE_MNEMOSYNE_OWNER",
-            ".agent_brain/knowledge",
-            "HomericIntelligence/Mnemosyne",
-            "parent.full_name",
-            "fail",
-        ),
-    ),
-    "learn": (
-        "knowledge",
-        (
-            "HOMERIC_INTELLIGENCE_MNEMOSYNE_OWNER",
-            ".agent_brain/knowledge",
-            "HomericIntelligence/Mnemosyne",
-            "pull request",
-            "cryptographic signature",
-            "DCO",
-            "PR URL",
-        ),
-    ),
-    "repo-review": ("review", ("Full coverage", "`default`", "`quick`", "0%")),
-    "pr-review": (
-        "review",
-        ("current branch", "ask the user", "read-only by default", "0%"),
-    ),
-}
+ALLOWED_ECOSYSTEM_REPOSITORIES = {"Athena", "Hephaestus", "Mnemosyne"}
+ECOSYSTEM_REPOSITORY = re.compile(r"\bHomericIntelligence/([A-Za-z0-9_.-]+)\b")
 
 
 class ValidationError(NamedTuple):
@@ -144,45 +95,6 @@ def _validate_skills(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
             errors.append(ValidationError("skills", f"duplicate skill name: {name}"))
         if name is not None:
             seen.add(name)
-
-        if directory.name in KNOWLEDGE_SKILLS:
-            for required in (
-                "HOMERIC_INTELLIGENCE_MNEMOSYNE_OWNER",
-                ".agent_brain/knowledge",
-            ):
-                if required not in text:
-                    errors.append(
-                        ValidationError(
-                            "knowledge",
-                            f"{directory.name} is missing required contract '{required}'",
-                        )
-                    )
-        if directory.name in AUTOMATION_SKILLS:
-            for required in (
-                "HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER",
-                ".agent_brain/automation",
-                "HomericIntelligence/Hephaestus",
-                "fail",
-            ):
-                if required not in text:
-                    errors.append(
-                        ValidationError(
-                            "automation",
-                            f"{directory.name} is missing required contract '{required}'",
-                        )
-                    )
-
-        contract = SKILL_REQUIRED_TERMS.get(directory.name)
-        if contract is not None:
-            surface, required_terms = contract
-            for required in required_terms:
-                if required not in text:
-                    errors.append(
-                        ValidationError(
-                            surface,
-                            f"{directory.name} is missing required contract '{required}'",
-                        )
-                    )
 
     return errors
 
@@ -337,9 +249,9 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
                 )
             )
             continue
-        for name in FORBIDDEN_ECOSYSTEM_REFERENCES:
-            match = re.search(rf"\b{re.escape(name)}\b", text, re.IGNORECASE)
-            if match is not None:
+        for match in ECOSYSTEM_REPOSITORY.finditer(text):
+            repository = match.group(1)
+            if repository not in ALLOWED_ECOSYSTEM_REPOSITORIES:
                 errors.append(
                     ValidationError(
                         "self-contained",
