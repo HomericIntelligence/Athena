@@ -159,15 +159,14 @@ def _suppression_command(repo_root: Path) -> int:
 
 
 def _publish_release_command(directory: Path) -> int:
-    archive_name, checksum_name = verify_release_assets(directory)
+    asset_names = verify_release_assets(directory)
     subprocess.run(
         [
             "gh",
             "release",
             "create",
             os.environ["GITHUB_REF_NAME"],
-            str(directory / archive_name),
-            str(directory / checksum_name),
+            *(str(directory / name) for name in asset_names),
             "--generate-notes",
             "--verify-tag",
             "--repo",
