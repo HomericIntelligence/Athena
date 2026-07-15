@@ -32,16 +32,9 @@ def reject_symlinks_below(trust_root: Path, target: Path) -> None:
         raise RuntimeError(
             f"worktree path escapes trusted root {lexical_root}"
         ) from error
-    existing_root = lexical_root
-    while not existing_root.exists() and existing_root != existing_root.parent:
-        existing_root = existing_root.parent
-    if existing_root.is_symlink():
-        raise RuntimeError(f"worktree path component is a symlink: {existing_root}")
-    current = existing_root
-    for part in lexical_target.relative_to(existing_root).parts:
-        current /= part
-        if current.is_symlink():
-            raise RuntimeError(f"worktree path component is a symlink: {current}")
+    for component in (*reversed(lexical_target.parents), lexical_target):
+        if component.is_symlink():
+            raise RuntimeError(f"worktree path component is a symlink: {component}")
 
 
 def select_path(

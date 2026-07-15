@@ -32,8 +32,9 @@ the helper with `--directory DIRECTORY`.
 
 ### 3. Portable default
 
-When no repository preference exists, use `/tmp/<project>-<branch>`. This avoids polluting the
-project directory.
+When no repository preference exists, use the host's temporary directory from
+`tempfile.gettempdir()` with `<project>-<branch>`. This is commonly `/tmp` on Unix-like hosts and
+avoids polluting the project directory.
 
 The helper computes the project name from the repository root.
 
@@ -59,9 +60,10 @@ No `.gitignore` verification needed — outside the project entirely.
 ## Creation Steps
 
 1. Resolve and record the intended base commit SHA.
-2. Preview with `scripts/prepare_worktree.py BRANCH_NAME --start-point BASE_SHA --dry-run` from this
-   skill directory. For a contract requiring a distinct branch and path, also pass exact `--path`
-   and `--path-root` values.
+2. Keep the target repository as the current working directory. Resolve `scripts/prepare_worktree.py`
+   against this installed skill directory and invoke that absolute helper path with
+   `BRANCH_NAME --start-point BASE_SHA --dry-run`. For a contract requiring a distinct branch and
+   path, also pass exact `--path` and `--path-root` values.
 3. Create it with the same arguments without `--dry-run`, optionally supplying the documented
    repository preference through `--directory`. Never replace the recorded SHA with ambient HEAD.
 4. Change to the returned path and run the repository-defined bootstrap when one exists.
@@ -76,15 +78,15 @@ No `.gitignore` verification needed — outside the project entirely.
 When work is done, invoke `finish-branch` or use the separately approved removal flow in
 `worktree-cleanup`; do not improvise deletion commands.
 
-**For Options merge/discard:** Clean up immediately.
-**For Option keep/PR open:** Preserve the worktree.
+Preserve the worktree by default. Delivery, merge, abandonment, or a general cleanup request does
+not authorize removal; `worktree-cleanup` must re-audit it and obtain per-path Gate C approval.
 
 ## Quick Reference
 
 | Situation | Action |
 | ----------- | -------- |
 | `.worktrees/` exists + ignored | Use it |
-| Neither exists | Use `/tmp/<project>-<branch>` |
+| Neither exists | Use the host temporary directory with `<project>-<branch>` |
 | Directory not ignored | Add to `.gitignore` + commit first |
 | Tests fail at baseline | Report failures + ask before proceeding |
 

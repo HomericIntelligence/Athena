@@ -10,6 +10,11 @@ import sys
 from pathlib import Path
 from typing import NamedTuple
 
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from scripts.semver import SEMVER_PATTERN
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 ALLOWED_ECOSYSTEM_REPOSITORIES = {"Athena", "Hephaestus", "Mnemosyne"}
@@ -181,12 +186,9 @@ def _validate_codex(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
             )
         )
     version = manifest.get("version")
-    if (
-        not isinstance(version, str)
-        or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) is None
-    ):
+    if not isinstance(version, str) or SEMVER_PATTERN.fullmatch(version) is None:
         errors.append(
-            ValidationError("version", "Codex manifest version must be semantic X.Y.Z")
+            ValidationError("version", "Codex manifest version must be valid SemVer")
         )
     return errors
 
@@ -215,24 +217,25 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
                 ValidationError("policy", f"required file is missing: {relative}")
             )
 
-    ignored_parts = {
+    ignored_top_levels = {
         ".git",
         ".mypy_cache",
         ".pixi",
         ".pytest_cache",
         ".ruff_cache",
-        "__pycache__",
         "build",
         "dist",
     }
     for path in repo_root.rglob("*"):
+        relative_path = path.relative_to(repo_root)
         if (
             not path.is_file()
             or (path.parent == repo_root and path.name.startswith(".coverage"))
-            or any(part in ignored_parts for part in path.parts)
+            or relative_path.parts[0] in ignored_top_levels
+            or "__pycache__" in relative_path.parts
         ):
             continue
-        if path.relative_to(repo_root).as_posix() == "scripts/validate_skills.py":
+        if relative_path.as_posix() == "scripts/validate_skills.py":
             continue
         if path.suffix.lower() in {
             ".gif",
@@ -250,7 +253,7 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
             errors.append(
                 ValidationError(
                     "self-contained",
-                    f"cannot inspect {path.relative_to(repo_root)}: {exc}",
+                    f"cannot inspect {relative_path}: {exc}",
                 )
             )
             continue
@@ -260,7 +263,7 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
                 errors.append(
                     ValidationError(
                         "self-contained",
-                        f"{path.relative_to(repo_root)} references forbidden repository '{match.group(0)}'",
+                        f"{relative_path} references forbidden repository '{match.group(0)}'",
                     )
                 )
         project_prefix = re.search(r"\bProject[A-Z][A-Za-z0-9_-]*\b", text)
@@ -268,7 +271,7 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
             errors.append(
                 ValidationError(
                     "self-contained",
-                    f"{path.relative_to(repo_root)} uses forbidden Project prefix '{project_prefix.group(0)}'",
+                    f"{relative_path} uses forbidden Project prefix '{project_prefix.group(0)}'",
                 )
             )
     return errors

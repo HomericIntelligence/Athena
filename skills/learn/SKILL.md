@@ -83,8 +83,10 @@ Every writing subagent receives an isolated worktree based on the same resolved 
 branch revision and an explicit, non-overlapping file ownership set. Each canonical knowledge entry
 belongs to the coordinator or one designated integration item. Read-only agents may inspect shared
 evidence but must not edit it. Stop concurrent work on any ownership overlap, changed base revision,
-or unexpected scope. When the host does not provide native isolation, invoke Athena's tested
-`../git-worktrees/scripts/prepare_worktree.py` with the exact `skill/<slug>` branch,
+or unexpected scope. When the host does not provide native isolation, retain the resolved Mnemosyne
+checkout as the current working directory and invoke Athena's tested
+`../git-worktrees/scripts/prepare_worktree.py` by its absolute path resolved from this skill
+directory, with the exact `skill/<slug>` branch,
 `--path $HOME/.agent_brain/worktrees/knowledge-<slug>`,
 `--path-root $HOME/.agent_brain/worktrees`, and `--start-point <resolved-default-SHA>`.
 

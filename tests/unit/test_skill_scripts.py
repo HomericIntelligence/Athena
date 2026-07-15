@@ -437,7 +437,7 @@ class CodeReviewScriptTests(unittest.TestCase):
 class WorktreeScriptTests(unittest.TestCase):
     def test_prepare_worktree_uses_explicit_path_and_start_point(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
-            root = Path(temporary_directory)
+            root = Path(temporary_directory).resolve()
             repository = root / "repo"
             initialize_repository(repository)
             start_point = git(repository, "rev-parse", "HEAD")
@@ -573,7 +573,7 @@ class WorktreeScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             repository = Path(temporary_directory) / "repo"
             initialize_repository(repository)
-            base = Path(temporary_directory) / "isolated"
+            base = (Path(temporary_directory) / "isolated").resolve()
             result = run_script(
                 "skills/git-worktrees/scripts/prepare_worktree.py",
                 "feature-three",
@@ -634,6 +634,35 @@ class WorktreeScriptTests(unittest.TestCase):
                 str(trust_root / "feature-safe"),
                 "--path-root",
                 str(trust_root),
+                "--start-point",
+                "HEAD",
+                "--dry-run",
+                cwd=repository,
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("symlink", result.stderr)
+
+    def test_prepare_worktree_rejects_symlink_above_existing_trust_root(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            repository = root / "repo"
+            initialize_repository(repository)
+            real_parent = root / "real"
+            trust_root = real_parent / "worktrees"
+            trust_root.mkdir(parents=True)
+            linked_parent = root / "linked"
+            linked_parent.symlink_to(real_parent, target_is_directory=True)
+            lexical_root = linked_parent / "worktrees"
+            result = run_script(
+                "skills/git-worktrees/scripts/prepare_worktree.py",
+                "feature-safe",
+                "--path",
+                str(lexical_root / "feature-safe"),
+                "--path-root",
+                str(lexical_root),
                 "--start-point",
                 "HEAD",
                 "--dry-run",
@@ -831,6 +860,27 @@ class WorktreeScriptTests(unittest.TestCase):
         self.assertEqual(1, len(records))
         self.assertEqual(str(repository.resolve()), records[0]["path"])
         self.assertTrue(records[0]["clean"])
+
+    def test_audit_worktrees_reports_missing_registered_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            repository = root / "repo"
+            initialize_repository(repository)
+            stale = root / "stale"
+            git(repository, "worktree", "add", "-q", "-b", "stale", str(stale))
+            shutil.rmtree(stale)
+            result = run_script(
+                "skills/worktree-cleanup/scripts/audit_worktrees.py", cwd=repository
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        records = json.loads(result.stdout)
+        stale_record = next(
+            record for record in records if record["path"] == str(stale.resolve())
+        )
+        self.assertFalse(stale_record["exists"])
+        self.assertFalse(stale_record["clean"])
+        self.assertIn("prunable", stale_record)
 
 
 class DebuggingScriptTests(unittest.TestCase):

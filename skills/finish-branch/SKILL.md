@@ -26,11 +26,13 @@ Use `verification` first. Do not proceed while relevant repository-defined check
 5. Review `git log <base>..HEAD` and both the merge-base and current-base diffs.
 6. Verify every commit is cryptographically signed, has a DCO `Signed-off-by` trailer, and follows
    Conventional Commits. Fix violations before offering delivery.
-7. Present three choices: create/update a pull request, preserve the branch, or discard it. Discard
-   requires the user to type `discard` after seeing the exact branch, commits, and worktree affected.
+7. Present three choices: create/update a pull request, preserve the branch and worktree, or request
+   a separate read-only `worktree-cleanup` audit. Do not represent a cleanup request as removal
+   authority.
 8. For a PR, push only the feature branch and create a body containing `Closes #N` when a tracking
    issue exists. Do not enable auto-merge or merge without explicit user authority.
-9. Remove only worktrees created for this branch and only after delivery or confirmed discard.
+9. Never remove a worktree directly. Route each candidate through `worktree-cleanup`, which requires
+   a fresh audit and separate explicit Gate C approval for the exact path and audited HEAD.
 
 ## Merge-method helper
 

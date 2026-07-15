@@ -39,15 +39,23 @@ def main() -> int:
         records = parse_porcelain(git(root, "worktree", "list", "--porcelain"))
         for record in records:
             path = Path(str(record["worktree"]))
-            status = git(path, "status", "--short")
             record["path"] = str(path)
+            record["exists"] = path.is_dir()
+            porcelain_head = str(record.pop("HEAD", ""))
+            record.pop("worktree", None)
+            if not record["exists"]:
+                record["clean"] = False
+                record["status"] = []
+                record["recent_commits"] = []
+                record["head"] = porcelain_head
+                continue
+            status = git(path, "status", "--short")
             record["clean"] = not bool(status.strip())
             record["status"] = status.splitlines()
             record["recent_commits"] = git(
                 path, "log", "--oneline", "--decorate", "-5"
             ).splitlines()
             record["head"] = git(path, "rev-parse", "--verify", "HEAD").strip()
-            record.pop("worktree", None)
     except (KeyError, RuntimeError) as error:
         print(error, file=sys.stderr)
         return 1

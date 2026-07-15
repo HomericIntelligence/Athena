@@ -170,9 +170,10 @@ Before running a check, discover the target repository's commands from `AGENTS.m
 manifests, lockfiles, and CI. Prefer the command used by required CI. If sources conflict or no safe
 command is discoverable, ask the user rather than substituting Athena's own tooling.
 
-Run `scripts/repository_evidence.py PATTERN --source-root SOURCE_ROOT` from this skill directory to
-collect the latest ten commits, a diff bounded to that revision window, and matching source
-locations as JSON. Run the
+Keep the target repository as the current working directory. Resolve
+`scripts/repository_evidence.py` against this installed skill directory and invoke that absolute
+helper path with `PATTERN --source-root SOURCE_ROOT` to collect the latest ten commits, a diff
+bounded to that revision window, and matching source locations as JSON. Run the
 discovered repository-focused test and type-check commands directly through the host execution
 tool, retaining their complete output as evidence.
 

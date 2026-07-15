@@ -1,6 +1,6 @@
 ---
 name: skill-advisor
-description: Use when starting a task to determine which Athena procedural skill applies before work begins.
+description: Determine which Athena procedural skill applies before work. Requires the Mnemosyne knowledge backend through advise and fails closed when it cannot be prepared.
 argument-hint: <task description>
 allowed-tools: []
 ---
@@ -13,6 +13,8 @@ Routes the current task to the appropriate Athena skill.
 
 **Difference from `advise`:** `advise` searches the required knowledge backend for prior lessons;
 this skill routes to procedural skills. Use both: knowledge first, then process.
+Before routing, invoke `advise` with the task description. Failure to prepare the required Mnemosyne
+backend is blocking; do not continue to the decision tree.
 
 ---
 

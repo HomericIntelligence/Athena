@@ -31,7 +31,13 @@ class DistributionTests(unittest.TestCase):
             ROOT,
             self.fixture,
             ignore=shutil.ignore_patterns(
-                ".git", ".pixi", "dist", "build", "__pycache__", "*.pyc"
+                ".git",
+                ".pixi",
+                "dist",
+                "build",
+                "__pycache__",
+                "*.pyc",
+                ".coverage*",
             ),
         )
 
@@ -87,6 +93,23 @@ class DistributionTests(unittest.TestCase):
             "version", "Claude marketplace and manifest versions differ"
         )
 
+    def test_manifests_accept_full_semver(self) -> None:
+        version = "2.0.0-rc.1+build.5"
+        for relative in (
+            ".claude-plugin/plugin.json",
+            ".codex-plugin/plugin.json",
+        ):
+            path = self.fixture / relative
+            document = json.loads(path.read_text(encoding="utf-8"))
+            document["version"] = version
+            path.write_text(json.dumps(document), encoding="utf-8")
+        marketplace = self.fixture / ".claude-plugin" / "marketplace.json"
+        document = json.loads(marketplace.read_text(encoding="utf-8"))
+        document["metadata"]["version"] = version
+        marketplace.write_text(json.dumps(document), encoding="utf-8")
+
+        self.assertEqual(validator.validate_repository(self.fixture), [])
+
     def test_independent_host_manifest_contracts_fail_closed(self) -> None:
         cases: tuple[tuple[str, Callable[[dict[str, Any]], None], str, str], ...] = (
             (
@@ -129,7 +152,7 @@ class DistributionTests(unittest.TestCase):
                 ".codex-plugin/plugin.json",
                 lambda value: value.update({"version": "v1"}),
                 "version",
-                "semantic X.Y.Z",
+                "valid SemVer",
             ),
         )
         for relative, mutate, surface, reason in cases:
@@ -169,6 +192,44 @@ class DistributionTests(unittest.TestCase):
         (self.fixture / "docs" / ".coverage-bypass.md").write_text(
             f"depends on {repository}", encoding="utf-8"
         )
+        self.assert_invalid("self-contained", repository)
+
+    def test_checkout_under_ignored_named_ancestor_is_still_inspected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            fixture = Path(temporary_directory) / "build" / "Athena"
+            shutil.copytree(
+                ROOT,
+                fixture,
+                ignore=shutil.ignore_patterns(
+                    ".git",
+                    ".pixi",
+                    "dist",
+                    "build",
+                    "__pycache__",
+                    "*.pyc",
+                    ".coverage*",
+                ),
+            )
+            repository = "HomericIntelligence/" + "UnapprovedRepository"
+            (fixture / "docs" / "bad.md").write_text(
+                f"depends on {repository}", encoding="utf-8"
+            )
+
+            errors = validator.validate_repository(fixture)
+
+        self.assertTrue(
+            any(
+                error.surface == "self-contained" and repository in error.reason
+                for error in errors
+            ),
+            errors,
+        )
+
+    def test_distributable_nested_ignored_name_is_still_inspected(self) -> None:
+        repository = "HomericIntelligence/" + "UnapprovedRepository"
+        directory = self.fixture / "docs" / "dist"
+        directory.mkdir()
+        (directory / "bad.md").write_text(f"depends on {repository}", encoding="utf-8")
         self.assert_invalid("self-contained", repository)
 
     def test_project_prefix_is_rejected(self) -> None:

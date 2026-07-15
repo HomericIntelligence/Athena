@@ -13,10 +13,11 @@ the author's confidence.
 ## Workflow
 
 1. Read `AGENTS.md`, the requirements, and relevant plans or issues.
-2. Establish the intended change by running `scripts/review_diff.py` from this skill directory. The
-   helper discovers the branch remote and its default branch, fetches that exact base, reports the
-   resolved metadata, and prints both the merge-base diff summary and complete diff. Stop if the
-   remote or default branch cannot be resolved unambiguously.
+2. Keep the target repository as the current working directory. Resolve `scripts/review_diff.py`
+   against this installed skill directory and invoke that absolute helper path. The helper discovers
+   the target branch remote and its default branch, fetches that exact base, reports the resolved
+   metadata, and prints both the merge-base diff summary and complete diff. Stop if the remote or
+   default branch cannot be resolved unambiguously.
 
 3. Delegate to one independent reviewer when the host supports subagents. Do not prescribe a vendor
    model. If delegation is unavailable, review sequentially in the current agent.

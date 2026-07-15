@@ -5,6 +5,7 @@ dist/
 __pycache__/
 *.py[cod]
 .coverage
+.coverage.*
 coverage.json
 .mypy_cache/
 .pytest_cache/

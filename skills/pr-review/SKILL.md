@@ -13,8 +13,10 @@ rebase, or push without explicit user approval after presenting the report.
 ## Resolve the PR
 
 1. Preserve a PR number or URL supplied by the user as the helper argument.
-2. Run `scripts/resolve_pr.py [PR_NUMBER_OR_URL]` from this skill directory. With no argument, the
-   helper discovers the current branch and accepts exactly one open PR for that branch.
+2. Keep the target repository as the current working directory. Resolve `scripts/resolve_pr.py`
+   against this installed skill directory and invoke that absolute helper path with an optional
+   `[PR_NUMBER_OR_URL]`. With no argument, it discovers the target branch and accepts exactly one
+   open PR for that branch.
 3. Exit status 2 means no PR was found: stop and ask for a number or URL. Exit status 3 means the
    helper printed multiple candidates: show them and ask the user to choose.
 4. Confirm repository identity and fetch the PR head and base before reviewing.
@@ -33,8 +35,10 @@ describe genuinely inaccessible evidence; it may not substitute for retrying ava
 
 ## Evidence collection
 
-Run `scripts/collect_evidence.py PR_NUMBER_OR_URL` from this skill directory and retain its JSON
-output. The tested helper collects PR metadata, changed paths, and current check output.
+With the target repository still as the current working directory, resolve
+`scripts/collect_evidence.py` against this installed skill directory and invoke that absolute helper
+path with `PR_NUMBER_OR_URL`. Retain its JSON output containing PR metadata, changed paths, and
+current check output.
 
 Read every changed file in full, not only diff hunks. Read linked issues, acceptance criteria,
 `AGENTS.md`, ADRs, public contracts, and affected tests. Treat the PR body and issue as claims that
@@ -55,8 +59,9 @@ update mechanism justify them.
 
 ### Use both diff lenses
 
-Run `scripts/diff_context.py BASE_REF HEAD_REF` from this skill directory. It verifies both refs and
-returns the behind count, merge base, author-intent range, and current-base range as JSON.
+With the target repository still as the current working directory, resolve `scripts/diff_context.py`
+against this installed skill directory and invoke that absolute helper path with `BASE_REF HEAD_REF`.
+It returns the behind count, merge base, author-intent range, and current-base range as JSON.
 
 - **Author intent:** diff the returned `author_intent_range`; it shows work introduced since the
   merge base.

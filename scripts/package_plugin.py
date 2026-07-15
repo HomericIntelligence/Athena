@@ -9,11 +9,15 @@ from hashlib import sha256
 import io
 import json
 from pathlib import Path, PurePosixPath
-import re
 import subprocess
 import sys
 import tarfile
 from typing import Final, Sequence
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from scripts.semver import SEMVER_PATTERN
 
 
 ARCHIVE_ROOTS: Final[tuple[str, ...]] = (
@@ -53,14 +57,6 @@ SENSITIVE_NAMES: Final[frozenset[str]] = frozenset(
     }
 )
 SENSITIVE_SUFFIXES: Final[frozenset[str]] = frozenset({".key", ".p12", ".pem", ".pfx"})
-SEMVER_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"^(0|[1-9]\d*)\."
-    r"(0|[1-9]\d*)\."
-    r"(0|[1-9]\d*)"
-    r"(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)"
-    r"(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?"
-    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
-)
 
 
 class PackageError(RuntimeError):
