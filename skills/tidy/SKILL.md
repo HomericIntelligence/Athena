@@ -1,92 +1,37 @@
 ---
 name: tidy
-description: Tidy local branches in the CURRENT repo. Runs `gh tidy --rebase-all --trunk <default>` interactively, then dispatches a Myrmidon swarm to finish any rebases that gh-tidy could not complete. The swarm NEVER deletes branches — only gh-tidy can, via its own y/N prompts.
+description: Safely tidy branches using required Hephaestus automation. Resolves HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER, a canonically forked repository in the current Organization when the viewer has push/maintain/admin permission, or HomericIntelligence/Hephaestus, and fails if ~/.agent_brain/automation cannot be prepared.
 argument-hint: "<optional: --dry-run | --no-swarm | --trunk BRANCH | --max-concurrent N>"
-allowed-tools: [Bash, Read]
+allowed-tools: [Bash, Read, Agent]
 ---
 
-# /athena:tidy
+# Tidy branches
 
-Tidy local branches and fix failed rebases with a Myrmidon swarm.
+Use this when the user asks to inspect or rebase local branches onto the repository's default trunk.
 
-## When to Use
+## Workflow
 
-- You want to rebase all local branches onto the repo's default trunk in one command.
-- `gh tidy` aborted some rebases due to conflicts, and you want Claude to fix them.
-- You're starting a new work session and want the local repo in a clean state.
+1. Confirm the repository and default branch. Stop if the working tree has uncommitted changes that
+   would be affected.
+2. Resolve Hephaestus using `HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER`, then a canonical
+   `<current-owner>/Hephaestus` fork only when the current owner is an Organization and the viewer
+   has push/maintain/admin permission on the current repository, then
+   `HomericIntelligence/Hephaestus`. Prepare it at `$HOME/.agent_brain/automation` under
+   [`docs/dependency-resolution.md`](../../docs/dependency-resolution.md). Failure is blocking.
+   Report repository, SHA, and trust basis. Before using an automatic fork, reverify Organization
+   ownership, viewer permission, `parent.full_name`, identity, default branch, tip SHA, and checkout.
+3. Run `hephaestus-tidy` from the resolved checkout's locked environment and forward arguments
+   exactly; `--dry-run` is the safe preview. Never use an unrelated executable found on `PATH`.
+4. The user answers any interactive deletion prompt. Athena never answers it automatically.
+5. For failed rebases, use one isolated worktree per branch. Delegate independent branches when the
+   host supports subagents; otherwise process them sequentially.
+6. Resolve conflicts semantically, run branch-relevant tests, and use only `--force-with-lease`
+   plus `--force-if-includes` when the user has authorized a push.
+7. Report rebased, already-subsumed, and still-failing branches separately.
 
-## What This Skill Does
+## Invariants
 
-1. Verifies the working tree is clean (asks you to commit/stash first if not).
-2. Runs `gh tidy --rebase-all --trunk <default_branch>` **interactively** — stdin
-   passes through so you answer gh-tidy's own y/N delete prompts yourself.
-   gh-tidy can delete branches if you say yes; that is expected and allowed.
-3. Parses gh-tidy's output for `"WARNING: Unable to auto-rebase the following branches"`.
-4. Spawns one Sonnet Myrmidon agent per failing branch (max 5 concurrent) to complete
-   the rebase using semantic conflict resolution.
-5. After each agent succeeds, re-arms auto-merge on the branch's PR using
-   `choose_merge_flag` (preference rebase → squash → merge, per target repo settings).
-6. Prints a final summary: rebased / subsumed / still failing.
-
-## What the Swarm Does NOT Do
-
-- **Never deletes any branch** (local or remote). If a branch is already subsumed by
-  trunk, the agent reports "subsumed" and stops — it does not delete the branch.
-- **Never removes a worktree with `--force`**. Each agent creates a temporary worktree
-  (`<repo>/.git/worktrees/tidy-<branch>`) for isolation and removes it cleanly when
-  done. If cleanup fails, the worktree is left in place and reported.
-- **Never touches pre-existing worktrees**. Only the worktree the agent itself created
-  can be removed.
-
-## Usage
-
-```bash
-# Standard: run gh-tidy interactively, then fix failed rebases with the swarm
-hephaestus-tidy
-
-# Preview what would happen without executing
-hephaestus-tidy --dry-run
-
-# Run gh-tidy, print failures, but do NOT spawn swarm (fix manually)
-hephaestus-tidy --no-swarm
-
-# Override the trunk branch (default: auto-detected from GitHub)
-hephaestus-tidy --trunk main
-
-# Limit swarm concurrency
-hephaestus-tidy --max-concurrent 3
-```
-
-## Invocation via skill
-
-```bash
-# In Claude Code, this skill runs hephaestus-tidy with any arguments you provide:
-/athena:tidy
-/athena:tidy --dry-run
-/athena:tidy --no-swarm
-```
-
-## Implementation
-
-The skill runs the CLI entry point `hephaestus-tidy` which lives in
-`hephaestus/github/tidy.py`. The swarm uses `claude-code-sdk` to spawn agents.
-Each agent prompt includes a verbatim "FORBIDDEN ACTIONS" block preventing
-branch or worktree deletion.
-
-## When the Skill Has Run
-
-Read the summary at the end:
-
-- **Rebased**: branches that now point to a new tip rebased onto trunk. Their PRs have
-  auto-merge re-armed.
-- **Subsumed**: branches whose commits were already on trunk after rebase — they still
-  exist; you can delete them when you're ready.
-- **Still failing**: branches the swarm could not fix. Fix these manually:
-
-  ```bash
-  git fetch origin
-  git switch <branch>
-  git rebase origin/<trunk>
-  # resolve conflicts
-  git push --force-with-lease --force-if-includes origin <branch>
-  ```
+- Never delete local or remote branches.
+- Never remove a worktree with `--force`.
+- Never touch a pre-existing worktree.
+- Never enable auto-merge or push without explicit user authority.

@@ -1,49 +1,52 @@
 ---
 name: skill-advisor
-description: Use when starting any task to determine which Hephaestus skill applies — routes tasks to the correct procedural skill before you begin
+description: Determine which Athena procedural skill applies before work. Requires the Mnemosyne knowledge backend through advise and fails closed when it cannot be prepared.
 argument-hint: <task description>
 allowed-tools: []
 ---
 
 # Skill Advisor
 
-Routes your current task to the appropriate Hephaestus skill.
+Routes the current task to the appropriate Athena skill.
 
 **Core principle:** Check for a relevant skill BEFORE beginning any substantive work. If there is even a 1% chance a skill applies, invoke it.
 
-**Difference from `/advise`:** The `advise` skill searches ProjectMnemosyne for *prior learnings* (what worked before, what failed, team knowledge). This skill routes to *procedural skills* (how to approach a class of task). Use both: advise first for knowledge, then skill-advisor for process.
+**Difference from `advise`:** `advise` searches the required knowledge backend for prior lessons;
+this skill routes to procedural skills. Use both: knowledge first, then process.
+Before routing, invoke `advise` with the task description. Failure to prepare the required Mnemosyne
+backend is blocking; do not continue to the decision tree.
 
 ---
 
 ## Decision Tree
 
-```
+```text
 What are you about to do?
 │
 ├─ Implementing a new feature or fixing a bug?
-│   └─ → /athena:test-driven-development (BEFORE writing any code)
+│   └─ → invoke `test-driven-development` (BEFORE writing any code)
 │
 ├─ Debugging an unexpected failure, bug, or error?
-│   └─ → /athena:systematic-debugging (BEFORE proposing fixes)
+│   └─ → invoke `systematic-debugging` (BEFORE proposing fixes)
 │
 ├─ About to claim work is "done", "passing", or "fixed"?
-│   └─ → /athena:verification (BEFORE making any success claims)
+│   └─ → invoke `verification` (BEFORE making any success claims)
 │
 ├─ Starting a complex or ambiguous feature from scratch?
-│   └─ → /athena:brainstorm (BEFORE writing any code or plan)
+│   └─ → invoke `brainstorm` (BEFORE writing any code or plan)
 │
 ├─ Needing an isolated workspace for a new branch?
-│   └─ → /athena:git-worktrees
+│   └─ → invoke `git-worktrees`
 │       (skip if using myrmidon-swarm — it handles isolation automatically)
 │
 ├─ Implementation complete, ready to merge or create PR?
-│   └─ → /athena:finish-branch (AFTER running /athena:verification)
+│   └─ → invoke `finish-branch` (AFTER running `verification`)
 │
 ├─ Completed a major task and want quality assurance?
-│   └─ → /athena:code-review (dispatches a Sonnet reviewer)
+│   └─ → invoke `code-review` (uses an independent reviewer when available)
 │
 └─ Received code review feedback to act on?
-    └─ → /athena:code-review (Part 2: Receiving)
+    └─ → evaluate each comment with evidence, then invoke `code-review` for an independent recheck
 ```
 
 ## Skill Priority
@@ -69,7 +72,7 @@ Example: "Build new feature" → brainstorm first, then test-driven-development 
 These thoughts mean you should still check:
 
 | Thought | Reality |
-|---------|---------|
+| --------- | --------- |
 | "This is just a simple question" | Questions can become tasks. Check. |
 | "I already know the approach" | Skills evolve. Check current version. |
 | "Skill is overkill for this" | Simple things become complex. Use it. |

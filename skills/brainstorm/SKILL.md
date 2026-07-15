@@ -1,6 +1,6 @@
 ---
 name: brainstorm
-description: Use before any creative work — creating features, building components, adding functionality, or modifying behavior. Explores user intent and requirements before implementation.
+description: Use before complex creative work to explore intent and requirements. Requires the Mnemosyne knowledge backend through advise and fails closed when it cannot be prepared.
 argument-hint: <idea or feature description>
 allowed-tools: [Read, Write, Bash, Grep, Glob, Agent]
 ---
@@ -21,15 +21,18 @@ Every feature goes through this process. "Simple" projects are where unexamined 
 
 Complete in order:
 
-1. **Run `/athena:advise`** with the feature description — check ProjectMnemosyne for prior learnings on this topic
+1. **Run `advise`** with the feature description to check the required knowledge backend.
 2. **Explore project context** — check files, docs, recent commits
 3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
 4. **Propose 2-3 approaches** — with trade-offs and your recommendation
 5. **Present design** — in sections scaled to their complexity, get user approval after each section
-6. **Write design doc** — save to `docs/specs/YYYY-MM-DD-<topic>-design.md` and commit
-7. **Spec self-review** — scan for placeholders, contradictions, ambiguity, scope issues
-8. **User reviews written spec** — ask user to review the spec file before proceeding
-9. **Transition to implementation** — invoke the `planning` skill or `myrmidon-swarm` for implementation
+6. **Persist when needed** — write `docs/specs/YYYY-MM-DD-<topic>-design.md` only when complexity,
+   project policy, or a current downstream consumer requires a durable specification
+7. **Design self-review** — scan for placeholders, contradictions, ambiguity, and scope issues
+8. **User confirms the design** — request file review only when a specification was persisted
+9. **Transition to implementation** — invoke `myrmidon-swarm` for complex implementation. If an
+   installed planning skill is available, it may track the approved design; otherwise write a short
+   numbered implementation plan in the current conversation and proceed sequentially.
 
 ## The Process
 
@@ -46,27 +49,29 @@ Complete in order:
 
 - Propose 2-3 different approaches with trade-offs
 - Lead with your recommended option and explain why
-- Reference existing patterns in the Hephaestus codebase
+- Reference existing patterns in the target codebase
 
 **Presenting the design:**
 
 - Present in sections, ask after each whether it looks right
 - Scale each section to its complexity
 - Cover: architecture, components, data flow, error handling, testing strategy
-- Follow Hephaestus principles: KISS, YAGNI, DRY, SOLID
+- Follow Athena's local development principles: KISS, YAGNI, DRY, SOLID, modularity, and POLA
 
 **Working in existing codebases:**
 
-- Follow existing patterns in `hephaestus/`
-- Run `/advise` first to check for existing implementations
+- Follow existing patterns in the target repository
+- Invoke the `advise` skill first to check for existing implementations
 - Don't propose unrelated refactoring — stay focused on the current goal
 
 ## After the Design
 
-**Write spec doc:**
+**Persist a spec only when required:**
 
-- Save to `docs/specs/YYYY-MM-DD-<topic>-design.md`
-- Commit: `docs(specs): add <topic> design document`
+For small changes, keep the approved design in the conversation and proceed. When complexity,
+project policy, or a current downstream consumer requires a durable specification, save it to
+`docs/specs/YYYY-MM-DD-<topic>-design.md` and commit it as
+`docs(specs): add <topic> design document`.
 
 **Spec Self-Review:**
 
@@ -76,15 +81,16 @@ Complete in order:
 4. **Ambiguity check:** Can any requirement be interpreted two ways? Pick one and make it explicit.
 
 **User Review Gate:**
-After the self-review:
+After self-review of a persisted specification:
 > "Spec written and committed to `docs/specs/<filename>`. Please review and let me know if you want changes before we start planning implementation."
 
 Wait for approval. Only proceed once approved.
 
 **Implementation:**
 
-- Invoke the `planning` skill for task tracking, or
-- Invoke `/athena:myrmidon-swarm` for complex multi-agent work
+- Use an installed planning skill for task tracking, or write the numbered plan inline when none is
+  installed.
+- Invoke the `myrmidon-swarm` skill for complex multi-agent work.
 
 ## Key Principles
 
@@ -92,7 +98,7 @@ Wait for approval. Only proceed once approved.
 - **YAGNI ruthlessly** — remove unnecessary features from all designs
 - **Explore alternatives** — always propose 2-3 approaches
 - **Incremental validation** — present design sections, get approval before moving on
-- **Run `/advise` first** — don't propose what's already been built or debugged
+- **Invoke `advise` first** — don't propose what's already been built or debugged
 
 ---
 

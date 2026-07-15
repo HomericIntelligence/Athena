@@ -1,53 +1,35 @@
 # Security policy
 
-Athena is a plugin and skill distribution repository. It ships
-host-side surfaces (`.claude-plugin/`, `.codex-plugin/`, `skills/`,
-`assets/`) for AI agents and depends on
-[Hephaestus](https://github.com/HomericIntelligence/Hephaestus) for the
-underlying Python utilities. Most security issues surface there; this page
-covers what is in scope here.
+Athena distributes instruction-bearing AI-harness plugins. The latest tagged release and `main`
+receive security fixes.
 
-## Supported versions
+## Reporting
 
-Athena does not yet tag runtime releases. Security fixes land on `main` and
-are pulled into ecosystems via the marketplace fetch on session start. If
-you depend on a pinned SHA, treat the latest commit on `main` as supported
-until a tag-based release policy is published in `CHANGELOG.md`.
-
-## Reporting a vulnerability
-
-Email **research@villmow.us** with:
-
-- A reproducer (commit hash, agent invocation, expected vs observed behavior).
-- The skill, market-place entry, or asset involved.
-- Whether you have disclosed the issue publicly.
-
-You should receive an acknowledgement within 5 business days. We aim to
-publish a fix or a clear mitigation within 30 days for severity ≥ medium.
-For skills shipped from this repo, fixes ship via a marketplace refresh; no
-client action is required.
+Privately email **[research@villmow.us](mailto:research@villmow.us)** with the affected revision,
+skill or manifest, reproduction, expected behavior, observed behavior, and disclosure status. We
+aim to acknowledge reports within five business days.
 
 ## Threat model
 
-Athena is a **distribution** repo. Its attack surface is:
+- **Skill instructions:** malicious or overly broad instructions can cause unsafe tool use.
+  Frontmatter declares capabilities; skill bodies define human gates and fail-closed behavior.
+- **Dependency substitution:** Mnemosyne and Hephaestus owner overrides can redirect Athena to
+  custom content and therefore act as explicit trust decisions. An automatically discovered fork
+  may contain organization-specific changes, but is accepted only when the current repository is
+  organization-owned, the authenticated viewer has write/maintain/admin permission there, and
+  GitHub verifies the candidate's canonical parent. Repository identity, SHA, and trust basis are
+  reported and the complete gate is repeated immediately before use. Existing checkout origins must
+  match the resolved repository.
+- **Instruction and execution trust:** Mnemosyne text enters agent context and Hephaestus automation
+  may execute commands. Athena reports the exact repository, commit, and trust basis before use and
+  fails closed when identity, authority, ancestry, or checked-out revision cannot be proved.
+- **Marketplace redirection:** host manifests use the repository root and are validated before
+  merge and release.
+- **Supply chain:** GitHub Actions are commit-pinned, dependency checkouts verify identity, and the
+  release contains repository resources rather than executable package artifacts.
+- **Secrets:** required CI scans full history; repository policies prohibit credentials and private
+  data.
 
-- **Skills (SKILL.md bodies).** A malicious skill could instruct an agent to
-  execute untrusted commands. Defenses: per-skill `allowed-tools` frontmatter;
-  Hephaestus-side `allowedTools` propagation to the invoker; project-level
-  deny rules in `.claude/settings.json`; CI agents run inside the
-  `achaean-claude` ephemeral container per
-  [Odysseus/AGENTS.md](https://github.com/HomericIntelligence/Odysseus/blob/main/AGENTS.md).
-- **Marketplace manifests.** A malicious entry could redirect a skill source.
-  Defenses: git-source pinning to a known SHA; marketplace.json validated
-  against `skills/*` folder paths by `just validate-marketplace`.
-- **Cross-repo coupling.** A wrong bump to the Hephaestus pin in
-  `pyproject.toml` could pull in unreviewed code. Defenses: pin-floor in
-  `[project.dependencies]`; cross-repo integration review per
-  [Odysseus/AGENTS.md](https://github.com/HomericIntelligence/Odysseus/blob/main/AGENTS.md#escalation--human-review-required).
-
-## Out of scope
-
-Vulnerabilities in [Hephaestus](https://github.com/HomericIntelligence/Hephaestus)
-library code should be reported in the Hephaestus repo. Issues that originate
-in upstream dependencies are tracked via `just audit` (pip-audit) and surfaced
-through [Renovate](https://github.com/renovatebot/renovate) PRs.
+Security issues in a dependency's own code or corpus should be reported to that resolved
+repository. Athena issues include unsafe resolution, invocation, permissions, packaging, or policy
+within this repository.

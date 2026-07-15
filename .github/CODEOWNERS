@@ -1,0 +1,21 @@
+# Default ownership routing; the baseline ruleset does not require approvals.
+* @mvillmow
+
+# Plugin distribution surfaces.
+/skills/ @mvillmow
+/.claude-plugin/ @mvillmow
+/.codex-plugin/ @mvillmow
+/.agents/plugins/ @mvillmow
+/assets/ @mvillmow
+
+# Policy, validation, and CI/CD.
+/.github/ @mvillmow
+/docs/ @mvillmow
+/scripts/ @mvillmow
+/tests/ @mvillmow
+/AGENTS.md @mvillmow
+/CLAUDE.md @mvillmow
+/pixi.toml @mvillmow
+/pixi.lock @mvillmow
+/justfile @mvillmow
+/.pre-commit-config.yaml @mvillmow

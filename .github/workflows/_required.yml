@@ -1,0 +1,183 @@
+name: Required Checks
+
+"on":
+  workflow_call:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: required-${{ github.workflow }}-${{ github.head_ref || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  forbid-suppressions:
+    name: forbid-suppressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Reject silent failures and advisory gates
+        run: python scripts/ci_policy.py suppressions
+
+  validate:
+    name: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@a09b6247153796b190642a2b53fac4241043cf6f # v0.10.0
+        with:
+          pixi-version: v0.69.0
+          cache: true
+      - name: Install locked test environment
+        run: pixi install --locked
+      - name: Validate plugin distribution
+        run: pixi run validate
+      - name: Run contract tests with coverage threshold
+        run: pixi run test
+      - name: Run lint, format, and type checks
+        run: pixi run static
+
+  markdownlint:
+    name: markdownlint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: DavidAnson/markdownlint-cli2-action@8de2aa07cae85fd17c0b35642db70cf5495f1d25 # v20.0.0
+        with:
+          globs: |
+            README.md
+            AGENTS.md
+            CLAUDE.md
+            CONTRIBUTING.md
+            CODE_OF_CONDUCT.md
+            SECURITY.md
+            docs/**/*.md
+            skills/**/*.md
+          config: .markdownlint.yaml
+
+  workflow-schema:
+    name: workflow-schema
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@a09b6247153796b190642a2b53fac4241043cf6f # v0.10.0
+        with:
+          pixi-version: v0.69.0
+          cache: true
+      - name: Install locked validation tools
+        run: pixi install --locked
+      - name: Validate workflow syntax and schema
+        run: pixi run workflow-check
+
+  justfile-check:
+    name: justfile-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: "1.36.0"
+      - name: Validate task entry points
+        run: just ci-entrypoints
+
+  security-secrets-scan:
+    name: security/secrets-scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Run Gitleaks
+        env:
+          GITLEAKS_IMAGE: >-
+            ghcr.io/gitleaks/gitleaks:v8.30.0@sha256:691af3c7c5a48b16f187ce3446d5f194838f91238f27270ed36eef6359a574d9
+        run: >-
+          docker run --rm -v "$PWD:/repo:ro" -w /repo "$GITLEAKS_IMAGE"
+          detect --source=. --verbose --exit-code=1
+
+  package:
+    name: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+      - name: Build portable plugin archive
+        run: python scripts/package_plugin.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: athena-plugin
+          path: |
+            dist/athena-plugin-*.tar.gz
+            dist/athena-plugin-*.tar.gz.sha256
+          if-no-files-found: error
+
+  pr-policy:
+    name: pr-policy
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      REPO_OWNER: ${{ github.repository_owner }}
+      REPO_NAME: ${{ github.event.repository.name }}
+      PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Enforce issue linkage, signatures, DCO, and Conventional Commits
+        run: python scripts/ci_policy.py pr-policy
+
+  required-checks-gate:
+    name: required-checks-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    if: always()
+    needs:
+      - forbid-suppressions
+      - validate
+      - markdownlint
+      - workflow-schema
+      - justfile-check
+      - security-secrets-scan
+      - package
+      - pr-policy
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Verify every required job
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RESULTS: ${{ toJSON(needs) }}
+        run: python scripts/ci_policy.py required-jobs

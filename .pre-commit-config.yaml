@@ -1,19 +1,8 @@
-# pre-commit config — Athena.
-# Mirrors Hephaestus's hook catalogue, scoped to a plugin-distro repo.
-
-# To install locally: `pixi run pre-commit install` (or `pre-commit install`).
-# To run on demand: `pre-commit run --all-files`.
-
 repos:
-  # Repo-wide: trailing whitespace, EOF newline, large-file guard, mixed
-  # line-ending detection. These are cheap and catch most formatting drift.
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # v6.0.0
     hooks:
       - id: trailing-whitespace
-        # Skill bodies legitimately have trailing whitespace inside indented
-        # code blocks; only enforce on non-skill paths.
-        exclude: ^skills/
       - id: end-of-file-fixer
       - id: check-merge-conflict
       - id: check-added-large-files
@@ -21,44 +10,39 @@ repos:
       - id: mixed-line-ending
         args: ["--fix=lf"]
       - id: check-yaml
-        exclude: ^\.codex-plugin/
       - id: check-json
       - id: check-toml
 
-  # Markdown lint: applied with .markdownlint.yaml.
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.13.0
+    rev: 7339935a3036f096ee0d7f1f047a9ec41707d4c1 # v0.20.0
     hooks:
       - id: markdownlint-cli2
-        # Only top-level markdown + docs are gated strictly; skill SKILL.md
-        # bodies opt out because they intentionally embed long agent prompts.
-        files: '^(README\.md|CLAUDE\.md|CONTRIBUTING\.md|CODE_OF_CONDUCT\.md|SECURITY\.md|NOTICE|AGENTS\.md|docs/.*\.md)$'
+        files: '^(README\.md|AGENTS\.md|CLAUDE\.md|CONTRIBUTING\.md|CODE_OF_CONDUCT\.md|SECURITY\.md|docs/.*\.md|skills/.*\.md)$'
 
-  # Python quality: ruff, ruff-format, mypy strict.
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
-    hooks:
-      - id: ruff
-        args: ["--fix"]
-      - id: ruff-format
-
-  # mypy — install hook runs against the pixi-managed environment so the
-  # resolved versions match CI.
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
-    hooks:
-      - id: mypy
-        files: ^athena/
-        args: ["--strict"]
-        additional_dependencies: ["hephaestus>=3.0,<4"]
-
-  # Marketplace consistency: validate that .claude-plugin/marketplace.json
-  # references real skills/<name>/ folders on disk. Catches accidental rename
-  # or stale PRs.
   - repo: local
     hooks:
-      - id: athena-validate-marketplace
-        name: validate Athena marketplace.json references skills/
-        entry: python -m athena.validate_marketplace
+      - id: athena-validate-skills
+        name: validate Athena plugin distribution
+        entry: python3 scripts/validate_skills.py
+        language: system
+        pass_filenames: false
+      - id: athena-validator-tests
+        name: test Athena distribution validator
+        entry: pixi run test
+        language: system
+        pass_filenames: false
+      - id: athena-python-lint
+        name: lint Athena repository tooling
+        entry: pixi run lint
+        language: system
+        pass_filenames: false
+      - id: athena-python-format
+        name: check Athena repository tooling formatting
+        entry: pixi run format-check
+        language: system
+        pass_filenames: false
+      - id: athena-python-types
+        name: type-check Athena repository tooling
+        entry: pixi run typecheck
         language: system
         pass_filenames: false

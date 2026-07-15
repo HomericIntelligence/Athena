@@ -1,19 +1,20 @@
 ---
 name: verification
-description: Audit a metric, CI result, or benchmark claim and report whether it is backed by runnable evidence per Odysseus ADR-014 (truthful failure acceptable, invented success is not). Use when a user posts a measurement assertion and asks whether to trust it.
-allowed-tools: [Read, Glob, Grep]
+description: Verify every completion, fix, passing-check, metric, CI, or benchmark claim with fresh runnable evidence under Athena's evidence-integrity policy.
+allowed-tools: [Read, Bash, Glob, Grep, Agent]
 ---
 
 # When to use
 
-Invoke this skill whenever the user posts an assertion that names a specific
-measured value: a metric, a CI gate result, a benchmark number, a training
-loss, or a "this ran successfully" claim. The skill's job is **not** to
-re-execute the run — that is a slow, out-of-band step. The skill's job is to
-determine whether the claim is backed by **runnable evidence** per
-[Odysseus ADR-014](https://github.com/HomericIntelligence/Odysseus/blob/main/docs/adr/014-runnable-evidence-for-metric-claims.md).
+Invoke this skill before any claim that work is complete, fixed, passing, or ready, and whenever the
+user posts a measured value, CI result, benchmark, training loss, or successful-run claim. For a
+completion claim, discover and freshly run the repository-defined relevant validation; a prior run,
+badge, or implementation diff is not evidence of the current state. The skill does not automatically reproduce an expensive
+or side-effecting run. It does query current read-only evidence and may re-execute safe, bounded
+verification commands. Its job is to determine whether the claim is backed by **runnable evidence** per
+[`docs/policies/evidence-integrity.md`](../../docs/policies/evidence-integrity.md).
 
-# Inputs the skill expects
+## Inputs the skill expects
 
 The user must supply, or the skill must collect:
 
@@ -22,49 +23,53 @@ The user must supply, or the skill must collect:
 2. **The evidence pointer.** A path, a URL, or a CI run id. If absent, the
    skill will ask before proceeding.
 
-# Verified workflow
+## Verified workflow
 
 1. **Classify the claim type.**
+   - **Completion/fix claim**: the evidence is fresh output from the repository-defined relevant
+     tests, validation, lint, type, build, or package commands at the claimed revision.
    - **CI gate result** (e.g., "all checks pass"): the evidence is the
      `gh pr checks` JSON, not a PR body line.
    - **Measured metric / benchmark**: the evidence is a CI-produced artifact
      or an independently-reproduced log; a file committed into a PR does NOT
      count.
-   - **Training/optimization result**: per ADR-014, the only accepted
-     evidence is a CI-produced artifact or a detached-execution run record.
+   - **Training/optimization result**: the accepted evidence is a CI-produced artifact or a
+     detached-execution run record bound to the reviewed revision.
    - **Operational status** (e.g., "the daemon is running"):
      `systemctl status` or `podman ps` output.
 
-2. **Locate the evidence.** Use `Read` / `Glob` / `Grep` to inspect the cited
-   pointer in the workspace. For any external command (e.g. `gh pr checks`,
-   `systemctl status`, a benchmark re-run), INVOKE THE COMMAND VIA ANOTHER
-   SKILL OR AGENT WAVE — do not run it from inside this skill's invocation,
-   because this skill's `allowed-tools` does not include `Bash`. Capture the
-   verbatim output the caller returns.
+2. **Locate the evidence.** Use read-only file inspection for workspace evidence. Run read-only
+   commands such as `gh pr checks`, `systemctl status`, or `podman ps` directly when the host grants
+   Bash. Quote user-provided identifiers, reject values beginning with `-`, and prefer structured
+   output. Delegate an independent or long-running check when the host grants subagents. If neither
+   execution nor delegation is available, return `CONDITIONAL` or `NO-GO` with the exact command the
+   caller must run; never present an unexecuted command as evidence. Any command with side effects,
+   credentials beyond read access, or material cost requires explicit user authority.
 
-3. **Apply the ADR-014 audit table.**
+3. **Apply the evidence audit table.**
 
    | Claim type | Accepted evidence | Default verdict |
-   |------------|-------------------|-----------------|
+   | ------------ | ------------------- | ----------------- |
    | CI gate result | `gh pr checks <pr> --json name,state` showing the named gate in SUCCESS state | Run `gh pr checks`; report gate state verbatim |
    | Measured metric in PR body | (a) CI-produced artifact URL, OR (b) re-executed run output | NO-GO unless either is present |
-   | Committed `epoch*.log` file in PR | n/a | **NEVER** evidence (per ADR-014 §1) |
+   | Committed `epoch*.log` file in PR | n/a | **NEVER** independent evidence |
    | Training result on slow path | detached-execution run record | NO-GO unless a follow-up evidence-collection task has landed |
 
 4. **Report.** Use the Output contract below. **Do not soften the verdict.**
    A NO-GO with a clear "here is what would change it" answer is the right
    outcome for a fabricated claim.
 
-# Failed attempts
+## Failed attempts
 
-- Do NOT call `/repo-analyze*` skills — those audit code structure, not claims.
+- Do NOT call `repo-review` for claim verification; it audits repositories, not individual claims.
 - Do NOT accept a "✓" emoji in a comment as evidence.
-- Do NOT re-read the same PR body line to "find" the evidence the user
-  already pasted — re-running the gate is the whole point.
+- Do NOT re-read the same PR body line to "find" the evidence the user already pasted. Query the
+  current gate state or run the safe verification command; reproduce an expensive run only with the
+  required authority and resource budget.
 - Do NOT claim "looks good" because the PR is from a trusted author.
-  Per ADR-014, evidentiary channel matters, not source reputation.
+  Under Athena's evidence policy, evidentiary channel matters, not source reputation.
 
-# Output contract
+## Output contract
 
 Return a markdown table:
 
@@ -79,16 +84,14 @@ Return a markdown table:
 | Evidence channel | CI-produced artifact / re-executed run / committed file (NOT EVIDENCE) / none |
 | Verdict | GO / CONDITIONAL / NO-GO |
 | Action | <one-line "what would change the verdict"> |
-| ADR reference | ADR-014 |
+| Policy reference | `docs/policies/evidence-integrity.md` |
 ```
 
 Then a short paragraph (≤ 4 lines) explaining the verdict.
 
-# References
+## References
 
-- [Odysseus ADR-014](https://github.com/HomericIntelligence/Odysseus/blob/main/docs/adr/014-runnable-evidence-for-metric-claims.md) — governing policy.
-- Hephaestus `hephaestus.audit.filter` — programmatic filter for the same
-  audit, callable without invoking a skill.
-- Skill catalog: see
-  [`.claude-plugin/marketplace.json`](../../.claude-plugin/marketplace.json)
-  for the latest published skills.
+- [`docs/policies/evidence-integrity.md`](../../docs/policies/evidence-integrity.md) — governing
+  policy.
+- Skill catalog: see the canonical [`skills/`](../) directory and the root
+  [`README.md`](../../README.md).

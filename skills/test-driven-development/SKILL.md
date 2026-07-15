@@ -29,14 +29,16 @@ Write the test first. Watch it fail. Write minimal code to pass.
 - Throwaway prototypes
 - Generated code
 - Configuration files
+- Documentation-only wording and layout changes
 
-**Integration with myrmidon-swarm:** When invoked from a myrmidon-swarm Phase 2 (Test) agent, apply this cycle to each test sub-task. Each Sonnet specialist writes failing tests before any Haiku engineer writes implementation.
+**Integration with myrmidon-swarm:** apply this cycle to each test sub-task. A specialist writes
+failing tests before an executor writes implementation.
 
 Thinking "skip TDD just this once"? Stop. That's rationalization.
 
 ## The Iron Law
 
-```
+```text
 NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
 ```
 
@@ -62,15 +64,15 @@ Write one minimal test showing what should happen.
 - One behavior per test
 - Clear descriptive name
 - Test real code (no mocks unless unavoidable)
+- Assert a computable product outcome, data contract, security property, or executable artifact
+  structure; never freeze documentation prose, headings, counts, or paragraph presence
 
 ### Verify RED — Watch It Fail
 
 **MANDATORY. Never skip.**
 
-```bash
-# Hephaestus test runner
-pixi run pytest tests/ -k "<test_name>" -v
-```
+Discover the target repository's focused test command from its guidance, task runner, manifests,
+lockfiles, and required CI, then run `<repository-focused-test-command>`.
 
 Confirm:
 
@@ -82,6 +84,10 @@ Confirm:
 
 **Test errors?** Fix the error, re-run until it fails correctly.
 
+Do not invent production code or a test harness to force a RED phase for documentation-only work.
+Use existing markdown lint and link validation for syntax and navigation. A link checker may prove a
+target resolves; a text assertion must not dictate what the documentation says.
+
 ### GREEN — Minimal Code
 
 Write the simplest code to pass the test. No more.
@@ -92,9 +98,7 @@ Don't add features, refactor other code, or "improve" beyond what the test deman
 
 **MANDATORY.**
 
-```bash
-pixi run pytest tests/ -v
-```
+Run the repository's discovered full relevant suite: `<repository-test-command>`.
 
 Confirm:
 
@@ -120,29 +124,17 @@ Keep tests green throughout. Don't add behavior.
 
 Next failing test for next behavior.
 
-## Hephaestus Tooling
+## Repository tooling
 
-```bash
-# Run all unit tests
-pixi run pytest tests/unit -v
-
-# Run specific test file
-pixi run pytest tests/unit/utils/test_general_utils.py -v
-
-# Run with coverage
-pixi run pytest tests/unit --cov=hephaestus --cov-report=html
-
-# Type check
-pixi run mypy hephaestus/
-
-# Lint
-pixi run ruff check hephaestus/ tests/
-```
+Discover commands from `AGENTS.md`, task runners, manifests, lockfiles, and required CI. Prefer the
+same entry points CI uses. Record the focused test, relevant suite, coverage, typing, and lint
+commands when applicable. If repository sources conflict or no safe command is discoverable, ask
+the user; never substitute Athena's Pixi/Pytest commands into an unrelated target.
 
 ## Good Tests
 
 | Quality | Good | Bad |
-|---------|------|-----|
+| --------- | ------ | ----- |
 | **Minimal** | One thing. "and" in name? Split it. | `test('validates email and domain and whitespace')` |
 | **Clear** | Name describes behavior | `test_1` |
 | **Shows intent** | Demonstrates desired API | Obscures what code should do |
@@ -150,7 +142,7 @@ pixi run ruff check hephaestus/ tests/
 ## Common Rationalizations — All Wrong
 
 | Excuse | Reality |
-|--------|---------|
+| -------- | --------- |
 | "Too simple to test" | Simple code breaks. Test takes 30 seconds. |
 | "I'll test after" | Tests passing immediately prove nothing. |
 | "Tests after achieve same goals" | Tests-after = "what does this do?" Tests-first = "what should this do?" |
@@ -174,19 +166,20 @@ pixi run ruff check hephaestus/ tests/
 Before marking work complete:
 
 - [ ] Every new function/method has a test
+- [ ] No test pins documentation wording or another non-behavioral string
 - [ ] Watched each test fail before implementing
 - [ ] Each test failed for the expected reason
 - [ ] Wrote minimal code to pass each test
-- [ ] All tests pass (`pixi run pytest tests/unit -v`)
-- [ ] Type check passes (`pixi run mypy hephaestus/`)
-- [ ] Linter clean (`pixi run ruff check hephaestus/ tests/`)
+- [ ] All relevant tests pass with the repository's discovered test command
+- [ ] The repository-defined type check passes
+- [ ] The repository-defined linter passes
 
 Can't check all boxes? You skipped TDD. Start over.
 
 ## After Completion
 
-Run `/athena:verification` before claiming work complete.
-Consider running `/athena:learn` to capture novel testing patterns in ProjectMnemosyne.
+Invoke the `verification` skill before claiming work complete.
+Run `learn` when the session produced a durable testing lesson; it must publish through a PR.
 
 ---
 

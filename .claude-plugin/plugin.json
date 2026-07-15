@@ -1,5 +1,5 @@
 {
-  "name": "Athena",
+  "name": "athena",
   "version": "0.1.0",
   "description": "Agent-host plugins and skills imported by Claude Code / Codex / Pi.",
   "author": {
@@ -9,6 +9,7 @@
   "homepage": "https://github.com/HomericIntelligence/Athena",
   "repository": "https://github.com/HomericIntelligence/Athena",
   "license": "BSD-3-Clause",
+  "skills": "./skills/",
   "keywords": [
     "agents",
     "skills",

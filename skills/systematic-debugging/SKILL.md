@@ -1,6 +1,6 @@
 ---
 name: systematic-debugging
-description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes — requires root cause investigation before solutions
+description: Investigate root cause before fixing bugs or unexpected behavior. Requires the Mnemosyne knowledge backend through advise and fails closed when it cannot be prepared.
 argument-hint: <description of the bug or failure>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 ---
@@ -17,11 +17,12 @@ Random fixes waste time and create new bugs. Quick patches mask underlying issue
 
 ## Before Starting
 
-Run `/athena:advise` with the error description to search ProjectMnemosyne for prior debugging sessions on similar errors. Prior learnings may immediately identify the root cause or rule out dead ends.
+Run `advise` with the error description. Failure to prepare the required knowledge backend is a
+blocking error, not permission to skip prior-knowledge search.
 
 ## The Iron Law
 
-```
+```text
 NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST
 ```
 
@@ -78,7 +79,7 @@ You MUST complete each phase before proceeding to the next.
 
    **BEFORE proposing fixes, add diagnostic instrumentation:**
 
-   ```
+   ```text
    For EACH component boundary:
      - Log what data enters component
      - Log what data exits component
@@ -121,7 +122,7 @@ You MUST complete each phase before proceeding to the next.
 
 **Fix the root cause, not the symptom:**
 
-1. **Create failing test case** using `/athena:test-driven-development` — must exist BEFORE fixing
+1. **Create failing test case** using the `test-driven-development` skill — it must exist before fixing
 2. **Implement single fix** addressing the root cause
 3. **Verify fix**: Test passes? No other tests broken? Issue actually resolved?
 
@@ -156,35 +157,32 @@ You MUST complete each phase before proceeding to the next.
 ## Common Rationalizations
 
 | Excuse | Reality |
-|--------|---------|
+| -------- | --------- |
 | "Issue is simple, don't need process" | Simple issues have root causes too. |
 | "Emergency, no time for process" | Systematic debugging is FASTER than guess-and-check. |
 | "Just try this first, then investigate" | First fix sets the pattern. Do it right from the start. |
 | "Multiple fixes at once saves time" | Can't isolate what worked. Causes new bugs. |
 | "One more fix attempt" (after 2+ failures) | 3+ failures = architectural problem. Don't fix again. |
 
-## Hephaestus Tooling
+## Repository command discovery
 
-```bash
-# Run failing tests with full output
-pixi run pytest tests/ -v --tb=long
+Before running a check, discover the target repository's commands from `AGENTS.md`, task runners,
+manifests, lockfiles, and CI. Prefer the command used by required CI. If sources conflict or no safe
+command is discoverable, ask the user rather than substituting Athena's own tooling.
 
-# Check recent changes
-git diff HEAD~3
-git log --oneline -10
-
-# Find similar patterns in codebase
-grep -r "pattern" hephaestus/ --include="*.py"
-
-# Run type checker for type-related bugs
-pixi run mypy hephaestus/
-```
+Keep the target repository as the current working directory. Resolve
+`scripts/repository_evidence.py` against this installed skill directory and invoke that absolute
+helper path with `PATTERN --source-root SOURCE_ROOT` to collect the latest ten commits, a diff
+bounded to that revision window, and matching source locations as JSON. Run the
+discovered repository-focused test and type-check commands directly through the host execution
+tool, retaining their complete output as evidence.
 
 ## After Resolution
 
-Run `/athena:verification` before claiming the bug is fixed.
+Invoke the `verification` skill before claiming the bug is fixed.
 
-Run `/athena:learn` to capture the debugging session in ProjectMnemosyne — especially:
+Run `learn` to submit durable debugging knowledge through its mandatory pull-request workflow,
+especially:
 
 - Root cause category and symptoms
 - What diagnostic steps revealed it

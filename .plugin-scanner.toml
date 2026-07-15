@@ -11,21 +11,11 @@ ignore_paths = [
   ".git/",
 
   # Build / dist
-  "build/",
   "dist/",
-  "*.egg-info/",
 
   # Python caches
   "__pycache__/",
-  ".mypy_cache/",
-  ".ruff_cache/",
-  ".pytest_cache/",
   ".pixi/",
-
-  # Lock files
-  "pixi.lock",
-  "uv.lock",
-  "poetry.lock",
 
   # IDE / OS
   ".idea/",
@@ -37,17 +27,7 @@ ignore_paths = [
   ".env.*",
   "secrets/",
 
-  # Internal iteration artefacts (see ADR 0001)
+  # Internal iteration artefacts
   "scripts/_local/",
   "tests/_local/",
 ]
-
-# Plugin-specific: the scanner should emit a finding if `from athena`
-# appears outside the expected roots — that means a boundary violation.
-# Skill bodies compose `hephaestus.automation` so `from hephaestus …` in
-# `skills/` is expected; `from athena …` anywhere is the violation we care
-# about, per ADR 0001.
-[scanner.python]
-boundary_violations_emit_finding = true
-hephaestus_imports_allowed_in = ["skills/"]
-athena_self_import_root_warning = true

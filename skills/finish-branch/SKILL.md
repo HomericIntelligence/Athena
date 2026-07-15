@@ -1,199 +1,50 @@
 ---
 name: finish-branch
-description: Use when implementation is complete and all tests pass — guides branch completion by presenting structured options for merge, PR creation, or cleanup
+description: Finish a branch using required Hephaestus automation for repository and merge-policy discovery. Resolves HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER, a canonically forked repository in the current Organization when the viewer has push/maintain/admin permission, or HomericIntelligence/Hephaestus at ~/.agent_brain/automation and fails when unavailable.
 argument-hint: "<optional: base branch name>"
 allowed-tools: [Bash, Read]
 ---
 
-# Finishing a Development Branch
+# Finish a development branch
 
-## Overview
+Use `verification` first. Do not proceed while relevant repository-defined checks fail.
 
-Guide completion of development work by verifying work is done, then presenting clear options.
+## Workflow
 
-**Core principle:** Verify tests → Run verification → Present options → Execute choice → Clean up.
+1. Read `AGENTS.md` and [`docs/policies/development.md`](../../docs/policies/development.md).
+2. Resolve Hephaestus using `HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER`, then a canonical fork in the
+   current Organization only when the viewer has push/maintain/admin permission on the current
+   repository, or `HomericIntelligence/Hephaestus`, in that order. Prepare it at
+   `$HOME/.agent_brain/automation` under
+   [`docs/dependency-resolution.md`](../../docs/dependency-resolution.md). Failure is blocking.
+   Report repository, SHA, and trust basis. Before using an automatic fork, reverify Organization
+   ownership, viewer permission, `parent.full_name`, identity, default branch, tip SHA, and checkout.
+3. Discover the default branch and repository-defined validation commands from its task runner,
+   manifests, and required workflow. Do not substitute Hephaestus-specific commands.
+4. Run the relevant tests, validation, formatting, linting, and build/package checks. Report exact
+   commands and results.
+5. Review `git log <base>..HEAD` and both the merge-base and current-base diffs.
+6. Verify every commit is cryptographically signed, has a DCO `Signed-off-by` trailer, and follows
+   Conventional Commits. Fix violations before offering delivery.
+7. Present three choices: create/update a pull request, preserve the branch and worktree, or request
+   a separate read-only `worktree-cleanup` audit. Do not represent a cleanup request as removal
+   authority.
+8. For a PR, push only the feature branch and create a body containing `Closes #N` when a tracking
+   issue exists. Do not enable auto-merge or merge without explicit user authority.
+9. Never remove a worktree directly. Route each candidate through `worktree-cleanup`, which requires
+   a fresh audit and separate explicit Gate C approval for the exact path and audited HEAD.
 
-**Prerequisite:** Run `/athena:verification` BEFORE invoking this skill. If verification fails, fix the issues first.
+## Merge-method helper
 
-## The Process
+Use the resolved Hephaestus checkout's current merge-method helper when the target repository does
+not provide its own. Never use an unrelated executable from `PATH` or guess an organization-wide
+merge method.
 
-### Step 1: Full Verification
+## Never
 
-Run the complete Hephaestus verification suite:
+- Merge directly to the protected default branch.
+- Skip hooks, fabricate successful checks, or force-push without explicit authority.
+- Delete a branch or worktree without the required confirmation.
+- Claim completion while CI is absent, stale, skipped incorrectly, or failing.
 
-```bash
-pixi run pytest tests/unit -v
-pixi run mypy hephaestus/
-pixi run ruff check hephaestus/ tests/
-pixi run ruff format --check hephaestus/ tests/
-pre-commit run --files $(git diff --name-only origin/main)
-```
-
-**If ANY check fails:**
-
-```
-Verification failing — must fix before completing:
-
-[Show failures]
-
-Cannot proceed with merge/PR until all checks pass.
-```
-
-Stop. Don't proceed to Step 2.
-
-**If all checks pass:** Continue.
-
-### Step 2: Determine Base Branch
-
-The `main` branch is protected in all HomericIntelligence repos. All merges go through PRs.
-
-```bash
-git log --oneline origin/main..HEAD
-```
-
-Verify the commit list looks correct before proceeding.
-
-### Step 3: Present Options
-
-Present exactly these options:
-
-```
-All checks pass. What would you like to do?
-
-1. Push and create a Pull Request (recommended — main is protected)
-2. Keep the branch as-is (I'll handle it later)
-3. Discard this work
-
-Which option?
-```
-
-**Note:** Direct merge to main is not an option — the `main` branch is protected.
-
-### Step 4: Execute Choice
-
-#### Option 1: Push and Create PR
-
-```bash
-# Push branch
-git push -u origin <feature-branch>
-
-# Create PR. Per repo policy: body MUST contain a literal "Closes #N" line,
-# every commit MUST be signed, and auto-merge MUST be enabled. The CI gate
-# pr-policy blocks any PR that violates one of these.
-gh pr create \
-  --title "feat(scope): description" \
-  --body "$(cat <<'EOF'
-## Summary
-- <bullet: what changed>
-- <bullet: why>
-
-## Test Plan
-- [ ] All unit tests pass
-- [ ] Type check passes
-- [ ] Linter clean
-- [ ] Pre-commit hooks pass
-
-Closes #<issue-number>
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
-EOF
-)"
-
-# Enable auto-merge (mandatory under repo PR policy).
-# Pick the method this repo actually allows (rebase -> squash -> merge).
-HELPER=""
-for cand in \
-    "${HEPHAESTUS_REPO_ROOT:-}/scripts/choose_merge_flag.sh" \
-    "$(git rev-parse --show-toplevel 2>/dev/null)/scripts/choose_merge_flag.sh" \
-    "$HOME/Projects/ProjectHephaestus/scripts/choose_merge_flag.sh"; do
-    if [ -r "$cand" ]; then HELPER="$cand"; break; fi
-done
-if [ -n "$HELPER" ]; then
-    . "$HELPER"
-    MERGE_FLAG=$(choose_merge_flag "$(gh repo view --json nameWithOwner --jq .nameWithOwner)") \
-        || MERGE_FLAG="--squash"   # safe org-wide default per HomericIntelligence policy
-else
-    MERGE_FLAG="--squash"
-fi
-gh pr merge --auto "$MERGE_FLAG"
-```
-
-Then: Cleanup worktree (Step 5)
-
-#### Option 2: Keep As-Is
-
-Report: "Keeping branch `<name>`. Worktree preserved at `<path>`."
-
-**Don't cleanup worktree.**
-
-#### Option 3: Discard
-
-**Confirm first:**
-
-```
-This will permanently delete:
-- Branch <name>
-- All commits: <commit-list>
-- Worktree at <path> (if applicable)
-
-Type 'discard' to confirm.
-```
-
-Wait for exact typed confirmation.
-
-```bash
-git checkout main
-git branch -D <feature-branch>
-```
-
-Then: Cleanup worktree (Step 5)
-
-### Step 5: Cleanup Worktree (Options 1 and 3 only)
-
-```bash
-# Check if in a worktree
-git worktree list
-
-# If yes, remove it
-git worktree remove <worktree-path>
-git worktree prune
-```
-
-## Commit Message Format
-
-All commits must follow conventional commits:
-
-```
-feat(scope): add new capability
-fix(scope): resolve specific issue
-docs(scope): update documentation
-refactor(scope): restructure without behavior change
-test(scope): add/fix tests
-chore(scope): maintenance task
-```
-
-Include `Co-Authored-By` trailer when AI-assisted:
-
-```
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
-```
-
-## Red Flags
-
-**Never:**
-
-- Proceed with failing checks
-- Merge directly to main (protected branch)
-- Force-push without explicit request
-- Delete work without typed confirmation
-
-**Always:**
-
-- Run all 5 verification commands
-- Present structured options
-- Get typed confirmation for Option 3
-- Clean up worktrees for Options 1 and 3
-
----
-
-_Adapted from [obra/superpowers](https://github.com/obra/superpowers) under the [MIT License](https://github.com/obra/superpowers/blob/main/LICENSE). Copyright (c) 2025 Jesse Vincent._
+_Adapted from obra/superpowers under the MIT License. See `skills/THIRD_PARTY_LICENSES.md`._

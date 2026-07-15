@@ -13,7 +13,8 @@ Git worktrees create isolated workspaces sharing the same repository, allowing w
 
 **Core principle:** Systematic directory selection + safety verification = reliable isolation.
 
-**When NOT to use this skill manually:** The `myrmidon-swarm` skill automatically provides worktree isolation for each agent via `isolation: "worktree"` on the Agent tool. Use this skill for your own manual development work, not when orchestrating a swarm.
+**When NOT to use this skill manually:** The `myrmidon-swarm` skill owns worktree creation for its
+background subagents. Use this skill for manual development work, not to duplicate swarm setup.
 
 ## Directory Selection
 
@@ -21,38 +22,28 @@ Follow this priority order:
 
 ### 1. Check Existing Directories
 
-```bash
-ls -d .worktrees 2>/dev/null     # Preferred (hidden, project-local)
-ls -d worktrees 2>/dev/null      # Alternative
-```
+The tested `scripts/prepare_worktree.py` helper checks `.worktrees` and then `worktrees`. If both
+exist, `.worktrees` wins.
 
-If found: Use that directory. If both exist, `.worktrees` wins.
+### 2. Check repository guidance
 
-### 2. Check CLAUDE.md
+Read `AGENTS.md` and its referenced repository guidance. If a preference is specified, pass it to
+the helper with `--directory DIRECTORY`.
 
-```bash
-grep -i "worktree" CLAUDE.md 2>/dev/null
-```
+### 3. Portable default
 
-If preference specified: Use it without asking.
+When no repository preference exists, use the host's temporary directory from
+`tempfile.gettempdir()` with `<project>-<branch>`. This is commonly `/tmp` on Unix-like hosts and
+avoids polluting the project directory.
 
-### 3. Default for HomericIntelligence Repos
-
-For all HomericIntelligence repos, worktrees go in `/tmp/<project>-<branch>` unless the repo has an existing `.worktrees/` directory. This avoids polluting the project directory.
-
-```bash
-project=$(basename "$(git rev-parse --show-toplevel)")
-```
+The helper computes the project name from the repository root.
 
 ## Safety Verification
 
 ### For Project-Local Directories (.worktrees or worktrees)
 
-**MUST verify directory is ignored before creating worktree:**
-
-```bash
-git check-ignore -q .worktrees 2>/dev/null || echo "NOT IGNORED - add to .gitignore first"
-```
+**MUST verify directory is ignored before creating worktree.** The helper fails closed when its
+project-local directory is not ignored.
 
 **If NOT ignored:**
 
@@ -68,28 +59,15 @@ No `.gitignore` verification needed — outside the project entirely.
 
 ## Creation Steps
 
-```bash
-# 1. Determine project name
-project=$(basename "$(git rev-parse --show-toplevel)")
-
-# 2. Create worktree with new branch
-# Option A: /tmp location (default for HomericIntelligence)
-git worktree add "/tmp/${project}-${BRANCH_NAME}" -b "${BRANCH_NAME}"
-cd "/tmp/${project}-${BRANCH_NAME}"
-
-# Option B: project-local (if .worktrees/ exists and is ignored)
-git worktree add ".worktrees/${BRANCH_NAME}" -b "${BRANCH_NAME}"
-cd ".worktrees/${BRANCH_NAME}"
-
-# 3. Install dependencies
-pixi install
-
-# 4. Verify clean baseline
-pixi run pytest tests/unit -v
-
-# 5. Report status
-echo "Worktree ready at $(pwd)"
-```
+1. Resolve and record the intended base commit SHA.
+2. Keep the target repository as the current working directory. Resolve `scripts/prepare_worktree.py`
+   against this installed skill directory and invoke that absolute helper path with
+   `BRANCH_NAME --start-point BASE_SHA --dry-run`. For a contract requiring a distinct branch and
+   path, also pass exact `--path` and `--path-root` values.
+3. Create it with the same arguments without `--dry-run`, optionally supplying the documented
+   repository preference through `--directory`. Never replace the recorded SHA with ambient HEAD.
+4. Change to the returned path and run the repository-defined bootstrap when one exists.
+5. Verify a clean baseline with the repository-defined tests and report the path, start SHA, and result.
 
 **If tests fail:** Report failures, ask whether to proceed or investigate.
 
@@ -97,23 +75,18 @@ echo "Worktree ready at $(pwd)"
 
 ## Cleanup
 
-```bash
-# When work is done (or use finish-branch skill)
-git worktree remove /tmp/${project}-${BRANCH_NAME}
+When work is done, invoke `finish-branch` or use the separately approved removal flow in
+`worktree-cleanup`; do not improvise deletion commands.
 
-# Prune stale worktree references
-git worktree prune
-```
-
-**For Options merge/discard:** Clean up immediately.
-**For Option keep/PR open:** Preserve the worktree.
+Preserve the worktree by default. Delivery, merge, abandonment, or a general cleanup request does
+not authorize removal; `worktree-cleanup` must re-audit it and obtain per-path Gate C approval.
 
 ## Quick Reference
 
 | Situation | Action |
-|-----------|--------|
+| ----------- | -------- |
 | `.worktrees/` exists + ignored | Use it |
-| Neither exists | Use `/tmp/<project>-<branch>` |
+| Neither exists | Use the host temporary directory with `<project>-<branch>` |
 | Directory not ignored | Add to `.gitignore` + commit first |
 | Tests fail at baseline | Report failures + ask before proceeding |
 
@@ -127,8 +100,8 @@ git worktree prune
 
 **Pairs with:**
 
-- `/athena:finish-branch` — REQUIRED for cleanup after work is complete
-- `/athena:verification` — run before finishing and cleaning up
+- Invoke `finish-branch` for cleanup after work is complete.
+- Invoke `verification` before finishing and cleaning up.
 
 ---
 
