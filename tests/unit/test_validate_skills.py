@@ -6,6 +6,8 @@ import importlib.util
 import io
 import json
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -83,12 +85,32 @@ class DistributionTests(unittest.TestCase):
         )
         self.assert_invalid("codex", "must be a JSON object")
 
+    def test_cli_reports_malformed_current_manifest_without_traceback(self) -> None:
+        manifest = self.fixture / ".codex-plugin" / "plugin.json"
+        manifest.write_text("not-json\n", encoding="utf-8")
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(self.fixture / "scripts" / "validate_skills.py"),
+                "--root",
+                str(self.fixture),
+            ],
+            cwd=self.fixture,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(2, result.returncode)
+        self.assertIn("cannot read .codex-plugin/plugin.json", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
     def test_manifest_version_mismatch_fails(self) -> None:
         manifest = self.fixture / ".claude-plugin" / "plugin.json"
-        manifest.write_text(
-            manifest.read_text(encoding="utf-8").replace('"0.1.0"', '"9.9.9"'),
-            encoding="utf-8",
-        )
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+        document["version"] = "9.9.9"
+        manifest.write_text(json.dumps(document), encoding="utf-8")
         self.assert_invalid(
             "version", "Claude marketplace and manifest versions differ"
         )
@@ -172,6 +194,53 @@ class DistributionTests(unittest.TestCase):
             "---\nname: _private\n---\n", encoding="utf-8"
         )
         self.assert_invalid("skills", "private skill directory is forbidden")
+
+    def test_python_cache_is_not_treated_as_a_private_skill(self) -> None:
+        cache = self.fixture / "skills" / "__pycache__"
+        cache.mkdir(exist_ok=True)
+        (cache / "cached.pyc").write_bytes(b"cache")
+
+        self.assertEqual(validator.validate_repository(self.fixture), [])
+
+    def test_executable_scripts_must_use_shared_argparse_convention(self) -> None:
+        script = self.fixture / "skills" / "code-review" / "scripts" / "review_diff.py"
+        script.write_text(
+            "#!/usr/bin/env python3\nprint('no parser')\n", encoding="utf-8"
+        )
+
+        self.assert_invalid(
+            "cli", "must construct its argparse parser with argument_parser()"
+        )
+
+    def test_executable_scripts_cannot_hide_direct_argparse_behind_dead_factory_call(
+        self,
+    ) -> None:
+        script = self.fixture / "skills" / "code-review" / "scripts" / "review_diff.py"
+        script.write_text(
+            "#!/usr/bin/env python3\n"
+            "import argparse\n"
+            "from skills._cli import argument_parser\n"
+            "if False:\n"
+            "    argument_parser()\n"
+            "parser = argparse.ArgumentParser()\n",
+            encoding="utf-8",
+        )
+
+        self.assert_invalid(
+            "cli", "must not construct argparse.ArgumentParser directly"
+        )
+
+    def test_executable_scripts_may_alias_the_shared_parser_factory(self) -> None:
+        script = self.fixture / "skills" / "code-review" / "scripts" / "review_diff.py"
+        script.write_text(
+            "#!/usr/bin/env python3\n"
+            "from skills._cli import argument_parser as make_parser\n"
+            "parser = make_parser()\n"
+            "parser.parse_args()\n",
+            encoding="utf-8",
+        )
+
+        self.assertEqual(validator.validate_repository(self.fixture), [])
 
     def test_unapproved_ecosystem_repository_fails(self) -> None:
         repository = "HomericIntelligence/" + "UnapprovedRepository"

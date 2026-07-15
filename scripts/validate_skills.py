@@ -3,17 +3,19 @@
 
 from __future__ import annotations
 
-import argparse
+import ast
 import json
 import re
 import sys
 from pathlib import Path
 from typing import NamedTuple
 
+sys.dont_write_bytecode = True
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts.semver import SEMVER_PATTERN
+from scripts.semver import SEMVER_PATTERN  # noqa: E402
+from skills._cli import argument_parser  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -76,6 +78,8 @@ def _validate_skills(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
         return [ValidationError("skills", "skills/ contains no discoverable skills")]
 
     for directory in skill_dirs:
+        if directory.name == "__pycache__":
+            continue
         if directory.name.startswith("_"):
             errors.append(
                 ValidationError(
@@ -277,6 +281,108 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
     return errors
 
 
+def _validate_cli_conventions(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
+    """Require every executable Python helper to use the shared argparse factory."""
+    candidates = [
+        *(repo_root / "scripts").glob("*.py"),
+        *(repo_root / "skills").glob("*/scripts/*.py"),
+    ]
+    errors: list[ValidationError] = []
+    for path in sorted(candidates):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            errors.append(
+                ValidationError(
+                    "cli", f"cannot read {path.relative_to(repo_root)}: {exc}"
+                )
+            )
+            continue
+        if not text.startswith("#!/usr/bin/env python3\n"):
+            continue
+        try:
+            tree = ast.parse(text)
+        except SyntaxError as exc:
+            errors.append(
+                ValidationError(
+                    "cli", f"cannot parse {path.relative_to(repo_root)}: {exc}"
+                )
+            )
+            continue
+        factory_names = {
+            alias.asname or alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module == "skills._cli"
+            for alias in node.names
+            if alias.name == "argument_parser"
+        }
+        parser_names = {
+            target.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name)
+            and node.value.func.id in factory_names
+            for target in node.targets
+            if isinstance(target, ast.Name)
+        }
+        parses_arguments = any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "parse_args"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id in parser_names
+            for node in ast.walk(tree)
+        )
+        argparse_module_names = {
+            alias.asname or alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+            if alias.name == "argparse"
+        }
+        argparse_constructor_names = {
+            alias.asname or alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module == "argparse"
+            for alias in node.names
+            if alias.name == "ArgumentParser"
+        }
+        constructs_argparse_directly = any(
+            isinstance(node, ast.Call)
+            and (
+                (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "ArgumentParser"
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id in argparse_module_names
+                )
+                or (
+                    isinstance(node.func, ast.Name)
+                    and node.func.id in argparse_constructor_names
+                )
+            )
+            for node in ast.walk(tree)
+        )
+        if constructs_argparse_directly:
+            errors.append(
+                ValidationError(
+                    "cli",
+                    f"{path.relative_to(repo_root)} must not construct "
+                    "argparse.ArgumentParser directly",
+                )
+            )
+        elif not factory_names or not parser_names or not parses_arguments:
+            errors.append(
+                ValidationError(
+                    "cli",
+                    f"{path.relative_to(repo_root)} must construct its argparse parser "
+                    "with argument_parser()",
+                )
+            )
+    return errors
+
+
 def validate_repository(repo_root: Path) -> list[ValidationError]:
     """Validate one repository's skills, manifests, layout, and policies."""
     repo_root = repo_root.resolve()
@@ -285,6 +391,7 @@ def validate_repository(repo_root: Path) -> list[ValidationError]:
         *_validate_claude(repo_root),
         *_validate_codex(repo_root),
         *_validate_layout_and_policy(repo_root),
+        *_validate_cli_conventions(repo_root),
     ]
     claude, _ = _read_json(
         repo_root / ".claude-plugin" / "plugin.json", "version", repo_root
@@ -309,9 +416,7 @@ def validate() -> list[ValidationError]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Validate Athena's plugin-only distribution."
-    )
+    parser = argument_parser(description="Validate Athena's plugin-only distribution.")
     parser.add_argument("--quiet", action="store_true", help="Suppress success output.")
     parser.add_argument(
         "--root",

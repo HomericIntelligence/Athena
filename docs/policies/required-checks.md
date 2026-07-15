@@ -14,8 +14,9 @@ immutable commits with readable version comments and have minimum permissions an
 - `justfile-check`: ensures documented task entry points parse.
 - `security/secrets-scan`: scans the complete Git history for secrets.
 - `package`: builds and inspects a deterministic portable plugin archive, rejects unsafe,
-  generated-Python, misplaced-Python, and credential-like members, permits tested helpers only in
-  skill-local script directories, and emits a SHA-256 checksum.
+  generated-Python, misplaced-Python, and credential-like members, ignores Python cache directories,
+  permits tested helpers in skill-local script directories plus the shared `skills/_cli.py` factory,
+  and emits a SHA-256 checksum.
 - `pr-policy`: on pull requests, enforces issue linkage when applicable, signed commits, DCO
   sign-offs, and Conventional Commit subjects.
 - `required-checks-gate`: depends on every gating job and fails if any is not successful.

@@ -3,10 +3,15 @@
 
 from __future__ import annotations
 
-import argparse
 import json
+from pathlib import Path
 import subprocess
 import sys
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from skills._cli import argument_parser
 
 
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
@@ -20,7 +25,7 @@ def run(*arguments: str, accepted_codes: tuple[int, ...] = (0,)) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
+    parser = argument_parser(description=__doc__)
     parser.add_argument("pattern")
     parser.add_argument("--source-root", default=".")
     arguments = parser.parse_args()

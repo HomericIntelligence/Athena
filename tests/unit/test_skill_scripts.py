@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import redirect_stderr, redirect_stdout
+import io
 import json
 import os
 from pathlib import Path
@@ -10,9 +12,21 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
+
+from skills._cli import argument_parser
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def executable_scripts() -> list[Path]:
+    candidates = [*ROOT.glob("scripts/*.py"), *ROOT.glob("skills/*/scripts/*.py")]
+    return sorted(
+        path
+        for path in candidates
+        if path.read_text(encoding="utf-8").startswith("#!/usr/bin/env python3\n")
+    )
 
 
 def run_script(
@@ -60,6 +74,56 @@ def initialize_repository(path: Path) -> None:
     (path / "tracked.txt").write_text("base\n", encoding="utf-8")
     git(path, "add", "tracked.txt")
     git(path, "commit", "--quiet", "-m", "test: initialize")
+
+
+class ScriptConventionTests(unittest.TestCase):
+    def test_every_executable_reports_the_plugin_version(self) -> None:
+        manifest = json.loads(
+            (ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
+        )
+        expected_version = manifest["version"]
+
+        for path in executable_scripts():
+            with self.subTest(script=path.relative_to(ROOT)):
+                result = subprocess.run(
+                    [sys.executable, str(path), "--version"],
+                    cwd=ROOT,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual(
+                    f"{path.name} {expected_version}", result.stdout.strip()
+                )
+
+    def test_shared_version_action_is_lazy_and_reports_manifest_failures(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            manifest = root / ".codex-plugin" / "plugin.json"
+            manifest.parent.mkdir()
+            with patch("skills._cli.PLUGIN_ROOT", root):
+                parser = argument_parser()
+                parser.parse_args([])
+
+                for document in ("not-json\n", "[]\n"):
+                    with self.subTest(document=document):
+                        manifest.write_text(document, encoding="utf-8")
+                        errors = io.StringIO()
+                        with (
+                            redirect_stderr(errors),
+                            self.assertRaises(SystemExit) as exit,
+                        ):
+                            parser.parse_args(["--version"])
+                        self.assertEqual(1, exit.exception.code)
+                        self.assertIn("cannot read plugin version", errors.getvalue())
+
+                manifest.write_text('{"version": "0.2.0"}\n', encoding="utf-8")
+                output = io.StringIO()
+                with redirect_stdout(output), self.assertRaises(SystemExit) as exit:
+                    parser.parse_args(["--version"])
+                self.assertEqual(0, exit.exception.code)
+                self.assertEqual("0.2.0", output.getvalue().strip().split()[-1])
 
 
 class PullRequestScriptTests(unittest.TestCase):
@@ -126,7 +190,7 @@ class PullRequestScriptTests(unittest.TestCase):
 
         self.assertEqual(2, missing.returncode)
         self.assertIn("no open pull request", missing.stderr)
-        self.assertEqual(64, usage.returncode)
+        self.assertEqual(2, usage.returncode)
         self.assertIn("usage:", usage.stderr)
 
     def test_pr_helpers_reject_option_like_identifiers(self) -> None:
@@ -139,11 +203,24 @@ class PullRequestScriptTests(unittest.TestCase):
             collected = run_script(
                 "skills/pr-review/scripts/collect_evidence.py", "-R", cwd=root, env=env
             )
+            invalid_resolved = run_script(
+                "skills/pr-review/scripts/resolve_pr.py", "invalid", cwd=root, env=env
+            )
+            invalid_collected = run_script(
+                "skills/pr-review/scripts/collect_evidence.py",
+                "invalid",
+                cwd=root,
+                env=env,
+            )
 
-        self.assertEqual(1, resolved.returncode)
-        self.assertIn("invalid pull-request identifier", resolved.stderr)
-        self.assertEqual(1, collected.returncode)
-        self.assertIn("invalid pull-request identifier", collected.stderr)
+        self.assertEqual(2, resolved.returncode)
+        self.assertIn("usage:", resolved.stderr)
+        self.assertEqual(2, collected.returncode)
+        self.assertIn("usage:", collected.stderr)
+        self.assertEqual(1, invalid_resolved.returncode)
+        self.assertIn("invalid pull-request identifier", invalid_resolved.stderr)
+        self.assertEqual(1, invalid_collected.returncode)
+        self.assertIn("invalid pull-request identifier", invalid_collected.stderr)
 
     def test_resolve_pr_reports_malformed_github_output_as_operational_failure(
         self,
@@ -233,7 +310,7 @@ class PullRequestScriptTests(unittest.TestCase):
                 cwd=repository,
             )
 
-        self.assertEqual(64, usage.returncode)
+        self.assertEqual(2, usage.returncode)
         self.assertIn("usage:", usage.stderr)
         self.assertEqual(1, invalid.returncode)
         self.assertTrue(invalid.stderr.strip())
@@ -249,8 +326,8 @@ class PullRequestScriptTests(unittest.TestCase):
                 cwd=repository,
             )
 
-        self.assertEqual(1, result.returncode)
-        self.assertIn("must not begin with '-'", result.stderr)
+        self.assertEqual(2, result.returncode)
+        self.assertIn("usage:", result.stderr)
 
     def test_collect_evidence_combines_pr_metadata_files_and_checks(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -360,7 +437,7 @@ class PullRequestScriptTests(unittest.TestCase):
                 env=env,
             )
 
-        self.assertEqual(64, usage.returncode)
+        self.assertEqual(2, usage.returncode)
         self.assertIn("usage:", usage.stderr)
         self.assertEqual(1, invalid.returncode)
         self.assertIn("invalid check evidence", invalid.stderr)

@@ -4,8 +4,15 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import subprocess
 import sys
+from typing import Sequence
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from skills._cli import argument_parser
 
 
 def git(*arguments: str) -> str:
@@ -17,11 +24,12 @@ def git(*arguments: str) -> str:
     return result.stdout.strip()
 
 
-def main() -> int:
-    if len(sys.argv) != 3:
-        print("usage: diff_context.py BASE_REF HEAD_REF", file=sys.stderr)
-        return 64
-    base_ref, head_ref = sys.argv[1:]
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argument_parser(description=__doc__)
+    parser.add_argument("base_ref", metavar="BASE_REF")
+    parser.add_argument("head_ref", metavar="HEAD_REF")
+    arguments = parser.parse_args(argv)
+    base_ref, head_ref = arguments.base_ref, arguments.head_ref
     try:
         for label, value in (("base ref", base_ref), ("head ref", head_ref)):
             if value.startswith("-"):

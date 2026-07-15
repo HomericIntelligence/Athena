@@ -1,6 +1,6 @@
 ---
 name: learn
-description: Preserve a verified lesson in the required Mnemosyne knowledge repository and always deliver it through a pull request. Resolves HOMERIC_INTELLIGENCE_MNEMOSYNE_OWNER, a canonically forked repository in the current Organization when the viewer has push/maintain/admin permission, or HomericIntelligence/Mnemosyne, and fails if ~/.agent_brain/knowledge cannot be prepared.
+description: Preserve a verified lesson in required Mnemosyne and always deliver it through a pull request. Uses Athena's canonical dependency-resolution contract and fails if ~/.agent_brain/knowledge cannot be prepared.
 argument-hint: <lesson or session summary>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 ---
@@ -11,24 +11,13 @@ Capture behavior-changing knowledge in Mnemosyne. This workflow always creates a
 commit, push, and pull request. It never writes directly to a default branch and never treats a
 local-only edit as success.
 
-## Resolve the knowledge repository
+## Prepare the knowledge repository
 
-Use the same mandatory resolution contract as `advise`:
-
-1. An explicit `HOMERIC_INTELLIGENCE_MNEMOSYNE_OWNER` selects
-   `<owner>/Mnemosyne` and fails closed when unreadable.
-2. Otherwise prefer `<current-repository-owner>/Mnemosyne` only when the owner is an Organization,
-   the viewer has `WRITE` (push), `MAINTAIN`, or `ADMIN` permission on the current repository, and
-   GitHub confirms `parent.full_name` is `HomericIntelligence/Mnemosyne`. Modified organization fork
-   content is allowed after all gates pass.
-3. Otherwise use `HomericIntelligence/Mnemosyne`.
-
-Prepare and verify `$HOME/.agent_brain/knowledge`: clone when absent; otherwise require the expected
-origin, fetch it, and fast-forward its remote default branch without overwriting local changes.
-Report repository, SHA, and trust basis. For an automatically selected fork, immediately before use
-repeat the owner-type, viewer-permission, canonical-parent, identity, default-branch, and tip-SHA
-checks and require the checkout to match.
-Authentication, detection, checkout, or update failure is fatal.
+Prepare Mnemosyne at `$HOME/.agent_brain/knowledge` by following the canonical
+[`dependency-resolution` contract](../../docs/dependency-resolution.md) exactly. Do not restate its
+owner precedence, trust gates, checkout rules, or revalidation requirements in this skill. Report
+the exact repository, commit SHA, and trust basis. Any resolution, authentication, checkout, update,
+or revalidation failure is blocking.
 
 ## Before writing
 

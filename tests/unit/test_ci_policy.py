@@ -14,6 +14,20 @@ from scripts import ci_policy
 
 
 class PullRequestPolicyTests(unittest.TestCase):
+    def test_policy_rules_are_owned_by_focused_modules(self) -> None:
+        owners = {
+            "evaluate_pull_request": "scripts.policies.pull_request",
+            "failed_required_jobs": "scripts.policies.required_jobs",
+            "evaluate_release": "scripts.policies.release",
+            "verify_release_assets": "scripts.policies.release",
+            "find_suppressions": "scripts.policies.suppressions",
+        }
+
+        for function_name, module_name in owners.items():
+            with self.subTest(function=function_name):
+                function = getattr(ci_policy, function_name)
+                self.assertEqual(module_name, function.__module__)
+
     def test_flattens_complete_paginated_commit_evidence(self) -> None:
         pages = [
             {

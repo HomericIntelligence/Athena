@@ -1,6 +1,6 @@
 ---
 name: finish-branch
-description: Finish a branch using required Hephaestus automation for repository and merge-policy discovery. Resolves HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER, a canonically forked repository in the current Organization when the viewer has push/maintain/admin permission, or HomericIntelligence/Hephaestus at ~/.agent_brain/automation and fails when unavailable.
+description: Finish a branch using required Hephaestus automation for repository and merge-policy discovery. Uses Athena's canonical dependency-resolution contract and fails if ~/.agent_brain/automation cannot be prepared.
 argument-hint: "<optional: base branch name>"
 allowed-tools: [Bash, Read]
 ---
@@ -12,13 +12,10 @@ Use `verification` first. Do not proceed while relevant repository-defined check
 ## Workflow
 
 1. Read `AGENTS.md` and [`docs/policies/development.md`](../../docs/policies/development.md).
-2. Resolve Hephaestus using `HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER`, then a canonical fork in the
-   current Organization only when the viewer has push/maintain/admin permission on the current
-   repository, or `HomericIntelligence/Hephaestus`, in that order. Prepare it at
-   `$HOME/.agent_brain/automation` under
-   [`docs/dependency-resolution.md`](../../docs/dependency-resolution.md). Failure is blocking.
-   Report repository, SHA, and trust basis. Before using an automatic fork, reverify Organization
-   ownership, viewer permission, `parent.full_name`, identity, default branch, tip SHA, and checkout.
+2. Prepare Hephaestus at `$HOME/.agent_brain/automation` under the canonical
+   [`dependency-resolution` contract](../../docs/dependency-resolution.md). Do not restate or
+   override that contract here. Report repository, SHA, and trust basis; any preparation or
+   revalidation failure is blocking.
 3. Discover the default branch and repository-defined validation commands from its task runner,
    manifests, and required workflow. Do not substitute Hephaestus-specific commands.
 4. Run the relevant tests, validation, formatting, linting, and build/package checks. Report exact

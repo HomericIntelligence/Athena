@@ -181,8 +181,9 @@ tool, retaining their complete output as evidence.
 
 Invoke the `verification` skill before claiming the bug is fixed.
 
-Run `learn` to submit durable debugging knowledge through its mandatory pull-request workflow,
-especially:
+Offer to invoke `learn` when the session produced durable debugging knowledge. An indirect Learn
+invocation does not authorize its branch, commit, push, or pull-request writes; follow Learn's
+external-write checkpoint and obtain explicit authority before mutation. Useful lessons include:
 
 - Root cause category and symptoms
 - What diagnostic steps revealed it
