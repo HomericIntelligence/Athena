@@ -65,6 +65,7 @@ jobs:
             CODE_OF_CONDUCT.md
             SECURITY.md
             docs/**/*.md
+            skills/**/*.md
           config: .markdownlint.yaml
 
   workflow-schema:

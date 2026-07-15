@@ -38,7 +38,7 @@ Thinking "skip TDD just this once"? Stop. That's rationalization.
 
 ## The Iron Law
 
-```
+```text
 NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
 ```
 
@@ -134,7 +134,7 @@ the user; never substitute Athena's Pixi/Pytest commands into an unrelated targe
 ## Good Tests
 
 | Quality | Good | Bad |
-|---------|------|-----|
+| --------- | ------ | ----- |
 | **Minimal** | One thing. "and" in name? Split it. | `test('validates email and domain and whitespace')` |
 | **Clear** | Name describes behavior | `test_1` |
 | **Shows intent** | Demonstrates desired API | Obscures what code should do |
@@ -142,7 +142,7 @@ the user; never substitute Athena's Pixi/Pytest commands into an unrelated targe
 ## Common Rationalizations — All Wrong
 
 | Excuse | Reality |
-|--------|---------|
+| -------- | --------- |
 | "Too simple to test" | Simple code breaks. Test takes 30 seconds. |
 | "I'll test after" | Tests passing immediately prove nothing. |
 | "Tests after achieve same goals" | Tests-after = "what does this do?" Tests-first = "what should this do?" |

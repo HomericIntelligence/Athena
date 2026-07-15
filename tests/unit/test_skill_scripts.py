@@ -129,6 +129,22 @@ class PullRequestScriptTests(unittest.TestCase):
         self.assertEqual(64, usage.returncode)
         self.assertIn("usage:", usage.stderr)
 
+    def test_pr_helpers_reject_option_like_identifiers(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            env = self.make_fake_tools(root, [])
+            resolved = run_script(
+                "skills/pr-review/scripts/resolve_pr.py", "-R", cwd=root, env=env
+            )
+            collected = run_script(
+                "skills/pr-review/scripts/collect_evidence.py", "-R", cwd=root, env=env
+            )
+
+        self.assertEqual(1, resolved.returncode)
+        self.assertIn("invalid pull-request identifier", resolved.stderr)
+        self.assertEqual(1, collected.returncode)
+        self.assertIn("invalid pull-request identifier", collected.stderr)
+
     def test_resolve_pr_reports_malformed_github_output_as_operational_failure(
         self,
     ) -> None:
@@ -222,6 +238,20 @@ class PullRequestScriptTests(unittest.TestCase):
         self.assertEqual(1, invalid.returncode)
         self.assertTrue(invalid.stderr.strip())
 
+    def test_diff_context_rejects_option_like_refs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory) / "repo"
+            initialize_repository(repository)
+            result = run_script(
+                "skills/pr-review/scripts/diff_context.py",
+                "-R",
+                "HEAD",
+                cwd=repository,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("must not begin with '-'", result.stderr)
+
     def test_collect_evidence_combines_pr_metadata_files_and_checks(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -251,6 +281,27 @@ class PullRequestScriptTests(unittest.TestCase):
         self.assertEqual(9, evidence["pull_request"]["number"])
         self.assertEqual(["skills/pr-review/SKILL.md"], evidence["changed_files"])
         self.assertEqual("SUCCESS", evidence["checks"][0]["state"])
+
+    def test_collect_evidence_rejects_pr_from_another_repository(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            env = self.make_fake_tools(root, [])
+            env["FAKE_GH_VIEW_JSON"] = json.dumps(
+                {
+                    "number": 42,
+                    "state": "OPEN",
+                    "url": "https://github.com/other/repository/pull/42",
+                }
+            )
+            result = run_script(
+                "skills/pr-review/scripts/collect_evidence.py",
+                "https://github.com/other/repository/pull/42",
+                cwd=root,
+                env=env,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("does not belong to current repository", result.stderr)
 
     def test_collect_evidence_preserves_pending_and_failed_checks(self) -> None:
         for exit_code, state in ((8, "PENDING"), (1, "FAILURE")):
@@ -540,6 +591,105 @@ class WorktreeScriptTests(unittest.TestCase):
             json.loads(result.stdout)["path"],
         )
 
+    def test_prepare_worktree_rejects_symlink_within_requested_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            repository = root / "repo"
+            initialize_repository(repository)
+            outside = root / "outside"
+            outside.mkdir()
+            requested = root / "requested"
+            requested.mkdir()
+            (requested / "linked").symlink_to(outside, target_is_directory=True)
+            result = run_script(
+                "skills/git-worktrees/scripts/prepare_worktree.py",
+                "feature-safe",
+                "--directory",
+                str(requested / "linked" / "nested"),
+                "--start-point",
+                "HEAD",
+                "--dry-run",
+                cwd=repository,
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("symlink", result.stderr)
+
+    def test_prepare_worktree_rejects_symlink_above_nonexistent_trust_root(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            repository = root / "repo"
+            initialize_repository(repository)
+            real_parent = root / "real"
+            real_parent.mkdir()
+            linked_parent = root / "linked"
+            linked_parent.symlink_to(real_parent, target_is_directory=True)
+            trust_root = linked_parent / "not-created"
+            result = run_script(
+                "skills/git-worktrees/scripts/prepare_worktree.py",
+                "feature-safe",
+                "--path",
+                str(trust_root / "feature-safe"),
+                "--path-root",
+                str(trust_root),
+                "--start-point",
+                "HEAD",
+                "--dry-run",
+                cwd=repository,
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("symlink", result.stderr)
+
+    def test_prepare_worktree_rejects_broken_symlink_ancestor(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            repository = root / "repo"
+            initialize_repository(repository)
+            broken_parent = root / "broken"
+            broken_parent.symlink_to(root / "missing", target_is_directory=True)
+            trust_root = broken_parent / "not-created"
+            result = run_script(
+                "skills/git-worktrees/scripts/prepare_worktree.py",
+                "feature-safe",
+                "--path",
+                str(trust_root / "feature-safe"),
+                "--path-root",
+                str(trust_root),
+                "--start-point",
+                "HEAD",
+                "--dry-run",
+                cwd=repository,
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("symlink", result.stderr)
+
+    def test_prepare_worktree_rejects_directory_with_exact_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            repository = root / "repo"
+            initialize_repository(repository)
+            result = run_script(
+                "skills/git-worktrees/scripts/prepare_worktree.py",
+                "feature-safe",
+                "--directory",
+                str(root),
+                "--path",
+                str(root / "feature-safe"),
+                "--path-root",
+                str(root),
+                "--start-point",
+                "HEAD",
+                "--dry-run",
+                cwd=repository,
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("not allowed with argument", result.stderr)
+
     def test_prepare_worktree_rejects_invalid_branch_name(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             repository = Path(temporary_directory) / "repo"
@@ -590,6 +740,65 @@ class WorktreeScriptTests(unittest.TestCase):
 
         self.assertNotEqual(0, result.returncode)
         self.assertIn("expected-head", result.stderr)
+
+    def test_remove_worktree_rejects_unregistered_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory) / "repo"
+            initialize_repository(repository)
+            unregistered = Path(temporary_directory) / "unregistered"
+            unregistered.mkdir()
+            result = run_script(
+                "skills/worktree-cleanup/scripts/remove_worktree.py",
+                str(unregistered),
+                "--expected-head",
+                git(repository, "rev-parse", "HEAD"),
+                cwd=repository,
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("not a registered worktree", result.stderr)
+
+    def test_remove_worktree_rejects_changed_head(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory) / "repo"
+            initialize_repository(repository)
+            worktree = Path(temporary_directory) / "feature"
+            git(repository, "worktree", "add", "-q", "-b", "feature", str(worktree))
+            audited_head = git(worktree, "rev-parse", "HEAD")
+            (worktree / "tracked.txt").write_text("changed\n", encoding="utf-8")
+            git(worktree, "commit", "-qam", "test: move head")
+            result = run_script(
+                "skills/worktree-cleanup/scripts/remove_worktree.py",
+                str(worktree),
+                "--expected-head",
+                audited_head,
+                cwd=repository,
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("HEAD changed", result.stderr)
+
+    def test_remove_worktree_does_not_prune_unrelated_registration(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            repository = root / "repo"
+            initialize_repository(repository)
+            approved = root / "approved"
+            stale = root / "stale"
+            git(repository, "worktree", "add", "-q", "-b", "approved", str(approved))
+            git(repository, "worktree", "add", "-q", "-b", "stale", str(stale))
+            shutil.rmtree(stale)
+            result = run_script(
+                "skills/worktree-cleanup/scripts/remove_worktree.py",
+                str(approved),
+                "--expected-head",
+                git(approved, "rev-parse", "HEAD"),
+                cwd=repository,
+            )
+            registrations = git(repository, "worktree", "list", "--porcelain")
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn(str(stale), registrations)
 
     def test_remove_worktree_removes_clean_worktree_at_expected_head(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -646,6 +855,7 @@ class DebuggingScriptTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         evidence = json.loads(result.stdout)
         self.assertNotIn("change-0.txt", evidence["recent_diff"])
+        self.assertIn("change-2.txt", evidence["recent_diff"])
         self.assertIn("change-11.txt", evidence["recent_diff"])
         self.assertIn("..HEAD", evidence["recent_range"])
 

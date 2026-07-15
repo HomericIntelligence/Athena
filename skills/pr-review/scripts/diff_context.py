@@ -23,6 +23,9 @@ def main() -> int:
         return 64
     base_ref, head_ref = sys.argv[1:]
     try:
+        for label, value in (("base ref", base_ref), ("head ref", head_ref)):
+            if value.startswith("-"):
+                raise RuntimeError(f"{label} must not begin with '-': {value!r}")
         git("rev-parse", "--verify", f"{base_ref}^{{commit}}")
         git("rev-parse", "--verify", f"{head_ref}^{{commit}}")
         merge_base = git("merge-base", base_ref, head_ref)

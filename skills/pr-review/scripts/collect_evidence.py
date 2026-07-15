@@ -7,6 +7,8 @@ import json
 import subprocess
 import sys
 
+from pr_identity import repository_from_pr_url, validate_pr_identifier
+
 
 FIELDS = (
     "number,title,body,state,isDraft,author,baseRefName,headRefName,commits,files,"
@@ -29,12 +31,23 @@ def main() -> int:
         return 64
     pull_request = sys.argv[1]
     try:
+        validate_pr_identifier(pull_request)
         metadata = json.loads(gh("pr", "view", pull_request, "--json", FIELDS))
         repository_data = json.loads(gh("repo", "view", "--json", "nameWithOwner"))
         repository = repository_data.get("nameWithOwner")
         number = metadata.get("number")
-        if not isinstance(repository, str) or not isinstance(number, int):
+        url = metadata.get("url")
+        if (
+            not isinstance(repository, str)
+            or not isinstance(number, int)
+            or not isinstance(url, str)
+        ):
             raise RuntimeError("GitHub returned incomplete repository or PR identity")
+        pull_repository = repository_from_pr_url(url, number)
+        if pull_repository.casefold() != repository.casefold():
+            raise RuntimeError(
+                f"pull request {url} does not belong to current repository {repository}"
+            )
         changed_files = [
             line
             for line in gh(

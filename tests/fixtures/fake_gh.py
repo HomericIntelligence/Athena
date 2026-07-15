@@ -19,12 +19,18 @@ def main() -> int:
             print(os.environ["FAKE_GH_VIEW_RAW"])
             return 0
         value = arguments[2]
+        number = int(value.rstrip("/").rsplit("/", maxsplit=1)[-1])
+        repository = os.environ.get("FAKE_GH_REPOSITORY", "owner/repository")
         default = {
-            "number": int(value),
+            "number": number,
             "state": "OPEN",
-            "url": f"https://example/{value}",
+            "url": f"https://github.com/{repository}/pull/{number}",
         }
-        print(json.dumps(load_json("FAKE_GH_VIEW_JSON", default)))
+        configured = load_json("FAKE_GH_VIEW_JSON", {})
+        if isinstance(configured, dict):
+            default.update(configured)
+            configured = default
+        print(json.dumps(configured))
         return 0
     if arguments[:2] == ["pr", "list"]:
         print(json.dumps(load_json("FAKE_GH_CANDIDATES_JSON", [])))
@@ -39,7 +45,15 @@ def main() -> int:
         print(os.environ.get("FAKE_GH_CHECKS", "[]"))
         return int(os.environ.get("FAKE_GH_CHECKS_EXIT", "0"))
     if arguments[:2] == ["repo", "view"]:
-        print(json.dumps({"nameWithOwner": "owner/repository"}))
+        print(
+            json.dumps(
+                {
+                    "nameWithOwner": os.environ.get(
+                        "FAKE_GH_REPOSITORY", "owner/repository"
+                    )
+                }
+            )
+        )
         return 0
     if arguments[:1] == ["api"]:
         files = load_json("FAKE_GH_FILES_JSON", [])

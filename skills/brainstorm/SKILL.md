@@ -1,6 +1,6 @@
 ---
 name: brainstorm
-description: Use before any creative work — creating features, building components, adding functionality, or modifying behavior. Explores user intent and requirements before implementation.
+description: Use before complex creative work to explore intent and requirements. Requires the Mnemosyne knowledge backend through advise and fails closed when it cannot be prepared.
 argument-hint: <idea or feature description>
 allowed-tools: [Read, Write, Bash, Grep, Glob, Agent]
 ---
@@ -26,9 +26,10 @@ Complete in order:
 3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
 4. **Propose 2-3 approaches** — with trade-offs and your recommendation
 5. **Present design** — in sections scaled to their complexity, get user approval after each section
-6. **Write design doc** — save to `docs/specs/YYYY-MM-DD-<topic>-design.md` and commit
-7. **Spec self-review** — scan for placeholders, contradictions, ambiguity, scope issues
-8. **User reviews written spec** — ask user to review the spec file before proceeding
+6. **Persist when needed** — write `docs/specs/YYYY-MM-DD-<topic>-design.md` only when complexity,
+   project policy, or a current downstream consumer requires a durable specification
+7. **Design self-review** — scan for placeholders, contradictions, ambiguity, and scope issues
+8. **User confirms the design** — request file review only when a specification was persisted
 9. **Transition to implementation** — invoke `myrmidon-swarm` for complex implementation. If an
    installed planning skill is available, it may track the approved design; otherwise write a short
    numbered implementation plan in the current conversation and proceed sequentially.
@@ -65,10 +66,12 @@ Complete in order:
 
 ## After the Design
 
-**Write spec doc:**
+**Persist a spec only when required:**
 
-- Save to `docs/specs/YYYY-MM-DD-<topic>-design.md`
-- Commit: `docs(specs): add <topic> design document`
+For small changes, keep the approved design in the conversation and proceed. When complexity,
+project policy, or a current downstream consumer requires a durable specification, save it to
+`docs/specs/YYYY-MM-DD-<topic>-design.md` and commit it as
+`docs(specs): add <topic> design document`.
 
 **Spec Self-Review:**
 
@@ -78,7 +81,7 @@ Complete in order:
 4. **Ambiguity check:** Can any requirement be interpreted two ways? Pick one and make it explicit.
 
 **User Review Gate:**
-After the self-review:
+After self-review of a persisted specification:
 > "Spec written and committed to `docs/specs/<filename>`. Please review and let me know if you want changes before we start planning implementation."
 
 Wait for approval. Only proceed once approved.

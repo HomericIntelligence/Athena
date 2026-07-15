@@ -1,6 +1,6 @@
 ---
 name: systematic-debugging
-description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes — requires root cause investigation before solutions
+description: Investigate root cause before fixing bugs or unexpected behavior. Requires the Mnemosyne knowledge backend through advise and fails closed when it cannot be prepared.
 argument-hint: <description of the bug or failure>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 ---
@@ -22,7 +22,7 @@ blocking error, not permission to skip prior-knowledge search.
 
 ## The Iron Law
 
-```
+```text
 NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST
 ```
 
@@ -79,7 +79,7 @@ You MUST complete each phase before proceeding to the next.
 
    **BEFORE proposing fixes, add diagnostic instrumentation:**
 
-   ```
+   ```text
    For EACH component boundary:
      - Log what data enters component
      - Log what data exits component
@@ -157,7 +157,7 @@ You MUST complete each phase before proceeding to the next.
 ## Common Rationalizations
 
 | Excuse | Reality |
-|--------|---------|
+| -------- | --------- |
 | "Issue is simple, don't need process" | Simple issues have root causes too. |
 | "Emergency, no time for process" | Systematic debugging is FASTER than guess-and-check. |
 | "Just try this first, then investigate" | First fix sets the pattern. Do it right from the start. |

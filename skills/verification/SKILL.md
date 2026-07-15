@@ -14,7 +14,7 @@ or side-effecting run. It does query current read-only evidence and may re-execu
 verification commands. Its job is to determine whether the claim is backed by **runnable evidence** per
 [`docs/policies/evidence-integrity.md`](../../docs/policies/evidence-integrity.md).
 
-# Inputs the skill expects
+## Inputs the skill expects
 
 The user must supply, or the skill must collect:
 
@@ -23,7 +23,7 @@ The user must supply, or the skill must collect:
 2. **The evidence pointer.** A path, a URL, or a CI run id. If absent, the
    skill will ask before proceeding.
 
-# Verified workflow
+## Verified workflow
 
 1. **Classify the claim type.**
    - **Completion/fix claim**: the evidence is fresh output from the repository-defined relevant
@@ -49,7 +49,7 @@ The user must supply, or the skill must collect:
 3. **Apply the evidence audit table.**
 
    | Claim type | Accepted evidence | Default verdict |
-   |------------|-------------------|-----------------|
+   | ------------ | ------------------- | ----------------- |
    | CI gate result | `gh pr checks <pr> --json name,state` showing the named gate in SUCCESS state | Run `gh pr checks`; report gate state verbatim |
    | Measured metric in PR body | (a) CI-produced artifact URL, OR (b) re-executed run output | NO-GO unless either is present |
    | Committed `epoch*.log` file in PR | n/a | **NEVER** independent evidence |
@@ -59,7 +59,7 @@ The user must supply, or the skill must collect:
    A NO-GO with a clear "here is what would change it" answer is the right
    outcome for a fabricated claim.
 
-# Failed attempts
+## Failed attempts
 
 - Do NOT call `repo-review` for claim verification; it audits repositories, not individual claims.
 - Do NOT accept a "✓" emoji in a comment as evidence.
@@ -69,7 +69,7 @@ The user must supply, or the skill must collect:
 - Do NOT claim "looks good" because the PR is from a trusted author.
   Under Athena's evidence policy, evidentiary channel matters, not source reputation.
 
-# Output contract
+## Output contract
 
 Return a markdown table:
 
@@ -89,7 +89,7 @@ Return a markdown table:
 
 Then a short paragraph (≤ 4 lines) explaining the verdict.
 
-# References
+## References
 
 - [`docs/policies/evidence-integrity.md`](../../docs/policies/evidence-integrity.md) — governing
   policy.

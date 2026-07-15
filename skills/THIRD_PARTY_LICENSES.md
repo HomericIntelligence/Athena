@@ -14,7 +14,7 @@ a Claude Code skills framework by Jesse Vincent / Prime Radiant.
 The following skills were adapted from obra/superpowers source material:
 
 | Athena Skill | Source Skill(s) |
-|---|---|
+| --- | --- |
 | `test-driven-development` | `skills/test-driven-development/SKILL.md` |
 | `systematic-debugging` | `skills/systematic-debugging/SKILL.md` |
 | `verification` | `skills/verification-before-completion/SKILL.md` |

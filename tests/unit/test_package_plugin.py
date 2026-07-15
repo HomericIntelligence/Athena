@@ -228,6 +228,36 @@ class PackagePluginTests(unittest.TestCase):
             with self.assertRaisesRegex(PackageError, "disallowed member"):
                 inspect_archive(archive_path)
 
+    def test_inspection_rejects_corrupt_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            archive_path = Path(temporary_directory) / "corrupt.tar.gz"
+            archive_path.write_bytes(b"not a tar archive")
+
+            with self.assertRaisesRegex(PackageError, "cannot inspect archive"):
+                inspect_archive(archive_path)
+
+    def test_inspection_rejects_duplicate_members(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            archive_path = Path(temporary_directory) / "duplicate.tar.gz"
+            member = tarfile.TarInfo("docs/duplicate.txt")
+            member.size = 1
+            with tarfile.open(archive_path, mode="w:gz") as archive:
+                archive.addfile(member, io.BytesIO(b"a"))
+                archive.addfile(member, io.BytesIO(b"b"))
+
+            with self.assertRaisesRegex(PackageError, "duplicate members"):
+                inspect_archive(archive_path)
+
+    def test_inspection_rejects_forbidden_member(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            archive_path = Path(temporary_directory) / "forbidden.tar.gz"
+            member = tarfile.TarInfo("docs/.env")
+            member.size = 1
+            write_archive(archive_path, member, b"x")
+
+            with self.assertRaisesRegex(PackageError, "forbidden member"):
+                inspect_archive(archive_path)
+
     def test_plugin_version_supports_semver_and_rejects_unsafe_values(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)

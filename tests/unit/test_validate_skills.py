@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import json
 import shutil
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / "scripts" / "validate_skills.py"
@@ -85,6 +87,69 @@ class DistributionTests(unittest.TestCase):
             "version", "Claude marketplace and manifest versions differ"
         )
 
+    def test_independent_host_manifest_contracts_fail_closed(self) -> None:
+        cases: tuple[tuple[str, Callable[[dict[str, Any]], None], str, str], ...] = (
+            (
+                ".claude-plugin/marketplace.json",
+                lambda value: value.update({"plugins": []}),
+                "claude",
+                "exactly one plugin",
+            ),
+            (
+                ".claude-plugin/marketplace.json",
+                lambda value: value["plugins"][0].update({"name": "wrong"}),
+                "claude",
+                "must be named 'athena'",
+            ),
+            (
+                ".claude-plugin/plugin.json",
+                lambda value: value.update({"skills": "./wrong/"}),
+                "claude",
+                "load './skills/'",
+            ),
+            (
+                ".agents/plugins/marketplace.json",
+                lambda value: value.update({"plugins": []}),
+                "codex",
+                "exactly one plugin",
+            ),
+            (
+                ".agents/plugins/marketplace.json",
+                lambda value: value["plugins"][0].update({"source": "wrong"}),
+                "codex",
+                "local source './'",
+            ),
+            (
+                ".codex-plugin/plugin.json",
+                lambda value: value.update({"skills": "./wrong/"}),
+                "codex",
+                "load './skills/'",
+            ),
+            (
+                ".codex-plugin/plugin.json",
+                lambda value: value.update({"version": "v1"}),
+                "version",
+                "semantic X.Y.Z",
+            ),
+        )
+        for relative, mutate, surface, reason in cases:
+            with self.subTest(relative=relative, reason=reason):
+                path = self.fixture / relative
+                original = path.read_text(encoding="utf-8")
+                value: dict[str, Any] = json.loads(original)
+                mutate(value)
+                path.write_text(json.dumps(value), encoding="utf-8")
+                self.assert_invalid(surface, reason)
+                path.write_text(original, encoding="utf-8")
+
+    def test_private_skill_directory_fails(self) -> None:
+        private = self.fixture / "skills" / "_private"
+        private.mkdir()
+        (private / "SKILL.md").write_text(
+            "---\nname: _private\n---\n", encoding="utf-8"
+        )
+        self.assert_invalid("skills", "private skill directory is forbidden")
+
     def test_unapproved_ecosystem_repository_fails(self) -> None:
         repository = "HomericIntelligence/" + "UnapprovedRepository"
         (self.fixture / "docs" / "bad.md").write_text(
@@ -98,6 +163,24 @@ class DistributionTests(unittest.TestCase):
             f"depends on https://github.com/{repository}", encoding="utf-8"
         )
         self.assert_invalid("self-contained", repository)
+
+    def test_distributable_coverage_prefixed_file_is_inspected(self) -> None:
+        repository = "HomericIntelligence/" + "UnapprovedRepository"
+        (self.fixture / "docs" / ".coverage-bypass.md").write_text(
+            f"depends on {repository}", encoding="utf-8"
+        )
+        self.assert_invalid("self-contained", repository)
+
+    def test_project_prefix_is_rejected(self) -> None:
+        forbidden = "Project" + "Example"
+        (self.fixture / "docs" / "bad.md").write_text(forbidden, encoding="utf-8")
+        self.assert_invalid("self-contained", forbidden)
+
+    def test_missing_required_policy_file_fails(self) -> None:
+        (self.fixture / "docs" / "policies" / "required-checks.md").unlink()
+        self.assert_invalid(
+            "policy", "required file is missing: docs/policies/required-checks.md"
+        )
 
     def test_obsolete_distribution_path_fails(self) -> None:
         (self.fixture / "pyproject.toml").write_text(

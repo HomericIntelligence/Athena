@@ -40,7 +40,7 @@ authentication, clone, fetch, or fast-forward fails.
 ## Search contract
 
 - Corpus: `skills/*.md` directly under the checkout.
-- Exclude `*.notes.md`; treat matching `.history` files as provenance.
+- Exclude `*.notes.md`; use Git and pull-request history as provenance.
 - Search names, descriptions, categories, tags, triggers, failed attempts, and results.
 - Select at most five relevant entries, read each completely, and report its version and
   verification level.
@@ -52,7 +52,7 @@ authentication, clone, fetch, or fast-forward fails.
 ## Consolidation rules
 
 - Prefer one canonical knowledge entry per user intent.
-- Search history before recommending a name that may have been consolidated.
+- Search Git history before recommending a name that may have been consolidated.
 - Athena repository reviews use `repo-review`; PR reviews use `pr-review`.
 - Quick/default review depth is a mode, not a separate skill.
 - Recommend `learn` only for a new trigger, corrected command, parameter, failure mode, or verified

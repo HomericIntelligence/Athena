@@ -44,7 +44,6 @@ def main() -> int:
                 f"worktree HEAD changed: expected {arguments.expected_head}, found {head}"
             )
         git(root, "worktree", "remove", str(target))
-        git(root, "worktree", "prune")
     except RuntimeError as error:
         print(error, file=sys.stderr)
         return 1

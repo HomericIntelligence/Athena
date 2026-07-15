@@ -69,6 +69,10 @@ gate.
 
 ## Authoring a skill
 
+This section and the task entry points below apply to an Athena source checkout. Installed plugin
+archives intentionally omit repository-only development tools such as `scripts/`, `tests/`,
+`pixi.toml`, and `justfile`.
+
 Create `skills/<name>/SKILL.md`. Put executable helpers in `skills/<name>/scripts/`; reference those
 tested files from the skill instead of embedding Bash or Python programs in Markdown.
 
@@ -110,6 +114,6 @@ an invalid hard-dependency override, or any proposal to weaken a security or evi
 | `just format-check` | Check retained repository-tool formatting. |
 | `just typecheck` | Run strict static typing over repository tooling. |
 | `just static` | Run lint, format, and strict type checks over every executable script. |
-| `just markdownlint` | Validate public documentation. |
+| `just markdownlint` | Validate public documentation and shipped skill Markdown. |
 | `just package` | Build and inspect the portable plugin archive. |
 | `just all` | Run the complete local required-check equivalent. |

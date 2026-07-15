@@ -33,8 +33,8 @@ Authentication, detection, checkout, or update failure is fatal.
 ## Before writing
 
 1. Run `advise` with the proposed lesson.
-2. Search flat `skills/*.md`, excluding notes and history, for semantic overlap.
-3. Search `.history` and Git history for prior consolidation.
+2. Search flat `skills/*.md`, excluding optional notes, for semantic overlap.
+3. Search Git history for prior consolidation and provenance.
 4. Query open pull requests in the resolved Mnemosyne repository by candidate title and changed
    `skills/<name>.md` path. If one already changes the canonical entry, inspect it and either stack on
    its branch with explicit authority or stop for user direction; never create a conflicting PR.
@@ -80,8 +80,8 @@ background, up to the host's safe limit. If delegation or background execution i
 the same items sequentially without weakening their evidence requirements.
 
 Every writing subagent receives an isolated worktree based on the same resolved Mnemosyne default-
-branch revision and an explicit, non-overlapping file ownership set. Shared history or catalog files
-belong to the coordinator or one designated integration item. Read-only agents may inspect shared
+branch revision and an explicit, non-overlapping file ownership set. Each canonical knowledge entry
+belongs to the coordinator or one designated integration item. Read-only agents may inspect shared
 evidence but must not edit it. Stop concurrent work on any ownership overlap, changed base revision,
 or unexpected scope. When the host does not provide native isolation, invoke Athena's tested
 `../git-worktrees/scripts/prepare_worktree.py` with the exact `skill/<slug>` branch,
@@ -107,8 +107,9 @@ Never modify the shared checkout's active worktree. From its fetched default bra
    beneath the worktree's `skills/` directory. Include name, searchable description, category, date, semantic version,
    verification level, tags, when-to-use, verified workflow, failed attempts, results, parameters,
    and evidence.
-4. For an amendment, append `.history` with the old/new versions and evidence. Optional raw detail
-   belongs in `.notes.md`.
+4. For an amendment, update only the canonical entry. Git and pull-request history provide
+   provenance; optional raw evidence may be added to `.notes.md` only when a current consumer needs
+   it.
 5. Run the resolved Mnemosyne repository's own validation and tests.
 6. Verify no duplicate intent or stale consolidated name was introduced.
 7. Commit with a cryptographic signature and DCO sign-off, push the feature branch, and open a PR

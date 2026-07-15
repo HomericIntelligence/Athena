@@ -18,7 +18,7 @@ this skill routes to procedural skills. Use both: knowledge first, then process.
 
 ## Decision Tree
 
-```
+```text
 What are you about to do?
 │
 ├─ Implementing a new feature or fixing a bug?
@@ -70,7 +70,7 @@ Example: "Build new feature" → brainstorm first, then test-driven-development 
 These thoughts mean you should still check:
 
 | Thought | Reality |
-|---------|---------|
+| --------- | --------- |
 | "This is just a simple question" | Questions can become tasks. Check. |
 | "I already know the approach" | Skills evolve. Check current version. |
 | "Skill is overkill for this" | Simple things become complex. Use it. |

@@ -8,6 +8,8 @@ import subprocess
 import sys
 from typing import Any
 
+from pr_identity import validate_pr_identifier
+
 
 FIELDS = "number,url,state,headRefName,baseRefName"
 
@@ -29,6 +31,7 @@ def load_object(output: str) -> dict[str, Any]:
 
 def resolve(explicit: str | None) -> dict[str, Any]:
     if explicit:
+        validate_pr_identifier(explicit)
         pull_request = load_object(
             command("gh", "pr", "view", explicit, "--json", FIELDS)
         )

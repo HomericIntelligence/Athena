@@ -9,6 +9,9 @@ import subprocess
 import sys
 
 
+EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+
 def run(*arguments: str, accepted_codes: tuple[int, ...] = (0,)) -> str:
     result = subprocess.run(arguments, capture_output=True, text=True, check=False)
     if result.returncode not in accepted_codes:
@@ -31,7 +34,14 @@ def main() -> int:
         if not recent_revisions:
             raise RuntimeError("cannot resolve HEAD: repository has no commits")
         recent_commits = run("git", "log", "--oneline", "-10")
-        recent_range = f"{recent_revisions[-1]}..HEAD"
+        oldest_parent = run(
+            "git",
+            "rev-parse",
+            "--verify",
+            f"{recent_revisions[-1]}^",
+            accepted_codes=(0, 128),
+        ).strip()
+        recent_range = f"{oldest_parent or EMPTY_TREE}..HEAD"
         recent_diff = run("git", "diff", "--stat", recent_range)
         pattern_matches = run(
             "git",

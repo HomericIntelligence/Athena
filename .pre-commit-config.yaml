@@ -3,7 +3,6 @@ repos:
     rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # v6.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: ^skills/
       - id: end-of-file-fixer
       - id: check-merge-conflict
       - id: check-added-large-files
@@ -18,7 +17,7 @@ repos:
     rev: 7339935a3036f096ee0d7f1f047a9ec41707d4c1 # v0.20.0
     hooks:
       - id: markdownlint-cli2
-        files: '^(README\.md|AGENTS\.md|CLAUDE\.md|CONTRIBUTING\.md|CODE_OF_CONDUCT\.md|SECURITY\.md|docs/.*\.md)$'
+        files: '^(README\.md|AGENTS\.md|CLAUDE\.md|CONTRIBUTING\.md|CODE_OF_CONDUCT\.md|SECURITY\.md|docs/.*\.md|skills/.*\.md)$'
 
   - repo: local
     hooks:

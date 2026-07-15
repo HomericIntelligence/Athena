@@ -27,15 +27,18 @@ def reject_symlinks_below(trust_root: Path, target: Path) -> None:
     lexical_root = trust_root.absolute()
     lexical_target = target.absolute()
     try:
-        relative = lexical_target.relative_to(lexical_root)
+        lexical_target.relative_to(lexical_root)
     except ValueError as error:
         raise RuntimeError(
             f"worktree path escapes trusted root {lexical_root}"
         ) from error
-    current = lexical_root
-    if current.is_symlink():
-        raise RuntimeError(f"worktree trusted root is a symlink: {current}")
-    for part in relative.parts:
+    existing_root = lexical_root
+    while not existing_root.exists() and existing_root != existing_root.parent:
+        existing_root = existing_root.parent
+    if existing_root.is_symlink():
+        raise RuntimeError(f"worktree path component is a symlink: {existing_root}")
+    current = existing_root
+    for part in lexical_target.relative_to(existing_root).parts:
         current /= part
         if current.is_symlink():
             raise RuntimeError(f"worktree path component is a symlink: {current}")
@@ -58,9 +61,8 @@ def select_path(
         return resolved_path, resolved_path.is_relative_to(root)
     if requested is not None:
         base = requested if requested.is_absolute() else root / requested
-        if base.is_symlink():
-            raise RuntimeError(f"worktree base directory is a symlink: {base}")
         path = base / branch
+        reject_symlinks_below(base, path)
         return path.resolve(), path.resolve().is_relative_to(root)
     for directory_name in (".worktrees", "worktrees"):
         directory = root / directory_name
@@ -90,8 +92,9 @@ def verify_ignored(root: Path, path: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("branch")
-    parser.add_argument("--directory", type=Path)
-    parser.add_argument("--path", type=Path)
+    path_selection = parser.add_mutually_exclusive_group()
+    path_selection.add_argument("--directory", type=Path)
+    path_selection.add_argument("--path", type=Path)
     parser.add_argument("--path-root", type=Path)
     parser.add_argument("--start-point", required=True)
     parser.add_argument("--dry-run", action="store_true")

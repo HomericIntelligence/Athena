@@ -38,8 +38,8 @@ sequentially in the current agent. Never require a branded model or vendor-speci
 
 ### 2. Read all evidence
 
-Full coverage is mandatory. Partition the inventory across the 15 sections below so every file is
-opened by at least one reviewer. Read all source, tests, manifests, workflows, and public docs.
+Full coverage is mandatory. Partition the inventory across the 15 sections in the criteria reference
+so every file is opened by at least one reviewer. Read all source, tests, manifests, workflows, and public docs.
 Inspect relevant Git history and live GitHub configuration when access exists. Report any read gap;
 do not silently sample.
 
@@ -58,7 +58,7 @@ only then assign a letter grade. Do not use a provisional letter grade as the sc
 Use this scale without rounding up:
 
 | Grade | Score | Evidence standard |
-|---|---:|---|
+| --- | ---: | --- |
 | A | 93–100 | Near exemplary; no critical/major issues and at most two minor issues. |
 | B | 80–92 | Strong; no critical issues and at most one major issue. |
 | C | 70–79 | Functional but contains several material gaps. |
@@ -75,36 +75,8 @@ assumption and treat earlier bootstrap interfaces as N/A for compatibility scori
 
 ### 4. Evaluate all sections
 
-1. **Structure and organization** — domain boundaries, separation of source/tests/docs/config,
-   naming, discoverability, unnecessary duplication, nesting.
-2. **Documentation** — accurate purpose, prerequisites, per-platform install/use/update/removal,
-   contributing, architecture, security, release/rollback, links, single sources of truth.
-3. **Architecture and design** — dependency direction, interfaces, error/config strategy,
-   proportional complexity, extensibility without speculative abstraction.
-4. **Source quality** — readability, cohesion, typing, errors, logging, dead code, hardcoded state,
-   lint/format enforcement, DRY and idiomatic implementation.
-5. **Testing** — unit/integration/end-to-end contracts, edge/error paths, isolation, coverage scope,
-   speed, disabled tests, and test-first history.
-6. **CI/CD** — required PR/main gates, reproducible builds, tests/security/build/install stages,
-   caching, artifacts, releases, rollback, and actual branch/ruleset enforcement.
-7. **Dependencies** — correct package identities, lockfiles, bounded versions, production audits,
-   license/SBOM checks, update policy, dev/runtime separation.
-8. **Security** — secrets/PII, input and command safety, permissions, supply-chain controls, SAST,
-   dependency/secret scanning, disclosure policy, and host-specific guardrails.
-9. **Safety and reliability** — fail-closed behavior, partial failure, retries/timeouts, integrity,
-   idempotency, recovery/rollback, resource bounds, and observability where applicable.
-10. **Planning and project management** — issue/PR templates, roadmap, priorities, review rules,
-    commit/branch/release process, technical-debt and definition-of-done evidence.
-11. **AI agent tooling** — accurate `AGENTS.md`, host pointers, skills, tool portability, permission
-    boundaries, human approval gates, memory/context, and executable host contracts.
-12. **Packaging and distribution** — artifact contents, install/upgrade channels, versioning,
-    compatibility, release automation, artifact smoke tests.
-13. **Developer experience** — one-command bootstrap, reproducible tools, task runner, editor and
-    debugging support, fast feedback, actionable failure messages.
-14. **API/CLI design** — naming, versioning, validation, errors, idempotency, discoverability, and
-    documentation for every public API or command. Mark N/A only if none exists.
-15. **Compliance and governance** — valid license, third-party notices, conduct/security policy,
-    privacy/accessibility/data rules where relevant, ownership and audit trail.
+Evaluate all 15 authoritative sections in [`references/criteria.md`](references/criteria.md). That
+file owns section names and criteria; do not maintain a second section registry here.
 
 Read and explicitly apply every decision rule in
 [`../../docs/policies/development.md`](../../docs/policies/development.md): KISS, YAGNI, TDD, DRY,

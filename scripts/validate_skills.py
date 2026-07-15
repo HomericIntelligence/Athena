@@ -228,7 +228,7 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
     for path in repo_root.rglob("*"):
         if (
             not path.is_file()
-            or path.name.startswith(".coverage")
+            or (path.parent == repo_root and path.name.startswith(".coverage"))
             or any(part in ignored_parts for part in path.parts)
         ):
             continue

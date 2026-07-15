@@ -82,7 +82,7 @@ When work is done, invoke `finish-branch` or use the separately approved removal
 ## Quick Reference
 
 | Situation | Action |
-|-----------|--------|
+| ----------- | -------- |
 | `.worktrees/` exists + ignored | Use it |
 | Neither exists | Use `/tmp/<project>-<branch>` |
 | Directory not ignored | Add to `.gitignore` + commit first |
