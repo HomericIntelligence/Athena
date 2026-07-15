@@ -117,6 +117,20 @@ class PackagePluginTests(unittest.TestCase):
                 all(name.split("/", 1)[0] in ARCHIVE_ROOTS for name in names)
             )
 
+    def test_source_python_cache_directories_are_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            create_repository(root)
+            cache = root / "skills" / "__pycache__"
+            cache.mkdir()
+            (cache / "_cli.cpython-313.pyc").write_bytes(b"generated cache")
+
+            archive_path, _ = build_package(root)
+
+            with tarfile.open(archive_path, mode="r:gz") as archive:
+                names = {member.name for member in archive.getmembers()}
+            self.assertFalse(any("__pycache__" in name for name in names))
+
     def test_missing_required_member_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)

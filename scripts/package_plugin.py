@@ -123,6 +123,8 @@ def paths_to_archive(repo_root: Path) -> list[tuple[Path, PurePosixPath]]:
         if root.is_dir():
             for path in root.rglob("*"):
                 relative_path = PurePosixPath(path.relative_to(repo_root).as_posix())
+                if "__pycache__" in relative_path.parts:
+                    continue
                 _validate_source(path, relative_path)
                 paths.append((path, relative_path))
     return sorted(paths, key=lambda item: item[1].as_posix())

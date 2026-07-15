@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import redirect_stderr, redirect_stdout
+import io
 import json
 import os
 from pathlib import Path
@@ -10,6 +12,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
+
+from skills._cli import argument_parser
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -92,6 +97,34 @@ class ScriptConventionTests(unittest.TestCase):
                     f"{path.name} {expected_version}", result.stdout.strip()
                 )
 
+    def test_shared_version_action_is_lazy_and_reports_manifest_failures(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            manifest = root / ".codex-plugin" / "plugin.json"
+            manifest.parent.mkdir()
+            with patch("skills._cli.PLUGIN_ROOT", root):
+                parser = argument_parser()
+                parser.parse_args([])
+
+                for document in ("not-json\n", "[]\n"):
+                    with self.subTest(document=document):
+                        manifest.write_text(document, encoding="utf-8")
+                        errors = io.StringIO()
+                        with (
+                            redirect_stderr(errors),
+                            self.assertRaises(SystemExit) as exit,
+                        ):
+                            parser.parse_args(["--version"])
+                        self.assertEqual(1, exit.exception.code)
+                        self.assertIn("cannot read plugin version", errors.getvalue())
+
+                manifest.write_text('{"version": "0.2.0"}\n', encoding="utf-8")
+                output = io.StringIO()
+                with redirect_stdout(output), self.assertRaises(SystemExit) as exit:
+                    parser.parse_args(["--version"])
+                self.assertEqual(0, exit.exception.code)
+                self.assertEqual("0.2.0", output.getvalue().strip().split()[-1])
+
 
 class PullRequestScriptTests(unittest.TestCase):
     def make_fake_tools(
@@ -155,7 +188,7 @@ class PullRequestScriptTests(unittest.TestCase):
                 env=env,
             )
 
-        self.assertEqual(1, missing.returncode)
+        self.assertEqual(2, missing.returncode)
         self.assertIn("no open pull request", missing.stderr)
         self.assertEqual(2, usage.returncode)
         self.assertIn("usage:", usage.stderr)
@@ -240,7 +273,7 @@ class PullRequestScriptTests(unittest.TestCase):
                 env=self.make_fake_tools(root, candidates),
             )
 
-        self.assertEqual(1, result.returncode)
+        self.assertEqual(3, result.returncode)
         self.assertIn("https://example/1", result.stderr)
         self.assertIn("https://example/2", result.stderr)
 

@@ -85,7 +85,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     except json.JSONDecodeError as error:
         print(error, file=sys.stderr)
         return 1
-    except (LookupError, RuntimeError, ValueError) as error:
+    except LookupError as error:
+        print(error, file=sys.stderr)
+        return 2
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 3
+    except RuntimeError as error:
         print(error, file=sys.stderr)
         return 1
     print(json.dumps(pull_request, sort_keys=True))

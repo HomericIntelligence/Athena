@@ -309,19 +309,70 @@ def _validate_cli_conventions(repo_root: Path = REPO_ROOT) -> list[ValidationErr
                 )
             )
             continue
-        imports_factory = any(
-            isinstance(node, ast.ImportFrom)
-            and node.module == "skills._cli"
-            and any(alias.name == "argument_parser" for alias in node.names)
+        factory_names = {
+            alias.asname or alias.name
             for node in ast.walk(tree)
-        )
-        calls_factory = any(
+            if isinstance(node, ast.ImportFrom) and node.module == "skills._cli"
+            for alias in node.names
+            if alias.name == "argument_parser"
+        }
+        parser_names = {
+            target.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name)
+            and node.value.func.id in factory_names
+            for target in node.targets
+            if isinstance(target, ast.Name)
+        }
+        parses_arguments = any(
             isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "argument_parser"
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "parse_args"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id in parser_names
             for node in ast.walk(tree)
         )
-        if not imports_factory or not calls_factory:
+        argparse_module_names = {
+            alias.asname or alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+            if alias.name == "argparse"
+        }
+        argparse_constructor_names = {
+            alias.asname or alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module == "argparse"
+            for alias in node.names
+            if alias.name == "ArgumentParser"
+        }
+        constructs_argparse_directly = any(
+            isinstance(node, ast.Call)
+            and (
+                (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "ArgumentParser"
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id in argparse_module_names
+                )
+                or (
+                    isinstance(node.func, ast.Name)
+                    and node.func.id in argparse_constructor_names
+                )
+            )
+            for node in ast.walk(tree)
+        )
+        if constructs_argparse_directly:
+            errors.append(
+                ValidationError(
+                    "cli",
+                    f"{path.relative_to(repo_root)} must not construct "
+                    "argparse.ArgumentParser directly",
+                )
+            )
+        elif not factory_names or not parser_names or not parses_arguments:
             errors.append(
                 ValidationError(
                     "cli",
