@@ -1,31 +1,5 @@
-# Codex marketplace-scanner ignore file.
-# Mirrors .gitignore for paths that should not be parsed/skipped by Codex when
-# scanning the Athena marketplace for plugin metadata.
-
-# Generated plugin archive
-dist/
-
-# Python validation caches
-__pycache__/
-
-# Python virtual environments
-.venv/
-venv/
-.pixi/
-
-# Editor / OS
-.idea/
-.vscode/
-.DS_Store
-*.swp
-*.swo
-
-# Secrets / credentials
-.env
-.env.*
-*.pem
-*.key
-secrets/
+# Codex marketplace-scanner exclusions that are not already owned by .gitignore.
+# Do not duplicate general repository ignores here.
 
 # Git internals
 .git/

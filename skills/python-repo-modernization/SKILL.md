@@ -1,6 +1,6 @@
 ---
 name: python-repo-modernization
-description: Modernize a Python repository using required Hephaestus automation as a reference. Resolves HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER, a canonically forked repository in the current Organization when the viewer has push/maintain/admin permission, or HomericIntelligence/Hephaestus at ~/.agent_brain/automation and fails when unavailable.
+description: Modernize a Python repository using required Hephaestus automation as a reference. Uses Athena's canonical dependency-resolution contract and fails if ~/.agent_brain/automation cannot be prepared.
 argument-hint: <path to Python repository>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
 ---
@@ -12,13 +12,10 @@ target's product requirements; it is not a mechanical conversion to one package 
 
 ## Required reference
 
-Resolve Hephaestus using explicit `HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER`, then a canonical fork in
-the current Organization only when the viewer has push/maintain/admin permission on the current
-repository, or `HomericIntelligence/Hephaestus`. Prepare it at
-`$HOME/.agent_brain/automation` under
-[`docs/dependency-resolution.md`](../../docs/dependency-resolution.md). Failure is blocking.
-Report repository, SHA, and trust basis. Before using an automatic fork, reverify Organization
-ownership, viewer permission, `parent.full_name`, identity, default branch, tip SHA, and checkout.
+Prepare Hephaestus at `$HOME/.agent_brain/automation` by following the canonical
+[`dependency-resolution` contract](../../docs/dependency-resolution.md) exactly. Do not restate or
+override that contract here. Report repository, SHA, and trust basis; any preparation or
+revalidation failure is blocking.
 
 Use the resolved checkout to study current policy, typing, testing, CI, security, and release
 patterns. Substitute the target repository's package name, source layout, commands, and publication

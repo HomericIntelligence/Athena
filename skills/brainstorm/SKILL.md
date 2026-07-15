@@ -73,6 +73,11 @@ project policy, or a current downstream consumer requires a durable specificatio
 `docs/specs/YYYY-MM-DD-<topic>-design.md` and commit it as
 `docs(specs): add <topic> design document`.
 
+Before writing or committing a specification, read the target repository's mutation, signing, DCO,
+and review policy and establish explicit user authority for the proposed file and commit. Approval
+of the design content alone does not authorize a repository mutation. Without that authority, keep
+the approved design in the conversation and hand off the proposed path and commit subject.
+
 **Spec Self-Review:**
 
 1. **Placeholder scan:** Any "TBD", "TODO", incomplete sections? Fix them.

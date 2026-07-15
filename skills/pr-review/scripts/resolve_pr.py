@@ -4,11 +4,16 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import subprocess
 import sys
-from typing import Any
+from typing import Any, Sequence
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from pr_identity import validate_pr_identifier
+from skills._cli import argument_parser
 
 
 FIELDS = "number,url,state,headRefName,baseRefName"
@@ -71,22 +76,16 @@ def resolve(explicit: str | None) -> dict[str, Any]:
     raise ValueError(f"multiple open pull requests found for {branch!r}:\n{rendered}")
 
 
-def main() -> int:
-    if len(sys.argv) > 2:
-        print("usage: resolve_pr.py [PR_NUMBER_OR_URL]", file=sys.stderr)
-        return 64
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argument_parser(description=__doc__)
+    parser.add_argument("pull_request", nargs="?", metavar="PR_NUMBER_OR_URL")
+    arguments = parser.parse_args(argv)
     try:
-        pull_request = resolve(sys.argv[1] if len(sys.argv) == 2 else None)
-    except LookupError as error:
-        print(error, file=sys.stderr)
-        return 2
+        pull_request = resolve(arguments.pull_request)
     except json.JSONDecodeError as error:
         print(error, file=sys.stderr)
         return 1
-    except ValueError as error:
-        print(error, file=sys.stderr)
-        return 3
-    except RuntimeError as error:
+    except (LookupError, RuntimeError, ValueError) as error:
         print(error, file=sys.stderr)
         return 1
     print(json.dumps(pull_request, sort_keys=True))

@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import argparse
 import gzip
 from hashlib import sha256
 import io
@@ -14,10 +13,12 @@ import sys
 import tarfile
 from typing import Final, Sequence
 
+sys.dont_write_bytecode = True
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts.semver import SEMVER_PATTERN
+from scripts.semver import SEMVER_PATTERN  # noqa: E402
+from skills._cli import argument_parser  # noqa: E402
 
 
 ARCHIVE_ROOTS: Final[tuple[str, ...]] = (
@@ -73,10 +74,11 @@ def forbidden_name(path: PurePosixPath) -> bool:
         and path.parts[0] == "skills"
         and path.parts[2] == "scripts"
     )
+    shared_cli = path == PurePosixPath("skills/_cli.py")
     return (
         "__pycache__" in lowered_parts
         or suffix in GENERATED_PYTHON_SUFFIXES
-        or (suffix == ".py" and not skill_script)
+        or (suffix == ".py" and not skill_script and not shared_cli)
         or lowered_name in SENSITIVE_NAMES
         or lowered_name == ".env"
         or lowered_name.startswith(".env.")
@@ -224,7 +226,7 @@ def _validate_repository(repo_root: Path) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Validate the repository and build its plugin distribution."""
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argument_parser(description=__doc__)
     parser.add_argument(
         "--root", type=Path, help="repository root (defaults to Git root)"
     )

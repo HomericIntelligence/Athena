@@ -3,10 +3,16 @@
 
 from __future__ import annotations
 
-import argparse
 import json
+from pathlib import Path
 import subprocess
+import sys
 from typing import Sequence
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from skills._cli import argument_parser
 
 
 def git(*arguments: str, check: bool = True) -> str:
@@ -53,7 +59,7 @@ def review_metadata() -> dict[str, str]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argument_parser(description=__doc__)
     parser.add_argument("--metadata-only", action="store_true")
     arguments = parser.parse_args(argv)
     try:

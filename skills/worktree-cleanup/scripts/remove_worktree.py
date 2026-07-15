@@ -3,10 +3,14 @@
 
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 import subprocess
 import sys
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from skills._cli import argument_parser
 
 
 def git(cwd: Path, *arguments: str) -> str:
@@ -19,7 +23,7 @@ def git(cwd: Path, *arguments: str) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
+    parser = argument_parser(description=__doc__)
     parser.add_argument("path", type=Path)
     parser.add_argument("--expected-head", required=True)
     arguments = parser.parse_args()

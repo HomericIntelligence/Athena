@@ -3,11 +3,16 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 from pathlib import Path
 import sys
 from typing import Any, Sequence
+
+sys.dont_write_bytecode = True
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from skills._cli import argument_parser  # noqa: E402
 
 
 def coverage_failures(report: object, minimum: float) -> list[str]:
@@ -42,7 +47,7 @@ def expected_scripts(root: Path) -> set[str]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argument_parser(description=__doc__)
     parser.add_argument("report", type=Path)
     parser.add_argument("--minimum", type=float, default=80.0)
     parser.add_argument("--root", type=Path, default=Path.cwd())

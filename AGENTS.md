@@ -75,6 +75,9 @@ archives intentionally omit repository-only development tools such as `scripts/`
 
 Create `skills/<name>/SKILL.md`. Put executable helpers in `skills/<name>/scripts/`; reference those
 tested files from the skill instead of embedding Bash or Python programs in Markdown.
+Every executable Python helper, including repository tooling, constructs its CLI with
+`skills._cli.argument_parser` so help, usage failures, and the plugin `--version` contract remain
+consistent. The repository validator rejects executable scripts that bypass this factory.
 
 ```yaml
 ---

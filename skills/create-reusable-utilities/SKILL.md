@@ -1,6 +1,6 @@
 ---
 name: create-reusable-utilities
-description: Port utilities into required Hephaestus automation. Resolves HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER, a canonically forked repository in the current Organization when the viewer has push/maintain/admin permission, or HomericIntelligence/Hephaestus at ~/.agent_brain/automation and fails when unavailable.
+description: Port utilities into required Hephaestus automation. Uses Athena's canonical dependency-resolution contract and fails if ~/.agent_brain/automation cannot be prepared.
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
 ---
 
@@ -11,21 +11,11 @@ shared Hephaestus automation repository.
 
 ## Required repository
 
-Resolve Hephaestus in this order:
-
-1. Explicit `HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER`.
-2. A GitHub-verified `<current-repository-owner>/Hephaestus` fork when the current owner is an
-   Organization, the viewer has push/maintain/admin permission on the current repository, and its
-   `parent.full_name` is `HomericIntelligence/Hephaestus`. Modified organization fork content is
-   allowed after all gates pass.
-3. `HomericIntelligence/Hephaestus`.
-
-Prepare it at `$HOME/.agent_brain/automation` under
-[`docs/dependency-resolution.md`](../../docs/dependency-resolution.md). An invalid override,
-identity mismatch, authentication failure, or checkout/update failure is blocking.
-Report the exact repository, SHA, and trust basis. For an automatic fork, immediately before use
-reverify Organization ownership, viewer permission, `parent.full_name`, repository identity,
-default branch, tip SHA, and checkout SHA; any mismatch is blocking.
+Prepare Hephaestus at `$HOME/.agent_brain/automation` by following the canonical
+[`dependency-resolution` contract](../../docs/dependency-resolution.md) exactly. Do not restate its
+owner precedence, trust gates, checkout rules, or revalidation requirements in this skill. Report
+the exact repository, commit SHA, and trust basis. Any preparation or revalidation failure is
+blocking.
 
 ## External-write authority checkpoint
 

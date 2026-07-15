@@ -3,12 +3,16 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from skills._cli import argument_parser
 
 
 def git(
@@ -83,7 +87,7 @@ def verify_ignored(root: Path, path: Path) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
+    parser = argument_parser(description=__doc__)
     parser.add_argument("branch")
     path_selection = parser.add_mutually_exclusive_group()
     path_selection.add_argument("--directory", type=Path)

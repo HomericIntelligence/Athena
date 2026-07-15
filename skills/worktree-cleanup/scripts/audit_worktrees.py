@@ -7,7 +7,12 @@ import json
 from pathlib import Path
 import subprocess
 import sys
-from typing import Any
+from typing import Any, Sequence
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from skills._cli import argument_parser
 
 
 def git(cwd: Path, *arguments: str) -> str:
@@ -33,7 +38,9 @@ def parse_porcelain(output: str) -> list[dict[str, Any]]:
     return records
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argument_parser(description=__doc__)
+    parser.parse_args(argv)
     try:
         root = Path(git(Path.cwd(), "rev-parse", "--show-toplevel").strip())
         records = parse_porcelain(git(root, "worktree", "list", "--porcelain"))

@@ -3,186 +3,32 @@
 
 from __future__ import annotations
 
-import argparse
-from hashlib import sha256
 import json
 import os
 from pathlib import Path
-import re
 import subprocess
 import sys
 from typing import Any
 
+sys.dont_write_bytecode = True
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-CONVENTIONAL_SUBJECT = re.compile(
-    r"^(feat|fix|docs|refactor|test|chore|revert|ci|build|perf)"
-    r"(\([a-z0-9._/-]+\))?!?: .+"
+from scripts.policies.pull_request import (  # noqa: E402
+    evaluate_pull_request as evaluate_pull_request,
+    flatten_commit_pages as flatten_commit_pages,
 )
-ISSUE_LINK = re.compile(r"(?m)^Closes #[0-9]+\s*$")
-DCO_TRAILER = re.compile(r"(?mi)^Signed-off-by: .+ <.+>$")
-SEMVER_TAG = re.compile(r"^v([0-9]+\.[0-9]+\.[0-9]+)$")
-SILENT_FAILURE = re.compile(r"\|\|[ \t]*true(?:[ \t]*$|[ \t]+#)", re.MULTILINE)
-CONTINUE_ON_ERROR = re.compile(
-    r"^[ \t]*continue-on-error:[ \t]*true[ \t]*$", re.MULTILINE
+from scripts.policies.release import (  # noqa: E402
+    evaluate_release as evaluate_release,
+    verify_release_assets as verify_release_assets,
 )
-
-
-def flatten_commit_pages(pages: object) -> list[dict[str, Any]]:
-    """Validate GraphQL pagination and return every commit node."""
-    if not isinstance(pages, list) or not pages:
-        raise ValueError("commit pagination returned no pages")
-    commits: list[dict[str, Any]] = []
-    total_count: int | None = None
-    for page_number, page in enumerate(pages, start=1):
-        try:
-            connection = page["data"]["repository"]["pullRequest"]["commits"]
-            nodes = connection["nodes"]
-            page_info = connection["pageInfo"]
-        except (KeyError, TypeError) as error:
-            raise ValueError(
-                f"commit pagination page {page_number} is malformed: {error}"
-            ) from error
-        if not isinstance(nodes, list):
-            raise ValueError(f"commit pagination page {page_number} has invalid nodes")
-        if not isinstance(page_info, dict) or not isinstance(
-            page_info.get("hasNextPage"), bool
-        ):
-            raise ValueError(
-                f"commit pagination page {page_number} has invalid pageInfo"
-            )
-        if any(
-            not isinstance(node, dict) or not isinstance(node.get("commit"), dict)
-            for node in nodes
-        ):
-            raise ValueError(
-                f"commit pagination page {page_number} has invalid commit node"
-            )
-        page_total = connection.get("totalCount")
-        if not isinstance(page_total, int):
-            raise ValueError(
-                f"commit pagination page {page_number} has invalid totalCount"
-            )
-        if total_count is None:
-            total_count = page_total
-        elif page_total != total_count:
-            raise ValueError("commit count changed during pagination")
-        commits.extend(nodes)
-        has_next = page_info.get("hasNextPage")
-        if page_number < len(pages) and not has_next:
-            raise ValueError("commit pagination returned an unexpected extra page")
-        if page_number == len(pages) and has_next:
-            raise ValueError("commit pagination stopped before the final page")
-    if total_count is None or len(commits) != total_count:
-        raise ValueError(
-            f"commit pagination incomplete: expected {total_count}, got {len(commits)}"
-        )
-    return commits
-
-
-def evaluate_pull_request(
-    *, body: str, author: str, commits: list[dict[str, Any]]
-) -> list[str]:
-    """Return all pull-request policy violations."""
-    errors: list[str] = []
-    if author != "dependabot[bot]" and ISSUE_LINK.search(body) is None:
-        errors.append("PR body must contain a standalone 'Closes #N' line")
-    for node in commits:
-        commit = node.get("commit", {})
-        oid = str(commit.get("oid", "<unknown>"))
-        message = str(commit.get("message", ""))
-        signature = commit.get("signature") or {}
-        if not signature.get("isValid", False):
-            errors.append(f"{oid}: commit signature is missing or invalid")
-        if (
-            author != "dependabot[bot]"
-            and CONVENTIONAL_SUBJECT.match(message.splitlines()[0] if message else "")
-            is None
-        ):
-            errors.append(f"{oid}: subject is not Conventional Commits")
-        if author != "dependabot[bot]" and DCO_TRAILER.search(message) is None:
-            errors.append(f"{oid}: DCO Signed-off-by trailer is missing")
-    return errors
-
-
-def failed_required_jobs(
-    event_name: str, results: dict[str, dict[str, str]]
-) -> dict[str, str]:
-    """Return required jobs whose result is not acceptable for this event."""
-    failures: dict[str, str] = {}
-    for name, item in results.items():
-        result = item.get("result", "missing")
-        allowed_skip = name == "pr-policy" and event_name != "pull_request"
-        if result != "success" and not (result == "skipped" and allowed_skip):
-            failures[name] = result
-    return failures
-
-
-def evaluate_release(
-    *,
-    tag: str,
-    workflow_sha: str,
-    tag_commit: str,
-    annotated: bool,
-    signature_verified: bool,
-    main_protected: bool,
-    manifest_versions: dict[str, str],
-) -> list[str]:
-    """Return release-policy violations independent of GitHub transport."""
-    errors: list[str] = []
-    match = SEMVER_TAG.fullmatch(tag)
-    if match is None:
-        errors.append("release tag must be an exact vMAJOR.MINOR.PATCH version")
-        expected_version = None
-    else:
-        expected_version = match.group(1)
-    if not annotated:
-        errors.append("release tag must be annotated")
-    if not signature_verified:
-        errors.append("GitHub must verify the tag signature")
-    if not main_protected:
-        errors.append("main must be protected before publishing a release")
-    if tag_commit != workflow_sha:
-        errors.append("tag target does not match the workflow commit")
-    if expected_version is not None:
-        for name, version in sorted(manifest_versions.items()):
-            if version != expected_version:
-                errors.append(
-                    f"{name} manifest version {version} does not match tag {expected_version}"
-                )
-    return errors
-
-
-def verify_release_assets(directory: Path) -> tuple[str, str]:
-    """Verify the single downloaded plugin archive and its checksum file."""
-    archives = sorted(directory.glob("athena-plugin-*.tar.gz"))
-    checksums = sorted(directory.glob("athena-plugin-*.tar.gz.sha256"))
-    if len(archives) != 1 or len(checksums) != 1:
-        raise ValueError(
-            "release assets must contain exactly one plugin archive and one checksum"
-        )
-    archive = archives[0]
-    checksum = checksums[0]
-    fields = checksum.read_text(encoding="utf-8").strip().split()
-    if len(fields) != 2 or fields[1] != archive.name:
-        raise ValueError("checksum file does not identify the downloaded archive")
-    actual = sha256(archive.read_bytes()).hexdigest()
-    if fields[0] != actual:
-        raise ValueError(f"checksum mismatch for {archive.name}")
-    return archive.name, checksum.name
-
-
-def find_suppressions(files: dict[str, str]) -> list[str]:
-    """Return silent-failure policy violations from tracked executable configuration."""
-    findings: list[str] = []
-    for path, text in sorted(files.items()):
-        for pattern, description in (
-            (SILENT_FAILURE, "silent `|| true` fallback"),
-            (CONTINUE_ON_ERROR, "continue-on-error enabled"),
-        ):
-            for match in pattern.finditer(text):
-                line = text.count("\n", 0, match.start()) + 1
-                findings.append(f"{path}:{line}: {description}")
-    return findings
+from scripts.policies.required_jobs import (  # noqa: E402
+    failed_required_jobs as failed_required_jobs,
+)
+from scripts.policies.suppressions import (  # noqa: E402
+    find_suppressions as find_suppressions,
+)
+from skills._cli import argument_parser  # noqa: E402
 
 
 def _run_json(command: list[str]) -> Any:
@@ -333,7 +179,7 @@ def _publish_release_command(directory: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argument_parser(description=__doc__)
     parser.add_argument(
         "command",
         choices=(

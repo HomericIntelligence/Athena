@@ -100,7 +100,8 @@ not authorize removal; `worktree-cleanup` must re-audit it and obtain per-path G
 
 **Pairs with:**
 
-- Invoke `finish-branch` for cleanup after work is complete.
+- Invoke `tidy` for branch/worktree cleanup after work is complete; it routes any removal through
+  the separately approved `worktree-cleanup` flow.
 - Invoke `verification` before finishing and cleaning up.
 
 ---

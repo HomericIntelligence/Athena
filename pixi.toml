@@ -21,7 +21,7 @@ validate = "python scripts/validate_skills.py"
 test = "coverage erase && PYTHONDONTWRITEBYTECODE=1 ATHENA_COVERAGE=1 coverage run --branch --parallel-mode --source=scripts,skills -m unittest discover -s tests -v && coverage combine && coverage json -o coverage.json && python scripts/coverage_policy.py coverage.json --minimum 80 && coverage report --show-missing"
 lint = "ruff check scripts tests skills"
 format-check = "ruff format --check scripts tests skills"
-typecheck = "mypy --strict scripts tests skills/*/scripts/*.py"
+typecheck = "mypy --strict --explicit-package-bases scripts tests skills/_cli.py skills/*/scripts/*.py"
 markdownlint = "markdownlint README.md AGENTS.md CLAUDE.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md docs skills"
 workflow-lint = "yamllint .github/workflows"
 workflow-schema = "check-jsonschema --builtin-schema vendor.github-workflows .github/workflows/*.yml"
@@ -30,4 +30,4 @@ static = { depends-on = ["lint", "format-check", "typecheck"] }
 workflow-check = { depends-on = ["workflow-lint", "workflow-schema"] }
 check = { depends-on = ["validate", "test", "static", "markdownlint", "workflow-check"] }
 all = { depends-on = ["check", "package"] }
-clean = { cmd = "rm -rf dist .coverage .pytest_cache __pycache__ scripts/__pycache__ tests/__pycache__" }
+clean = { cmd = "rm -rf dist .coverage .pytest_cache __pycache__ scripts/__pycache__ scripts/policies/__pycache__ skills/__pycache__ skills/*/scripts/__pycache__ tests/__pycache__ tests/unit/__pycache__ tests/fixtures/__pycache__" }

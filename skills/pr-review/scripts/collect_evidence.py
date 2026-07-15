@@ -3,11 +3,17 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import json
 import subprocess
 import sys
+from typing import Sequence
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from pr_identity import repository_from_pr_url, validate_pr_identifier
+from skills._cli import argument_parser
 
 
 FIELDS = (
@@ -25,11 +31,11 @@ def gh(*arguments: str, accepted_codes: tuple[int, ...] = (0,)) -> str:
     return result.stdout
 
 
-def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: collect_evidence.py PR_NUMBER_OR_URL", file=sys.stderr)
-        return 64
-    pull_request = sys.argv[1]
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argument_parser(description=__doc__)
+    parser.add_argument("pull_request", metavar="PR_NUMBER_OR_URL")
+    arguments = parser.parse_args(argv)
+    pull_request = arguments.pull_request
     try:
         validate_pr_identifier(pull_request)
         metadata = json.loads(gh("pr", "view", pull_request, "--json", FIELDS))
