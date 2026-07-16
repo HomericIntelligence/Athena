@@ -6,6 +6,8 @@ name: Required Checks
     branches: [main]
   push:
     branches: [main]
+  schedule:
+    - cron: "17 9 * * 2"
 
 concurrency:
   group: required-${{ github.workflow }}-${{ github.head_ref || github.sha }}
@@ -119,22 +121,77 @@ jobs:
   package:
     name: package
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      - uses: prefix-dev/setup-pixi@a09b6247153796b190642a2b53fac4241043cf6f # v0.10.0
         with:
-          python-version: "3.12"
-      - name: Build portable plugin archive
-        run: python scripts/package_plugin.py
+          pixi-version: v0.69.0
+          cache: true
+      - name: Install locked build and security environments
+        run: |
+          pixi install --locked -e default
+          pixi install --locked -e security
+      - name: Build portable plugin archive and deterministic SBOMs
+        run: |
+          pixi run package
+          pixi run -e security sbom
+          pixi run -e security sbom \
+            --output dist-reproducibility \
+            --native-output dist-internal/syft-environment-reproducibility.json
+          cmp dist/athena-plugin-*.spdx.json dist-reproducibility/athena-plugin-*.spdx.json
+          cmp dist/athena-plugin-*.spdx.json.sha256 \
+            dist-reproducibility/athena-plugin-*.spdx.json.sha256
+          cmp dist/athena-build-linux-64-*.spdx.json \
+            dist-reproducibility/athena-build-linux-64-*.spdx.json
+          cmp dist/athena-build-linux-64-*.spdx.json.sha256 \
+            dist-reproducibility/athena-build-linux-64-*.spdx.json.sha256
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: athena-plugin
           path: |
             dist/athena-plugin-*.tar.gz
             dist/athena-plugin-*.tar.gz.sha256
+            dist/athena-plugin-*.spdx.json
+            dist/athena-plugin-*.spdx.json.sha256
+            dist/athena-build-linux-64-*.spdx.json
+            dist/athena-build-linux-64-*.spdx.json.sha256
+          if-no-files-found: error
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: athena-sca-input
+          path: dist-internal/syft-environment.json
+          if-no-files-found: error
+
+  security-dependency-scan:
+    name: security/dependency-scan
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: prefix-dev/setup-pixi@a09b6247153796b190642a2b53fac4241043cf6f # v0.10.0
+        with:
+          pixi-version: v0.69.0
+          cache: true
+      - name: Install locked security tools
+        run: pixi install --locked -e security
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: athena-sca-input
+          path: dist-internal
+      - name: Scan dependency inventory and enforce vulnerability policy
+        run: pixi run -e security sca
+      - name: Retain the full vulnerability report
+        if: always() && hashFiles('dist-internal/grype.json') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: athena-grype-report
+          path: dist-internal/grype.json
           if-no-files-found: error
 
   pr-policy:
@@ -171,6 +228,7 @@ jobs:
       - justfile-check
       - security-secrets-scan
       - package
+      - security-dependency-scan
       - pr-policy
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

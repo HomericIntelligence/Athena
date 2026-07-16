@@ -17,6 +17,7 @@ architecture, dependency contracts, and governance.
 - [`policies/evidence-integrity.md`](policies/evidence-integrity.md): runnable evidence and truthful
   failure requirements.
 - [`policies/required-checks.md`](policies/required-checks.md): merge-gate and release contexts.
+- [`supply-chain-security.md`](supply-chain-security.md): SBOM scope, SCA gate, and exceptions.
 
 The root [`AGENTS.md`](../AGENTS.md) is the authoritative repository-agent contract. Installation
 and lifecycle commands are maintained in [`README.md`](../README.md).

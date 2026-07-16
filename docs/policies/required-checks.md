@@ -16,7 +16,11 @@ immutable commits with readable version comments and have minimum permissions an
 - `package`: builds and inspects a deterministic portable plugin archive, rejects unsafe,
   generated-Python, misplaced-Python, and credential-like members, ignores Python cache directories,
   permits tested helpers in skill-local script directories plus the shared `skills/_cli.py` factory,
-  and emits a SHA-256 checksum.
+  emits a SHA-256 checksum, and generates checksummed plugin and Linux build-environment SPDX 2.3
+  SBOMs plus the internal native Syft inventory used for vulnerability analysis.
+- `security/dependency-scan`: scans the internal inventory with a locked Grype version and current,
+  hash-validated database; blocks fixable Critical and High findings unless covered by a narrow,
+  owned, linked, and unexpired exception; and retains the full JSON report.
 - `pr-policy`: on pull requests, enforces issue linkage when applicable, signed commits, DCO
   sign-offs, and Conventional Commit subjects.
 - `required-checks-gate`: depends on every gating job and fails if any is not successful.
@@ -24,8 +28,9 @@ immutable commits with readable version comments and have minimum permissions an
 New gating jobs must be added to `required-checks-gate`. Advisory jobs must never be represented as
 required. Branch rules should require `required-checks-gate` after the workflow has run on `main`.
 
-Tag releases require a GitHub-verified signed annotated SemVer tag whose version matches every host
+The required workflow also runs weekly so dependency findings are refreshed between changes. Tag
+releases require a GitHub-verified signed annotated SemVer tag whose version matches every host
 manifest and whose target is reachable from protected `main`. They invoke the complete required
-workflow, verify the downloaded archive checksum, and publish the archive and checksum only after
-the aggregate gate succeeds. A release workflow never manufactures an artifact that did not pass
-the required checks.
+workflow, verify the exact six-file archive/SBOM set and its three checksum pairs, parse both SPDX
+identities, and publish those already-gated files only after the aggregate gate succeeds. A release
+workflow never manufactures an artifact that did not pass the required checks.

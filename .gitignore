@@ -1,5 +1,6 @@
 # Generated plugin archive
 dist/
+dist-internal/
 
 # Python validation caches
 __pycache__/

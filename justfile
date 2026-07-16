@@ -37,6 +37,13 @@ workflow-check:
 package:
     pixi run package
 
+sbom:
+    pixi run package
+    pixi run -e security sbom
+
+sca:
+    pixi run -e security sca
+
 check:
     pixi run check
 

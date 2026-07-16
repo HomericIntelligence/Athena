@@ -13,6 +13,50 @@ from unittest.mock import patch
 from scripts import ci_policy
 
 
+def write_checksum(artifact: Path) -> None:
+    artifact.with_name(f"{artifact.name}.sha256").write_text(
+        f"{sha256(artifact.read_bytes()).hexdigest()}  {artifact.name}\n",
+        encoding="utf-8",
+    )
+
+
+def create_release_assets(directory: Path, version: str = "1.2.3") -> list[str]:
+    """Create the exact checksummed archive and SPDX release fixture."""
+    archive = directory / f"athena-plugin-{version}.tar.gz"
+    archive.write_bytes(b"artifact")
+    plugin_name = f"athena-plugin-{version}"
+    documents = {
+        directory / f"{plugin_name}.spdx.json": {
+            "spdxVersion": "SPDX-2.3",
+            "name": plugin_name,
+            "documentNamespace": f"https://example.invalid/{plugin_name}",
+            "packages": [
+                {
+                    "name": "athena-plugin",
+                    "versionInfo": version,
+                }
+            ],
+        },
+        directory / f"athena-build-linux-64-{version}.spdx.json": {
+            "spdxVersion": "SPDX-2.3",
+            "name": "athena-build-linux-64",
+            "documentNamespace": "https://example.invalid/athena-build-linux-64",
+            "packages": [
+                {
+                    "name": "athena-build-linux-64",
+                    "versionInfo": version,
+                }
+            ],
+        },
+    }
+    for path, document in documents.items():
+        path.write_text(json.dumps(document) + "\n", encoding="utf-8")
+    artifacts = [archive, *documents]
+    for artifact in artifacts:
+        write_checksum(artifact)
+    return sorted(path.name for path in directory.iterdir())
+
+
 class PullRequestPolicyTests(unittest.TestCase):
     def test_policy_rules_are_owned_by_focused_modules(self) -> None:
         owners = {
@@ -271,23 +315,17 @@ class ReleasePolicyTests(unittest.TestCase):
     def test_release_checksum_is_verified_after_download(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             directory = Path(temporary_directory)
-            archive = directory / "athena-plugin-1.2.3.tar.gz"
-            archive.write_bytes(b"artifact")
-            checksum = directory / f"{archive.name}.sha256"
-            checksum.write_text(
-                f"{sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n",
-                encoding="utf-8",
-            )
+            expected = create_release_assets(directory)
 
             verified = ci_policy.verify_release_assets(directory)
 
-        self.assertEqual((archive.name, checksum.name), verified)
+        self.assertEqual(expected, verified)
 
     def test_release_checksum_mismatch_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             directory = Path(temporary_directory)
+            create_release_assets(directory)
             archive = directory / "athena-plugin-1.2.3.tar.gz"
-            archive.write_bytes(b"artifact")
             (directory / f"{archive.name}.sha256").write_text(
                 f"{'0' * 64}  {archive.name}\n", encoding="utf-8"
             )
@@ -300,12 +338,94 @@ class ReleasePolicyTests(unittest.TestCase):
             directory = Path(temporary_directory)
             with self.assertRaisesRegex(ValueError, "exactly one"):
                 ci_policy.verify_release_assets(directory)
-            archive = directory / "athena-plugin-1.2.3.tar.gz"
-            archive.write_bytes(b"artifact")
-            (directory / f"{archive.name}.sha256").write_text(
-                f"{'0' * 64}  different.tar.gz\n", encoding="utf-8"
-            )
+            create_release_assets(directory)
+            extra = directory / "unexpected.txt"
+            extra.write_text("extra\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "exact six-file"):
+                ci_policy.verify_release_assets(directory)
+            extra.unlink()
+            checksum = directory / "athena-plugin-1.2.3.tar.gz.sha256"
+            checksum.write_text(f"{'0' * 64}  different.tar.gz\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "does not identify"):
+                ci_policy.verify_release_assets(directory)
+
+    def test_release_spdx_validation_fails_closed(self) -> None:
+        cases: tuple[tuple[object, str], ...] = (
+            ("not-json", "cannot parse"),
+            ([], "must be an object"),
+            (
+                {
+                    "spdxVersion": "SPDX-2.2",
+                    "name": "athena-plugin-1.2.3",
+                    "documentNamespace": "athena-plugin-1.2.3",
+                    "packages": [],
+                },
+                "SPDX-2.3",
+            ),
+            (
+                {
+                    "spdxVersion": "SPDX-2.3",
+                    "name": "wrong",
+                    "documentNamespace": "athena-plugin-1.2.3",
+                    "packages": [],
+                },
+                "wrong identity",
+            ),
+            (
+                {
+                    "spdxVersion": "SPDX-2.3",
+                    "name": "athena-plugin-1.2.3",
+                    "documentNamespace": "wrong",
+                    "packages": [],
+                },
+                "invalid namespace",
+            ),
+            (
+                {
+                    "spdxVersion": "SPDX-2.3",
+                    "name": "athena-plugin-1.2.3",
+                    "documentNamespace": "athena-plugin-1.2.3",
+                    "packages": {},
+                },
+                "packages list",
+            ),
+            (
+                {
+                    "spdxVersion": "SPDX-2.3",
+                    "name": "athena-plugin-1.2.3",
+                    "documentNamespace": "athena-plugin-1.2.3",
+                    "packages": [{"name": "athena-plugin", "versionInfo": "9.9.9"}],
+                },
+                "matching release package",
+            ),
+        )
+        for content, message in cases:
+            with (
+                self.subTest(message=message),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                directory = Path(temporary)
+                create_release_assets(directory)
+                plugin = directory / "athena-plugin-1.2.3.spdx.json"
+                plugin.write_text(
+                    content if isinstance(content, str) else json.dumps(content),
+                    encoding="utf-8",
+                )
+                write_checksum(plugin)
+                with self.assertRaisesRegex(ValueError, message):
+                    ci_policy.verify_release_assets(directory)
+
+    def test_release_build_spdx_is_bound_to_release_version(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            create_release_assets(directory)
+            build = directory / "athena-build-linux-64-1.2.3.spdx.json"
+            document = json.loads(build.read_text(encoding="utf-8"))
+            document["packages"][0]["versionInfo"] = "1.2.2"
+            build.write_text(json.dumps(document), encoding="utf-8")
+            write_checksum(build)
+
+            with self.assertRaisesRegex(ValueError, "matching release package"):
                 ci_policy.verify_release_assets(directory)
 
 
@@ -514,13 +634,7 @@ class CommandTests(unittest.TestCase):
     def test_publish_release_verifies_assets_before_gh(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             directory = Path(temporary_directory)
-            archive = directory / "athena-plugin-1.2.3.tar.gz"
-            archive.write_bytes(b"artifact")
-            checksum = directory / f"{archive.name}.sha256"
-            checksum.write_text(
-                f"{sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n",
-                encoding="utf-8",
-            )
+            expected = create_release_assets(directory)
             environment = {
                 "GITHUB_REF_NAME": "v1.2.3",
                 "GITHUB_REPOSITORY": "owner/repository",
@@ -533,6 +647,10 @@ class CommandTests(unittest.TestCase):
 
         self.assertEqual(0, result)
         run.assert_called_once()
+        for name in expected:
+            self.assertTrue(
+                any(argument.endswith(f"/{name}") for argument in run.call_args.args[0])
+            )
 
 
 if __name__ == "__main__":
