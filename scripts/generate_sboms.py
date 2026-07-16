@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import datetime, timezone
 from hashlib import sha1, sha256
 import json
@@ -86,16 +87,16 @@ def _canonicalize(value: Any, source_root: Path) -> Any:
         }
     if isinstance(value, list):
         normalized = [_canonicalize(item, source_root) for item in value]
-        if all(isinstance(item, dict) for item in normalized):
-            return sorted(
-                normalized,
-                key=lambda item: json.dumps(
-                    item, sort_keys=True, separators=(",", ":")
-                ),
-            )
-        return normalized
+        return sorted(
+            normalized,
+            key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":")),
+        )
     if isinstance(value, str):
-        return value.replace(str(source_root.resolve()), ".")
+        normalized_string = value
+        source_paths = {str(source_root.absolute()), str(source_root.resolve())}
+        for source_path in sorted(source_paths, key=len, reverse=True):
+            normalized_string = normalized_string.replace(source_path, ".")
+        return normalized_string
     return value
 
 
@@ -237,7 +238,9 @@ def plugin_spdx(
     return document
 
 
-def _workflow_actions(workflow_path: Path) -> list[dict[str, Any]]:
+def _package_job_dependencies(
+    workflow_path: Path,
+) -> tuple[list[dict[str, Any]], str]:
     try:
         workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as error:
@@ -246,26 +249,77 @@ def _workflow_actions(workflow_path: Path) -> list[dict[str, Any]]:
         ) from error
     if not isinstance(workflow, dict) or not isinstance(workflow.get("jobs"), dict):
         raise SbomError(f"workflow has no jobs mapping: {workflow_path}")
+    package_job = workflow["jobs"].get("package")
+    if not isinstance(package_job, dict) or not isinstance(
+        package_job.get("steps"), list
+    ):
+        raise SbomError(f"workflow has no package job steps: {workflow_path}")
     references: set[tuple[str, str]] = set()
-    for job in workflow["jobs"].values():
-        if not isinstance(job, dict) or not isinstance(job.get("steps"), list):
+    pixi_versions: set[str] = set()
+    for step in package_job["steps"]:
+        if not isinstance(step, dict) or not isinstance(step.get("uses"), str):
             continue
-        for step in job["steps"]:
-            if not isinstance(step, dict) or not isinstance(step.get("uses"), str):
-                continue
-            match = ACTION_REFERENCE.fullmatch(step["uses"])
-            if match is None:
-                raise SbomError(
-                    f"workflow action is not pinned to a commit: {step['uses']}"
-                )
-            references.add((match.group("name"), match.group("sha")))
-    return [
+        match = ACTION_REFERENCE.fullmatch(step["uses"])
+        if match is None:
+            raise SbomError(
+                f"package workflow action is not pinned to a commit: {step['uses']}"
+            )
+        action_name = match.group("name")
+        references.add((action_name, match.group("sha")))
+        if action_name == "prefix-dev/setup-pixi":
+            inputs = step.get("with")
+            if not isinstance(inputs, dict):
+                raise SbomError("package setup-pixi action has no inputs mapping")
+            pixi_version = inputs.get("pixi-version")
+            if not isinstance(pixi_version, str) or not pixi_version.strip():
+                raise SbomError("package setup-pixi action has no pixi-version")
+            pixi_versions.add(pixi_version.removeprefix("v"))
+    if len(pixi_versions) != 1:
+        raise SbomError("package workflow must declare exactly one Pixi version")
+    actions = [
         _package(name, "github-action", version=sha) for name, sha in sorted(references)
     ]
+    return actions, pixi_versions.pop()
+
+
+def _stable_syft_relationships(
+    relationships: list[dict[str, Any]], packages: list[Any]
+) -> list[dict[str, Any]]:
+    """Keep Syft evidence while dropping ambiguous dependency guesses."""
+    package_names = {
+        package["SPDXID"]: package["name"]
+        for package in packages
+        if isinstance(package, dict)
+        and isinstance(package.get("SPDXID"), str)
+        and isinstance(package.get("name"), str)
+    }
+    name_counts = Counter(package_names.values())
+    stable: list[dict[str, Any]] = []
+    for relationship in relationships:
+        if relationship.get("relationshipType") not in {
+            "DEPENDENCY_OF",
+            "DEPENDS_ON",
+        }:
+            stable.append(relationship)
+            continue
+        source_name = package_names.get(relationship.get("spdxElementId"))
+        related_name = package_names.get(relationship.get("relatedSpdxElement"))
+        if (
+            source_name is not None
+            and related_name is not None
+            and name_counts[source_name] == 1
+            and name_counts[related_name] == 1
+        ):
+            stable.append(relationship)
+    return stable
 
 
 def build_spdx(
-    raw: dict[str, Any], environment_path: Path, workflow_path: Path, epoch: int
+    raw: dict[str, Any],
+    environment_path: Path,
+    workflow_path: Path,
+    version: str,
+    epoch: int,
 ) -> dict[str, Any]:
     """Normalize Syft's environment SPDX and add CI build dependencies."""
     name = "athena-build-linux-64"
@@ -279,14 +333,29 @@ def build_spdx(
     packages = document.get("packages", [])
     if not isinstance(packages, list):
         raise SbomError("Syft SPDX packages field is not a list")
-    root = _package("athena-build-linux-64", "build-environment")
-    additions = [_package("pixi", "build-tool"), *_workflow_actions(workflow_path)]
+    raw_relationships = document.get("relationships", [])
+    if not isinstance(raw_relationships, list) or not all(
+        isinstance(relationship, dict) for relationship in raw_relationships
+    ):
+        raise SbomError("Syft SPDX relationships field is not an object list")
+    preserved_relationships = _stable_syft_relationships(
+        [
+            relationship
+            for relationship in raw_relationships
+            if relationship.get("spdxElementId") != "SPDXRef-DOCUMENT"
+            and relationship.get("relatedSpdxElement") != "SPDXRef-DOCUMENT"
+        ],
+        packages,
+    )
+    actions, pixi_version = _package_job_dependencies(workflow_path)
+    root = _package("athena-build-linux-64", "build-environment", version=version)
+    additions = [_package("pixi", "build-tool", version=pixi_version), *actions]
     all_packages = [root, *packages, *additions]
     document["packages"] = sorted(
         all_packages, key=lambda package: str(package.get("SPDXID", ""))
     )
     document["documentDescribes"] = [root["SPDXID"]]
-    relationships = list(
+    root_relationships = list(
         {
             "spdxElementId": root["SPDXID"],
             "relationshipType": "DEPENDS_ON",
@@ -296,11 +365,13 @@ def build_spdx(
         if isinstance(package, dict) and isinstance(package.get("SPDXID"), str)
     )
     document["relationships"] = sorted(
-        relationships, key=lambda relation: json.dumps(relation, sort_keys=True)
+        [*preserved_relationships, *root_relationships],
+        key=lambda relation: json.dumps(relation, sort_keys=True),
     )
     stable_inventory = {
         "packages": document["packages"],
         "files": document.get("files", []),
+        "relationships": document["relationships"],
     }
     inventory_digest = sha256(
         json.dumps(stable_inventory, sort_keys=True, separators=(",", ":")).encode()
@@ -342,7 +413,8 @@ def generate(
     build_path = output_directory / f"athena-build-linux-64-{version}.spdx.json"
     _write_json(plugin_path, plugin_spdx(plugin_raw, archive_path, version, epoch))
     _write_json(
-        build_path, build_spdx(build_raw, environment_path, workflow_path, epoch)
+        build_path,
+        build_spdx(build_raw, environment_path, workflow_path, version, epoch),
     )
     _write_json(native_output, native)
     _checksum_file(plugin_path)

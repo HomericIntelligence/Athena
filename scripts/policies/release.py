@@ -72,13 +72,16 @@ def _verify_spdx(path: Path, *, expected_name: str, version: str) -> None:
     packages = document.get("packages")
     if not isinstance(packages, list):
         raise ValueError(f"SPDX document {path.name} has no packages list")
-    if expected_name.startswith("athena-plugin-") and not any(
+    expected_package = (
+        "athena-plugin" if expected_name.startswith("athena-plugin-") else expected_name
+    )
+    if not any(
         isinstance(package, dict)
-        and package.get("name") == "athena-plugin"
+        and package.get("name") == expected_package
         and package.get("versionInfo") == version
         for package in packages
     ):
-        raise ValueError(f"SPDX document {path.name} has no matching plugin package")
+        raise ValueError(f"SPDX document {path.name} has no matching release package")
 
 
 def verify_release_assets(directory: Path) -> list[str]:

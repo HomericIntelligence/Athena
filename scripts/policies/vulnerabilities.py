@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 import json
 from pathlib import Path
+import re
 from typing import Any, Final
 
 import yaml
@@ -12,6 +13,9 @@ import yaml
 
 BLOCKING_SEVERITIES: Final = frozenset({"Critical", "High"})
 MAX_EXCEPTION_DAYS: Final = {"Critical": 7, "High": 30}
+ATHENA_ISSUE_URL: Final = re.compile(
+    r"^https://github\.com/HomericIntelligence/Athena/issues/[1-9][0-9]*$"
+)
 
 
 class VulnerabilityPolicyError(ValueError):
@@ -52,12 +56,13 @@ def load_exceptions(path: Path, *, today: date) -> list[dict[str, str]]:
             "reason",
             "owner",
             "issue",
+            "approved",
             "expires",
         }
         if set(entry) != required:
             raise VulnerabilityPolicyError(
                 "exception fields must be vulnerability, package, version, severity, "
-                "reason, owner, issue, and expires"
+                "reason, owner, issue, approved, and expires"
             )
         normalized = {key: _required_string(entry, key) for key in required}
         severity = normalized["severity"].title()
@@ -65,19 +70,28 @@ def load_exceptions(path: Path, *, today: date) -> list[dict[str, str]]:
             raise VulnerabilityPolicyError(
                 "exceptions are allowed only for High or Critical"
             )
-        if not normalized["issue"].startswith("https://github.com/"):
-            raise VulnerabilityPolicyError("exception issue must be a GitHub URL")
+        if ATHENA_ISSUE_URL.fullmatch(normalized["issue"]) is None:
+            raise VulnerabilityPolicyError(
+                "exception issue must be an Athena GitHub issue URL"
+            )
         try:
+            approved = date.fromisoformat(normalized["approved"])
             expiry = date.fromisoformat(normalized["expires"])
         except ValueError as error:
             raise VulnerabilityPolicyError(
-                "exception expires must be YYYY-MM-DD"
+                "exception approved and expires must be YYYY-MM-DD"
             ) from error
+        if approved > today:
+            raise VulnerabilityPolicyError(
+                f"exception approval date {approved.isoformat()} is in the future"
+            )
         if expiry < today:
             raise VulnerabilityPolicyError(
                 f"exception {normalized['vulnerability']} expired on {expiry.isoformat()}"
             )
-        if (expiry - today).days > MAX_EXCEPTION_DAYS[severity]:
+        if expiry < approved:
+            raise VulnerabilityPolicyError("exception expires before its approval date")
+        if (expiry - approved).days > MAX_EXCEPTION_DAYS[severity]:
             raise VulnerabilityPolicyError(
                 f"{severity} exception exceeds {MAX_EXCEPTION_DAYS[severity]} days"
             )

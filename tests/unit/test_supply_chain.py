@@ -40,9 +40,38 @@ RAW_SPDX = {
             "versionInfo": "3.13",
             "downloadLocation": "NOASSERTION",
             "filesAnalyzed": False,
+        },
+        {
+            "SPDXID": "SPDXRef-Package-libffi",
+            "name": "libffi",
+            "versionInfo": "3.4",
+            "downloadLocation": "NOASSERTION",
+            "filesAnalyzed": True,
+        },
+    ],
+    "files": [
+        {
+            "SPDXID": "SPDXRef-File-libffi",
+            "fileName": "/volatile/environment/lib/libffi.so",
         }
     ],
-    "relationships": [],
+    "relationships": [
+        {
+            "spdxElementId": "SPDXRef-DOCUMENT",
+            "relationshipType": "DESCRIBES",
+            "relatedSpdxElement": "SPDXRef-Package-conda",
+        },
+        {
+            "spdxElementId": "SPDXRef-Package-libffi",
+            "relationshipType": "CONTAINS",
+            "relatedSpdxElement": "SPDXRef-File-libffi",
+        },
+        {
+            "spdxElementId": "SPDXRef-Package-libffi",
+            "relationshipType": "DEPENDENCY_OF",
+            "relatedSpdxElement": "SPDXRef-Package-conda",
+        },
+    ],
 }
 
 
@@ -59,7 +88,24 @@ def write_archive(path: Path) -> None:
 
 def write_workflow(path: Path, action: str = "actions/checkout@" + "a" * 40) -> None:
     path.write_text(
-        yaml.safe_dump({"jobs": {"package": {"steps": [{"uses": action}]}}}),
+        yaml.safe_dump(
+            {
+                "jobs": {
+                    "package": {
+                        "steps": [
+                            {"uses": action},
+                            {
+                                "uses": "prefix-dev/setup-pixi@" + "b" * 40,
+                                "with": {"pixi-version": "v0.69.0"},
+                            },
+                        ]
+                    },
+                    "unrelated": {
+                        "steps": [{"uses": "actions/download-artifact@" + "c" * 40}]
+                    },
+                }
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -120,14 +166,33 @@ class SbomTests(unittest.TestCase):
             workflow = root / "workflow.yml"
             write_workflow(workflow)
 
-            document = generate_sboms.build_spdx(RAW_SPDX, environment, workflow, 0)
+            document = generate_sboms.build_spdx(
+                RAW_SPDX, environment, workflow, "1.2.3", 0
+            )
 
         package_names = {item["name"] for item in document["packages"]}
         self.assertTrue(
             {"python", "pixi", "actions/checkout", "athena-build-linux-64"}
             <= package_names
         )
+        self.assertNotIn("actions/download-artifact", package_names)
         self.assertEqual(1, len(document["documentDescribes"]))
+        packages = {item["name"]: item for item in document["packages"]}
+        self.assertEqual("0.69.0", packages["pixi"]["versionInfo"])
+        self.assertEqual("1.2.3", packages["athena-build-linux-64"]["versionInfo"])
+        relationship_types = {
+            item["relationshipType"] for item in document["relationships"]
+        }
+        self.assertTrue(
+            {"CONTAINS", "DEPENDENCY_OF", "DEPENDS_ON"} <= relationship_types
+        )
+        self.assertFalse(
+            any(
+                item.get("spdxElementId") == "SPDXRef-DOCUMENT"
+                or item.get("relatedSpdxElement") == "SPDXRef-DOCUMENT"
+                for item in document["relationships"]
+            )
+        )
 
     def test_build_spdx_rejects_unpinned_action_and_bad_workflow(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -137,10 +202,30 @@ class SbomTests(unittest.TestCase):
             workflow = root / "workflow.yml"
             write_workflow(workflow, "actions/checkout@v4")
             with self.assertRaisesRegex(generate_sboms.SbomError, "not pinned"):
-                generate_sboms.build_spdx(RAW_SPDX, environment, workflow, 0)
+                generate_sboms.build_spdx(RAW_SPDX, environment, workflow, "1.2.3", 0)
             workflow.write_text("jobs: []\n", encoding="utf-8")
             with self.assertRaisesRegex(generate_sboms.SbomError, "no jobs"):
-                generate_sboms.build_spdx(RAW_SPDX, environment, workflow, 0)
+                generate_sboms.build_spdx(RAW_SPDX, environment, workflow, "1.2.3", 0)
+            workflow.write_text(
+                yaml.safe_dump(
+                    {
+                        "jobs": {
+                            "package": {
+                                "steps": [{"uses": "actions/checkout@" + "a" * 40}]
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(generate_sboms.SbomError, "one Pixi version"):
+                generate_sboms.build_spdx(RAW_SPDX, environment, workflow, "1.2.3", 0)
+            write_workflow(workflow)
+            malformed_raw = {**RAW_SPDX, "relationships": {}}
+            with self.assertRaisesRegex(generate_sboms.SbomError, "relationships"):
+                generate_sboms.build_spdx(
+                    malformed_raw, environment, workflow, "1.2.3", 0
+                )
 
     def test_syft_transport_fails_closed_on_exit_and_invalid_json(self) -> None:
         completed = subprocess.CompletedProcess([], 1, stdout="", stderr="broken")
@@ -215,6 +300,94 @@ class SbomTests(unittest.TestCase):
                     platform_name="darwin",
                 )
 
+    def test_generate_normalizes_volatile_syft_output_byte_for_byte(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            (root / ".codex-plugin").mkdir()
+            (root / ".codex-plugin" / "plugin.json").write_text(
+                '{"version":"1.2.3"}\n', encoding="utf-8"
+            )
+            archive = root / "athena-plugin-1.2.3.tar.gz"
+            write_archive(archive)
+            workflow = root / "workflow.yml"
+            write_workflow(workflow)
+            environment_one = root / "environment-one"
+            environment_two = root / "environment-two"
+            environment_one.mkdir()
+            environment_two.mkdir()
+
+            first_raw = json.loads(json.dumps(RAW_SPDX))
+            second_raw = json.loads(json.dumps(RAW_SPDX))
+            ambiguous_packages = [
+                {
+                    "SPDXID": f"SPDXRef-Package-importlib-{version}",
+                    "name": "importlib-metadata",
+                    "versionInfo": version,
+                    "downloadLocation": "NOASSERTION",
+                    "filesAnalyzed": False,
+                }
+                for version in ("8", "9")
+            ]
+            for raw in (first_raw, second_raw):
+                raw["packages"].extend(json.loads(json.dumps(ambiguous_packages)))
+            first_raw["relationships"].append(
+                {
+                    "spdxElementId": "SPDXRef-Package-libffi",
+                    "relationshipType": "DEPENDENCY_OF",
+                    "relatedSpdxElement": "SPDXRef-Package-importlib-8",
+                }
+            )
+            second_raw["relationships"].append(
+                {
+                    "spdxElementId": "SPDXRef-Package-libffi",
+                    "relationshipType": "DEPENDENCY_OF",
+                    "relatedSpdxElement": "SPDXRef-Package-importlib-9",
+                }
+            )
+            first_raw["files"][0]["fileName"] = str(
+                environment_one / "lib" / "libffi.so"
+            )
+            second_raw["files"][0]["fileName"] = str(
+                environment_two / "lib" / "libffi.so"
+            )
+            second_raw["documentNamespace"] = "https://example.invalid/other"
+            second_raw["creationInfo"]["created"] = "2030-01-01T00:00:00Z"
+            second_raw["creationInfo"]["creators"] = [
+                "Organization: Anchore, Inc",
+                "Tool: syft-99.0.0",
+            ]
+            for key in ("packages", "files", "relationships"):
+                second_raw[key].reverse()
+
+            generated: list[tuple[Path, Path]] = []
+            for index, (environment, raw) in enumerate(
+                ((environment_one, first_raw), (environment_two, second_raw)), start=1
+            ):
+                with patch(
+                    "scripts.generate_sboms._run_syft",
+                    side_effect=[raw, raw, {"artifacts": [index]}],
+                ):
+                    generated.append(
+                        generate_sboms.generate(
+                            archive_path=archive,
+                            environment_path=environment,
+                            workflow_path=workflow,
+                            output_directory=root / f"dist-{index}",
+                            native_output=root / f"internal-{index}.json",
+                            epoch=1_700_000_000,
+                            syft="syft",
+                            repo_root=root,
+                            platform_name="linux",
+                        )
+                    )
+
+            for first, second in zip(*generated, strict=True):
+                self.assertEqual(first.read_bytes(), second.read_bytes())
+                self.assertEqual(
+                    Path(f"{first}.sha256").read_text(encoding="utf-8"),
+                    Path(f"{second}.sha256").read_text(encoding="utf-8"),
+                )
+
     def test_cli_dist_discovery_and_error_exit_classes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -264,7 +437,8 @@ class VulnerabilityPolicyTests(unittest.TestCase):
             "severity": "High",
             "reason": "fixture",
             "owner": "security",
-            "issue": "https://github.com/example/repo/issues/1",
+            "issue": "https://github.com/HomericIntelligence/Athena/issues/1",
+            "approved": "2026-01-01",
             "expires": "2026-01-02",
         }
         self.assertEqual([], evaluate_report({"matches": [finding()]}, [exception]))
@@ -284,12 +458,14 @@ class VulnerabilityPolicyTests(unittest.TestCase):
                 "severity": "Critical",
                 "reason": "reason",
                 "owner": "owner",
-                "issue": "https://github.com/owner/repo/issues/1",
+                "issue": "https://github.com/HomericIntelligence/Athena/issues/1",
+                "approved": "2026-01-01",
                 "expires": "2026-01-02",
             }
             for change, message in (
                 ({"package": ""}, "non-empty"),
-                ({"issue": "#1"}, "GitHub URL"),
+                ({"issue": "https://github.com/owner/repo/issues/1"}, "Athena"),
+                ({"approved": "2026-01-02"}, "future"),
                 ({"expires": "2025-12-31"}, "expired"),
                 ({"expires": "2026-01-09"}, "exceeds 7"),
                 ({"severity": "Medium"}, "only for High or Critical"),
@@ -308,6 +484,10 @@ class VulnerabilityPolicyTests(unittest.TestCase):
             self.assertEqual(
                 "High", load_exceptions(path, today=date(2026, 1, 1))[0]["severity"]
             )
+            base["expires"] = "2026-02-01"
+            path.write_text(yaml.safe_dump({"exceptions": [base]}), encoding="utf-8")
+            with self.assertRaisesRegex(VulnerabilityPolicyError, "exceeds 30"):
+                load_exceptions(path, today=date(2026, 1, 15))
             for content, message in (
                 ("[]\n", "only an exceptions list"),
                 ("exceptions: {}\n", "must be a list"),
@@ -421,6 +601,14 @@ class WorkflowContractTests(unittest.TestCase):
         package_text = json.dumps(jobs["package"])
         self.assertIn("*.spdx.json", package_text)
         self.assertIn("athena-sca-input", package_text)
+        build_run = next(
+            step["run"]
+            for step in jobs["package"]["steps"]
+            if step.get("name")
+            == "Build portable plugin archive and deterministic SBOMs"
+        )
+        self.assertEqual(2, build_run.count("pixi run -e security sbom"))
+        self.assertEqual(4, build_run.count("cmp dist/"))
         self.assertEqual(
             "read", release["jobs"]["required"]["permissions"]["pull-requests"]
         )

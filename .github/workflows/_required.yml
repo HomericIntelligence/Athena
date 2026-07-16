@@ -138,6 +138,16 @@ jobs:
         run: |
           pixi run package
           pixi run -e security sbom
+          pixi run -e security sbom \
+            --output dist-reproducibility \
+            --native-output dist-internal/syft-environment-reproducibility.json
+          cmp dist/athena-plugin-*.spdx.json dist-reproducibility/athena-plugin-*.spdx.json
+          cmp dist/athena-plugin-*.spdx.json.sha256 \
+            dist-reproducibility/athena-plugin-*.spdx.json.sha256
+          cmp dist/athena-build-linux-64-*.spdx.json \
+            dist-reproducibility/athena-build-linux-64-*.spdx.json
+          cmp dist/athena-build-linux-64-*.spdx.json.sha256 \
+            dist-reproducibility/athena-build-linux-64-*.spdx.json.sha256
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: athena-plugin

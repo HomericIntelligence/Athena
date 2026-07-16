@@ -17,7 +17,10 @@ The package job generates both documents with the locked Syft version, replaces 
 and namespaces with commit- and content-derived values, sorts the SPDX content, verifies complete
 archive-file coverage, and emits SHA-256 checksum files. Native Syft JSON is retained only as an
 internal CI artifact because it preserves the package metadata Grype needs; it is not a release
-asset.
+asset. The build SPDX preserves Syft's package-to-file evidence and unambiguous dependency
+relationships. When multiple installed packages share a name, Athena omits Syft's nondeterministic
+dependency guess for that name instead of publishing an arbitrary version relationship; every
+installed package remains represented as a build-environment dependency.
 
 ## Vulnerability policy
 
@@ -31,9 +34,11 @@ matching relies on cross-ecosystem identifiers and can be incomplete; the schedu
 keeps the same policy visible between repository changes.
 
 Exceptions in `security/vulnerability-exceptions.yaml` must identify one vulnerability, package,
-installed version, and severity, plus a reason, owner, GitHub issue, and expiry date. Critical
-exceptions may last at most 7 days and High exceptions at most 30 days. Broad, malformed, expired,
-or version-mismatched exceptions fail closed.
+installed version, and severity, plus a reason, owner, open Athena GitHub issue, approval date, and
+expiry date. Critical exceptions may last at most 7 days from approval and High exceptions at most
+30 days from approval. Broad, malformed, expired, future-approved, or version-mismatched exceptions
+fail closed. Extending an exception requires a new recorded approval rather than moving its expiry
+relative to the current scan date.
 
 Run `just sbom` on Linux after installing the locked default and security Pixi environments; the
 generator fails on other hosts rather than mislabeling their environment as the authoritative
