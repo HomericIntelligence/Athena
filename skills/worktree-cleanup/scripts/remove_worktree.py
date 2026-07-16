@@ -4,17 +4,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-import subprocess
 import sys
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from skills._cli import argument_parser
+from skills._cli import argument_parser, run_command
 
 
 def git(cwd: Path, *arguments: str) -> str:
-    result = subprocess.run(
+    result = run_command(
         ["git", *arguments], cwd=cwd, capture_output=True, text=True, check=False
     )
     if result.returncode != 0:

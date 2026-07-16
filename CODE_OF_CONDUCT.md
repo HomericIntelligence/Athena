@@ -45,6 +45,15 @@ not aligned with this Code of Conduct, or to ban temporarily or permanently
 any contributor for other behaviours that they deem inappropriate, threatening,
 offensive, or harmful.
 
+## Reporting concerns
+
+To report a Code of Conduct concern confidentially, email
+[research@villmow.us](mailto:research@villmow.us) with the subject `Athena Code of Conduct`.
+Please do not open a public issue. Maintainers will restrict access to the report, acknowledge it,
+and communicate the next steps directly with the reporter when contact information is available.
+This route is for conduct concerns; report security vulnerabilities through the separate process in
+[`SECURITY.md`](SECURITY.md).
+
 ## Scope
 
 This Code of Conduct applies within all project spaces — repositories, issue

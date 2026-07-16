@@ -58,7 +58,7 @@
 
 ## Human review routing
 
-Request explicit human review for workflow or required-check changes, accepted-ADR supersession,
-release/publishing changes, dependency trust-boundary changes, ambiguous desired state, and any
-request to weaken permissions or validation. CODEOWNERS routes these requests; the ecosystem
-baseline ruleset intentionally does not make an approval count a server-side merge requirement.
+Human and Code Owner review are optional, not required, for Athena changes. CODEOWNERS records
+advisory ownership; the baseline ruleset intentionally requires neither an approval count nor a
+Code Owner approval. Workflow, release, dependency, and security-control changes remain subject to
+the repository's required checks and explicit authority boundaries.

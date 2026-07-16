@@ -82,8 +82,19 @@ def _pr_policy_command() -> int:
 
 
 def _required_jobs_command() -> int:
-    results = json.loads(os.environ["RESULTS"])
-    failures = failed_required_jobs(os.environ["EVENT_NAME"], results)
+    event_name = os.environ.get("EVENT_NAME")
+    results_text = os.environ.get("RESULTS")
+    if event_name is None:
+        raise SystemExit("missing required environment variable: EVENT_NAME")
+    if results_text is None:
+        raise SystemExit("missing required environment variable: RESULTS")
+    try:
+        results = json.loads(results_text)
+    except json.JSONDecodeError as error:
+        raise SystemExit(f"RESULTS must contain valid JSON: {error}") from error
+    if not isinstance(results, dict):
+        raise SystemExit("RESULTS must be a JSON object")
+    failures = failed_required_jobs(event_name, results)
     if failures:
         raise SystemExit(
             f"Required jobs not green: {json.dumps(failures, sort_keys=True)}"
@@ -160,6 +171,9 @@ def _suppression_command(repo_root: Path) -> int:
 
 def _publish_release_command(directory: Path) -> int:
     asset_names = verify_release_assets(directory)
+    release_notes = directory.parent / "docs" / "release-notes.md"
+    if not release_notes.is_file():
+        raise ValueError(f"release notes are missing: {release_notes}")
     subprocess.run(
         [
             "gh",
@@ -168,6 +182,8 @@ def _publish_release_command(directory: Path) -> int:
             os.environ["GITHUB_REF_NAME"],
             *(str(directory / name) for name in asset_names),
             "--generate-notes",
+            "--notes-file",
+            str(release_notes),
             "--verify-tag",
             "--repo",
             os.environ["GITHUB_REPOSITORY"],

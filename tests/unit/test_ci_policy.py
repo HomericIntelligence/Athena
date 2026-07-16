@@ -58,19 +58,20 @@ def create_release_assets(directory: Path, version: str = "1.2.3") -> list[str]:
 
 
 class PullRequestPolicyTests(unittest.TestCase):
-    def test_policy_rules_are_owned_by_focused_modules(self) -> None:
-        owners = {
-            "evaluate_pull_request": "scripts.policies.pull_request",
-            "failed_required_jobs": "scripts.policies.required_jobs",
-            "evaluate_release": "scripts.policies.release",
-            "verify_release_assets": "scripts.policies.release",
-            "find_suppressions": "scripts.policies.suppressions",
+    def test_required_job_policy_allows_only_non_pr_policy_skip(self) -> None:
+        results = {
+            "validate": {"result": "success"},
+            "pr-policy": {"result": "skipped"},
+            "package": {"result": "skipped"},
         }
 
-        for function_name, module_name in owners.items():
-            with self.subTest(function=function_name):
-                function = getattr(ci_policy, function_name)
-                self.assertEqual(module_name, function.__module__)
+        self.assertEqual(
+            {"package": "skipped"}, ci_policy.failed_required_jobs("push", results)
+        )
+        self.assertEqual(
+            {"package": "skipped", "pr-policy": "skipped"},
+            ci_policy.failed_required_jobs("pull_request", results),
+        )
 
     def test_flattens_complete_paginated_commit_evidence(self) -> None:
         pages = [
@@ -543,6 +544,20 @@ class CommandTests(unittest.TestCase):
         ):
             ci_policy.main(["required-jobs"])
 
+    def test_required_jobs_command_reports_missing_and_malformed_inputs(self) -> None:
+        for environment, message in (
+            ({"RESULTS": "{}"}, "EVENT_NAME"),
+            ({"EVENT_NAME": "push"}, "RESULTS"),
+            ({"EVENT_NAME": "push", "RESULTS": "not-json"}, "valid JSON"),
+            ({"EVENT_NAME": "push", "RESULTS": "[]"}, "JSON object"),
+        ):
+            with self.subTest(environment=environment):
+                with (
+                    patch.dict(os.environ, environment, clear=True),
+                    self.assertRaisesRegex(SystemExit, message),
+                ):
+                    ci_policy.main(["required-jobs"])
+
     def test_manifest_versions_reads_both_hosts(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -633,8 +648,12 @@ class CommandTests(unittest.TestCase):
 
     def test_publish_release_verifies_assets_before_gh(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
-            directory = Path(temporary_directory)
+            directory = Path(temporary_directory) / "repository" / "dist"
+            directory.mkdir(parents=True)
             expected = create_release_assets(directory)
+            release_notes = directory.parent / "docs" / "release-notes.md"
+            release_notes.parent.mkdir()
+            release_notes.write_text("Install from Git.\n", encoding="utf-8")
             environment = {
                 "GITHUB_REF_NAME": "v1.2.3",
                 "GITHUB_REPOSITORY": "owner/repository",
@@ -651,6 +670,8 @@ class CommandTests(unittest.TestCase):
             self.assertTrue(
                 any(argument.endswith(f"/{name}") for argument in run.call_args.args[0])
             )
+        self.assertIn("--notes-file", run.call_args.args[0])
+        self.assertIn(str(release_notes.resolve()), run.call_args.args[0])
 
 
 if __name__ == "__main__":

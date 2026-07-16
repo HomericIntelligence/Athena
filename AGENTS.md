@@ -41,6 +41,10 @@ Agents may read repository files, edit files within the user's requested scope, 
 validation, and create isolated local branches or worktrees needed for that work. Read-only GitHub
 inspection is allowed when relevant.
 
+Feature work always begins in an isolated Git worktree. Fetch `origin/main`, then either create the
+feature branch at that commit or rebase an existing feature branch onto it before making changes.
+Do not make feature edits in the primary checkout.
+
 External writes, PR creation, publishing, releases, merges, auto-merge, destructive operations, and
 changes outside the requested repositories require explicit authority.
 
@@ -71,7 +75,7 @@ gate.
 
 This section and the task entry points below apply to an Athena source checkout. Installed plugin
 archives intentionally omit repository-only development tools such as `scripts/`, `tests/`,
-`pixi.toml`, and `justfile`.
+`pyproject.toml`, `uv.lock`, and `justfile`.
 
 Create `skills/<name>/SKILL.md`. Put executable helpers in `skills/<name>/scripts/`; reference those
 tested files from the skill instead of embedding Bash or Python programs in Markdown.

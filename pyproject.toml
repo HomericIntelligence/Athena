@@ -1,0 +1,27 @@
+[project]
+name = "athena-development"
+version = "0.0.0"
+description = "Development tooling for the Athena plugin distribution."
+requires-python = ">=3.10,<3.14"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "check-jsonschema>=0.33,<1",
+    "coverage>=7.10,<8",
+    "mypy>=1.17,<2",
+    "pre-commit>=3.0,<5",
+    "pytest>=8.0,<9",
+    "pymarkdownlnt>=0.9.39,<1",
+    "pyyaml>=6.0,<7",
+    "ruff>=0.12,<1",
+    "types-pyyaml>=6.0,<7",
+    "yamllint>=1.35,<2",
+]
+
+[tool.uv]
+package = false
+default-groups = ["dev"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

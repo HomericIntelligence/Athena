@@ -15,7 +15,7 @@ ignore_paths = [
 
   # Python caches
   "__pycache__/",
-  ".pixi/",
+  ".venv/",
 
   # IDE / OS
   ".idea/",

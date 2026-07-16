@@ -5,18 +5,17 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import subprocess
 import sys
 from typing import Sequence
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from skills._cli import argument_parser
+from skills._cli import argument_parser, run_command
 
 
 def git(*arguments: str) -> str:
-    result = subprocess.run(
+    result = run_command(
         ["git", *arguments], capture_output=True, text=True, check=False
     )
     if result.returncode != 0:

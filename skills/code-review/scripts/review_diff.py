@@ -12,11 +12,11 @@ from typing import Sequence
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from skills._cli import argument_parser
+from skills._cli import argument_parser, run_command
 
 
 def git(*arguments: str, check: bool = True) -> str:
-    result = subprocess.run(
+    result = run_command(
         ["git", *arguments], check=check, capture_output=True, text=True
     )
     return result.stdout.strip()
@@ -68,8 +68,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(json.dumps(metadata, sort_keys=True))
             return 0
         print(json.dumps(metadata, sort_keys=True))
-        subprocess.run(["git", "diff", metadata["diff_range"], "--stat"], check=True)
-        subprocess.run(["git", "diff", metadata["diff_range"]], check=True)
+        run_command(["git", "diff", metadata["diff_range"], "--stat"], check=True)
+        run_command(["git", "diff", metadata["diff_range"]], check=True)
     except (RuntimeError, subprocess.SubprocessError) as error:
         parser.exit(1, f"error: {error}\n")
     return 0

@@ -42,14 +42,16 @@ Thinking "skip TDD just this once"? Stop. That's rationalization.
 NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
 ```
 
-Write code before the test? Delete it. Start over.
+Write code before the test? Remove only the newly written, in-scope implementation you authored for
+this task, then start over. If its provenance or scope is unclear, preserve it and request human
+direction.
 
 **No exceptions:**
 
 - Don't keep it as "reference"
 - Don't "adapt" it while writing tests
 - Don't look at it
-- Delete means delete
+- Do not delete pre-existing or user-authored work
 
 Implement fresh from tests. Period.
 
@@ -129,7 +131,7 @@ Next failing test for next behavior.
 Discover commands from `AGENTS.md`, task runners, manifests, lockfiles, and required CI. Prefer the
 same entry points CI uses. Record the focused test, relevant suite, coverage, typing, and lint
 commands when applicable. If repository sources conflict or no safe command is discoverable, ask
-the user; never substitute Athena's Pixi/Pytest commands into an unrelated target.
+the user; never substitute another repository's commands into an unrelated target.
 
 ## Good Tests
 

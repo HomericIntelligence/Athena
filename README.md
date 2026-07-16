@@ -78,6 +78,15 @@ pi update https://github.com/HomericIntelligence/Athena
 pi remove https://github.com/HomericIntelligence/Athena
 ```
 
+## Release archives
+
+Claude Code and Codex install Athena from the Git-backed marketplace sources above. Each GitHub
+release also provides a checksummed portable archive for offline distribution and provenance; it is
+not a Python package and does not replace marketplace installation. The archive contains only
+harness-consumed skills, host metadata, runtime documentation, assets, and notices. It excludes
+tests, repository scripts, development manifests and lockfiles, task-runner files, CI configuration,
+and generated development output.
+
 ## Skills
 
 - Strict repository and PR evaluation: `repo-review` and `pr-review`.
@@ -92,7 +101,7 @@ sequentially with the current agent.
 
 ## Develop
 
-Prerequisites are Git, Pixi, Just, and Python 3.10+ for repository validation only.
+Prerequisites are Git, uv, Just, and Python 3.10+ for repository validation only.
 
 ```bash
 git clone https://github.com/HomericIntelligence/Athena

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import redirect_stderr
-from datetime import date
+from datetime import date, timedelta
 import io
 import json
 from pathlib import Path
@@ -95,8 +95,8 @@ def write_workflow(path: Path, action: str = "actions/checkout@" + "a" * 40) -> 
                         "steps": [
                             {"uses": action},
                             {
-                                "uses": "prefix-dev/setup-pixi@" + "b" * 40,
-                                "with": {"pixi-version": "v0.69.0"},
+                                "uses": "astral-sh/setup-uv@" + "b" * 40,
+                                "with": {"version": "0.10.8"},
                             },
                         ]
                     },
@@ -158,7 +158,7 @@ class SbomTests(unittest.TestCase):
             with self.assertRaisesRegex(generate_sboms.SbomError, "no regular files"):
                 generate_sboms.plugin_spdx(RAW_SPDX, archive, "1.0.0", 0)
 
-    def test_build_spdx_includes_environment_pixi_and_pinned_actions(self) -> None:
+    def test_build_spdx_includes_environment_uv_and_pinned_actions(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             environment = root / "environment"
@@ -172,13 +172,13 @@ class SbomTests(unittest.TestCase):
 
         package_names = {item["name"] for item in document["packages"]}
         self.assertTrue(
-            {"python", "pixi", "actions/checkout", "athena-build-linux-64"}
+            {"python", "uv", "actions/checkout", "athena-build-linux-64"}
             <= package_names
         )
         self.assertNotIn("actions/download-artifact", package_names)
         self.assertEqual(1, len(document["documentDescribes"]))
         packages = {item["name"]: item for item in document["packages"]}
-        self.assertEqual("0.69.0", packages["pixi"]["versionInfo"])
+        self.assertEqual("0.10.8", packages["uv"]["versionInfo"])
         self.assertEqual("1.2.3", packages["athena-build-linux-64"]["versionInfo"])
         relationship_types = {
             item["relationshipType"] for item in document["relationships"]
@@ -218,7 +218,7 @@ class SbomTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            with self.assertRaisesRegex(generate_sboms.SbomError, "one Pixi version"):
+            with self.assertRaisesRegex(generate_sboms.SbomError, "one uv version"):
                 generate_sboms.build_spdx(RAW_SPDX, environment, workflow, "1.2.3", 0)
             write_workflow(workflow)
             malformed_raw = {**RAW_SPDX, "relationships": {}}
@@ -510,6 +510,82 @@ class VulnerabilityPolicyTests(unittest.TestCase):
             with self.assertRaisesRegex(VulnerabilityPolicyError, "cannot read"):
                 load_report(path)
 
+    def test_scan_requires_each_exception_to_reference_an_open_athena_issue(
+        self,
+    ) -> None:
+        exception = {
+            "vulnerability": "CVE-2026-0001",
+            "package": "example",
+            "version": "1.0",
+            "severity": "High",
+            "reason": "fixture",
+            "owner": "security",
+            "issue": "https://github.com/HomericIntelligence/Athena/issues/1",
+            "approved": date.today().isoformat(),
+            "expires": (date.today() + timedelta(days=1)).isoformat(),
+        }
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            exceptions = root / "exceptions.yml"
+            exceptions.write_text(
+                yaml.safe_dump({"exceptions": [exception]}), encoding="utf-8"
+            )
+            report = root / "report.json"
+
+            def grype_then_issue(
+                command: list[str], **kwargs: object
+            ) -> subprocess.CompletedProcess[str]:
+                del kwargs
+                if command[0] == "grype":
+                    report.write_text('{"matches": []}\n', encoding="utf-8")
+                    return subprocess.CompletedProcess(command, 0)
+                return subprocess.CompletedProcess(command, 0, stdout="open\n")
+
+            with patch(
+                "scripts.scan_vulnerabilities.subprocess.run",
+                side_effect=grype_then_issue,
+            ):
+                self.assertEqual(
+                    [],
+                    scan_vulnerabilities.scan(
+                        inventory=root / "inventory.json",
+                        config=root / "grype.yml",
+                        exceptions_path=exceptions,
+                        report_path=report,
+                        grype="grype",
+                    ),
+                )
+
+            for issue_result, message in (
+                (subprocess.CompletedProcess([], 0, stdout="closed\n"), "not open"),
+                (subprocess.CompletedProcess([], 1, stderr="not found"), "not found"),
+            ):
+                with self.subTest(issue_result=issue_result.returncode):
+
+                    def grype_then_failed_issue(
+                        command: list[str], **kwargs: object
+                    ) -> subprocess.CompletedProcess[str]:
+                        del kwargs
+                        if command[0] == "grype":
+                            report.write_text('{"matches": []}\n', encoding="utf-8")
+                            return subprocess.CompletedProcess(command, 0)
+                        return issue_result
+
+                    with (
+                        patch(
+                            "scripts.scan_vulnerabilities.subprocess.run",
+                            side_effect=grype_then_failed_issue,
+                        ),
+                        self.assertRaisesRegex(OSError, message),
+                    ):
+                        scan_vulnerabilities.scan(
+                            inventory=root / "inventory.json",
+                            config=root / "grype.yml",
+                            exceptions_path=exceptions,
+                            report_path=report,
+                            grype="grype",
+                        )
+
     def test_scan_invokes_grype_and_enforces_generated_report(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -601,13 +677,14 @@ class WorkflowContractTests(unittest.TestCase):
         package_text = json.dumps(jobs["package"])
         self.assertIn("*.spdx.json", package_text)
         self.assertIn("athena-sca-input", package_text)
+        self.assertNotIn("pixi", package_text)
         build_run = next(
             step["run"]
             for step in jobs["package"]["steps"]
             if step.get("name")
             == "Build portable plugin archive and deterministic SBOMs"
         )
-        self.assertEqual(2, build_run.count("pixi run -e security sbom"))
+        self.assertEqual(2, build_run.count("uv run python scripts/generate_sboms.py"))
         self.assertEqual(4, build_run.count("cmp dist/"))
         self.assertEqual(
             "read", release["jobs"]["required"]["permissions"]["pull-requests"]

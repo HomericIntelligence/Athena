@@ -20,13 +20,15 @@ immutable commits with readable version comments and have minimum permissions an
   SBOMs plus the internal native Syft inventory used for vulnerability analysis.
 - `security/dependency-scan`: scans the internal inventory with a locked Grype version and current,
   hash-validated database; blocks fixable Critical and High findings unless covered by a narrow,
-  owned, linked, and unexpired exception; and retains the full JSON report.
+  owned, linked, unexpired exception whose Athena issue is still open; and retains the full JSON
+  report.
 - `pr-policy`: on pull requests, enforces issue linkage when applicable, signed commits, DCO
   sign-offs, and Conventional Commit subjects.
 - `required-checks-gate`: depends on every gating job and fails if any is not successful.
 
 New gating jobs must be added to `required-checks-gate`. Advisory jobs must never be represented as
-required. Branch rules should require `required-checks-gate` after the workflow has run on `main`.
+required. The tracked and live main ruleset require `required-checks-gate` to pass against the
+current `main` base before merge.
 
 The required workflow also runs weekly so dependency findings are refreshed between changes. Tag
 releases require a GitHub-verified signed annotated SemVer tag whose version matches every host
