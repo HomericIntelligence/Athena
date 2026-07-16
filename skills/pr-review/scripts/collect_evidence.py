@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
-import subprocess
 import sys
 from typing import Sequence
 
@@ -13,7 +12,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from pr_identity import repository_from_pr_url, validate_pr_identifier
-from skills._cli import argument_parser
+from skills._cli import argument_parser, run_command
 
 
 FIELDS = (
@@ -23,7 +22,7 @@ FIELDS = (
 
 
 def gh(*arguments: str, accepted_codes: tuple[int, ...] = (0,)) -> str:
-    result = subprocess.run(
+    result = run_command(
         ["gh", *arguments], capture_output=True, text=True, check=False
     )
     if result.returncode not in accepted_codes:

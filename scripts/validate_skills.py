@@ -26,6 +26,12 @@ ECOSYSTEM_REPOSITORY = re.compile(
 ALLOWED_ECOSYSTEM_REPOSITORY_KEYS = {
     repository.casefold() for repository in ALLOWED_ECOSYSTEM_REPOSITORIES
 }
+REPO_REVIEW_SECTION = re.compile(
+    r"^(?P<number>[1-9][0-9]*)\. \*\*(?P<name>[^*:]+):", re.MULTILINE
+)
+REPO_REVIEW_WEIGHT = re.compile(
+    r"(?P<name>[A-Za-z][A-Za-z/ ]*?) (?P<weight>[1-9][0-9]?)%"
+)
 
 
 class ValidationError(NamedTuple):
@@ -199,7 +205,7 @@ def _validate_codex(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
 
 def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
     errors: list[ValidationError] = []
-    forbidden_paths = ("athena", "pyproject.toml", "plugins/athena", "CODEOWNERS")
+    forbidden_paths = ("athena", "plugins/athena", "CODEOWNERS")
     for relative in forbidden_paths:
         if (repo_root / relative).exists():
             errors.append(
@@ -224,7 +230,7 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
     ignored_top_levels = {
         ".git",
         ".mypy_cache",
-        ".pixi",
+        ".venv",
         ".pytest_cache",
         ".ruff_cache",
         "build",
@@ -383,6 +389,104 @@ def _validate_cli_conventions(repo_root: Path = REPO_ROOT) -> list[ValidationErr
     return errors
 
 
+def _validate_repo_review_scorecard(
+    repo_root: Path = REPO_ROOT,
+) -> list[ValidationError]:
+    """Require the review formula to name and weight each criterion unambiguously."""
+    criteria_path = repo_root / "skills" / "repo-review" / "references" / "criteria.md"
+    skill_path = repo_root / "skills" / "repo-review" / "SKILL.md"
+    try:
+        criteria = criteria_path.read_text(encoding="utf-8")
+        skill = skill_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        return [ValidationError("repo-review", f"cannot read scorecard: {error}")]
+    sections = [match.group("name") for match in REPO_REVIEW_SECTION.finditer(criteria)]
+    expected_numbers = list(range(1, 16))
+    numbers = [
+        int(match.group("number")) for match in REPO_REVIEW_SECTION.finditer(criteria)
+    ]
+    if numbers != expected_numbers or len(set(sections)) != len(sections):
+        return [
+            ValidationError(
+                "repo-review",
+                "criteria must define each of the 15 uniquely numbered sections",
+            )
+        ]
+    weight_line = re.search(r"^Weights: (?P<weights>.+)$", skill, re.MULTILINE)
+    if weight_line is None:
+        return [ValidationError("repo-review", "scorecard weights are missing")]
+    weights = [
+        (match.group("name"), int(match.group("weight")))
+        for match in REPO_REVIEW_WEIGHT.finditer(weight_line.group("weights"))
+    ]
+    errors: list[ValidationError] = []
+    if len(weights) != 15 or len({name for name, _ in weights}) != len(weights):
+        errors.append(
+            ValidationError(
+                "repo-review", "scorecard must assign one weight to each of 15 sections"
+            )
+        )
+    for name, _ in weights:
+        if name not in sections:
+            errors.append(
+                ValidationError(
+                    "repo-review", f"weight has no matching criteria section: {name}"
+                )
+            )
+    missing_sections = sorted(set(sections).difference(name for name, _ in weights))
+    if missing_sections:
+        errors.append(
+            ValidationError(
+                "repo-review",
+                f"criteria sections have no weight: {', '.join(missing_sections)}",
+            )
+        )
+    if sum(weight for _, weight in weights) != 100:
+        errors.append(ValidationError("repo-review", "weights must total 100%"))
+    return errors
+
+
+def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
+    """Require the tracked main ruleset to gate merges on current checks."""
+    path = repo_root / ".github" / "rulesets" / "homeric-main-baseline.json"
+    document, errors = _read_json(path, "ruleset", repo_root)
+    if document is None:
+        return errors
+    rules = document.get("rules")
+    if not isinstance(rules, list):
+        return [
+            *errors,
+            ValidationError("ruleset", "ruleset must contain a rules list"),
+        ]
+    status_checks = next(
+        (
+            rule
+            for rule in rules
+            if isinstance(rule, dict) and rule.get("type") == "required_status_checks"
+        ),
+        None,
+    )
+    if not isinstance(status_checks, dict) or not isinstance(
+        status_checks.get("parameters"), dict
+    ):
+        return [
+            *errors,
+            ValidationError("ruleset", "required status-check policy is missing"),
+        ]
+    parameters = status_checks["parameters"]
+    if parameters.get("strict_required_status_checks_policy") is not True:
+        errors.append(
+            ValidationError("ruleset", "must require checks current with main")
+        )
+    checks = parameters.get("required_status_checks")
+    if not isinstance(checks, list) or not any(
+        isinstance(check, dict) and check.get("context") == "required-checks-gate"
+        for check in checks
+    ):
+        errors.append(ValidationError("ruleset", "must require required-checks-gate"))
+    return errors
+
+
 def validate_repository(repo_root: Path) -> list[ValidationError]:
     """Validate one repository's skills, manifests, layout, and policies."""
     repo_root = repo_root.resolve()
@@ -392,6 +496,8 @@ def validate_repository(repo_root: Path) -> list[ValidationError]:
         *_validate_codex(repo_root),
         *_validate_layout_and_policy(repo_root),
         *_validate_cli_conventions(repo_root),
+        *_validate_repo_review_scorecard(repo_root),
+        *_validate_ruleset_policy(repo_root),
     ]
     claude, _ = _read_json(
         repo_root / ".claude-plugin" / "plugin.json", "version", repo_root

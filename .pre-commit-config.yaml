@@ -13,36 +13,35 @@ repos:
       - id: check-json
       - id: check-toml
 
-  - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: 7339935a3036f096ee0d7f1f047a9ec41707d4c1 # v0.20.0
-    hooks:
-      - id: markdownlint-cli2
-        files: '^(README\.md|AGENTS\.md|CLAUDE\.md|CONTRIBUTING\.md|CODE_OF_CONDUCT\.md|SECURITY\.md|docs/.*\.md|skills/.*\.md)$'
-
   - repo: local
     hooks:
       - id: athena-validate-skills
         name: validate Athena plugin distribution
-        entry: python3 scripts/validate_skills.py
+        entry: uv run python scripts/validate_skills.py
+        language: system
+        pass_filenames: false
+      - id: athena-markdownlint
+        name: lint Athena Markdown
+        entry: uv run pymarkdown -d MD013,MD024,MD033,MD041,MD046 scan README.md AGENTS.md CLAUDE.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md docs skills
         language: system
         pass_filenames: false
       - id: athena-validator-tests
         name: test Athena distribution validator
-        entry: pixi run test
+        entry: uv run coverage erase && PYTHONDONTWRITEBYTECODE=1 ATHENA_COVERAGE=1 uv run coverage run --branch --parallel-mode --source=scripts,skills -m pytest -q && uv run coverage combine && uv run coverage json -o coverage.json && uv run python scripts/coverage_policy.py coverage.json --minimum 80
         language: system
         pass_filenames: false
       - id: athena-python-lint
         name: lint Athena repository tooling
-        entry: pixi run lint
+        entry: uv run ruff check scripts tests skills
         language: system
         pass_filenames: false
       - id: athena-python-format
         name: check Athena repository tooling formatting
-        entry: pixi run format-check
+        entry: uv run ruff format --check scripts tests skills
         language: system
         pass_filenames: false
       - id: athena-python-types
         name: type-check Athena repository tooling
-        entry: pixi run typecheck
+        entry: uv run mypy --strict --explicit-package-bases scripts tests skills
         language: system
         pass_filenames: false

@@ -255,7 +255,7 @@ def _package_job_dependencies(
     ):
         raise SbomError(f"workflow has no package job steps: {workflow_path}")
     references: set[tuple[str, str]] = set()
-    pixi_versions: set[str] = set()
+    uv_versions: set[str] = set()
     for step in package_job["steps"]:
         if not isinstance(step, dict) or not isinstance(step.get("uses"), str):
             continue
@@ -266,20 +266,20 @@ def _package_job_dependencies(
             )
         action_name = match.group("name")
         references.add((action_name, match.group("sha")))
-        if action_name == "prefix-dev/setup-pixi":
+        if action_name == "astral-sh/setup-uv":
             inputs = step.get("with")
             if not isinstance(inputs, dict):
-                raise SbomError("package setup-pixi action has no inputs mapping")
-            pixi_version = inputs.get("pixi-version")
-            if not isinstance(pixi_version, str) or not pixi_version.strip():
-                raise SbomError("package setup-pixi action has no pixi-version")
-            pixi_versions.add(pixi_version.removeprefix("v"))
-    if len(pixi_versions) != 1:
-        raise SbomError("package workflow must declare exactly one Pixi version")
+                raise SbomError("package setup-uv action has no inputs mapping")
+            uv_version = inputs.get("version")
+            if not isinstance(uv_version, str) or not uv_version.strip():
+                raise SbomError("package setup-uv action has no version")
+            uv_versions.add(uv_version.removeprefix("v"))
+    if len(uv_versions) != 1:
+        raise SbomError("package workflow must declare exactly one uv version")
     actions = [
         _package(name, "github-action", version=sha) for name, sha in sorted(references)
     ]
-    return actions, pixi_versions.pop()
+    return actions, uv_versions.pop()
 
 
 def _stable_syft_relationships(
@@ -347,9 +347,9 @@ def build_spdx(
         ],
         packages,
     )
-    actions, pixi_version = _package_job_dependencies(workflow_path)
+    actions, uv_version = _package_job_dependencies(workflow_path)
     root = _package("athena-build-linux-64", "build-environment", version=version)
-    additions = [_package("pixi", "build-tool", version=pixi_version), *actions]
+    additions = [_package("uv", "build-tool", version=uv_version), *actions]
     all_packages = [root, *packages, *additions]
     document["packages"] = sorted(
         all_packages, key=lambda package: str(package.get("SPDXID", ""))
@@ -425,7 +425,7 @@ def generate(
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argument_parser(description=__doc__)
     parser.add_argument("--archive", type=Path)
-    parser.add_argument("--environment", type=Path, default=Path(".pixi/envs/default"))
+    parser.add_argument("--environment", type=Path, default=Path(".venv"))
     parser.add_argument(
         "--workflow", type=Path, default=Path(".github/workflows/_required.yml")
     )

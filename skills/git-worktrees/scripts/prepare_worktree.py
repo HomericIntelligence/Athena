@@ -12,13 +12,13 @@ import tempfile
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from skills._cli import argument_parser
+from skills._cli import argument_parser, run_command
 
 
 def git(
     cwd: Path, *arguments: str, check: bool = True
 ) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(
+    result = run_command(
         ["git", *arguments], cwd=cwd, capture_output=True, text=True, check=False
     )
     if check and result.returncode != 0:

@@ -87,9 +87,7 @@ and unrelated generated files unless a demonstrated product consumer requires th
 
 ### 5. Calculate the overall score
 
-Weights: architecture 15%, source quality 15%, testing 12%, security 12%, safety 10%, CI/CD 8%,
-documentation 7%, AI agent tooling 5%, dependencies 3%, packaging 3%, and each of structure,
-planning, developer experience, API/CLI design, and compliance 2% (100% total).
+Weights: Structure 2%, Documentation 7%, Architecture 15%, Source quality 15%, Testing 12%, CI/CD 8%, Dependencies 3%, Security 12%, Reliability 10%, Planning 2%, Agent tooling 5%, Packaging 3%, Developer experience 2%, API/CLI 2%, Governance 2% (100% total).
 
 Verdicts:
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import subprocess
 import sys
 from typing import Any, Sequence
 
@@ -13,14 +12,14 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from pr_identity import validate_pr_identifier
-from skills._cli import argument_parser
+from skills._cli import argument_parser, run_command
 
 
 FIELDS = "number,url,state,headRefName,baseRefName"
 
 
 def command(*arguments: str) -> str:
-    result = subprocess.run(arguments, capture_output=True, text=True, check=False)
+    result = run_command(arguments, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         message = result.stderr.strip() or f"command failed: {' '.join(arguments)}"
         raise RuntimeError(message)

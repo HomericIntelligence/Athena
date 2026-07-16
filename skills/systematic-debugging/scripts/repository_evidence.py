@@ -5,20 +5,19 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import subprocess
 import sys
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from skills._cli import argument_parser
+from skills._cli import argument_parser, run_command
 
 
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 
 def run(*arguments: str, accepted_codes: tuple[int, ...] = (0,)) -> str:
-    result = subprocess.run(arguments, capture_output=True, text=True, check=False)
+    result = run_command(arguments, capture_output=True, text=True, check=False)
     if result.returncode not in accepted_codes:
         raise RuntimeError(result.stderr.strip() or f"{' '.join(arguments)} failed")
     return result.stdout

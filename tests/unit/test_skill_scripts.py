@@ -125,6 +125,48 @@ class ScriptConventionTests(unittest.TestCase):
                 self.assertEqual(0, exit.exception.code)
                 self.assertEqual("0.2.0", output.getvalue().strip().split()[-1])
 
+    def test_helpers_report_missing_git_or_gh_without_a_traceback(self) -> None:
+        commands = (
+            ("skills/code-review/scripts/review_diff.py", ("--metadata-only",), "git"),
+            (
+                "skills/git-worktrees/scripts/prepare_worktree.py",
+                ("feature", "--start-point", "HEAD", "--dry-run"),
+                "git",
+            ),
+            ("skills/pr-review/scripts/collect_evidence.py", ("1",), "gh"),
+            ("skills/pr-review/scripts/diff_context.py", ("HEAD", "HEAD"), "git"),
+            ("skills/pr-review/scripts/resolve_pr.py", ("1",), "gh"),
+            (
+                "skills/systematic-debugging/scripts/repository_evidence.py",
+                ("pattern",),
+                "git",
+            ),
+            ("skills/worktree-cleanup/scripts/audit_worktrees.py", (), "git"),
+            (
+                "skills/worktree-cleanup/scripts/remove_worktree.py",
+                ("/tmp/worktree", "--expected-head", "head"),
+                "git",
+            ),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            bin_directory = root / "bin"
+            bin_directory.mkdir()
+            (bin_directory / "python3").symlink_to(sys.executable)
+            environment = os.environ.copy()
+            environment["PATH"] = str(bin_directory)
+
+            for path, arguments, missing_command in commands:
+                with self.subTest(path=path):
+                    result = run_script(path, *arguments, cwd=root, env=environment)
+
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertIn(
+                        f"required command unavailable: {missing_command}",
+                        result.stderr,
+                    )
+                    self.assertNotIn("Traceback", result.stderr)
+
 
 class PullRequestScriptTests(unittest.TestCase):
     def make_fake_tools(

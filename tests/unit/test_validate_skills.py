@@ -34,7 +34,7 @@ class DistributionTests(unittest.TestCase):
             self.fixture,
             ignore=shutil.ignore_patterns(
                 ".git",
-                ".pixi",
+                ".venv",
                 "dist",
                 "build",
                 "__pycache__",
@@ -271,7 +271,7 @@ class DistributionTests(unittest.TestCase):
                 fixture,
                 ignore=shutil.ignore_patterns(
                     ".git",
-                    ".pixi",
+                    ".venv",
                     "dist",
                     "build",
                     "__pycache__",
@@ -312,13 +312,55 @@ class DistributionTests(unittest.TestCase):
             "policy", "required file is missing: docs/policies/required-checks.md"
         )
 
+    def test_repo_review_scorecard_rejects_section_and_weight_mismatches(self) -> None:
+        criteria = (
+            self.fixture / "skills" / "repo-review" / "references" / "criteria.md"
+        )
+        criteria.write_text(
+            criteria.read_text(encoding="utf-8").replace(
+                "**Reliability:**", "**Resilience:**", 1
+            ),
+            encoding="utf-8",
+        )
+        self.assert_invalid("repo-review", "weight has no matching criteria section")
+
+        criteria.write_text(
+            criteria.read_text(encoding="utf-8").replace(
+                "**Resilience:**", "**Reliability:**", 1
+            ),
+            encoding="utf-8",
+        )
+        skill = self.fixture / "skills" / "repo-review" / "SKILL.md"
+        skill.write_text(
+            skill.read_text(encoding="utf-8").replace(
+                "Reliability 10%", "Reliability 9%", 1
+            ),
+            encoding="utf-8",
+        )
+        self.assert_invalid("repo-review", "weights must total 100%")
+
+    def test_ruleset_requires_a_current_main_merge_gate(self) -> None:
+        path = self.fixture / ".github" / "rulesets" / "homeric-main-baseline.json"
+        document = json.loads(path.read_text(encoding="utf-8"))
+        status_checks = next(
+            rule
+            for rule in document["rules"]
+            if rule["type"] == "required_status_checks"
+        )
+        status_checks["parameters"]["strict_required_status_checks_policy"] = False
+        path.write_text(json.dumps(document), encoding="utf-8")
+
+        self.assert_invalid("ruleset", "must require checks current with main")
+
+        status_checks["parameters"]["strict_required_status_checks_policy"] = True
+        status_checks["parameters"]["required_status_checks"] = []
+        path.write_text(json.dumps(document), encoding="utf-8")
+
+        self.assert_invalid("ruleset", "must require required-checks-gate")
+
     def test_obsolete_distribution_path_fails(self) -> None:
-        (self.fixture / "pyproject.toml").write_text(
-            "[project]\nname='forbidden'\n", encoding="utf-8"
-        )
-        self.assert_invalid(
-            "layout", "obsolete distribution path exists: pyproject.toml"
-        )
+        (self.fixture / "athena").mkdir()
+        self.assert_invalid("layout", "obsolete distribution path exists: athena")
 
     def test_cli_quiet_success(self) -> None:
         output = io.StringIO()

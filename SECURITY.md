@@ -25,8 +25,10 @@ aim to acknowledge reports within five business days.
   fails closed when identity, authority, ancestry, or checked-out revision cannot be proved.
 - **Marketplace redirection:** host manifests use the repository root and are validated before
   merge and release.
-- **Supply chain:** GitHub Actions are commit-pinned, dependency checkouts verify identity, and the
-  release contains repository resources rather than executable package artifacts.
+- **Supply chain:** GitHub Actions are commit-pinned and restricted by the repository allowlist to
+  the reviewed action revisions used by the required and release workflows; dependency checkouts
+  verify identity, and the release contains repository resources rather than executable package
+  artifacts.
 - **Secrets:** required CI scans full history; repository policies prohibit credentials and private
   data.
 

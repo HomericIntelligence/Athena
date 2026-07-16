@@ -5,10 +5,24 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import subprocess
 from typing import Any, Sequence
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+
+
+def run_command(
+    arguments: Sequence[str], **kwargs: Any
+) -> subprocess.CompletedProcess[str]:
+    """Run an external command or identify a missing required capability."""
+    if not arguments:
+        raise RuntimeError("required command is empty")
+    try:
+        return subprocess.run(arguments, **kwargs)
+    except FileNotFoundError as error:
+        command = error.filename or arguments[0]
+        raise RuntimeError(f"required command unavailable: {command}") from error
 
 
 def plugin_version() -> str:

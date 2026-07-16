@@ -6,7 +6,7 @@ Athena publishes two checksummed SPDX 2.3 software bills of materials with each 
   required `python`, `git`, and `gh` commands, and the dynamically resolved Mnemosyne and Hephaestus
   repositories.
 - `athena-build-linux-64-<version>.spdx.json` describes the locked packages installed in the
-  authoritative `ubuntu-24.04`/`linux-64` build environment, Pixi, and the immutable GitHub Actions
+  authoritative `ubuntu-24.04`/`linux-64` build environment, uv, and the immutable GitHub Actions
   used by the package job.
 
 Host capabilities, the runner operating system, and commands used only in examples are outside the
@@ -29,19 +29,20 @@ the locked Grype version. Scanner, database, configuration, or report failures b
 database must pass its hash check, be no more than 120 hours old, and complete an update check.
 
 Fixable Critical and High findings block the gate. Unfixed Critical and High findings and all lower
-severities remain visible in the retained full JSON report but are non-blocking. Conda vulnerability
+severities remain visible in the retained full JSON report but are non-blocking. Vulnerability
 matching relies on cross-ecosystem identifiers and can be incomplete; the scheduled weekly run
 keeps the same policy visible between repository changes.
 
 Exceptions in `security/vulnerability-exceptions.yaml` must identify one vulnerability, package,
 installed version, and severity, plus a reason, owner, open Athena GitHub issue, approval date, and
-expiry date. Critical exceptions may last at most 7 days from approval and High exceptions at most
-30 days from approval. Broad, malformed, expired, future-approved, or version-mismatched exceptions
-fail closed. Extending an exception requires a new recorded approval rather than moving its expiry
-relative to the current scan date.
+expiry date. The scan verifies the linked issue through GitHub and fails closed when it is missing,
+inaccessible, closed, or outside Athena. Critical exceptions may last at most 7 days from approval
+and High exceptions at most 30 days from approval. Broad, malformed, expired, future-approved, or
+version-mismatched exceptions fail closed. Extending an exception requires a new recorded approval
+rather than moving its expiry relative to the current scan date.
 
-Run `just sbom` on Linux after installing the locked default and security Pixi environments; the
-generator fails on other hosts rather than mislabeling their environment as the authoritative
-`linux-64` build. Run `just sca` to scan the resulting internal inventory with the current
-vulnerability database. The latter is an explicit network-backed security operation and is
-therefore not part of `just all`.
+Run `just sbom` on Linux after `uv sync --locked` and installing the CI-pinned Syft binary on
+`PATH`; the generator fails on other hosts rather than mislabeling their environment as the
+authoritative `linux-64` build. Run `just sca` after installing the CI-pinned Grype binary on
+`PATH` to scan the resulting internal inventory with the current vulnerability database. The
+latter is an explicit network-backed security operation and is therefore not part of `just all`.

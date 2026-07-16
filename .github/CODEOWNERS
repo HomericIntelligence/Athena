@@ -15,7 +15,7 @@
 /tests/ @mvillmow
 /AGENTS.md @mvillmow
 /CLAUDE.md @mvillmow
-/pixi.toml @mvillmow
-/pixi.lock @mvillmow
+/pyproject.toml @mvillmow
+/uv.lock @mvillmow
 /justfile @mvillmow
 /.pre-commit-config.yaml @mvillmow
