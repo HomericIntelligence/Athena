@@ -558,6 +558,17 @@ class CommandTests(unittest.TestCase):
                 ):
                     ci_policy.main(["required-jobs"])
 
+    def test_required_jobs_command_rejects_invalid_job_results(self) -> None:
+        for results in ('{"validate": []}', '{"validate": {"result": 1}}'):
+            with self.subTest(results=results):
+                environment = {"EVENT_NAME": "push", "RESULTS": results}
+
+                with (
+                    patch.dict(os.environ, environment, clear=True),
+                    self.assertRaisesRegex(SystemExit, r"validate.*invalid"),
+                ):
+                    ci_policy.main(["required-jobs"])
+
     def test_manifest_versions_reads_both_hosts(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)

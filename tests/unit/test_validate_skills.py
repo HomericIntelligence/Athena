@@ -352,6 +352,12 @@ class DistributionTests(unittest.TestCase):
 
         self.assert_invalid("ruleset", "must require checks current with main")
 
+        status_checks["parameters"]["strict_required_status_checks_policy"] = True
+        status_checks["parameters"]["required_status_checks"] = []
+        path.write_text(json.dumps(document), encoding="utf-8")
+
+        self.assert_invalid("ruleset", "must require required-checks-gate")
+
     def test_obsolete_distribution_path_fails(self) -> None:
         (self.fixture / "athena").mkdir()
         self.assert_invalid("layout", "obsolete distribution path exists: athena")

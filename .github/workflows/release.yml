@@ -29,6 +29,7 @@ jobs:
     needs: preflight
     permissions:
       contents: read
+      issues: read
       pull-requests: read
     uses: ./.github/workflows/_required.yml
 

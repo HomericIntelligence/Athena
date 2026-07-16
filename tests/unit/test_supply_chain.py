@@ -564,6 +564,14 @@ class VulnerabilityPolicyTests(unittest.TestCase):
                     "not open",
                 ),
                 (
+                    subprocess.CompletedProcess([], 0, stdout="not-json\n"),
+                    "malformed issue JSON",
+                ),
+                (
+                    subprocess.CompletedProcess([], 0, stdout="[]\n"),
+                    "invalid issue JSON",
+                ),
+                (
                     subprocess.CompletedProcess(
                         [],
                         0,
@@ -602,6 +610,30 @@ class VulnerabilityPolicyTests(unittest.TestCase):
                             report_path=report,
                             grype="grype",
                         )
+
+            def grype_then_missing_gh(
+                command: list[str], **kwargs: object
+            ) -> subprocess.CompletedProcess[str]:
+                del kwargs
+                if command[0] == "grype":
+                    report.write_text('{"matches": []}\n', encoding="utf-8")
+                    return subprocess.CompletedProcess(command, 0)
+                raise FileNotFoundError(2, "No such file or directory", "gh")
+
+            with (
+                patch(
+                    "scripts.scan_vulnerabilities.subprocess.run",
+                    side_effect=grype_then_missing_gh,
+                ),
+                self.assertRaisesRegex(OSError, "required command unavailable: gh"),
+            ):
+                scan_vulnerabilities.scan(
+                    inventory=root / "inventory.json",
+                    config=root / "grype.yml",
+                    exceptions_path=exceptions,
+                    report_path=report,
+                    grype="grype",
+                )
 
     def test_scan_invokes_grype_and_enforces_generated_report(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -705,6 +737,9 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(4, build_run.count("cmp dist/"))
         self.assertEqual(
             "read", release["jobs"]["required"]["permissions"]["pull-requests"]
+        )
+        self.assertEqual(
+            "read", release["jobs"]["required"]["permissions"].get("issues")
         )
         self.assertEqual(
             "athena-plugin", release["jobs"]["release"]["steps"][1]["with"]["name"]
