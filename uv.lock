@@ -62,7 +62,7 @@ dev = [
     { name = "mypy", specifier = ">=1.17,<2" },
     { name = "pre-commit", specifier = ">=3.0,<5" },
     { name = "pymarkdownlnt", specifier = ">=0.9.39,<1" },
-    { name = "pytest", specifier = ">=8.0,<9" },
+    { name = "pytest", specifier = ">=8.0,<10" },
     { name = "pyyaml", specifier = ">=6.0,<7" },
     { name = "ruff", specifier = ">=0.12,<1" },
     { name = "types-pyyaml", specifier = ">=6.0,<7" },
