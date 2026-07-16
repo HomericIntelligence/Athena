@@ -27,7 +27,7 @@ repos:
         pass_filenames: false
       - id: athena-validator-tests
         name: test Athena distribution validator
-        entry: uv run coverage erase && PYTHONDONTWRITEBYTECODE=1 ATHENA_COVERAGE=1 uv run coverage run --branch --parallel-mode --source=scripts,skills -m unittest discover -s tests -v && uv run coverage combine && uv run coverage json -o coverage.json && uv run python scripts/coverage_policy.py coverage.json --minimum 80
+        entry: uv run coverage erase && PYTHONDONTWRITEBYTECODE=1 ATHENA_COVERAGE=1 uv run coverage run --branch --parallel-mode --source=scripts,skills -m pytest -q && uv run coverage combine && uv run coverage json -o coverage.json && uv run python scripts/coverage_policy.py coverage.json --minimum 80
         language: system
         pass_filenames: false
       - id: athena-python-lint

@@ -539,7 +539,9 @@ class VulnerabilityPolicyTests(unittest.TestCase):
                 if command[0] == "grype":
                     report.write_text('{"matches": []}\n', encoding="utf-8")
                     return subprocess.CompletedProcess(command, 0)
-                return subprocess.CompletedProcess(command, 0, stdout="open\n")
+                return subprocess.CompletedProcess(
+                    command, 0, stdout='{"state": "open"}\n'
+                )
 
             with patch(
                 "scripts.scan_vulnerabilities.subprocess.run",
@@ -557,7 +559,22 @@ class VulnerabilityPolicyTests(unittest.TestCase):
                 )
 
             for issue_result, message in (
-                (subprocess.CompletedProcess([], 0, stdout="closed\n"), "not open"),
+                (
+                    subprocess.CompletedProcess([], 0, stdout='{"state": "closed"}\n'),
+                    "not open",
+                ),
+                (
+                    subprocess.CompletedProcess(
+                        [],
+                        0,
+                        stdout=(
+                            '{"state": "open", "pull_request": '
+                            '{"url": "https://api.github.com/repos/'
+                            'HomericIntelligence/Athena/pulls/27"}}\n'
+                        ),
+                    ),
+                    "not an issue",
+                ),
                 (subprocess.CompletedProcess([], 1, stderr="not found"), "not found"),
             ):
                 with self.subTest(issue_result=issue_result.returncode):

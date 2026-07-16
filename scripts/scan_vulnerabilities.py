@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from datetime import date
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -39,8 +40,6 @@ def verify_open_exception_issues(exceptions: list[dict[str, str]]) -> None:
                     "gh",
                     "api",
                     f"repos/HomericIntelligence/Athena/issues/{issue_number}",
-                    "--jq",
-                    ".state",
                 ],
                 check=False,
                 capture_output=True,
@@ -51,9 +50,22 @@ def verify_open_exception_issues(exceptions: list[dict[str, str]]) -> None:
         if result.returncode != 0:
             detail = result.stderr.strip() or f"exit status {result.returncode}"
             raise OSError(f"cannot verify exception issue {issue}: {detail}")
-        state = result.stdout.strip()
+        try:
+            issue_document = json.loads(result.stdout)
+        except json.JSONDecodeError as error:
+            raise OSError(
+                f"cannot verify exception issue {issue}: GitHub returned malformed issue JSON"
+            ) from error
+        if not isinstance(issue_document, dict):
+            raise OSError(
+                f"cannot verify exception issue {issue}: GitHub returned invalid issue JSON"
+            )
+        if "pull_request" in issue_document:
+            raise OSError(f"exception issue {issue} is not an issue")
+        state = issue_document.get("state")
         if state != "open":
-            raise OSError(f"exception issue {issue} is not open: {state or 'unknown'}")
+            description = state if isinstance(state, str) else "unknown"
+            raise OSError(f"exception issue {issue} is not open: {description}")
 
 
 def scan(

@@ -40,6 +40,9 @@ jobs:
         with:
           version: "0.10.8"
           enable-cache: true
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: "1.36.0"
       - name: Install locked test environment
         run: uv sync --locked
       - name: Validate plugin distribution
@@ -61,6 +64,9 @@ jobs:
         with:
           version: "0.10.8"
           enable-cache: true
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: "1.36.0"
       - name: Install locked lint environment
         run: uv sync --locked
       - name: Lint public documentation and skills
@@ -78,6 +84,9 @@ jobs:
         with:
           version: "0.10.8"
           enable-cache: true
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: "1.36.0"
       - name: Install locked validation tools
         run: uv sync --locked
       - name: Validate workflow syntax and schema

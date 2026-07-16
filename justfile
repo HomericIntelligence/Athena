@@ -12,7 +12,7 @@ validate:
 
 test:
     uv run coverage erase
-    PYTHONDONTWRITEBYTECODE=1 ATHENA_COVERAGE=1 uv run coverage run --branch --parallel-mode --source=scripts,skills -m unittest discover -s tests -v
+    PYTHONDONTWRITEBYTECODE=1 ATHENA_COVERAGE=1 uv run coverage run --branch --parallel-mode --source=scripts,skills -m pytest -q
     uv run coverage combine
     uv run coverage json -o coverage.json
     uv run python scripts/coverage_policy.py coverage.json --minimum 80
