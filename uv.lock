@@ -59,7 +59,7 @@ dev = [
 dev = [
     { name = "check-jsonschema", specifier = ">=0.33,<1" },
     { name = "coverage", specifier = ">=7.10,<8" },
-    { name = "mypy", specifier = ">=1.17,<2" },
+    { name = "mypy", specifier = ">=1.17,<3" },
     { name = "pre-commit", specifier = ">=3.0,<5" },
     { name = "pymarkdownlnt", specifier = ">=0.9.39,<1" },
     { name = "pytest", specifier = ">=9.0.3,<10" },
