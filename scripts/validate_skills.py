@@ -32,6 +32,15 @@ REPO_REVIEW_SECTION = re.compile(
 REPO_REVIEW_WEIGHT = re.compile(
     r"(?P<name>[A-Za-z][A-Za-z/ ]*?) (?P<weight>[1-9][0-9]?)%"
 )
+APPROVED_MERGE_QUEUE_PARAMETERS: dict[str, object] = {
+    "check_response_timeout_minutes": 60,
+    "grouping_strategy": "ALLGREEN",
+    "max_entries_to_build": 10,
+    "max_entries_to_merge": 5,
+    "merge_method": "SQUASH",
+    "min_entries_to_merge": 1,
+    "min_entries_to_merge_wait_minutes": 5,
+}
 
 
 class ValidationError(NamedTuple):
@@ -484,6 +493,20 @@ def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationErro
         for check in checks
     ):
         errors.append(ValidationError("ruleset", "must require required-checks-gate"))
+    merge_queues = [
+        rule
+        for rule in rules
+        if isinstance(rule, dict) and rule.get("type") == "merge_queue"
+    ]
+    if not merge_queues:
+        errors.append(ValidationError("ruleset", "merge queue policy is missing"))
+    elif (
+        len(merge_queues) != 1
+        or merge_queues[0].get("parameters") != APPROVED_MERGE_QUEUE_PARAMETERS
+    ):
+        errors.append(
+            ValidationError("ruleset", "merge queue policy does not match issue #28")
+        )
     return errors
 
 

@@ -712,6 +712,23 @@ class VulnerabilityPolicyTests(unittest.TestCase):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_required_workflow_handles_merge_queue_checks_without_trigger_drift(
+        self,
+    ) -> None:
+        root = Path(__file__).resolve().parents[2]
+        workflow = yaml.safe_load(
+            (root / ".github/workflows/_required.yml").read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(
+            {"workflow_call", "pull_request", "push", "schedule", "merge_group"},
+            set(workflow["on"]),
+        )
+        self.assertEqual({"types": ["checks_requested"]}, workflow["on"]["merge_group"])
+        self.assertEqual({"branches": ["main"]}, workflow["on"]["pull_request"])
+        self.assertEqual({"branches": ["main"]}, workflow["on"]["push"])
+        self.assertEqual([{"cron": "17 9 * * 2"}], workflow["on"]["schedule"])
+
     def test_required_and_release_workflows_consume_gated_sboms(self) -> None:
         root = Path(__file__).resolve().parents[2]
         required = yaml.safe_load(
