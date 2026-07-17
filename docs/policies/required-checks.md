@@ -30,6 +30,13 @@ New gating jobs must be added to `required-checks-gate`. Advisory jobs must neve
 required. The tracked and live main ruleset require `required-checks-gate` to pass against the
 current `main` base before merge.
 
+The required workflow handles `merge_group` `checks_requested` events in addition to its existing
+pull-request, push, reusable-workflow, and scheduled entry points. The tracked main ruleset records
+the staged queue policy: squash merges, all-green grouping, at most 10 builds and 5 merged entries
+per group, at least 1 entry, a 5-minute minimum wait, and a 60-minute check timeout. This repository
+records queue readiness only; applying or activating that policy on GitHub remains a separate,
+explicitly authorized rollout action after this change is reviewed and merged.
+
 The required workflow also runs weekly so dependency findings are refreshed between changes. Tag
 releases require a GitHub-verified signed annotated SemVer tag whose version matches every host
 manifest and whose target is reachable from protected `main`. They invoke the complete required

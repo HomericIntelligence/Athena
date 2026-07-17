@@ -358,6 +358,41 @@ class DistributionTests(unittest.TestCase):
 
         self.assert_invalid("ruleset", "must require required-checks-gate")
 
+    def test_ruleset_requires_the_approved_staged_merge_queue_policy(self) -> None:
+        path = self.fixture / ".github" / "rulesets" / "homeric-main-baseline.json"
+        original = path.read_text(encoding="utf-8")
+        document = json.loads(original)
+        document["rules"] = [
+            rule for rule in document["rules"] if rule.get("type") != "merge_queue"
+        ]
+        path.write_text(json.dumps(document), encoding="utf-8")
+
+        self.assert_invalid("ruleset", "merge queue policy is missing")
+
+        document = json.loads(original)
+        merge_queue = next(
+            (rule for rule in document["rules"] if rule.get("type") == "merge_queue"),
+            None,
+        )
+        if merge_queue is None:
+            merge_queue = {
+                "type": "merge_queue",
+                "parameters": {
+                    "check_response_timeout_minutes": 60,
+                    "grouping_strategy": "ALLGREEN",
+                    "max_entries_to_build": 10,
+                    "max_entries_to_merge": 5,
+                    "merge_method": "SQUASH",
+                    "min_entries_to_merge": 1,
+                    "min_entries_to_merge_wait_minutes": 5,
+                },
+            }
+            document["rules"].append(merge_queue)
+        merge_queue["parameters"]["merge_method"] = "MERGE"
+        path.write_text(json.dumps(document), encoding="utf-8")
+
+        self.assert_invalid("ruleset", "merge queue policy does not match")
+
     def test_obsolete_distribution_path_fails(self) -> None:
         (self.fixture / "athena").mkdir()
         self.assert_invalid("layout", "obsolete distribution path exists: athena")
