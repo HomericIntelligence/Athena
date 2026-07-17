@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Portable workflow skills for Claude Code, Codex, and Pi.",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "plugins": [
     {
