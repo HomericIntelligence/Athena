@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
-  <title>Athena plugin mark</title>
+  <title id="title">Athena plugin mark</title>
   <rect width="512" height="512" rx="96" fill="#18222e"/>
   <path d="M162 216 172 118l66 56z" fill="#e8edf2"/>
   <path d="M350 216 340 118l-66 56z" fill="#e8edf2"/>
