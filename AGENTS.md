@@ -45,8 +45,9 @@ Feature work always begins in an isolated Git worktree. Fetch `origin/main`, the
 feature branch at that commit or rebase an existing feature branch onto it before making changes.
 Do not make feature edits in the primary checkout.
 
-External writes, PR creation, publishing, releases, merges, auto-merge, destructive operations, and
-changes outside the requested repositories require explicit authority.
+Agents may push feature branches and create pull requests for requested work without additional
+approval. Publishing, releases, merges, auto-merge, destructive operations, and changes outside the
+requested repositories still require explicit authority.
 
 ## Prohibited actions
 
