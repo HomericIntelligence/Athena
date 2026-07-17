@@ -46,8 +46,8 @@ feature branch at that commit or rebase an existing feature branch onto it befor
 Do not make feature edits in the primary checkout.
 
 Agents may push feature branches and create pull requests for requested work without additional
-approval. Publishing, releases, merges, auto-merge, destructive operations, and changes outside the
-requested repositories still require explicit authority.
+approval. Publishing, releases, merges, auto-merge, destructive operations, changes outside the
+requested repositories, and all other external writes still require explicit authority.
 
 ## Prohibited actions
 
