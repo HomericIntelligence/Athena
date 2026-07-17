@@ -42,7 +42,7 @@ claude plugin marketplace add https://github.com/HomericIntelligence/Athena
 claude plugin install athena@Athena
 ```
 
-Invoke `/athena:verification`. Update or remove:
+Invoke `/athena:repo-review`. Update or remove:
 
 ```bash
 claude plugin marketplace update Athena
@@ -57,7 +57,7 @@ codex plugin add athena@athena
 codex plugin list --marketplace athena
 ```
 
-Invoke `$verification` or ask Codex to use Athena's verification skill. Update or remove:
+Invoke `$repo-review` or ask Codex to use Athena's repo-review skill. Update or remove:
 
 ```bash
 codex plugin marketplace upgrade athena
@@ -71,7 +71,7 @@ codex plugin marketplace remove athena
 pi install https://github.com/HomericIntelligence/Athena
 ```
 
-Invoke `/skill:verification`. Update or remove:
+Invoke `/skill:repo-review`. Update or remove:
 
 ```bash
 pi update https://github.com/HomericIntelligence/Athena
@@ -90,11 +90,9 @@ and generated development output.
 ## Skills
 
 - Strict repository and PR evaluation: `repo-review` and `pr-review`.
-- Engineering: `brainstorm`, `systematic-debugging`, `test-driven-development`, `verification`,
-  `code-review`, and `finish-branch`.
+- Engineering: `brainstorm`, `systematic-debugging`, and `test-driven-development`.
 - Coordination: `myrmidon-swarm`, `git-worktrees`, `worktree-cleanup`, and `tidy`.
-- Knowledge and enablement: `advise`, `learn`, `skill-advisor`, `python-repo-modernization`,
-  `github-actions-python-cicd`, and `create-reusable-utilities`.
+- Knowledge and enablement: `advise` and `learn`.
 
 All harnesses consume the same top-level [`skills/`](skills/) directory. Missing delegation runs
 sequentially with the current agent.

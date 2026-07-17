@@ -17,4 +17,4 @@ The governing rule is: **a truthful failure is acceptable; invented success is n
 6. Reviewers must reject evidence whose producing path cannot emit the claimed format or whose
    timestamp, revision, environment, or CI identity cannot be reconciled.
 
-Athena's `verification`, `repo-review`, and `pr-review` skills enforce this policy.
+Athena's `repo-review` and `pr-review` skills enforce this policy.

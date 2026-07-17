@@ -203,7 +203,7 @@ class DistributionTests(unittest.TestCase):
         self.assertEqual(validator.validate_repository(self.fixture), [])
 
     def test_executable_scripts_must_use_shared_argparse_convention(self) -> None:
-        script = self.fixture / "skills" / "code-review" / "scripts" / "review_diff.py"
+        script = self.fixture / "skills" / "pr-review" / "scripts" / "resolve_pr.py"
         script.write_text(
             "#!/usr/bin/env python3\nprint('no parser')\n", encoding="utf-8"
         )
@@ -215,7 +215,7 @@ class DistributionTests(unittest.TestCase):
     def test_executable_scripts_cannot_hide_direct_argparse_behind_dead_factory_call(
         self,
     ) -> None:
-        script = self.fixture / "skills" / "code-review" / "scripts" / "review_diff.py"
+        script = self.fixture / "skills" / "pr-review" / "scripts" / "resolve_pr.py"
         script.write_text(
             "#!/usr/bin/env python3\n"
             "import argparse\n"
@@ -231,7 +231,7 @@ class DistributionTests(unittest.TestCase):
         )
 
     def test_executable_scripts_may_alias_the_shared_parser_factory(self) -> None:
-        script = self.fixture / "skills" / "code-review" / "scripts" / "review_diff.py"
+        script = self.fixture / "skills" / "pr-review" / "scripts" / "resolve_pr.py"
         script.write_text(
             "#!/usr/bin/env python3\n"
             "from skills._cli import argument_parser as make_parser\n"

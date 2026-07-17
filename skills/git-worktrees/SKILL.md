@@ -102,7 +102,8 @@ not authorize removal; `worktree-cleanup` must re-audit it and obtain per-path G
 
 - Invoke `tidy` for branch inspection and rebasing after work is complete.
 - Invoke `worktree-cleanup` directly for separately approved worktree audit and removal.
-- Invoke `verification` before finishing and cleaning up.
+- Verify with fresh runnable evidence per the evidence-integrity policy before finishing and
+  cleaning up.
 
 ---
 
