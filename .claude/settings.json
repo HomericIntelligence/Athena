@@ -14,13 +14,13 @@
       "Bash(curl * | sh*)",
       "Bash(curl * | sudo*)",
       "Bash(eval *)",
-      "Write(~/.ssh/**)",
-      "Write(~/.aws/**)",
-      "Write(~/.kube/**)",
-      "Write(~/.docker/**)",
-      "Write(~/.gnupg/**)",
-      "Write(.env)",
-      "Write(.env.*)"
+      "Edit(~/.ssh/**)",
+      "Edit(~/.aws/**)",
+      "Edit(~/.kube/**)",
+      "Edit(~/.docker/**)",
+      "Edit(~/.gnupg/**)",
+      "Edit(.env)",
+      "Edit(.env.*)"
     ]
   }
 }
