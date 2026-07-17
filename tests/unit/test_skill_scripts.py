@@ -140,9 +140,9 @@ class ScriptConventionTests(unittest.TestCase):
                 ("pattern",),
                 "git",
             ),
-            ("skills/worktree-cleanup/scripts/audit_worktrees.py", (), "git"),
+            ("skills/tidy/scripts/audit_worktrees.py", (), "git"),
             (
-                "skills/worktree-cleanup/scripts/remove_worktree.py",
+                "skills/tidy/scripts/remove_worktree.py",
                 ("/tmp/worktree", "--expected-head", "head"),
                 "git",
             ),
@@ -794,7 +794,7 @@ class WorktreeScriptTests(unittest.TestCase):
             expected_head = git(worktree, "rev-parse", "HEAD")
             (worktree / "dirty.txt").write_text("dirty\n", encoding="utf-8")
             result = run_script(
-                "skills/worktree-cleanup/scripts/remove_worktree.py",
+                "skills/tidy/scripts/remove_worktree.py",
                 str(worktree),
                 "--expected-head",
                 expected_head,
@@ -812,7 +812,7 @@ class WorktreeScriptTests(unittest.TestCase):
             git(repository, "worktree", "add", "-q", "-b", "feature", str(worktree))
 
             result = run_script(
-                "skills/worktree-cleanup/scripts/remove_worktree.py",
+                "skills/tidy/scripts/remove_worktree.py",
                 str(worktree),
                 cwd=repository,
             )
@@ -827,7 +827,7 @@ class WorktreeScriptTests(unittest.TestCase):
             unregistered = Path(temporary_directory) / "unregistered"
             unregistered.mkdir()
             result = run_script(
-                "skills/worktree-cleanup/scripts/remove_worktree.py",
+                "skills/tidy/scripts/remove_worktree.py",
                 str(unregistered),
                 "--expected-head",
                 git(repository, "rev-parse", "HEAD"),
@@ -847,7 +847,7 @@ class WorktreeScriptTests(unittest.TestCase):
             (worktree / "tracked.txt").write_text("changed\n", encoding="utf-8")
             git(worktree, "commit", "-qam", "test: move head")
             result = run_script(
-                "skills/worktree-cleanup/scripts/remove_worktree.py",
+                "skills/tidy/scripts/remove_worktree.py",
                 str(worktree),
                 "--expected-head",
                 audited_head,
@@ -868,7 +868,7 @@ class WorktreeScriptTests(unittest.TestCase):
             git(repository, "worktree", "add", "-q", "-b", "stale", str(stale))
             shutil.rmtree(stale)
             result = run_script(
-                "skills/worktree-cleanup/scripts/remove_worktree.py",
+                "skills/tidy/scripts/remove_worktree.py",
                 str(approved),
                 "--expected-head",
                 git(approved, "rev-parse", "HEAD"),
@@ -887,7 +887,7 @@ class WorktreeScriptTests(unittest.TestCase):
             git(repository, "worktree", "add", "-q", "-b", "feature", str(worktree))
             expected_head = git(worktree, "rev-parse", "HEAD")
             result = run_script(
-                "skills/worktree-cleanup/scripts/remove_worktree.py",
+                "skills/tidy/scripts/remove_worktree.py",
                 str(worktree),
                 "--expected-head",
                 expected_head,
@@ -902,7 +902,7 @@ class WorktreeScriptTests(unittest.TestCase):
             repository = Path(temporary_directory) / "repo"
             initialize_repository(repository)
             result = run_script(
-                "skills/worktree-cleanup/scripts/audit_worktrees.py", cwd=repository
+                "skills/tidy/scripts/audit_worktrees.py", cwd=repository
             )
 
         self.assertEqual(0, result.returncode, result.stderr)
@@ -920,7 +920,7 @@ class WorktreeScriptTests(unittest.TestCase):
             git(repository, "worktree", "add", "-q", "-b", "stale", str(stale))
             shutil.rmtree(stale)
             result = run_script(
-                "skills/worktree-cleanup/scripts/audit_worktrees.py", cwd=repository
+                "skills/tidy/scripts/audit_worktrees.py", cwd=repository
             )
 
         self.assertEqual(0, result.returncode, result.stderr)

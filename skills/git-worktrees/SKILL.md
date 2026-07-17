@@ -76,10 +76,10 @@ No `.gitignore` verification needed — outside the project entirely.
 ## Cleanup
 
 When work is done, invoke `tidy` for branch inspection and rebasing. Use the separately approved
-audit and removal flow in `worktree-cleanup` for worktrees; do not improvise deletion commands.
+audit and removal flow in `tidy` (Phase 1) for worktrees; do not improvise deletion commands.
 
 Preserve the worktree by default. Delivery, merge, abandonment, or a general cleanup request does
-not authorize removal; `worktree-cleanup` must re-audit it and obtain per-path Gate C approval.
+not authorize removal; `tidy` must re-audit it and obtain per-path Gate C approval.
 
 ## Quick Reference
 
@@ -100,8 +100,7 @@ not authorize removal; `worktree-cleanup` must re-audit it and obtain per-path G
 
 **Pairs with:**
 
-- Invoke `tidy` for branch inspection and rebasing after work is complete.
-- Invoke `worktree-cleanup` directly for separately approved worktree audit and removal.
+- Invoke `tidy` for worktree audit and removal (its first phase) and branch inspection.
 - Verify with fresh runnable evidence per the evidence-integrity policy before finishing and
   cleaning up.
 

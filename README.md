@@ -91,7 +91,7 @@ and generated development output.
 
 - Strict repository and PR evaluation: `repo-review` and `pr-review`.
 - Engineering: `brainstorm`, `systematic-debugging`, and `test-driven-development`.
-- Coordination: `myrmidon-swarm`, `git-worktrees`, `worktree-cleanup`, and `tidy`.
+- Coordination: `myrmidon-swarm`, `git-worktrees`, and `tidy`.
 - Knowledge and enablement: `advise` and `learn`.
 
 All harnesses consume the same top-level [`skills/`](skills/) directory. Missing delegation runs
