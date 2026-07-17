@@ -17,12 +17,8 @@ The following skills were adapted from obra/superpowers source material:
 | --- | --- |
 | `test-driven-development` | `skills/test-driven-development/SKILL.md` |
 | `systematic-debugging` | `skills/systematic-debugging/SKILL.md` |
-| `verification` | `skills/verification-before-completion/SKILL.md` |
 | `git-worktrees` | `skills/using-git-worktrees/SKILL.md` |
-| `finish-branch` | `skills/finishing-a-development-branch/SKILL.md` |
 | `brainstorm` | `skills/brainstorming/SKILL.md` |
-| `code-review` | `skills/requesting-code-review/SKILL.md`, `skills/receiving-code-review/SKILL.md`, `agents/code-reviewer.md` |
-| `skill-advisor` | `skills/using-superpowers/SKILL.md` |
 
 Each derived skill has been modified for Athena's host-neutral invocation, local policy, mandatory
 knowledge workflow, and Greek-themed orchestration.

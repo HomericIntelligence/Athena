@@ -20,7 +20,7 @@
   "interface": {
     "displayName": "Athena",
     "shortDescription": "Repository auditing, agent orchestration, and workflow skills for Codex.",
-    "longDescription": "Athena provides Codex skills for repository analysis, strict PR review, Myrmidon swarm orchestration, test-driven development, systematic debugging, branch completion, worktree hygiene, and reusable Python project modernization workflows.",
+    "longDescription": "Athena provides Codex skills for repository analysis, strict PR review, Myrmidon swarm orchestration, test-driven development, systematic debugging, worktree hygiene, and knowledge workflows.",
     "developerName": "HomericIntelligence",
     "category": "Productivity",
     "capabilities": [

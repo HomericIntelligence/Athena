@@ -180,7 +180,8 @@ Can't check all boxes? You skipped TDD. Start over.
 
 ## After Completion
 
-Invoke the `verification` skill before claiming work complete.
+Verify with fresh runnable evidence per the evidence-integrity policy before claiming work
+complete; a prior run or implementation diff is not evidence of the current state.
 Run `learn` when the session produced a durable testing lesson; it must publish through a PR.
 
 ---

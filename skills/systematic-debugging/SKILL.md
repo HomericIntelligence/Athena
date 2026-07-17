@@ -179,7 +179,8 @@ tool, retaining their complete output as evidence.
 
 ## After Resolution
 
-Invoke the `verification` skill before claiming the bug is fixed.
+Verify with fresh runnable evidence per the evidence-integrity policy before claiming the bug is
+fixed; rerun the failing reproduction and the repository-defined checks.
 
 Offer to invoke `learn` when the session produced durable debugging knowledge. An indirect Learn
 invocation does not authorize its branch, commit, push, or pull-request writes; follow Learn's

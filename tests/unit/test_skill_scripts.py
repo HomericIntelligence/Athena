@@ -127,7 +127,6 @@ class ScriptConventionTests(unittest.TestCase):
 
     def test_helpers_report_missing_git_or_gh_without_a_traceback(self) -> None:
         commands = (
-            ("skills/code-review/scripts/review_diff.py", ("--metadata-only",), "git"),
             (
                 "skills/git-worktrees/scripts/prepare_worktree.py",
                 ("feature", "--start-point", "HEAD", "--dry-run"),
@@ -483,74 +482,6 @@ class PullRequestScriptTests(unittest.TestCase):
         self.assertIn("usage:", usage.stderr)
         self.assertEqual(1, invalid.returncode)
         self.assertIn("invalid check evidence", invalid.stderr)
-
-
-class CodeReviewScriptTests(unittest.TestCase):
-    def test_review_diff_discovers_non_origin_trunk_base(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            root = Path(temporary_directory)
-            source = root / "source"
-            source.mkdir()
-            git(source, "init", "--quiet", "--initial-branch=trunk")
-            git(source, "config", "user.name", "Athena Tests")
-            git(source, "config", "user.email", "athena-tests@example.invalid")
-            (source / "tracked.txt").write_text("base\n", encoding="utf-8")
-            git(source, "add", "tracked.txt")
-            git(source, "commit", "--quiet", "-m", "test: initialize")
-            remote = root / "remote.git"
-            subprocess.run(
-                ["git", "clone", "--quiet", "--bare", str(source), str(remote)],
-                check=True,
-            )
-            git(source, "remote", "add", "upstream", str(remote))
-            git(source, "fetch", "--quiet", "upstream")
-            git(source, "checkout", "--quiet", "-b", "feature")
-
-            result = run_script(
-                "skills/code-review/scripts/review_diff.py",
-                "--metadata-only",
-                cwd=source,
-            )
-
-        self.assertEqual(0, result.returncode, result.stderr)
-        metadata = json.loads(result.stdout)
-        self.assertEqual("upstream", metadata["remote"])
-        self.assertEqual("trunk", metadata["default_branch"])
-
-    def test_review_diff_prints_full_diff_and_fails_without_a_remote(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            root = Path(temporary_directory)
-            source = root / "source"
-            source.mkdir()
-            git(source, "init", "--quiet", "--initial-branch=main")
-            git(source, "config", "user.name", "Athena Tests")
-            git(source, "config", "user.email", "athena-tests@example.invalid")
-            (source / "tracked.txt").write_text("base\n", encoding="utf-8")
-            git(source, "add", "tracked.txt")
-            git(source, "commit", "--quiet", "-m", "test: initialize")
-            no_remote = run_script(
-                "skills/code-review/scripts/review_diff.py",
-                "--metadata-only",
-                cwd=source,
-            )
-
-            remote = root / "remote.git"
-            subprocess.run(
-                ["git", "clone", "--quiet", "--bare", str(source), str(remote)],
-                check=True,
-            )
-            git(source, "remote", "add", "origin", str(remote))
-            git(source, "fetch", "--quiet", "origin")
-            git(source, "checkout", "--quiet", "-b", "feature")
-            (source / "tracked.txt").write_text("feature\n", encoding="utf-8")
-            git(source, "commit", "-qam", "test: feature")
-            full = run_script("skills/code-review/scripts/review_diff.py", cwd=source)
-
-        self.assertEqual(1, no_remote.returncode)
-        self.assertIn("cannot choose a review remote", no_remote.stderr)
-        self.assertEqual(0, full.returncode, full.stderr)
-        self.assertIn('"remote": "origin"', full.stdout)
-        self.assertIn("tracked.txt", full.stdout)
 
 
 class WorktreeScriptTests(unittest.TestCase):
