@@ -1,9 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
-  <title>Athena plugin mark</title>
+  <title id="title">Athena plugin mark</title>
   <rect width="512" height="512" rx="96" fill="#18222e"/>
-  <path d="M118 360h276v48H118z" fill="#f0b44c"/>
-  <path d="M168 314 300 182l42 42-132 132z" fill="#e8edf2"/>
-  <path d="m294 124 94 94-42 42-94-94z" fill="#f0b44c"/>
-  <path d="M132 132h116v44H132z" fill="#61b3a6"/>
-  <path d="M132 196h82v44h-82z" fill="#61b3a6"/>
+  <path d="M162 216 172 118l66 56z" fill="#e8edf2"/>
+  <path d="M350 216 340 118l-66 56z" fill="#e8edf2"/>
+  <path d="M256 148c-72 0-108 46-108 114v62c0 76 48 118 108 118s108-42 108-118v-62c0-68-36-114-108-114z" fill="#e8edf2"/>
+  <circle cx="212" cy="262" r="46" fill="#f0b44c"/>
+  <circle cx="300" cy="262" r="46" fill="#f0b44c"/>
+  <circle cx="212" cy="262" r="19" fill="#18222e"/>
+  <circle cx="300" cy="262" r="19" fill="#18222e"/>
+  <path d="M238 316h36l-18 34z" fill="#f0b44c"/>
+  <path d="M214 372l42 26 42-26" stroke="#61b3a6" stroke-width="14" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M226 404l30 18 30-18" stroke="#61b3a6" stroke-width="14" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
