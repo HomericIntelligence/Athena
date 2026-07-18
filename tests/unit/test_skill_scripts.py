@@ -192,6 +192,27 @@ class PullRequestScriptTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(42, json.loads(result.stdout)["number"])
 
+    def test_resolve_pr_rejects_a_pr_from_another_repository(self) -> None:
+        """A local source review must never be bound to a foreign PR URL."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            env = self.make_fake_tools(root, [])
+            env["FAKE_GH_REPOSITORY"] = "owner/current-repository"
+            env["FAKE_GH_VIEW_JSON"] = json.dumps(
+                {
+                    "url": "https://github.com/other/foreign-repository/pull/42",
+                }
+            )
+            result = run_script(
+                "skills/pr-review/scripts/resolve_pr.py",
+                "42",
+                cwd=root,
+                env=env,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("does not belong to current repository", result.stderr)
+
     def test_resolve_pr_rejects_closed_and_invalid_explicit_prs(self) -> None:
         for payload, message in (
             ({"number": 42, "state": "CLOSED"}, "is not open"),

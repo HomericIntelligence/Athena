@@ -25,28 +25,38 @@ Do not guess a PR from title similarity or recent activity.
 
 ## CI-free source-review profile
 
-Use this profile only when the operator explicitly invokes
-`$athena:pr-review --ci-free [PR_NUMBER_OR_URL]` or supplies an equivalent
-explicit instruction. It is for a caller that owns its source-review decision
-but cannot control, query, or rely on CI/CD. The profile keeps this skill's
-full issue, architecture, implementation, test, security, and source-history
-review; it excludes only CI/CD evidence and merge-readiness claims.
+Use this profile only when the operator explicitly requests CI-free source
+review. A host may expose it as an optional `--ci-free` argument; use that
+host's native invocation syntax from the host-compatibility mapping. It is for
+a caller that owns its source-review decision but cannot control, query, or
+rely on CI/CD. The profile keeps this skill's full issue, architecture,
+implementation, test, security, and source-history review; it excludes only
+CI/CD evidence and merge-readiness claims.
 
 When the profile is active:
 
 - Resolve PR identity with `resolve_pr.py`, passing only the optional PR
-  identifier to that helper. Do not invoke `collect_evidence.py`, `gh pr
-  checks`, `statusCheckRollup`, workflow, artifact, deployment, or merge-queue
-  queries.
-- Derive changed paths from the two required local Git diff lenses and inspect
-  the head checkout. Read linked issue and PR metadata only when the query
-  excludes CI/CD status fields.
+  identifier to that helper. It verifies the PR URL belongs to the current
+  repository and returns the exact base/head OIDs. Do not invoke
+  `collect_evidence.py`, `gh pr checks`, `statusCheckRollup`, workflow,
+  artifact, deployment, or merge-queue queries.
+- Before reviewing, require a clean checkout, verify `git rev-parse HEAD`
+  equals the resolved `headRefOid`, and verify `baseRefOid` is a local commit
+  object. Use those immutable OIDs, rather than branch names, as the two
+  local Git diff-lens inputs. If either commit cannot be verified, stop with a
+  source-review coverage gap; never review a stale or mismatched checkout.
+- Derive changed paths from those two local Git diff lenses and inspect the
+  verified head checkout. Read linked issue and PR metadata only when the
+  query excludes CI/CD status fields.
 - Record branch staleness and conflicts as source-history facts, but do not
   require a rebase, fresh CI, or external check result before the profile's
   source-review verdict. Never call that verdict "merge-ready."
-- Run safe local repository validation relevant to the diff when available;
-  distinguish that local evidence from CI/CD and state any command that could
-  not run. Do not infer external-check success from local command results.
+- Before running a repository task or helper, inspect its definition. Do not
+  run one that queries CI/CD, checks/statuses, workflows, artifacts,
+  deployments, or merge queues indirectly. Run only local constituent
+  validation commands when they are available; otherwise report the local
+  validation coverage gap. Do not infer external-check success from local
+  command results.
 - State that CI/CD evidence was deliberately excluded. A `GO` from this
   profile means the source review passed; it does not authorize a merge or
   assert CI/CD status.
@@ -74,8 +84,9 @@ current check output.
 
 This default evidence procedure does not apply to the operator-authorized
 CI-free source-review profile. In that profile, use `resolve_pr.py` for
-identity, local Git for changed paths and the two diff lenses, and only
-non-CI/CD PR and issue metadata needed to review the source change.
+repository identity and immutable base/head OIDs, local Git for changed paths
+and the two diff lenses, and only non-CI/CD PR and issue metadata needed to
+review the source change.
 
 Read every changed file in full, not only diff hunks. Read linked issues, acceptance criteria,
 `AGENTS.md`, ADRs, public contracts, and affected tests. Treat the PR body and issue as claims that
@@ -127,18 +138,23 @@ calculating the percentage:
 4. **Testing and evidence (15%)** — behavior-first tests, regression/error coverage, meaningful
    assertions, clean check results, no fabricated evidence. In the CI-free
    source-review profile, assess locally run evidence only and identify CI/CD
-   evidence as deliberately excluded.
+   evidence as deliberately excluded and N/A.
 5. **Security and safety (10%)** — secrets/PII, untrusted inputs, permissions, destructive actions,
    supply chain, rollback and failure behavior.
 6. **Integration and release readiness (10%)** — base staleness, conflicts, CI, packaging, docs,
    applicable backwards compatibility, and operational handoff. In the
    CI-free source-review profile, assess source-level integration only; CI and
-   external release readiness are deliberately out of scope.
+   external release readiness are deliberately out of scope and N/A.
 
 For each dimension, begin at **0%**, add earned points criterion by criterion, total the percentage,
 and only then map it to this strict scale: A 93–100, B 80–92, C 70–79, D 60–69, F 0–59. A requires
 no critical or major findings. B requires no critical findings and at most one major finding. Never
 award or deduct points merely because a letter grade is the starting assumption.
+
+In the CI-free source-review profile, mark every CI/CD-only criterion N/A and
+normalize the weighted score over the remaining applicable source criteria.
+Do not award or deduct points for excluded evidence; identify each N/A portion
+and its reason in the scorecard.
 
 Record the product-maturity baseline before scoring. Compatibility, migration, and version-bump
 criteria apply only when an established supported release or public contract exists. An explicit
@@ -155,10 +171,11 @@ obligations.
   against an old head SHA.
 - Search for stale identifiers after renames and deleted paths after migrations.
 
-For the CI-free source-review profile, run only the applicable local commands.
-Do not query or assess required CI/CD checks, and do not make a merge-readiness
-claim. The report must separate local command results from the deliberately
-excluded CI/CD evidence.
+For the CI-free source-review profile, run only applicable local commands whose
+definitions have been inspected for indirect CI/CD queries. Do not query or
+assess required CI/CD checks, and do not make a merge-readiness claim. The
+report must separate local command results from the deliberately excluded
+CI/CD evidence and any local-validation coverage gap.
 
 ## Output contract
 
