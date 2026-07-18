@@ -1,7 +1,7 @@
 ---
 name: pr-review
-description: Perform a strict, full-coverage pull-request review against its issue, repository architecture, tests, security, and current target branch.
-argument-hint: "[PR_NUMBER_OR_URL]"
+description: Perform a strict, full-coverage pull-request review against its issue, repository architecture, tests, security, and current target branch; supports an operator-authorized CI-free source-review profile.
+argument-hint: "[--ci-free] [PR_NUMBER_OR_URL]"
 allowed-tools: [Read, Bash, Grep, Glob, Agent, WebFetch]
 ---
 
@@ -23,6 +23,38 @@ rebase, or push without explicit user approval after presenting the report.
 
 Do not guess a PR from title similarity or recent activity.
 
+## CI-free source-review profile
+
+Use this profile only when the operator explicitly invokes
+`$athena:pr-review --ci-free [PR_NUMBER_OR_URL]` or supplies an equivalent
+explicit instruction. It is for a caller that owns its source-review decision
+but cannot control, query, or rely on CI/CD. The profile keeps this skill's
+full issue, architecture, implementation, test, security, and source-history
+review; it excludes only CI/CD evidence and merge-readiness claims.
+
+When the profile is active:
+
+- Resolve PR identity with `resolve_pr.py`, passing only the optional PR
+  identifier to that helper. Do not invoke `collect_evidence.py`, `gh pr
+  checks`, `statusCheckRollup`, workflow, artifact, deployment, or merge-queue
+  queries.
+- Derive changed paths from the two required local Git diff lenses and inspect
+  the head checkout. Read linked issue and PR metadata only when the query
+  excludes CI/CD status fields.
+- Record branch staleness and conflicts as source-history facts, but do not
+  require a rebase, fresh CI, or external check result before the profile's
+  source-review verdict. Never call that verdict "merge-ready."
+- Run safe local repository validation relevant to the diff when available;
+  distinguish that local evidence from CI/CD and state any command that could
+  not run. Do not infer external-check success from local command results.
+- State that CI/CD evidence was deliberately excluded. A `GO` from this
+  profile means the source review passed; it does not authorize a merge or
+  assert CI/CD status.
+
+If the requested decision needs CI/CD, merge readiness, deployment evidence,
+or an external required-check result, stop and ask the operator to use the
+default profile instead.
+
 ## Host compatibility
 
 Use native subagents when available, one per independent review dimension. If the host lacks
@@ -39,6 +71,11 @@ With the target repository still as the current working directory, resolve
 `scripts/collect_evidence.py` against this installed skill directory and invoke that absolute helper
 path with `PR_NUMBER_OR_URL`. Retain its JSON output containing PR metadata, changed paths, and
 current check output.
+
+This default evidence procedure does not apply to the operator-authorized
+CI-free source-review profile. In that profile, use `resolve_pr.py` for
+identity, local Git for changed paths and the two diff lenses, and only
+non-CI/CD PR and issue metadata needed to review the source change.
 
 Read every changed file in full, not only diff hunks. Read linked issues, acceptance criteria,
 `AGENTS.md`, ADRs, public contracts, and affected tests. Treat the PR body and issue as claims that
@@ -68,8 +105,11 @@ It returns the behind count, merge base, author-intent range, and current-base r
 - **Current-main impact:** diff the returned `current_base_range`; it shows the literal difference
   from the current base and reveals revert/deletion risk on a stale branch.
 
-Never substitute one lens for the other. If the branch is behind, require a rebase and fresh CI
-before declaring it merge-ready. Detect already-landed or zombie work by checking current base
+Never substitute one lens for the other. In the default profile, if the branch
+is behind, require a rebase and fresh CI before declaring it merge-ready. In
+the CI-free source-review profile, report the behind count but do not require a
+rebase or fresh CI for the source-review verdict, and do not declare the PR
+merge-ready. Detect already-landed or zombie work by checking current base
 content, not commit ancestry alone on squash-merge repositories.
 
 ## Review dimensions
@@ -85,11 +125,15 @@ calculating the percentage:
 3. **Implementation quality (20%)** — correctness, error paths, types, maintainability, DRY,
    dead code, portability, surprising behavior.
 4. **Testing and evidence (15%)** — behavior-first tests, regression/error coverage, meaningful
-   assertions, clean check results, no fabricated evidence.
+   assertions, clean check results, no fabricated evidence. In the CI-free
+   source-review profile, assess locally run evidence only and identify CI/CD
+   evidence as deliberately excluded.
 5. **Security and safety (10%)** — secrets/PII, untrusted inputs, permissions, destructive actions,
    supply chain, rollback and failure behavior.
 6. **Integration and release readiness (10%)** — base staleness, conflicts, CI, packaging, docs,
-   applicable backwards compatibility, and operational handoff.
+   applicable backwards compatibility, and operational handoff. In the
+   CI-free source-review profile, assess source-level integration only; CI and
+   external release readiness are deliberately out of scope.
 
 For each dimension, begin at **0%**, add earned points criterion by criterion, total the percentage,
 and only then map it to this strict scale: A 93–100, B 80–92, C 70–79, D 60–69, F 0–59. A requires
@@ -111,6 +155,11 @@ obligations.
   against an old head SHA.
 - Search for stale identifiers after renames and deleted paths after migrations.
 
+For the CI-free source-review profile, run only the applicable local commands.
+Do not query or assess required CI/CD checks, and do not make a merge-readiness
+claim. The report must separate local command results from the deliberately
+excluded CI/CD evidence.
+
 ## Output contract
 
 Return:
@@ -120,7 +169,9 @@ Return:
    impact, and a concrete fix.
 3. Six-dimension scorecard and weighted overall grade.
 4. Commands run with pass/fail status and any coverage gaps.
-5. Explicit GO, CONDITIONAL GO, or NO-GO verdict.
+5. Explicit GO, CONDITIONAL GO, or NO-GO verdict. The CI-free profile must
+   label this a source-review verdict and state that it is not a CI/CD or
+   merge-readiness conclusion.
 6. A short list of strengths only after findings.
 
 If there are no findings, say so and identify residual risks or unverified assumptions. End by
