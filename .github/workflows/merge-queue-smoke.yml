@@ -1,0 +1,44 @@
+name: Merge Queue Smoke
+
+# Fast merge-queue gate. The full required matrix (_required.yml) runs on
+# every pull_request and on push to main, exactly as before; merge_group
+# re-validation is this single fast job, so a queued merge occupies one
+# runner slot for < 5 min instead of re-running the whole matrix. The
+# `merge-queue-smoke` context this job produces is the single required
+# status check for the merge queue after the ruleset flip.
+
+"on":
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mq-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  merge-queue-smoke:
+    name: merge-queue-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.10.8"
+          enable-cache: true
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: "1.36.0"
+      - name: Reject silent failures and advisory gates
+        run: python scripts/ci_policy.py suppressions
+      - name: Install locked validation tools
+        run: uv sync --locked
+      - name: Validate workflow syntax and schema
+        run: just workflow-check
+      - name: Validate task entry points
+        run: just ci-entrypoints

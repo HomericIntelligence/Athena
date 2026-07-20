@@ -721,13 +721,27 @@ class WorkflowContractTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            {"workflow_call", "pull_request", "push", "schedule", "merge_group"},
+            {"workflow_call", "pull_request", "push", "schedule"},
             set(workflow["on"]),
         )
-        self.assertEqual({"types": ["checks_requested"]}, workflow["on"]["merge_group"])
         self.assertEqual({"branches": ["main"]}, workflow["on"]["pull_request"])
         self.assertEqual({"branches": ["main"]}, workflow["on"]["push"])
         self.assertEqual([{"cron": "17 9 * * 2"}], workflow["on"]["schedule"])
+
+    def test_merge_queue_smoke_workflow_owns_the_merge_group_event(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        smoke = yaml.safe_load(
+            (root / ".github/workflows/merge-queue-smoke.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        self.assertEqual({"merge_group"}, set(smoke["on"]))
+        self.assertEqual({"types": ["checks_requested"]}, smoke["on"]["merge_group"])
+        self.assertEqual(["merge-queue-smoke"], list(smoke["jobs"]))
+        job = smoke["jobs"]["merge-queue-smoke"]
+        self.assertEqual("merge-queue-smoke", job["name"])
+        self.assertEqual(5, job["timeout-minutes"])
 
     def test_required_and_release_workflows_consume_gated_sboms(self) -> None:
         root = Path(__file__).resolve().parents[2]
