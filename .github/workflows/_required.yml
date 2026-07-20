@@ -2,8 +2,6 @@ name: Required Checks
 
 "on":
   workflow_call:
-  merge_group:
-    types: [checks_requested]
   pull_request:
     branches: [main]
   push:
