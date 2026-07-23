@@ -79,8 +79,12 @@ describe genuinely inaccessible evidence; it may not substitute for retrying ava
 
 With the target repository still as the current working directory, resolve
 `scripts/collect_evidence.py` against this installed skill directory and invoke that absolute helper
-path with `PR_NUMBER_OR_URL`. Retain its JSON output containing PR metadata, changed paths, and
-current check output.
+path with `PR_NUMBER_OR_URL`. Retain its JSON output. The script's output is a flat object whose keys are
+`changed_files` (list of file paths), `changed_paths` (alias of `changed_files`,
+documented in issue #52 for downstream-consumer ergonomics), `checks` (the
+statusCheckRollup), and `pull_request` (the full PR metadata). The
+`pull_request` object nests `title`, `author`, `baseRefName`, `headRefName`,
+`statusCheckRollup`, `closingIssuesReferences`, `url`, and `reviews`.
 
 This default evidence procedure does not apply to the operator-authorized
 CI-free source-review profile. In that profile, use `resolve_pr.py` for
