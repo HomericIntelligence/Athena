@@ -15,8 +15,15 @@ from pr_identity import repository_from_pr_url, validate_pr_identifier
 from skills._cli import argument_parser, run_command
 
 
+# Keep FIELDS minimal to stay under GitHub GraphQL query complexity (~500).
+# `files` is already separately fetched below via REST `/pulls/{n}/files`.
+# `commits` is unused because diff_context.py uses local git with the OIDs
+# returned by resolve_pr.py. Removing both prevents a partial-response null
+# drop of `title` / `author` / `statusCheckRollup` on PRs with >~5 changed
+# files (the GraphQL complexity budget overruns and trailing fields become
+# null). See issue #52.
 FIELDS = (
-    "number,title,body,state,isDraft,author,baseRefName,headRefName,commits,files,"
+    "number,title,body,state,isDraft,author,baseRefName,headRefName,"
     "reviews,statusCheckRollup,closingIssuesReferences,url"
 )
 
@@ -79,10 +86,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (RuntimeError, json.JSONDecodeError) as error:
         print(error, file=sys.stderr)
         return 1
+    # `changed_paths` is a top-level alias for `changed_files` so downstream
+    # consumers don't have to know the script internally keys the file list as
+    # `changed_files`. Existing callers using `changed_files` retain backwards
+    # compatibility. See issue #52.
     print(
         json.dumps(
             {
                 "changed_files": changed_files,
+                "changed_paths": changed_files,
                 "checks": checks,
                 "pull_request": metadata,
             },
