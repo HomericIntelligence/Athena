@@ -135,6 +135,7 @@ class ScriptConventionTests(unittest.TestCase):
             ("skills/pr-review/scripts/collect_evidence.py", ("1",), "gh"),
             ("skills/pr-review/scripts/diff_context.py", ("HEAD", "HEAD"), "git"),
             ("skills/pr-review/scripts/resolve_pr.py", ("1",), "gh"),
+            ("skills/change-review/scripts/resolve_scope.py", ("--worktree",), "git"),
             (
                 "skills/systematic-debugging/scripts/repository_evidence.py",
                 ("pattern",),
@@ -547,6 +548,154 @@ class PullRequestScriptTests(unittest.TestCase):
         self.assertIn("usage:", usage.stderr)
         self.assertEqual(1, invalid.returncode)
         self.assertIn("invalid check evidence", invalid.stderr)
+
+
+class ChangeReviewScriptTests(unittest.TestCase):
+    def test_worktree_includes_nonignored_untracked_content_without_mutation(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory) / "repo"
+            initialize_repository(repository)
+            (repository / ".gitignore").write_text(".env.local\n", encoding="utf-8")
+            git(repository, "add", ".gitignore")
+            git(repository, "commit", "--quiet", "-m", "test: ignore local env")
+            untracked = repository / "new.py"
+            untracked.write_text("first\n", encoding="utf-8")
+            (repository / ".env.local").write_text("secret\n", encoding="utf-8")
+            head_before = git(repository, "rev-parse", "HEAD")
+            status_before = git(repository, "status", "--porcelain=v1", "-uall")
+
+            first = run_script(
+                "skills/change-review/scripts/resolve_scope.py",
+                "--worktree",
+                cwd=repository,
+            )
+
+            self.assertEqual(0, first.returncode, first.stderr)
+            first_scope = json.loads(first.stdout)
+            self.assertEqual("worktree", first_scope["scope"])
+            self.assertEqual(head_before, first_scope["base"])
+            self.assertEqual(head_before, first_scope["head"])
+            self.assertEqual([], first_scope["tracked_paths"])
+            self.assertEqual(["new.py"], first_scope["untracked_paths"])
+            self.assertEqual(["new.py"], first_scope["paths"])
+            self.assertEqual("included", first_scope["untracked_scope"])
+            self.assertNotIn(".env.local", first_scope["paths"])
+            self.assertEqual(head_before, git(repository, "rev-parse", "HEAD"))
+            self.assertEqual(
+                status_before, git(repository, "status", "--porcelain=v1", "-uall")
+            )
+
+            untracked.write_text("second\n", encoding="utf-8")
+            second = run_script(
+                "skills/change-review/scripts/resolve_scope.py",
+                "--worktree",
+                cwd=repository,
+            )
+
+            self.assertEqual(0, second.returncode, second.stderr)
+            self.assertNotEqual(
+                first_scope["scope_digest"], json.loads(second.stdout)["scope_digest"]
+            )
+
+    def test_staged_and_range_scopes_exclude_untracked_worktree_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory) / "repo"
+            initialize_repository(repository)
+            base = git(repository, "rev-parse", "HEAD")
+            (repository / "staged.txt").write_text("staged\n", encoding="utf-8")
+            git(repository, "add", "staged.txt")
+            (repository / "loose.py").write_text("loose\n", encoding="utf-8")
+
+            staged = run_script(
+                "skills/change-review/scripts/resolve_scope.py",
+                "--staged",
+                cwd=repository,
+            )
+
+            self.assertEqual(0, staged.returncode, staged.stderr)
+            staged_scope = json.loads(staged.stdout)
+            self.assertEqual(["staged.txt"], staged_scope["paths"])
+            self.assertEqual([], staged_scope["untracked_paths"])
+            self.assertEqual("excluded", staged_scope["untracked_scope"])
+
+            git(repository, "commit", "--quiet", "-m", "test: stage file")
+            head = git(repository, "rev-parse", "HEAD")
+            ranged = run_script(
+                "skills/change-review/scripts/resolve_scope.py",
+                "--range",
+                f"{base}..{head}",
+                cwd=repository,
+            )
+
+            self.assertEqual(0, ranged.returncode, ranged.stderr)
+            range_scope = json.loads(ranged.stdout)
+            self.assertEqual("range", range_scope["scope"])
+            self.assertEqual(base, range_scope["base"])
+            self.assertEqual(head, range_scope["head"])
+            self.assertEqual(["staged.txt"], range_scope["paths"])
+            self.assertEqual([], range_scope["untracked_paths"])
+            self.assertEqual("excluded", range_scope["untracked_scope"])
+
+    def test_worktree_path_filter_empty_scope_and_outside_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            repository = root / "repo"
+            initialize_repository(repository)
+
+            empty = run_script(
+                "skills/change-review/scripts/resolve_scope.py",
+                "--worktree",
+                cwd=repository,
+            )
+
+            self.assertEqual(0, empty.returncode, empty.stderr)
+            self.assertEqual([], json.loads(empty.stdout)["paths"])
+
+            source = repository / "src"
+            source.mkdir()
+            (source / "new.py").write_text("value = 1\n", encoding="utf-8")
+            filtered = run_script(
+                "skills/change-review/scripts/resolve_scope.py",
+                "--worktree",
+                "src",
+                cwd=repository,
+            )
+            outside = run_script(
+                "skills/change-review/scripts/resolve_scope.py",
+                "--worktree",
+                str(root / "outside.py"),
+                cwd=repository,
+            )
+
+            self.assertEqual(0, filtered.returncode, filtered.stderr)
+            self.assertEqual(["src/new.py"], json.loads(filtered.stdout)["paths"])
+            self.assertEqual(1, outside.returncode)
+            self.assertIn("outside repository", outside.stderr)
+
+    def test_worktree_path_filter_treats_git_pathspec_magic_as_literal(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory) / "repo"
+            initialize_repository(repository)
+            documentation = repository / "docs" / "review"
+            documentation.mkdir(parents=True)
+            common = documentation / "common.md"
+            common.write_text("base\n", encoding="utf-8")
+            git(repository, "add", "docs/review/common.md")
+            git(repository, "commit", "--quiet", "-m", "test: add review docs")
+            (repository / "tracked.txt").write_text("changed\n", encoding="utf-8")
+            common.write_text("changed\n", encoding="utf-8")
+
+            result = run_script(
+                "skills/change-review/scripts/resolve_scope.py",
+                "--worktree",
+                ":(exclude)docs/review/common.md",
+                cwd=repository,
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual([], json.loads(result.stdout)["paths"])
 
 
 class WorktreeScriptTests(unittest.TestCase):

@@ -97,8 +97,12 @@ example checks; it does not justify a prose assertion harness.
 
 ### 4. Score only after the architecture gate
 
-Begin every section at **0%**. Add earned points criterion by criterion, total
-the percentage, then assign a letter grade without rounding up:
+For every applicable section, begin at **0%**. Add earned points criterion by
+criterion, calculate the weighted overall score with the applicable-weight
+formula in the [shared review contract](../../docs/review/common.md), then
+assign a letter grade without rounding up. A classifier-proven N/A section is
+removed from the denominator; a coverage gap is not N/A and earns no unsupported
+credit:
 
 | Grade | Score | Evidence standard |
 | --- | ---: | --- |

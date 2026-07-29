@@ -14,8 +14,8 @@ Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 
 ## Authority and forge compatibility
 
-`--draft` is read-only and returns a proposed canonical plan. A direct
-invocation without `--draft` authorizes exactly the documented canonical-plan
+`--draft` is read-only and returns a proposed canonical plan. An explicit direct
+user request without `--draft` authorizes exactly the documented canonical-plan
 comment action for the resolved issue. It does not authorize implementation,
 labels, assignment, commits, pushes, pull requests, merges, or any other forge
 mutation. An invocation from another skill does not confer this authority.
@@ -44,6 +44,10 @@ ownership gap.
 6. Apply the canonical-plan ownership and marker rules in the issue-planning
    contract. Preserve all foreign issue content. On ambiguity, return the draft
    and stop rather than overwriting a plan.
+7. Immediately before creating or updating the canonical comment, resolve the
+   current canonical planning identity again. If the requirements digest,
+   actor-owned marker, comment identity, or plan-content digest changed since
+   planning, withhold the update and return the prepared draft as stale.
 
 ## Plan content
 

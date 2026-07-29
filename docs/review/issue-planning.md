@@ -14,6 +14,15 @@ from other authors. If the marker is absent, create one canonical comment. If
 the marker is ambiguous, stop and ask for direction rather than overwriting a
 plan.
 
+The canonical planning identity is the resolved forge issue ID or URL, a digest
+of the title, body, and acceptance criteria used as requirements, the
+authenticated actor, plan-comment ID or URL, and plan-content digest. Resolve
+and record that identity before planning or reviewing. Immediately before
+updating the plan or publishing an issue review, resolve it again and compare
+every component. If the requirements or plan changed, became ambiguous, or
+cannot be verified, withhold the write and return the prepared draft or review
+as stale.
+
 The canonical plan contains:
 
 1. architecture alignment and relevant guidance or ADRs;
@@ -33,8 +42,8 @@ or generic framework layers without a demonstrated current consumer.
 `issue-review` evaluates the current canonical plan against the current issue.
 It may use earlier plan/review comments as bounded context, but it must never
 mistake a historical review, conclusion, or stale plan for the current plan.
-Bind the review to the canonical comment identifier and content digest when the
-forge makes those available.
+Bind the review to the canonical-plan identity and perform the pre-publication
+identity comparison above when the forge makes those fields available.
 
 The review leads with architecture alignment, then checks that every acceptance
 criterion has a concrete, safe implementation and functional verification step.
@@ -43,10 +52,11 @@ paths or boundaries, unverified assumptions, non-deterministic tests, and
 unresolved dependencies.
 
 `issue-review` publishes one actor-owned issue comment marked
-`<!-- athena:issue-review -->` only when directly invoked without
-`--report-only`. The comment records the reviewed plan identity, findings,
-coverage gaps, and a concise status. It is evidence only; target-repository
-labels, approvals, and human policy remain authoritative.
+`<!-- athena:issue-review -->` only after an explicit direct user request
+without `--report-only` and a successful pre-publication identity comparison.
+The comment records the reviewed plan identity, findings, coverage gaps, and a
+concise status. It is evidence only; target-repository labels, approvals, and
+human policy remain authoritative.
 
 ## Bounded revision loop
 

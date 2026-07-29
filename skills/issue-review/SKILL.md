@@ -14,11 +14,11 @@ Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 
 ## Authority and artifact identity
 
-`--report-only` is read-only. A direct invocation without it authorizes exactly
-one actor-owned structured review comment on the resolved issue. It does not
-authorize labels, assignments, implementation, commits, pushes, pull requests,
-merges, or issue closure. An invocation from another skill does not confer
-forge-write authority.
+`--report-only` is read-only. An explicit direct user request without it
+authorizes exactly one actor-owned structured review comment on the resolved
+issue. It does not authorize labels, assignments, implementation, commits,
+pushes, pull requests, merges, or issue closure. An invocation from another
+skill does not confer forge-write authority.
 
 Resolve the issue and the exact current canonical plan using the marker and
 ownership rules in the issue-planning contract. The issue is the requirements
@@ -42,6 +42,11 @@ the coverage gap and do not invent a favorable decision.
    Record N/A sections with reasons.
 6. Confirm prior relevant review findings were actually resolved in the current
    plan, rather than merely acknowledged.
+7. Immediately before publication, resolve the canonical planning identity
+   again and compare the issue ID or URL, requirements digest, actor, comment
+   ID or URL, and plan-content digest with the reviewed identity. If any
+   component changed or is ambiguous, withhold the comment and return the
+   prepared review as stale.
 
 ## Findings
 
@@ -51,9 +56,10 @@ non-deterministic tests, empty-selection verification, and unsupported claims.
 Every finding follows the shared severity and evidence contract.
 
 When publishing, create one structured comment using the actor-owned review
-marker. Include the reviewed plan identity, architecture decision, requirement
-coverage, findings, N/A sections, and unresolved assumptions. Review prose is
-evidence only; forge policy and human review remain authoritative.
+marker only after the pre-publication identity comparison succeeds. Include the
+reviewed plan identity, architecture decision, requirement coverage, findings,
+N/A sections, and unresolved assumptions. Review prose is evidence only; forge
+policy and human review remain authoritative.
 
 ## Output
 

@@ -19,17 +19,30 @@ posts a forge comment, opens an issue, or inserts review notes into source.
 
 Use exactly one scope:
 
-- `--worktree` (default): tracked working-tree changes relative to `HEAD`;
+- `--worktree` (default): all tracked differences relative to `HEAD` plus every
+  non-ignored untracked file;
 - `--staged`: index changes relative to `HEAD`; or
 - `--range BASE..HEAD`: the explicit Git range.
 
+Before inspection, resolve the installed
+[`scripts/resolve_scope.py`](scripts/resolve_scope.py) helper against this skill
+directory and invoke it with the selected scope and optional paths. It returns
+the selected paths, immutable base/head commits, selected untracked paths, and
+a content-bound `scope_digest` without writing Git state. Read every path in
+that manifest.
+
 Paths further restrict the selected diff; reject a path outside the repository
 root. For `--range`, report the immutable base and head commits. For
-`--worktree` or `--staged`, report `HEAD`, the selected paths, and a
-non-mutating digest of the canonical selected diff plus path manifest. Do not
-create a commit, tree object, stash, temporary index, or other Git state merely
-to fabricate a staged or working-tree head identity. Report an empty scope and
-do not silently fall back from a requested range to a different one.
+`--worktree` or `--staged`, report `HEAD`, the selected paths, and the returned
+non-mutating digest. Do not create a commit, tree object, stash, temporary
+index, or other Git state merely to fabricate a staged or working-tree head
+identity. Report an empty scope and do not silently fall back from a requested
+range to a different one.
+
+`--staged` and `--range` deliberately exclude untracked worktree files. State
+that `untracked_scope` boundary in the report; never imply that those files were
+reviewed. The default worktree scope must include raw untracked file content in
+its digest, not only their paths.
 
 Read every selected changed file in full, including relevant callers, tests,
 configuration, and public contracts. Generated files receive only the review

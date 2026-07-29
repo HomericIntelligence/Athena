@@ -8,8 +8,8 @@ framework documentation when a repository has no local rule. If that material
 is unavailable to the host, use available repository evidence and report the
 documentation coverage gap rather than silently assuming a generic practice.
 
-An unmapped executable language is a coverage gap. Do not silently treat it as
-adequately reviewed by a generic checklist.
+A genuinely unknown executable language is a coverage gap. Do not silently
+treat it as adequately reviewed by a generic checklist.
 
 ## Deep profiles
 
@@ -87,6 +87,8 @@ The following are intentionally outside Athena's dedicated routing matrix:
 Cython, PowerShell, SQL/PLpgSQL/PLSQL, HCL, Nix, Starlark, Jsonnet, CSS, SCSS,
 MDX, Liquid, XSLT, Jupyter Notebook, TeX, BibTeX (including BibTeX Style),
 Roff, ANTLR, Tree-sitter Query, Rocq (including Rocq Prover), Red, and POV-Ray
-SDL. Review their surrounding product behavior when a changed artifact requires
-it, but do not add a dedicated language profile without a demonstrated product
-need.
+SDL. Each is an intentional N/A for a dedicated language profile, not an
+unknown-language coverage gap. Apply the shared architecture, surface,
+security, and behavior review when a changed artifact requires it, but do not
+invent a generic language overlay or a dedicated profile without a demonstrated
+product need.

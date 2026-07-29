@@ -8,6 +8,9 @@ precedence over generic criteria.
 Repository review has full-inventory coverage. It does not use a diff to omit a
 section. A section can be N/A only when the repository's actual surfaces give a
 concrete reason; report that reason and retain the inventory evidence.
+Calculate the weighted score with the shared contract's applicable-weight
+formula; an N/A section is excluded from the denominator, while a coverage gap
+remains applicable and receives no unsupported credit.
 
 1. **Structure:** boundaries, layering, source/test/docs/config separation,
    naming, nesting, discoverability, generated content, and duplication.
