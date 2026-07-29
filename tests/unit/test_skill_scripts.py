@@ -392,15 +392,24 @@ class PullRequestScriptTests(unittest.TestCase):
         self.assertIn("usage:", result.stderr)
 
     def test_collect_evidence_combines_pr_metadata_files_and_checks(self) -> None:
+        requested_fields = ""
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             bin_dir = root / "bin"
             bin_dir.mkdir()
             (bin_dir / "gh").symlink_to(ROOT / "tests" / "fixtures" / "fake_gh.py")
+            fields_file = root / "view-fields.txt"
             env = os.environ.copy()
             env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+            env["FAKE_GH_SIMULATE_COMPLEXITY_DROP"] = "1"
+            env["FAKE_GH_VIEW_FIELDS_FILE"] = str(fields_file)
             env["FAKE_GH_VIEW_JSON"] = json.dumps(
-                {"number": 9, "title": "Portable Athena"}
+                {
+                    "number": 9,
+                    "title": "Portable Athena",
+                    "author": {"login": "reviewer"},
+                    "statusCheckRollup": [{"name": "required-checks-gate"}],
+                }
             )
             env["FAKE_GH_FILES_JSON"] = json.dumps(
                 [{"filename": "skills/pr-review/SKILL.md"}]
@@ -414,12 +423,22 @@ class PullRequestScriptTests(unittest.TestCase):
                 cwd=root,
                 env=env,
             )
+            requested_fields = fields_file.read_text(encoding="utf-8")
 
         self.assertEqual(0, result.returncode, result.stderr)
         evidence = json.loads(result.stdout)
         self.assertEqual(9, evidence["pull_request"]["number"])
+        self.assertEqual("Portable Athena", evidence["pull_request"]["title"])
+        self.assertEqual("reviewer", evidence["pull_request"]["author"]["login"])
+        self.assertEqual(
+            [{"name": "required-checks-gate"}],
+            evidence["pull_request"]["statusCheckRollup"],
+        )
         self.assertEqual(["skills/pr-review/SKILL.md"], evidence["changed_files"])
+        self.assertEqual(evidence["changed_files"], evidence["changed_paths"])
         self.assertEqual("SUCCESS", evidence["checks"][0]["state"])
+        self.assertNotIn("commits", requested_fields.split(","))
+        self.assertNotIn("files", requested_fields.split(","))
 
     def test_collect_evidence_rejects_pr_from_another_repository(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -441,6 +460,31 @@ class PullRequestScriptTests(unittest.TestCase):
 
         self.assertEqual(1, result.returncode)
         self.assertIn("does not belong to current repository", result.stderr)
+
+    def test_collect_evidence_reports_partial_pr_metadata_as_structured_error(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            env = self.make_fake_tools(root, [])
+            env["FAKE_GH_VIEW_JSON"] = json.dumps({"number": 9, "title": None})
+            result = run_script(
+                "skills/pr-review/scripts/collect_evidence.py",
+                "9",
+                cwd=root,
+                env=env,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(
+            {
+                "error": "incomplete PR metadata",
+                "details": (
+                    "GitHub returned incomplete or invalid PR metadata fields: title"
+                ),
+            },
+            json.loads(result.stdout),
+        )
 
     def test_collect_evidence_preserves_pending_and_failed_checks(self) -> None:
         for exit_code, state in ((8, "PENDING"), (1, "FAILURE")):
