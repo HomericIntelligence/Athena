@@ -89,7 +89,8 @@ and generated development output.
 
 ## Skills
 
-- Strict repository and PR evaluation: `repo-review` and `pr-review`.
+- Architecture-first review: `change-review`, `repo-review`, and `pr-review`.
+- Issue planning and review: `plan-issue` and `issue-review`.
 - Engineering: `brainstorm`, `systematic-debugging`, and `test-driven-development`.
 - Coordination: `myrmidon-swarm`, `git-worktrees`, and `tidy`.
 - Knowledge and enablement: `advise` and `learn`.

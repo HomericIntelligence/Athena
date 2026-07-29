@@ -38,7 +38,15 @@ def create_repository(root: Path, *, version: str = "1.2.3") -> None:
     for member in (
         "skills/repo-review/SKILL.md",
         "skills/pr-review/SKILL.md",
+        "skills/change-review/SKILL.md",
+        "skills/issue-review/SKILL.md",
+        "skills/plan-issue/SKILL.md",
         "docs/dependency-resolution.md",
+        "docs/review/common.md",
+        "docs/review/language-routing.md",
+        "docs/review/behavior-first-testing.md",
+        "docs/review/issue-planning.md",
+        "docs/review/repository-scorecard.md",
     ):
         path = root / member
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -135,7 +143,7 @@ class PackagePluginTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             create_repository(root)
-            (root / "skills" / "pr-review" / "SKILL.md").unlink()
+            (root / "skills" / "change-review" / "SKILL.md").unlink()
 
             with self.assertRaisesRegex(PackageError, "missing required members"):
                 build_package(root)

@@ -39,7 +39,15 @@ REQUIRED_MEMBERS: Final[frozenset[str]] = frozenset(
     {
         "skills/repo-review/SKILL.md",
         "skills/pr-review/SKILL.md",
+        "skills/change-review/SKILL.md",
+        "skills/issue-review/SKILL.md",
+        "skills/plan-issue/SKILL.md",
         "docs/dependency-resolution.md",
+        "docs/review/common.md",
+        "docs/review/language-routing.md",
+        "docs/review/behavior-first-testing.md",
+        "docs/review/issue-planning.md",
+        "docs/review/repository-scorecard.md",
     }
 )
 GENERATED_PYTHON_SUFFIXES: Final[frozenset[str]] = frozenset({".pyc", ".pyo"})

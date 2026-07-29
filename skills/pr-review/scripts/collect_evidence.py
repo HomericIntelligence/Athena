@@ -15,9 +15,9 @@ from pr_identity import repository_from_pr_url, validate_pr_identifier
 from skills._cli import argument_parser, run_command
 
 
-# Keep the metadata query below GitHub's GraphQL complexity budget. Changed files
-# are fetched separately through the paginated REST endpoint and commits are not
-# consumed by this helper.
+# Keep this query below GitHub's GraphQL complexity budget. Fetch changed files
+# separately through the paginated REST endpoint rather than selecting commits
+# or files here.
 FIELDS = (
     "number,title,body,state,isDraft,author,baseRefName,headRefName,"
     "reviews,statusCheckRollup,closingIssuesReferences,url"
@@ -25,7 +25,7 @@ FIELDS = (
 
 
 def metadata_error(metadata: object) -> str | None:
-    """Return a diagnostic when GitHub returns a partial PR metadata object."""
+    """Return a diagnostic when GitHub returns partial PR metadata."""
     if not isinstance(metadata, dict):
         return "PR metadata must be a JSON object"
     required_types = {

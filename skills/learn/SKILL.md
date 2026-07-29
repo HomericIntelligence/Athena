@@ -22,14 +22,33 @@ or revalidation failure is blocking.
 ## Before writing
 
 1. Run `advise` with the proposed lesson.
-2. Search flat `skills/*.md`, excluding optional notes, for semantic overlap.
-3. Search Git history for prior consolidation and provenance.
-4. Query open pull requests in the resolved Mnemosyne repository by candidate title and changed
+2. Derive the canonical retrieval intent: the trigger/context, desired outcome,
+   constraints, and failure mode another agent needs to recognize. Do not use a
+   title, issue number, or session wording as the identity.
+3. Search flat `skills/*.md`, excluding optional notes, for semantic overlap.
+4. Search Git history for prior consolidation and provenance.
+5. Query open pull requests in the resolved Mnemosyne repository by candidate title and changed
    `skills/<name>.md` path. If one already changes the canonical entry, inspect it and either stack on
    its branch with explicit authority or stop for user direction; never create a conflicting PR.
-5. Amend the canonical entry when its intent matches; create a new entry only for a distinct search
-   intent. If the proposed lesson contains no material knowledge or verification change, fail with
-   `no learnable change` before mutating anything. Do not report `learn` as completed.
+6. Record one disposition before mutating: `amend`, `create`, or `reject`.
+   Amend the canonical entry when its retrieval intent matches and there is a
+   material verified decision-rule, workflow, parameter, or failure-mode delta.
+   Create an entry only for a materially distinct intent. Reject the lesson as
+   `no learnable change` when it adds no durable, verified delta. Do not report
+   `learn` as completed after a rejection.
+
+## Canonicalization rules
+
+Generalize a lesson into the smallest reusable decision rule that safely applies
+across similar tasks. Preserve task-specific facts only when they are required
+to execute or verify that rule. Do not create near-duplicates for different
+repositories, issue numbers, tool output, names, timestamps, or conversational
+phrasing when the trigger and desired outcome already match a canonical entry.
+
+An amendment folds the new verified delta into that canonical entry and removes
+superseded or repeated guidance. A creation names the distinct trigger and
+outcome precisely enough for retrieval. A rejection leaves Mnemosyne unchanged
+and reports the matching entry or the reason the evidence is not durable.
 
 Repository audits belong in `repo-review`; PR audits belong in `pr-review`; review depth is a mode,
 not another skill.
@@ -95,18 +114,21 @@ Never modify the shared checkout's active worktree. From its fetched default bra
    `skill/<slug>`. Resolve the path before creating it and require it to remain directly beneath
    `$HOME/.agent_brain/worktrees`; reject symlinked parents or destinations.
 3. Write `skills/<name>.md` only after resolving the destination and proving it remains directly
-   beneath the worktree's `skills/` directory. Include name, searchable description, category, date, semantic version,
-   verification level, tags, when-to-use, verified workflow, failed attempts, results, parameters,
-   and evidence.
-4. For an amendment, update only the canonical entry. Git and pull-request history provide
-   provenance; optional raw evidence may be added to `.notes.md` only when a current consumer needs
-   it.
+   beneath the worktree's `skills/` directory. Include a searchable intent,
+   semantic version, verification level, generalized when-to-use and workflow,
+   relevant failed approaches, parameters, and evidence. Omit session transcript
+   detail that no active consumer needs.
+4. For an amendment, update only the canonical entry, fold in the verified
+   delta, and remove repeated or superseded guidance. Git and pull-request
+   history provide provenance; optional raw evidence may be added to `.notes.md`
+   only when a current consumer needs it.
 5. Run the resolved Mnemosyne repository's own validation and tests.
 6. Verify no duplicate intent or stale consolidated name was introduced.
 7. Commit with a cryptographic signature and DCO sign-off, push the feature branch, and open a PR
    against the resolved repository's default branch. The PR body must contain `Closes #N` when a
    tracking issue exists.
-8. Report the PR URL and exact validation evidence. Do not auto-merge.
+8. Report the `amend` or `create` disposition, PR URL, and exact validation
+   evidence. Do not auto-merge.
 
 If a push or PR cannot be created, preserve the isolated worktree and report the blocker. A Learn
 run is successful only when it returns a PR URL. Never fall back to writing inside Athena or a

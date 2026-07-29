@@ -15,6 +15,11 @@ Write the test first. Watch it fail. Write minimal code to pass.
 
 **Violating the letter of the rules is violating the spirit of the rules.**
 
+Use Athena's shared [behavior-first testing guidance](../../docs/review/behavior-first-testing.md)
+for the good-test/bad-test matrix, deterministic evidence rules, and false-pass
+checks. Test observable product behavior and core contracts, not the wording or
+layout of documentation or a private implementation arrangement.
+
 ## When to Use
 
 **Always:**
@@ -81,6 +86,10 @@ Confirm:
 - Test fails (not errors)
 - Failure message is expected
 - Fails because feature is missing (not typos)
+
+For a name-filtered command, prove it selected at least one relevant registered
+test. For C++ or CMake, also prove the test source is wired to a real build and
+test target. A green command that selected no test is a coverage failure.
 
 **Test passes?** You're testing existing behavior. Fix the test.
 
@@ -167,11 +176,14 @@ the user; never substitute another repository's commands into an unrelated targe
 
 Before marking work complete:
 
-- [ ] Every new function/method has a test
+- [ ] Each changed observable product behavior and bug regression has proportionate coverage
 - [ ] No test pins documentation wording or another non-behavioral string
+- [ ] No test relies on ambient time, live services, test order, or mock arrangement without controlling that product condition
 - [ ] Watched each test fail before implementing
 - [ ] Each test failed for the expected reason
 - [ ] Wrote minimal code to pass each test
+- [ ] Each focused or filtered test command demonstrably selected relevant tests
+- [ ] C++/CMake test sources, when changed, are wired to a real test target
 - [ ] All relevant tests pass with the repository's discovered test command
 - [ ] The repository-defined type check passes
 - [ ] The repository-defined linter passes

@@ -313,9 +313,7 @@ class DistributionTests(unittest.TestCase):
         )
 
     def test_repo_review_scorecard_rejects_section_and_weight_mismatches(self) -> None:
-        criteria = (
-            self.fixture / "skills" / "repo-review" / "references" / "criteria.md"
-        )
+        criteria = self.fixture / "docs" / "review" / "repository-scorecard.md"
         criteria.write_text(
             criteria.read_text(encoding="utf-8").replace(
                 "**Reliability:**", "**Resilience:**", 1
@@ -333,7 +331,7 @@ class DistributionTests(unittest.TestCase):
         skill = self.fixture / "skills" / "repo-review" / "SKILL.md"
         skill.write_text(
             skill.read_text(encoding="utf-8").replace(
-                "Reliability 10%", "Reliability 9%", 1
+                "Reliability 9%", "Reliability 8%", 1
             ),
             encoding="utf-8",
         )
