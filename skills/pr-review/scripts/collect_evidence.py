@@ -15,8 +15,11 @@ from pr_identity import repository_from_pr_url, validate_pr_identifier
 from skills._cli import argument_parser, run_command
 
 
+# Keep the metadata query below GitHub's GraphQL complexity budget. Changed files
+# are fetched separately through the paginated REST endpoint and commits are not
+# consumed by this helper.
 FIELDS = (
-    "number,title,body,state,isDraft,author,baseRefName,headRefName,commits,files,"
+    "number,title,body,state,isDraft,author,baseRefName,headRefName,"
     "reviews,statusCheckRollup,closingIssuesReferences,url"
 )
 
@@ -83,6 +86,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         json.dumps(
             {
                 "changed_files": changed_files,
+                "changed_paths": changed_files,
                 "checks": checks,
                 "pull_request": metadata,
             },

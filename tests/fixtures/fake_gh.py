@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 import sys
 
 
@@ -30,6 +31,16 @@ def main() -> int:
         if isinstance(configured, dict):
             default.update(configured)
             configured = default
+            requested_fields = arguments[arguments.index("--json") + 1]
+            if os.environ.get("FAKE_GH_SIMULATE_COMPLEXITY_DROP") == "1" and any(
+                field in requested_fields.split(",") for field in ("commits", "files")
+            ):
+                configured["title"] = None
+                configured["author"] = None
+                configured["statusCheckRollup"] = None
+            fields_file = os.environ.get("FAKE_GH_VIEW_FIELDS_FILE")
+            if fields_file:
+                Path(fields_file).write_text(requested_fields, encoding="utf-8")
         print(json.dumps(configured))
         return 0
     if arguments[:2] == ["pr", "list"]:

@@ -202,6 +202,11 @@ With the target repository still as the current working directory, resolve
 path with `PR_NUMBER_OR_URL`. Retain its JSON output containing PR metadata, changed paths, and
 current check output.
 
+The script returns a flat object with `changed_files` and its backwards-compatible
+`changed_paths` alias, `checks`, and `pull_request`. The `pull_request` object contains the PR
+metadata returned by GitHub, including `title`, `author`, `baseRefName`, `headRefName`,
+`statusCheckRollup`, `closingIssuesReferences`, `url`, and `reviews`.
+
 This default evidence procedure does not apply to either operator-authorized
 source-review profile. In the CI-free profile, use `resolve_pr.py` for
 repository identity and immutable base/head OIDs, local Git for changed paths
