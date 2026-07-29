@@ -24,7 +24,12 @@ def main() -> int:
         repository = os.environ.get("FAKE_GH_REPOSITORY", "owner/repository")
         default = {
             "number": number,
+            "title": "Fake pull request",
             "state": "OPEN",
+            "author": {"login": "reviewer"},
+            "baseRefName": "main",
+            "headRefName": "feature",
+            "statusCheckRollup": [],
             "url": f"https://github.com/{repository}/pull/{number}",
         }
         configured = load_json("FAKE_GH_VIEW_JSON", {})

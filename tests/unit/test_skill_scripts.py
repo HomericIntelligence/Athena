@@ -461,6 +461,31 @@ class PullRequestScriptTests(unittest.TestCase):
         self.assertEqual(1, result.returncode)
         self.assertIn("does not belong to current repository", result.stderr)
 
+    def test_collect_evidence_reports_partial_pr_metadata_as_structured_error(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            env = self.make_fake_tools(root, [])
+            env["FAKE_GH_VIEW_JSON"] = json.dumps({"number": 9, "title": None})
+            result = run_script(
+                "skills/pr-review/scripts/collect_evidence.py",
+                "9",
+                cwd=root,
+                env=env,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(
+            {
+                "error": "incomplete PR metadata",
+                "details": (
+                    "GitHub returned incomplete or invalid PR metadata fields: title"
+                ),
+            },
+            json.loads(result.stdout),
+        )
+
     def test_collect_evidence_preserves_pending_and_failed_checks(self) -> None:
         for exit_code, state in ((8, "PENDING"), (1, "FAILURE")):
             with self.subTest(exit_code=exit_code):

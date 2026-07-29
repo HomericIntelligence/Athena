@@ -215,6 +215,9 @@ The script returns a flat object with `changed_files` and its backwards-compatib
 `changed_paths` alias, `checks`, and `pull_request`. The `pull_request` object contains the PR
 metadata returned by GitHub, including `title`, `author`, `baseRefName`, `headRefName`,
 `statusCheckRollup`, `closingIssuesReferences`, `url`, and `reviews`.
+The `checks` list is the separate `gh pr checks` command output; it is not the same schema as
+`pull_request.statusCheckRollup`. Partial PR metadata is reported as a non-zero structured
+`error`/`details` response instead of a successful evidence document.
 
 This default evidence procedure does not apply to either operator-authorized
 source-review profile. In the CI-free profile, use `resolve_pr.py` for

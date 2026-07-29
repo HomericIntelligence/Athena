@@ -24,6 +24,34 @@ FIELDS = (
 )
 
 
+def metadata_error(metadata: object) -> str | None:
+    """Return a diagnostic when GitHub returns a partial PR metadata object."""
+    if not isinstance(metadata, dict):
+        return "PR metadata must be a JSON object"
+    required_types = {
+        "number": int,
+        "title": str,
+        "author": dict,
+        "baseRefName": str,
+        "headRefName": str,
+        "statusCheckRollup": list,
+        "url": str,
+    }
+    invalid = [
+        field
+        for field, expected_type in required_types.items()
+        if not isinstance(metadata.get(field), expected_type)
+    ]
+    author = metadata.get("author")
+    if not isinstance(author, dict) or not isinstance(author.get("login"), str):
+        invalid.append("author.login")
+    if invalid:
+        return "GitHub returned incomplete or invalid PR metadata fields: " + ", ".join(
+            sorted(set(invalid))
+        )
+    return None
+
+
 def gh(*arguments: str, accepted_codes: tuple[int, ...] = (0,)) -> str:
     result = run_command(
         ["gh", *arguments], capture_output=True, text=True, check=False
@@ -41,6 +69,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         validate_pr_identifier(pull_request)
         metadata = json.loads(gh("pr", "view", pull_request, "--json", FIELDS))
+        metadata_problem = metadata_error(metadata)
+        if metadata_problem:
+            print(
+                json.dumps(
+                    {
+                        "error": "incomplete PR metadata",
+                        "details": metadata_problem,
+                    },
+                    sort_keys=True,
+                )
+            )
+            return 1
         repository_data = json.loads(gh("repo", "view", "--json", "nameWithOwner"))
         repository = repository_data.get("nameWithOwner")
         number = metadata.get("number")
