@@ -18,7 +18,7 @@ from typing import Callable, Iterable, Protocol, Sequence, cast
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from skills._cli import argument_parser, run_command
+from skills._cli import argument_parser, git_read_environment, run_command
 
 
 READ_CHUNK_SIZE = 1024 * 1024
@@ -30,7 +30,13 @@ MAX_WORKTREE_CANDIDATES = 50_000
 def git_bytes(*arguments: str, repository_root: Path | None = None) -> bytes:
     """Run Git and return its raw stdout or raise a concise error."""
     command = git_command(arguments, repository_root)
-    result = run_command(command, capture_output=True, text=False, check=False)
+    result = run_command(
+        command,
+        capture_output=True,
+        env=git_read_environment(),
+        text=False,
+        check=False,
+    )
     stdout = cast(bytes, result.stdout)
     stderr = cast(bytes, result.stderr)
     if result.returncode != 0:
@@ -113,6 +119,7 @@ def git_stream_fingerprint(
             try:
                 process = subprocess.Popen(
                     command,
+                    env=git_read_environment(),
                     stdout=subprocess.PIPE,
                     stderr=error_output,
                 )
@@ -161,6 +168,7 @@ def consume_git_nul_records(
             try:
                 process = subprocess.Popen(
                     command,
+                    env=git_read_environment(),
                     stdout=subprocess.PIPE,
                     stderr=error_output,
                 )
@@ -396,6 +404,7 @@ def close_descriptor_quietly(descriptor: int) -> None:
     try:
         os.close(descriptor)
     except OSError:
+        # Cleanup must not mask the exception that triggered this path.
         pass
 
 
@@ -787,7 +796,6 @@ def read_regular_file_snapshot_without_following(
         except OSError:
             if descriptor is not None:
                 close_descriptor_quietly(descriptor)
-                descriptor = None
             raise
     assert descriptor is not None
     try:

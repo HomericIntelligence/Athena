@@ -12,13 +12,14 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from pr_identity import require_commit_oid
-from skills._cli import argument_parser, run_command
+from skills._cli import argument_parser, git_read_environment, run_command
 
 
 def git(*arguments: str) -> str:
     result = run_command(
         ["git", "--no-replace-objects", *arguments],
         capture_output=True,
+        env=git_read_environment(),
         text=True,
         check=False,
     )

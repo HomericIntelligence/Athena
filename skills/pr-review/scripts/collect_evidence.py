@@ -19,7 +19,7 @@ from pr_identity import (
     repository_from_pr_url,
     validate_pr_identifier,
 )
-from skills._cli import argument_parser, run_command
+from skills._cli import argument_parser, git_read_environment, run_command
 
 
 # Keep this query below GitHub's GraphQL complexity budget. Strict callers bind
@@ -29,6 +29,7 @@ FIELDS = (
     "number,title,body,state,isDraft,author,baseRefName,headRefName,"
     "baseRefOid,headRefOid,reviews,statusCheckRollup,closingIssuesReferences,url"
 )
+ISSUE_FIELDS = "id,number,url,title,body,state"
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,7 @@ class ImmutableIdentity:
     def as_json(self) -> dict[str, str | int]:
         """Return the stable, serializable evidence binding."""
         return {
+            "forge_host": "github.com",
             "repository": self.repository,
             "number": self.number,
             "url": self.url,
@@ -79,6 +81,18 @@ class ReviewScope:
     def as_json(self) -> dict[str, object]:
         """Return the revalidated review-context binding."""
         return {"fields": self.fields, "sha256": self.sha256}
+
+
+@dataclass(frozen=True)
+class LinkedRequirements:
+    """Canonical content binding for every linked issue used as requirements."""
+
+    count: int
+    sha256: str
+
+    def as_json(self) -> dict[str, str | int]:
+        """Return the serializable linked-requirements binding."""
+        return {"count": self.count, "sha256": self.sha256}
 
 
 def metadata_error(metadata: object, *, require_immutable_identity: bool) -> str | None:
@@ -247,12 +261,142 @@ def review_scope(metadata: dict[str, Any]) -> ReviewScope:
     )
 
 
+def linked_issue_reference(issue: object) -> tuple[str, int, str]:
+    """Return one validated canonical linked-issue identity."""
+    if not isinstance(issue, dict):
+        raise RuntimeError("GitHub returned an invalid linked issue reference")
+    repository_data = issue.get("repository")
+    number = issue.get("number")
+    url = issue.get("url")
+    if not isinstance(repository_data, dict) or not isinstance(number, int):
+        raise RuntimeError("GitHub returned an incomplete linked issue reference")
+    owner_data = repository_data.get("owner")
+    name = repository_data.get("name")
+    owner = owner_data.get("login") if isinstance(owner_data, dict) else None
+    if (
+        not isinstance(owner, str)
+        or not owner
+        or not isinstance(name, str)
+        or not name
+        or number < 1
+        or not isinstance(url, str)
+    ):
+        raise RuntimeError("GitHub returned an incomplete linked issue reference")
+    parsed_url = urlparse(url)
+    path_parts = parsed_url.path.strip("/").split("/")
+    if (
+        parsed_url.scheme != "https"
+        or parsed_url.hostname != "github.com"
+        or len(path_parts) != 4
+        or path_parts[0].casefold() != owner.casefold()
+        or path_parts[1].casefold() != name.casefold()
+        or path_parts[2] != "issues"
+        or path_parts[3] != str(number)
+    ):
+        raise RuntimeError("GitHub returned an invalid linked issue URL")
+    return f"{owner}/{name}", number, url
+
+
+def canonical_json(value: object, label: str) -> str:
+    """Serialize provider data canonically or reject malformed content."""
+    try:
+        return json.dumps(
+            value,
+            allow_nan=False,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    except (TypeError, ValueError) as error:
+        raise RuntimeError(f"GitHub returned invalid {label}") from error
+
+
+def paginated_issue_comments(repository: str, number: int) -> list[dict[str, Any]]:
+    """Read every linked-issue comment through an explicit repository endpoint."""
+    response = json.loads(
+        gh(
+            "api",
+            "--paginate",
+            "--slurp",
+            f"repos/{repository}/issues/{number}/comments",
+        )
+    )
+    if not isinstance(response, list):
+        raise RuntimeError("GitHub returned invalid linked issue comment pages")
+    if response and not all(isinstance(page, list) for page in response):
+        raise RuntimeError("GitHub returned invalid linked issue comment pages")
+    comments = [comment for page in response for comment in page]
+    if not all(isinstance(comment, dict) for comment in comments):
+        raise RuntimeError("GitHub returned an invalid linked issue comment")
+    return comments
+
+
+def linked_requirements(metadata: dict[str, Any]) -> LinkedRequirements:
+    """Bind every linked issue's requirement content and complete comment history."""
+    references = metadata.get("closingIssuesReferences")
+    if not isinstance(references, list):
+        raise RuntimeError("GitHub returned incomplete linked issue references")
+    identities = sorted(linked_issue_reference(issue) for issue in references)
+    if len(identities) != len(set(identities)):
+        raise RuntimeError("GitHub returned duplicate linked issue references")
+    records: list[dict[str, object]] = []
+    for repository, number, expected_url in identities:
+        issue_data = json.loads(
+            gh(
+                "issue",
+                "view",
+                str(number),
+                "--repo",
+                f"github.com/{repository}",
+                "--json",
+                ISSUE_FIELDS,
+            )
+        )
+        if not isinstance(issue_data, dict):
+            raise RuntimeError("GitHub returned an invalid linked issue")
+        issue_id = issue_data.get("id")
+        body = issue_data.get("body")
+        if (
+            not isinstance(issue_id, str)
+            or not issue_id
+            or issue_data.get("number") != number
+            or issue_data.get("url") != expected_url
+            or not isinstance(issue_data.get("title"), str)
+            or (body is not None and not isinstance(body, str))
+            or not isinstance(issue_data.get("state"), str)
+        ):
+            raise RuntimeError("GitHub returned incomplete linked issue requirements")
+        comments = sorted(
+            canonical_json(comment, "linked issue comment")
+            for comment in paginated_issue_comments(repository, number)
+        )
+        records.append(
+            {
+                "issue": {
+                    "body": body,
+                    "id": issue_id,
+                    "number": number,
+                    "state": issue_data["state"],
+                    "title": issue_data["title"],
+                    "url": expected_url,
+                },
+                "comments": [json.loads(comment) for comment in comments],
+                "repository": repository,
+            }
+        )
+    document = canonical_json(records, "linked issue requirements")
+    return LinkedRequirements(
+        count=len(records), sha256=sha256(document.encode("utf-8")).hexdigest()
+    )
+
+
 def git_bytes(*arguments: str) -> bytes:
     """Run a read-only Git query and return its byte-exact stdout."""
     result: Any = run_command(
         ["git", "--no-replace-objects", *arguments],
         capture_output=True,
         check=False,
+        env=git_read_environment(),
     )
     if result.returncode != 0:
         stderr = result.stderr
@@ -381,6 +525,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         ensure_expected_identity(identity, expected)
         reviewed_scope = review_scope(metadata) if expected is not None else None
+        reviewed_linked_requirements = (
+            linked_requirements(metadata) if expected is not None else None
+        )
         changed_path_manifest: ChangedPathManifest | None = None
         check_evidence: dict[str, str] | None = None
         if expected is not None:
@@ -437,6 +584,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         final_scope = review_scope(final_metadata) if expected is not None else None
         if final_scope != reviewed_scope:
             raise RuntimeError("review scope changed while collecting evidence")
+        final_linked_requirements = (
+            linked_requirements(final_metadata) if expected is not None else None
+        )
+        if final_linked_requirements != reviewed_linked_requirements:
+            raise RuntimeError(
+                "linked issue requirements changed while collecting evidence"
+            )
     except (RuntimeError, json.JSONDecodeError) as error:
         print(error, file=sys.stderr)
         return 1
@@ -450,6 +604,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         evidence["reviewed_identity"] = identity.as_json()
     if reviewed_scope is not None:
         evidence["reviewed_scope"] = reviewed_scope.as_json()
+    if reviewed_linked_requirements is not None:
+        evidence["reviewed_linked_requirements"] = (
+            reviewed_linked_requirements.as_json()
+        )
     if changed_path_manifest is not None:
         evidence["changed_path_manifest"] = changed_path_manifest.as_json()
     if check_evidence is not None:

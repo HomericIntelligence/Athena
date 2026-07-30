@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 from typing import Any, Sequence
@@ -23,6 +24,16 @@ def run_command(
     except FileNotFoundError as error:
         command = error.filename or arguments[0]
         raise RuntimeError(f"required command unavailable: {command}") from error
+
+
+def git_read_environment() -> dict[str, str]:
+    """Return an environment that cannot rewrite immutable Git object reads."""
+    environment = os.environ.copy()
+    # `--no-replace-objects` does not disable deprecated graft files. Force Git
+    # to read an empty graft source, including when the caller supplied one.
+    environment["GIT_GRAFT_FILE"] = os.devnull
+    environment["GIT_NO_REPLACE_OBJECTS"] = "1"
+    return environment
 
 
 def plugin_version() -> str:

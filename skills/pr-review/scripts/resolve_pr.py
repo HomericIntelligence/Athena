@@ -67,6 +67,13 @@ def _validate_repository_identity(pull_request: dict[str, Any]) -> None:
         raise RuntimeError(
             f"pull request {url} does not belong to current repository {current}"
         )
+    pull_request["review_target"] = {
+        "host": "github.com",
+        "kind": "github",
+        "number": number,
+        "repository": current,
+        "url": url,
+    }
 
 
 def resolve(explicit: str | None) -> dict[str, Any]:

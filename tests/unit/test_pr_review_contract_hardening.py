@@ -108,8 +108,25 @@ if arguments[:2] == ["pr", "view"]:
     print(json.dumps(sequence[min(count, len(sequence) - 1)]))
 elif arguments[:2] == ["repo", "view"]:
     print(json.dumps({"nameWithOwner": "owner/repository"}))
+elif arguments[:2] == ["issue", "view"]:
+    state_path = Path(os.environ["ATHENA_TEST_GH_ISSUE_STATE"])
+    count = int(state_path.read_text(encoding="utf-8")) if state_path.exists() else 0
+    state_path.write_text(str(count + 1), encoding="utf-8")
+    sequence = json.loads(os.environ["ATHENA_TEST_GH_ISSUE_SEQUENCE"])
+    print(json.dumps(sequence[min(count, len(sequence) - 1)]))
 elif arguments[:1] == ["api"]:
-    if os.environ.get("ATHENA_TEST_FORBID_GH_API") == "1":
+    if any("/issues/" in argument and argument.endswith("/comments") for argument in arguments):
+        state_path = os.environ.get("ATHENA_TEST_GH_COMMENT_STATE")
+        sequence_raw = os.environ.get("ATHENA_TEST_GH_COMMENT_SEQUENCE")
+        if state_path is None or sequence_raw is None:
+            print("[]")
+        else:
+            path = Path(state_path)
+            count = int(path.read_text(encoding="utf-8")) if path.exists() else 0
+            path.write_text(str(count + 1), encoding="utf-8")
+            sequence = json.loads(sequence_raw)
+            print(json.dumps([sequence[min(count, len(sequence) - 1)]]))
+    elif os.environ.get("ATHENA_TEST_FORBID_GH_API") == "1":
         print("strict review must not query the provider file list", file=sys.stderr)
         raise SystemExit(7)
 elif arguments[:2] == ["pr", "checks"]:
@@ -127,6 +144,8 @@ class ImmutableEvidenceTests(unittest.TestCase):
         *,
         changed_path: str = "changed.txt",
         replace_head_with_base: bool = False,
+        linked_issue_sequence: list[dict[str, object]] | None = None,
+        linked_comment_sequence: list[list[dict[str, object]]] | None = None,
     ) -> tuple[subprocess.CompletedProcess[str], int, str, str]:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -145,6 +164,18 @@ class ImmutableEvidenceTests(unittest.TestCase):
             environment["ATHENA_TEST_GH_PR_SEQUENCE"] = json.dumps(
                 bind_repository_identity(metadata_sequence, base_oid, head_oid)
             )
+            if linked_issue_sequence is not None:
+                issue_state_path = root / "gh-issue-state"
+                environment["ATHENA_TEST_GH_ISSUE_STATE"] = str(issue_state_path)
+                environment["ATHENA_TEST_GH_ISSUE_SEQUENCE"] = json.dumps(
+                    linked_issue_sequence
+                )
+            if linked_comment_sequence is not None:
+                comment_state_path = root / "gh-comment-state"
+                environment["ATHENA_TEST_GH_COMMENT_STATE"] = str(comment_state_path)
+                environment["ATHENA_TEST_GH_COMMENT_SEQUENCE"] = json.dumps(
+                    linked_comment_sequence
+                )
             environment["ATHENA_TEST_FORBID_GH_API"] = "1"
             command = [
                 sys.executable,
@@ -195,6 +226,7 @@ class ImmutableEvidenceTests(unittest.TestCase):
         self.assertEqual(2, call_count)
         evidence = json.loads(result.stdout)
         identity = evidence["reviewed_identity"]
+        self.assertEqual("github.com", identity["forge_host"])
         self.assertEqual(base_oid, identity["base_oid"])
         self.assertEqual(head_oid, identity["head_oid"])
         self.assertEqual(["changed.txt"], evidence["changed_files"])
@@ -202,6 +234,8 @@ class ImmutableEvidenceTests(unittest.TestCase):
             "Immutable evidence", evidence["reviewed_scope"]["fields"]["title"]
         )
         self.assertEqual("main", evidence["reviewed_scope"]["fields"]["baseRefName"])
+        self.assertEqual("feature", evidence["reviewed_scope"]["fields"]["headRefName"])
+        self.assertEqual(0, evidence["reviewed_linked_requirements"]["count"])
         self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
 
     def test_rejects_missing_immutable_identity(self) -> None:
@@ -264,6 +298,119 @@ class ImmutableEvidenceTests(unittest.TestCase):
     def test_rejects_branch_scope_that_changes_while_collecting_evidence(self) -> None:
         result, call_count, _, _ = self.run_collector(
             [pull_request(), pull_request(base_ref_name="release")]
+        )
+
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(2, call_count)
+
+    def test_rejects_source_branch_scope_that_changes_while_collecting_evidence(
+        self,
+    ) -> None:
+        result, call_count, _, _ = self.run_collector(
+            [pull_request(), pull_request(head_ref_name="renamed-feature")]
+        )
+
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(2, call_count)
+
+    def test_rejects_linked_requirement_content_that_changes_while_collecting(
+        self,
+    ) -> None:
+        reference = {
+            "id": "I_1",
+            "number": 10,
+            "repository": {"name": "requirements", "owner": {"login": "owner"}},
+            "url": "https://github.com/owner/requirements/issues/10",
+        }
+        initial_requirement = {
+            "id": "I_1",
+            "number": 10,
+            "url": "https://github.com/owner/requirements/issues/10",
+            "title": "Requirements",
+            "body": "Initial acceptance criterion",
+            "state": "OPEN",
+            "comments": [],
+        }
+        changed_requirement = initial_requirement | {
+            "body": "Changed acceptance criterion"
+        }
+
+        result, call_count, _, _ = self.run_collector(
+            [
+                pull_request(closing_issues=[reference]),
+                pull_request(closing_issues=[reference]),
+            ],
+            linked_issue_sequence=[initial_requirement, changed_requirement],
+        )
+
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(2, call_count)
+
+    def test_rejects_an_incomplete_linked_issue_reference(self) -> None:
+        result, call_count, _, _ = self.run_collector(
+            [pull_request(closing_issues=[{"number": 10}])]
+        )
+
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(1, call_count)
+
+    def test_emits_a_stable_linked_requirements_binding(self) -> None:
+        reference = {
+            "id": "I_1",
+            "number": 10,
+            "repository": {"name": "requirements", "owner": {"login": "owner"}},
+            "url": "https://github.com/owner/requirements/issues/10",
+        }
+        requirement = {
+            "id": "I_1",
+            "number": 10,
+            "url": "https://github.com/owner/requirements/issues/10",
+            "title": "Requirements",
+            "body": "Acceptance criterion",
+            "state": "OPEN",
+        }
+        comments = [{"id": 1, "body": "Canonical plan"}]
+
+        result, call_count, _, _ = self.run_collector(
+            [
+                pull_request(closing_issues=[reference]),
+                pull_request(closing_issues=[reference]),
+            ],
+            linked_issue_sequence=[requirement, requirement],
+            linked_comment_sequence=[comments, comments],
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(2, call_count)
+        binding = json.loads(result.stdout)["reviewed_linked_requirements"]
+        self.assertEqual(1, binding["count"])
+        self.assertRegex(binding["sha256"], r"^[0-9a-f]{64}$")
+
+    def test_rejects_linked_requirement_comments_that_change_while_collecting(
+        self,
+    ) -> None:
+        reference = {
+            "id": "I_1",
+            "number": 10,
+            "repository": {"name": "requirements", "owner": {"login": "owner"}},
+            "url": "https://github.com/owner/requirements/issues/10",
+        }
+        requirement = {
+            "id": "I_1",
+            "number": 10,
+            "url": "https://github.com/owner/requirements/issues/10",
+            "title": "Requirements",
+            "body": "Acceptance criterion",
+            "state": "OPEN",
+        }
+
+        result, call_count, _, _ = self.run_collector(
+            [
+                pull_request(closing_issues=[reference]),
+                pull_request(closing_issues=[reference]),
+            ],
+            linked_issue_sequence=[requirement, requirement],
+            linked_comment_sequence=[[], [{"id": 1, "body": "Changed plan"}]],
         )
 
         self.assertEqual(1, result.returncode)

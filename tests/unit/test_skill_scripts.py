@@ -198,6 +198,28 @@ class PullRequestScriptTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(42, json.loads(result.stdout)["number"])
 
+    def test_resolve_pr_emits_a_canonical_review_target(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            result = run_script(
+                "skills/pr-review/scripts/resolve_pr.py",
+                "42",
+                cwd=root,
+                env=self.make_fake_tools(root, []),
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            {
+                "host": "github.com",
+                "kind": "github",
+                "number": 42,
+                "repository": "owner/repository",
+                "url": "https://github.com/owner/repository/pull/42",
+            },
+            json.loads(result.stdout)["review_target"],
+        )
+
     def test_resolve_pr_rejects_a_pr_from_another_repository(self) -> None:
         """A local source review must never be bound to a foreign PR URL."""
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -400,6 +422,37 @@ class PullRequestScriptTests(unittest.TestCase):
             git(repository, "commit", "-qam", "test: feature")
             feature = git(repository, "rev-parse", "HEAD")
             git(repository, "replace", feature, target)
+
+            result = run_script(
+                "skills/pr-review/scripts/diff_context.py",
+                target,
+                feature,
+                cwd=repository,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        context = json.loads(result.stdout)
+        self.assertEqual(common, context["merge_base"])
+        self.assertEqual(1, context["behind_count"])
+
+    def test_diff_context_ignores_graft_files(self) -> None:
+        """A local graft must not rewrite the reviewed ancestry relation."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory) / "repo"
+            initialize_repository(repository)
+            common = git(repository, "rev-parse", "HEAD")
+            git(repository, "checkout", "-q", "-b", "target")
+            (repository / "tracked.txt").write_text("target\n", encoding="utf-8")
+            git(repository, "commit", "-qam", "test: target")
+            target = git(repository, "rev-parse", "HEAD")
+            git(repository, "checkout", "-q", "-b", "feature", common)
+            (repository / "tracked.txt").write_text("feature\n", encoding="utf-8")
+            git(repository, "commit", "-qam", "test: feature")
+            feature = git(repository, "rev-parse", "HEAD")
+            grafts = Path(git(repository, "rev-parse", "--git-path", "info/grafts"))
+            if not grafts.is_absolute():
+                grafts = repository / grafts
+            grafts.write_text(f"{feature} {target}\n", encoding="utf-8")
 
             result = run_script(
                 "skills/pr-review/scripts/diff_context.py",
