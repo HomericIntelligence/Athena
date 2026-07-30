@@ -195,10 +195,9 @@ jobs:
             pi install "$pi_source" --no-approve
           PI_CODING_AGENT_DIR="$PI_SOURCE_AGENT_DIRECTORY" \
             pi list | grep -F -- "github.com/${PI_SOURCE_REPOSITORY}"
-          git_manifest="$(find "$PI_SOURCE_AGENT_DIRECTORY/git" -type f \
-            -name package.json -print -quit)"
-          test -n "$git_manifest"
-          verify_pi_skills "$(dirname "$git_manifest")" "$PI_SOURCE_AGENT_DIRECTORY"
+          git_package_root="$(node scripts/find_pi_package_root.mjs \
+            "$PI_SOURCE_AGENT_DIRECTORY/git")"
+          verify_pi_skills "$git_package_root" "$PI_SOURCE_AGENT_DIRECTORY"
 
           archive="$(find dist -maxdepth 1 -type f -name 'athena-plugin-*.tar.gz' -print -quit)"
           test -n "$archive"

@@ -63,6 +63,33 @@ def write_archive(path: Path, member: tarfile.TarInfo, data: bytes = b"") -> Non
 
 class PackagePluginTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "Pi helper contracts require Node.js")
+    def test_pi_package_root_finder_ignores_ci_runtime_manifest(self) -> None:
+        """A git install resolves its Pi package, not a nested CI npm manifest."""
+        finder = ROOT / "scripts" / "find_pi_package_root.mjs"
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            install_root = Path(temporary_directory) / "git"
+            package_root = install_root / "github.com" / "example" / "athena"
+            (package_root / "skills" / "advise").mkdir(parents=True)
+            (package_root / "package.json").write_text(
+                '{"pi":{"skills":["./skills"]}}\n', encoding="utf-8"
+            )
+            ci_runtime = package_root / "ci" / "pi-runtime"
+            ci_runtime.mkdir(parents=True)
+            (ci_runtime / "package.json").write_text("{}\n", encoding="utf-8")
+
+            result = subprocess.run(
+                ["node", str(finder), str(install_root)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(
+                package_root.resolve(), Path(result.stdout.strip()).resolve()
+            )
+
+    @unittest.skipUnless(shutil.which("node"), "Pi helper contracts require Node.js")
     def test_pi_rpc_inventory_verifier_requires_exact_package_provenance(self) -> None:
         """Package skill discovery accepts only the expected package-origin commands."""
         verifier = ROOT / "scripts" / "verify_pi_package.mjs"
