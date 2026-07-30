@@ -162,6 +162,8 @@ jobs:
         env:
           GIT_TERMINAL_PROMPT: "0"
           PI_VERSION: "0.83.0"
+          PI_SOURCE_REPOSITORY: >-
+            ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           PI_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}
           PI_CODING_AGENT_DIR: ${{ runner.temp }}/athena-pi-agent
           npm_config_cache: ${{ runner.temp }}/athena-pi-npm-cache
@@ -179,9 +181,9 @@ jobs:
             node scripts/verify_pi_package.mjs "$package_root" "$rpc_output"
           }
 
-          pi_source="git:github.com/${GITHUB_REPOSITORY}@${PI_SOURCE_REF}"
+          pi_source="git:github.com/${PI_SOURCE_REPOSITORY}@${PI_SOURCE_REF}"
           pi install "$pi_source" --no-approve
-          pi list | grep -F -- "github.com/${GITHUB_REPOSITORY}"
+          pi list | grep -F -- "github.com/${PI_SOURCE_REPOSITORY}"
           git_manifest="$(find "$PI_CODING_AGENT_DIR/git" -type f -name package.json -print -quit)"
           test -n "$git_manifest"
           verify_pi_skills "$(dirname "$git_manifest")" "$PI_CODING_AGENT_DIR"
