@@ -206,8 +206,13 @@ are never publication authority.
   no GitHub write and return the entire ready-to-publish batch. If a `POST` is
   indeterminate or cannot be verified, do not retry, fall back to per-finding
   posts, or make further writes; report the posting state as indeterminate.
-  `--report-only` remains read-only. The `--prevalidated` profile never posts
-  or executes commands.
+  A documented, explicit auto-merge opt-in is separate operator authority; it
+  may enable GitHub auto-merge only after the same strict review reaches its
+  exact GO gates and revalidates the current artifact, current head, required
+  checks, merge policy, and provider result. It must never infer that authority
+  from a review conclusion or enable auto-merge for a conditional GO, NO-GO,
+  `--report-only`, CI-free, or prevalidated review. `--report-only` remains
+  read-only. The `--prevalidated` profile never posts or executes commands.
 - **Repository review:** an explicit direct user request may create a
   deduplicated tracking hierarchy and work items. On GitHub, use a writable
   configured Project and its existing unambiguous fields when available;

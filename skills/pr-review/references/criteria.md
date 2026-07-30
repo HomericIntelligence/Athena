@@ -41,4 +41,5 @@ not replace or duplicate the architecture, language, principles, or test rules.
   do not combine it with another finding in a summary. Reserve one optional
   batched summary for genuinely cross-cutting findings and review evidence that
   cannot be anchored to a changed line. Never post a clean review or alter
-  labels, workflow state, or merge state.
+  labels, workflow state, or merge state, except for the documented
+  `--enable-auto-merge-on-go` GitHub-only sequence after its exact GO gate.
