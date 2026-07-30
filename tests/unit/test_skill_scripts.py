@@ -1098,7 +1098,7 @@ class ChangeReviewScriptTests(unittest.TestCase):
         finally:
             sys.modules.pop(module_name, None)
 
-    def test_nofollow_inspection_accepts_open_dir_fd_support_without_registry_entry(
+    def test_nofollow_inspection_does_not_depend_on_dir_fd_registry_entries(
         self,
     ) -> None:
         module_name = "test_change_review_open_dir_fd"
@@ -1115,12 +1115,7 @@ class ChangeReviewScriptTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as temporary_directory:
                 repository = Path(temporary_directory) / "repo"
                 initialize_repository(repository)
-                supported = frozenset(
-                    operation
-                    for operation in module.os.supports_dir_fd
-                    if operation is not module.os.open
-                )
-                with patch.object(module.os, "supports_dir_fd", supported):
+                with patch.object(module.os, "supports_dir_fd", frozenset()):
                     entry = module.worktree_path_entry(repository, "tracked.txt")
 
             self.assertEqual("file", entry.kind)

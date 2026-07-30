@@ -275,11 +275,16 @@ def nofollow_parent_descriptor(
     )
     try:
         for component in components[:-1]:
-            child_descriptor = os.open(
-                component,
-                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-                dir_fd=descriptor,
-            )
+            try:
+                child_descriptor = os.open(
+                    component,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=descriptor,
+                )
+            except (NotImplementedError, TypeError) as error:
+                raise RuntimeError(
+                    "host cannot inspect repository paths without following links"
+                ) from error
             os.close(descriptor)
             descriptor = child_descriptor
     except OSError:
@@ -290,10 +295,6 @@ def nofollow_parent_descriptor(
 
 def worktree_path_entry(repository_root: Path, relative_path: str) -> PathEntry:
     """Describe a path without following repository or target symlinks."""
-    if os.lstat not in os.supports_dir_fd:
-        raise RuntimeError(
-            "host cannot inspect repository paths without following links"
-        )
     try:
         parent_descriptor, filename = nofollow_parent_descriptor(
             repository_root, relative_path
@@ -303,17 +304,23 @@ def worktree_path_entry(repository_root: Path, relative_path: str) -> PathEntry:
     try:
         try:
             mode = os.lstat(filename, dir_fd=parent_descriptor).st_mode
+        except (NotImplementedError, TypeError) as error:
+            raise RuntimeError(
+                "host cannot inspect repository paths without following links"
+            ) from error
         except FileNotFoundError:
             return PathEntry(relative_path, "absent")
         if stat.S_ISLNK(mode):
-            if os.readlink not in os.supports_dir_fd:
+            try:
+                target = os.readlink(filename, dir_fd=parent_descriptor)
+            except (NotImplementedError, TypeError) as error:
                 raise RuntimeError(
                     "host cannot inspect repository links without following them"
-                )
+                ) from error
             return PathEntry(
                 relative_path,
                 "symlink",
-                target=os.fsdecode(os.readlink(filename, dir_fd=parent_descriptor)),
+                target=os.fsdecode(target),
             )
         if stat.S_ISREG(mode):
             return PathEntry(
@@ -424,11 +431,16 @@ def read_regular_file_without_following(
         repository_root, relative_path
     )
     try:
-        descriptor = os.open(
-            filename,
-            os.O_RDONLY | os.O_NOFOLLOW,
-            dir_fd=parent_descriptor,
-        )
+        try:
+            descriptor = os.open(
+                filename,
+                os.O_RDONLY | os.O_NOFOLLOW,
+                dir_fd=parent_descriptor,
+            )
+        except (NotImplementedError, TypeError) as error:
+            raise RuntimeError(
+                "host cannot inspect repository paths without following links"
+            ) from error
     finally:
         os.close(parent_descriptor)
     try:
