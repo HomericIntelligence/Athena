@@ -15,7 +15,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from skills._cli import argument_parser
+from skills._cli import argument_parser, git_read_arguments, git_read_environment
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -78,6 +78,40 @@ def initialize_repository(path: Path) -> None:
 
 
 class ScriptConventionTests(unittest.TestCase):
+    def test_immutable_git_reads_disable_lazy_fetch_and_commit_graphs(self) -> None:
+        hostile_environment = {
+            "GIT_ALTERNATE_OBJECT_DIRECTORIES": "/attacker/objects",
+            "GIT_COMMON_DIR": "/attacker/common",
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "core.commitGraph",
+            "GIT_CONFIG_PARAMETERS": "core.commitGraph=true",
+            "GIT_CONFIG_VALUE_0": "true",
+            "GIT_DIR": "/attacker/.git",
+            "GIT_EXTERNAL_DIFF": "/attacker/diff",
+            "GIT_GRAFT_FILE": "attacker-grafts",
+            "GIT_INDEX_FILE": "/attacker/index",
+            "GIT_NO_LAZY_FETCH": "0",
+            "GIT_OBJECT_DIRECTORY": "/attacker/objects",
+            "GIT_SHALLOW_FILE": "/attacker/shallow",
+            "GIT_TRACE": "/attacker/trace",
+            "GIT_WORK_TREE": "/attacker/worktree",
+        }
+        with patch.dict(
+            os.environ,
+            hostile_environment,
+        ):
+            environment = git_read_environment()
+
+        for key in hostile_environment:
+            self.assertNotEqual(hostile_environment[key], environment.get(key))
+        self.assertEqual(os.devnull, environment["GIT_GRAFT_FILE"])
+        self.assertEqual("1", environment["GIT_NO_REPLACE_OBJECTS"])
+        self.assertEqual("1", environment["GIT_NO_LAZY_FETCH"])
+        self.assertEqual(
+            ("-c", "core.commitGraph=false", "--no-replace-objects"),
+            git_read_arguments(),
+        )
+
     def test_every_executable_reports_the_plugin_version(self) -> None:
         manifest = json.loads(
             (ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
@@ -139,7 +173,17 @@ class ScriptConventionTests(unittest.TestCase):
                 ("a" * 40, "b" * 40),
                 "git",
             ),
-            ("skills/pr-review/scripts/resolve_pr.py", ("1",), "gh"),
+            (
+                "skills/pr-review/scripts/resolve_pr.py",
+                (
+                    "--target-host",
+                    "github.com",
+                    "--target-repository",
+                    "owner/repository",
+                    "1",
+                ),
+                "gh",
+            ),
             ("skills/change-review/scripts/resolve_scope.py", ("--worktree",), "git"),
             (
                 "skills/systematic-debugging/scripts/repository_evidence.py",
@@ -185,11 +229,28 @@ class PullRequestScriptTests(unittest.TestCase):
         env["FAKE_GH_CANDIDATES_JSON"] = json.dumps(candidates)
         return env
 
+    def resolve_pr(
+        self,
+        *arguments: str,
+        cwd: Path,
+        env: dict[str, str],
+    ) -> subprocess.CompletedProcess[str]:
+        """Resolve through the test's retained GitHub target."""
+        return run_script(
+            "skills/pr-review/scripts/resolve_pr.py",
+            "--target-host",
+            "github.com",
+            "--target-repository",
+            "owner/repository",
+            *arguments,
+            cwd=cwd,
+            env=env,
+        )
+
     def test_resolve_pr_accepts_explicit_number(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            result = run_script(
-                "skills/pr-review/scripts/resolve_pr.py",
+            result = self.resolve_pr(
                 "42",
                 cwd=root,
                 env=self.make_fake_tools(root, []),
@@ -201,8 +262,7 @@ class PullRequestScriptTests(unittest.TestCase):
     def test_resolve_pr_emits_a_canonical_review_target(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            result = run_script(
-                "skills/pr-review/scripts/resolve_pr.py",
+            result = self.resolve_pr(
                 "42",
                 cwd=root,
                 env=self.make_fake_tools(root, []),
@@ -220,6 +280,69 @@ class PullRequestScriptTests(unittest.TestCase):
             json.loads(result.stdout)["review_target"],
         )
 
+    def test_resolve_pr_rejects_ambient_target_selection(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            env = self.make_fake_tools(root, [])
+            env["GH_HOST"] = "attacker.invalid"
+            env["GH_REPO"] = "attacker/repository"
+            env["FAKE_GH_REQUIRE_REPOSITORY"] = "owner/repository"
+            env["FAKE_GH_FORBID_REPO_VIEW"] = "1"
+            result = self.resolve_pr("42", cwd=root, env=env)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            "owner/repository", json.loads(result.stdout)["review_target"]["repository"]
+        )
+
+    def test_resolve_pr_derives_an_explicit_target_from_a_canonical_url(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            env = self.make_fake_tools(root, [])
+            env["GH_HOST"] = "attacker.invalid"
+            env["GH_REPO"] = "attacker/repository"
+            env["FAKE_GH_REQUIRE_REPOSITORY"] = "owner/repository"
+            env["FAKE_GH_FORBID_REPO_VIEW"] = "1"
+            result = run_script(
+                "skills/pr-review/scripts/resolve_pr.py",
+                "https://github.com/owner/repository/pull/42",
+                cwd=root,
+                env=env,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(42, json.loads(result.stdout)["number"])
+
+    def test_resolve_pr_rejects_a_noncanonical_direct_url_without_a_traceback(
+        self,
+    ) -> None:
+        """Malformed direct URLs are argument errors, not uncaught exceptions."""
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            result = run_script(
+                "skills/pr-review/scripts/resolve_pr.py",
+                "https://github.com/owner/repository/pull/42/",
+                cwd=root,
+                env=self.make_fake_tools(root, []),
+            )
+
+        self.assertEqual(2, result.returncode)
+        self.assertIn("invalid pull-request URL", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_resolve_pr_requires_a_target_for_a_numeric_identifier(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            result = run_script(
+                "skills/pr-review/scripts/resolve_pr.py",
+                "42",
+                cwd=root,
+                env=self.make_fake_tools(root, []),
+            )
+
+        self.assertEqual(2, result.returncode)
+        self.assertIn("--target-host", result.stderr)
+
     def test_resolve_pr_rejects_a_pr_from_another_repository(self) -> None:
         """A local source review must never be bound to a foreign PR URL."""
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -231,15 +354,14 @@ class PullRequestScriptTests(unittest.TestCase):
                     "url": "https://github.com/other/foreign-repository/pull/42",
                 }
             )
-            result = run_script(
-                "skills/pr-review/scripts/resolve_pr.py",
+            result = self.resolve_pr(
                 "42",
                 cwd=root,
                 env=env,
             )
 
         self.assertEqual(1, result.returncode)
-        self.assertIn("does not belong to current repository", result.stderr)
+        self.assertIn("does not belong to target repository", result.stderr)
 
     def test_resolve_pr_rejects_closed_and_invalid_explicit_prs(self) -> None:
         for payload, message in (
@@ -251,8 +373,7 @@ class PullRequestScriptTests(unittest.TestCase):
                     root = Path(temporary_directory)
                     env = self.make_fake_tools(root, [])
                     env["FAKE_GH_VIEW_JSON"] = json.dumps(payload)
-                    result = run_script(
-                        "skills/pr-review/scripts/resolve_pr.py",
+                    result = self.resolve_pr(
                         "42",
                         cwd=root,
                         env=env,
@@ -273,8 +394,7 @@ class PullRequestScriptTests(unittest.TestCase):
                     root = Path(temporary_directory)
                     env = self.make_fake_tools(root, [])
                     env["FAKE_GH_VIEW_JSON"] = json.dumps({field: value})
-                    result = run_script(
-                        "skills/pr-review/scripts/resolve_pr.py",
+                    result = self.resolve_pr(
                         "42",
                         cwd=root,
                         env=env,
@@ -289,11 +409,8 @@ class PullRequestScriptTests(unittest.TestCase):
             repository = root / "repo"
             initialize_repository(repository)
             env = self.make_fake_tools(root, [])
-            missing = run_script(
-                "skills/pr-review/scripts/resolve_pr.py", cwd=repository, env=env
-            )
-            usage = run_script(
-                "skills/pr-review/scripts/resolve_pr.py",
+            missing = self.resolve_pr(cwd=repository, env=env)
+            usage = self.resolve_pr(
                 "1",
                 "2",
                 cwd=repository,
@@ -309,15 +426,11 @@ class PullRequestScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             env = self.make_fake_tools(root, [])
-            resolved = run_script(
-                "skills/pr-review/scripts/resolve_pr.py", "-R", cwd=root, env=env
-            )
+            resolved = self.resolve_pr("-R", cwd=root, env=env)
             collected = run_script(
                 "skills/pr-review/scripts/collect_evidence.py", "-R", cwd=root, env=env
             )
-            invalid_resolved = run_script(
-                "skills/pr-review/scripts/resolve_pr.py", "invalid", cwd=root, env=env
-            )
+            invalid_resolved = self.resolve_pr("invalid", cwd=root, env=env)
             invalid_collected = run_script(
                 "skills/pr-review/scripts/collect_evidence.py",
                 "invalid",
@@ -341,9 +454,7 @@ class PullRequestScriptTests(unittest.TestCase):
             root = Path(temporary_directory)
             env = self.make_fake_tools(root, [])
             env["FAKE_GH_VIEW_RAW"] = "not JSON"
-            result = run_script(
-                "skills/pr-review/scripts/resolve_pr.py", "42", cwd=root, env=env
-            )
+            result = self.resolve_pr("42", cwd=root, env=env)
 
         self.assertEqual(1, result.returncode)
         self.assertIn("Expecting value", result.stderr)
@@ -362,8 +473,7 @@ class PullRequestScriptTests(unittest.TestCase):
                     "baseRefName": "trunk",
                 }
             ]
-            result = run_script(
-                "skills/pr-review/scripts/resolve_pr.py",
+            result = self.resolve_pr(
                 cwd=root / "repo",
                 env=self.make_fake_tools(root, candidates),
             )
@@ -379,8 +489,7 @@ class PullRequestScriptTests(unittest.TestCase):
                 {"number": 1, "state": "OPEN", "url": "https://example/1"},
                 {"number": 2, "state": "OPEN", "url": "https://example/2"},
             ]
-            result = run_script(
-                "skills/pr-review/scripts/resolve_pr.py",
+            result = self.resolve_pr(
                 cwd=root / "repo",
                 env=self.make_fake_tools(root, candidates),
             )
@@ -407,6 +516,81 @@ class PullRequestScriptTests(unittest.TestCase):
         self.assertEqual(0, context["behind_count"])
         self.assertEqual(f"{base}...{head}", context["author_intent_range"])
         self.assertEqual(f"{base}..{head}", context["current_base_range"])
+
+    def test_diff_context_ignores_hostile_git_location_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            repository = root / "reviewed"
+            attacker = root / "attacker"
+            initialize_repository(repository)
+            base = git(repository, "rev-parse", "HEAD")
+            (repository / "reviewed.txt").write_text("head\n", encoding="utf-8")
+            git(repository, "add", "reviewed.txt")
+            git(repository, "commit", "--quiet", "-m", "test: reviewed head")
+            head = git(repository, "rev-parse", "HEAD")
+            initialize_repository(attacker)
+            environment = os.environ.copy()
+            environment["GIT_DIR"] = str(attacker / ".git")
+            environment["GIT_WORK_TREE"] = str(attacker)
+            environment["GIT_INDEX_FILE"] = str(attacker / ".git" / "index")
+            result = run_script(
+                "skills/pr-review/scripts/diff_context.py",
+                base,
+                head,
+                cwd=repository,
+                env=environment,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(base, json.loads(result.stdout)["merge_base"])
+
+    def test_diff_context_rejects_shallow_history_despite_hostile_git_context(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source"
+            shallow = root / "shallow"
+            attacker = root / "attacker"
+            initialize_repository(source)
+            for number in range(3):
+                path = source / f"commit-{number}.txt"
+                path.write_text(f"{number}\n", encoding="utf-8")
+                git(source, "add", path.name)
+                git(source, "commit", "--quiet", "-m", f"test: commit {number}")
+            clone = subprocess.run(
+                [
+                    "git",
+                    "clone",
+                    "--quiet",
+                    "--no-local",
+                    "--depth",
+                    "2",
+                    source,
+                    shallow,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, clone.returncode, clone.stderr)
+            self.assertEqual(
+                "true", git(shallow, "rev-parse", "--is-shallow-repository")
+            )
+            initialize_repository(attacker)
+            environment = os.environ.copy()
+            environment["GIT_DIR"] = str(attacker / ".git")
+            environment["GIT_WORK_TREE"] = str(attacker)
+            result = run_script(
+                "skills/pr-review/scripts/diff_context.py",
+                git(shallow, "rev-parse", "HEAD~1"),
+                git(shallow, "rev-parse", "HEAD"),
+                cwd=shallow,
+                env=environment,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("non-shallow", result.stderr)
 
     def test_diff_context_ignores_replacement_refs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

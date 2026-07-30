@@ -247,16 +247,30 @@ similarity or recent activity.
 
 ### GitHub pull request
 
-Keep the target repository as the current working directory. Resolve
-`scripts/resolve_pr.py` against this installed skill directory and invoke that
-absolute helper path with an optional `[PR_NUMBER_OR_URL]`. It verifies the
-repository identity and returns a canonical `review_target` plus immutable
-base/head OIDs. With no argument, it discovers the target branch and accepts
-exactly one open PR for that branch. Exit status 2 means no PR was found; exit
-status 3 means it found multiple candidates. Record the target's GitHub host,
-owner/repository, PR number, canonical URL, base OID, and head OID as the
-resolved identity. The default evidence workflow MUST later bind all of those
-facts to the evidence helper's independently returned immutable identity.
+The working directory is only local source context; it must never select the
+forge target. Resolve `scripts/resolve_pr.py` against this installed skill
+directory and invoke that absolute helper path with a configured authenticated
+forge capability's canonical target:
+
+```bash
+<installed-skill>/scripts/resolve_pr.py \
+  --target-host github.com \
+  --target-repository <owner/repository> \
+  [PR_NUMBER_OR_URL]
+```
+
+A canonical public-GitHub PR URL may safely provide the same target directly.
+A numeric PR number or no argument requires the explicit target pair; never
+fall back to `GH_HOST`, `GH_REPO`, a checkout remote, or another ambient CLI
+default. The helper sends every provider query to that fully qualified target,
+returns a canonical `review_target` plus immutable base/head OIDs, and rejects
+a different returned number, URL, host, or repository. With no argument, it
+discovers the target branch and accepts exactly one open PR for that target.
+Exit status 2 means no PR was found; exit status 3 means it found multiple
+candidates. Record the target's GitHub host, owner/repository, PR number,
+canonical URL, base OID, and head OID as the resolved identity. The default
+evidence workflow MUST later bind all of those facts to the evidence helper's
+independently returned immutable identity.
 
 Do not fetch, pull, clone, invoke a remote helper, or otherwise acquire these
 objects from an ambient checkout remote. Use the exact OIDs only when they are
@@ -266,6 +280,11 @@ review target and both OIDs without consulting checkout remote or transport
 configuration. If that source capability is unavailable, stop with a
 source-evidence coverage gap. Never substitute branch names, a local ref name,
 or a subsequently observed head.
+
+For local immutable Git reads, disable replacement refs, graft input, and
+commit-graph reads, and forbid lazy promisor-object fetching. A missing local
+object is a source-evidence coverage gap; it never authorizes transport through
+the checkout's ambient remote configuration.
 
 ### GitLab merge request
 
@@ -299,7 +318,8 @@ CI/CD evidence and merge-readiness claims.
 When the profile is active:
 
 - Resolve the pull/merge-request identity through the selected forge route. For
-  GitHub, use `resolve_pr.py` with only the optional identifier. For GitLab,
+  GitHub, use `resolve_pr.py` with the configured explicit target pair (or a
+  canonical PR URL). For GitLab,
   use the configured authenticated MR capability. Both routes must verify the
   artifact belongs to the current repository/project and return exact target
   base and source head OIDs. Do not invoke `collect_evidence.py`, `gh pr
@@ -391,8 +411,9 @@ The GitLab capability MUST retain four canonical records for the reviewed MR:
 - `reviewed_scope`: a canonical JSON digest of every review-consumed mutable
   field — title, description, draft state, source/target ref names, and linked
   work identities — excluding review/discussion output and CI evidence; and
-- `changed_path_manifest`: the OID range, NUL-safe path encoding, count, and
-  digest derived from the immutable source/target objects; and
+- `changed_path_manifest`: the union of both immutable diff-lens OID ranges,
+  NUL-safe path encoding, count, and digest derived from the immutable
+  source/target objects; and
 - `reviewed_linked_requirements`: for every linked work item whose requirements
   are consumed, its canonical ID and URL plus a canonical content digest of the
   title, description, acceptance criteria, and all consumed comments or plan
@@ -413,21 +434,27 @@ attested review context and never query GitLab.
 
 For a resolved GitHub target, keep the target repository as the current working
 directory, resolve `scripts/collect_evidence.py` against this installed skill
-directory, and invoke that absolute helper path with the `baseRefOid` and
-`headRefOid` returned by `resolve_pr.py`:
+directory, and invoke that absolute helper path with the complete immutable
+identity and `review_target` returned by `resolve_pr.py`:
 
 ```bash
 <installed-skill>/scripts/collect_evidence.py \
   --expected-base-oid <resolved-base-oid> \
   --expected-head-oid <resolved-head-oid> \
-  <PR_NUMBER_OR_URL>
+  --expected-host <resolved-github-host> \
+  --expected-repository <resolved-owner/repository> \
+  --expected-pr-number <resolved-pr-number> \
+  --expected-pr-url <resolved-pr-url> \
+  <resolved-pr-number>
 ```
 
-Those expected-OID arguments are mandatory for this workflow; a legacy helper
-call without them cannot establish publication-eligible evidence. Retain its
-JSON output containing PR metadata, a local immutable changed-path manifest,
-and the `reviewed_identity`, `reviewed_scope`, and
-`reviewed_linked_requirements` bindings.
+All seven retained identity arguments are mandatory for this workflow; a legacy
+helper call without them cannot establish publication-eligible evidence. The
+public-GitHub route requires `github.com` as the expected host. Strict reads use
+the retained `github.com/owner/repository` target rather than ambient `GH_HOST`,
+`GH_REPO`, or checkout context. Retain its JSON output containing PR metadata,
+a local immutable changed-path manifest, and the `reviewed_identity`,
+`reviewed_scope`, and `reviewed_linked_requirements` bindings.
 
 The script returns a flat object with `changed_files` and its backwards-compatible
 `changed_paths` alias, `checks`, and `pull_request`. The `pull_request` object contains the PR
@@ -438,13 +465,18 @@ called with expected OIDs, `reviewed_identity` contains the verified open
 GitHub host, repository, PR number, canonical URL, and exact base/head OIDs;
 `reviewed_scope` is the canonical SHA-256 binding of title, body,
 closing-issue references, state, draft state, and base/head ref names;
-`reviewed_linked_requirements` contains the count and digest of every linked
-issue's canonical identity, title, body, state, and complete paginated comment
-history; and `changed_path_manifest` is the SHA-256 of a sorted UTF-8
-NUL-delimited path set derived only from local `git diff --name-only -z
---no-renames --ignore-submodules=none <base> <head>`. The helper reads linked
-issues through explicit canonical repository endpoints, so an ambient CLI
-repository cannot retarget that requirement evidence. Strict mode MUST NOT
+`reviewed_linked_requirements` contains an ordered record for every linked
+issue: canonical ID, repository, number, URL, and a content digest covering
+its title, body, state, and complete paginated comment history. It also retains
+an aggregate count and digest over those records; and `changed_path_manifest`
+is the SHA-256 of a sorted UTF-8 NUL-delimited union of both local immutable
+diff lenses: `git diff --name-only -z --no-renames --ignore-submodules=none
+<merge-base> <head>` and the same command for `<base> <head>`. This requires a
+complete, non-shallow repository with one unambiguous merge base. The helper
+reads linked issues through explicit canonical GitHub-host and repository
+endpoints, so an ambient CLI repository or hostname cannot retarget that
+requirement evidence.
+Strict mode MUST NOT
 query the mutable provider `/files` endpoint or parse newline-delimited path
 output. The helper re-reads identity, scope, and linked requirements after
 collecting its immutable manifest, returns that final metadata, and fails when
@@ -465,17 +497,21 @@ evidence. Use a separate capability that returns and verifies the reviewed
 metadata is reported as a non-zero structured `error`/`details` response
 instead of a successful evidence document.
 
-Before source inspection, compare `reviewed_identity` exactly with the earlier
-`resolve_pr.py` output, compare `reviewed_scope` with the retained title, body,
-closing-issue references, state, draft state, and base/head ref names, compare
-`reviewed_linked_requirements` with every linked issue or canonical plan content
-used by the review, verify its `base_oid` and `head_oid` are local commit
-objects, and verify `changed_path_manifest` by re-deriving the same NUL-safe OID
-path set. Use only those OIDs for both diff lenses and for every later
-publication binding. A missing identity, scope, linked-requirements, or path
-binding; a mismatched repository, number, URL, base, head, scope, or
-requirements digest; or a missing local immutable object is a coverage failure;
-do not continue from branch names or stale evidence. After binding, read every
+Before source inspection, compare `reviewed_identity.forge_host` to
+`resolve_pr.py`'s `review_target.host`; `repository`, `number`, and `url` to
+the matching `review_target` fields; `state` to the resolved open state; and
+`base_oid`/`head_oid` to its `baseRefOid`/`headRefOid`. Compare
+`reviewed_scope` with the retained title, body, closing-issue references, state,
+draft state, and base/head ref names, compare `reviewed_linked_requirements`
+with every linked issue or canonical plan content used by the review, verify its
+`base_oid` and `head_oid` are local commit objects, and verify
+`changed_path_manifest` by re-deriving the same NUL-safe union of both OID
+diff-lens path sets. Use only those OIDs for both diff lenses and for every
+later publication binding. A
+missing identity, scope, linked-requirements, or path binding; a mismatched
+repository, number, URL, base, head, scope, or requirements digest; or a
+missing local immutable object is a coverage failure; do not continue from
+branch names or stale evidence. After binding, read every
 repository-resident artifact
 — changed source, `AGENTS.md`, ADRs, policies/contracts, tests, and task
 definitions — from immutable objects in the verified `head_oid` tree (or an
@@ -556,7 +592,8 @@ rebase or fresh CI for the source-review assessment, and do not declare the pull
 merge-ready. In the prevalidated profile, report only the attested source-history
 facts and do not query for new ones. Detect already-landed or zombie work by
 checking current base content, not commit ancestry alone on squash-merge
-repositories.
+repositories. If the immutable history is shallow or has no single merge base,
+record a coverage failure rather than selecting an arbitrary author-intent lens.
 
 ## Review dimensions
 

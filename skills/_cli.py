@@ -27,13 +27,81 @@ def run_command(
 
 
 def git_read_environment() -> dict[str, str]:
-    """Return an environment that cannot rewrite immutable Git object reads."""
-    environment = os.environ.copy()
+    """Return a hermetic environment for immutable, non-interactive Git reads."""
+    environment = {
+        key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+    }
     # `--no-replace-objects` does not disable deprecated graft files. Force Git
-    # to read an empty graft source, including when the caller supplied one.
-    environment["GIT_GRAFT_FILE"] = os.devnull
-    environment["GIT_NO_REPLACE_OBJECTS"] = "1"
+    # to read an empty graft source. Strip every inherited GIT_* setting first:
+    # location, object, index, config, attribute, pathspec, and transport
+    # overrides can otherwise redirect or change a supposedly immutable read.
+    environment.update(
+        {
+            "GIT_ATTR_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_SYSTEM": os.devnull,
+            "GIT_GRAFT_FILE": os.devnull,
+            "GIT_NO_LAZY_FETCH": "1",
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+    )
     return environment
+
+
+def git_read_arguments() -> tuple[str, ...]:
+    """Return Git options that disable mutable local object-graph metadata."""
+    return ("-c", "core.commitGraph=false", "--no-replace-objects")
+
+
+def require_complete_git_history() -> None:
+    """Reject shallow history before deriving immutable ancestry evidence."""
+    result = run_command(
+        ["git", *git_read_arguments(), "rev-parse", "--is-shallow-repository"],
+        capture_output=True,
+        env=git_read_environment(),
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        message = (
+            result.stderr.strip() or "git rev-parse --is-shallow-repository failed"
+        )
+        raise RuntimeError(message)
+    if result.stdout.strip() != "false":
+        raise RuntimeError(
+            "immutable review evidence requires a non-shallow repository; "
+            "use a complete source snapshot"
+        )
+
+
+def require_unambiguous_git_merge_base(base_oid: str, head_oid: str) -> str:
+    """Return the sole immutable merge base or reject ambiguous topology."""
+    result = run_command(
+        [
+            "git",
+            *git_read_arguments(),
+            "merge-base",
+            "--all",
+            base_oid,
+            head_oid,
+        ],
+        capture_output=True,
+        env=git_read_environment(),
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        message = result.stderr.strip() or "git merge-base failed"
+        raise RuntimeError(message)
+    merge_bases = result.stdout.splitlines()
+    if len(merge_bases) != 1 or not merge_bases[0]:
+        raise RuntimeError(
+            "immutable review evidence requires one unambiguous merge base"
+        )
+    return merge_bases[0]
 
 
 def plugin_version() -> str:

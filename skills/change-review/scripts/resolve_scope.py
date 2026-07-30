@@ -18,7 +18,12 @@ from typing import Callable, Iterable, Protocol, Sequence, cast
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from skills._cli import argument_parser, git_read_environment, run_command
+from skills._cli import (
+    argument_parser,
+    git_read_arguments,
+    git_read_environment,
+    run_command,
+)
 
 
 READ_CHUNK_SIZE = 1024 * 1024
@@ -102,7 +107,12 @@ def content_fingerprint(chunks: Iterable[bytes]) -> ContentFingerprint:
 
 def git_command(arguments: Sequence[str], repository_root: Path | None) -> list[str]:
     """Build one Git command without shell interpolation."""
-    command = ["git", "-c", "core.fsmonitor=false", "--no-replace-objects"]
+    command = [
+        "git",
+        "-c",
+        "core.fsmonitor=false",
+        *git_read_arguments(),
+    ]
     if repository_root is not None:
         command.extend(("-C", os.fspath(repository_root)))
     command.extend(arguments)

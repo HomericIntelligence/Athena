@@ -9,17 +9,27 @@ from pathlib import Path
 import json
 import sys
 from typing import Any, Sequence
-from urllib.parse import urlparse
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from pr_identity import (
     COMMIT_OID,
+    pull_request_number,
+    require_canonical_pull_request_url,
+    require_commit_oid,
+    require_github_repository,
     repository_from_pr_url,
     validate_pr_identifier,
 )
-from skills._cli import argument_parser, git_read_environment, run_command
+from skills._cli import (
+    argument_parser,
+    git_read_arguments,
+    git_read_environment,
+    require_complete_git_history,
+    require_unambiguous_git_merge_base,
+    run_command,
+)
 
 
 # Keep this query below GitHub's GraphQL complexity budget. Strict callers bind
@@ -42,7 +52,7 @@ class ImmutableIdentity:
     base_oid: str
     head_oid: str
 
-    def as_json(self) -> dict[str, str | int]:
+    def as_json(self) -> dict[str, object]:
         """Return the stable, serializable evidence binding."""
         return {
             "forge_host": "github.com",
@@ -56,13 +66,27 @@ class ImmutableIdentity:
 
 
 @dataclass(frozen=True)
+class ExpectedReviewTarget:
+    """The immutable GitHub artifact target resolved before strict collection."""
+
+    host: str
+    repository: str
+    number: int
+    url: str
+
+    def repository_argument(self) -> str:
+        """Return the fully qualified repository argument accepted by gh."""
+        return f"{self.host}/{self.repository}"
+
+
+@dataclass(frozen=True)
 class ChangedPathManifest:
     """A canonical, immutable changed-path manifest derived from Git objects."""
 
     paths: tuple[str, ...]
     sha256: str
 
-    def as_json(self) -> dict[str, str | int]:
+    def as_json(self) -> dict[str, object]:
         """Return the manifest binding carried with strict evidence."""
         return {
             "encoding": "utf-8-nul",
@@ -87,12 +111,37 @@ class ReviewScope:
 class LinkedRequirements:
     """Canonical content binding for every linked issue used as requirements."""
 
-    count: int
+    items: tuple["LinkedRequirement", ...]
     sha256: str
 
-    def as_json(self) -> dict[str, str | int]:
+    def as_json(self) -> dict[str, object]:
         """Return the serializable linked-requirements binding."""
-        return {"count": self.count, "sha256": self.sha256}
+        return {
+            "count": len(self.items),
+            "items": [item.as_json() for item in self.items],
+            "sha256": self.sha256,
+        }
+
+
+@dataclass(frozen=True)
+class LinkedRequirement:
+    """One linked issue's stable identity and content-only requirements digest."""
+
+    id: str
+    repository: str
+    number: int
+    url: str
+    content_sha256: str
+
+    def as_json(self) -> dict[str, str | int]:
+        """Return the individual requirement record carried in review evidence."""
+        return {
+            "content_sha256": self.content_sha256,
+            "id": self.id,
+            "number": self.number,
+            "repository": self.repository,
+            "url": self.url,
+        }
 
 
 def metadata_error(metadata: object, *, require_immutable_identity: bool) -> str | None:
@@ -157,14 +206,6 @@ def metadata_error(metadata: object, *, require_immutable_identity: bool) -> str
     return None
 
 
-def requested_number(identifier: str) -> int:
-    """Return the validated PR number encoded by the user-provided identifier."""
-    if identifier.isdigit():
-        return int(identifier)
-    path = urlparse(identifier).path.rstrip("/")
-    return int(path.rsplit("/", maxsplit=1)[-1])
-
-
 def immutable_identity(
     metadata: dict[str, Any], repository: str, *, require_immutable_identity: bool
 ) -> ImmutableIdentity | None:
@@ -205,6 +246,60 @@ def expected_identity(
     return base_oid, head_oid
 
 
+def expected_target(
+    parser: Any,
+    identity: tuple[str, str] | None,
+    host: str | None,
+    repository: str | None,
+    number: int | None,
+    url: str | None,
+) -> ExpectedReviewTarget | None:
+    """Require the resolved GitHub target whenever immutable OIDs are supplied."""
+    if identity is None:
+        if (
+            host is not None
+            or repository is not None
+            or number is not None
+            or url is not None
+        ):
+            parser.error(
+                "--expected-host, --expected-repository, --expected-pr-number, and "
+                "--expected-pr-url require immutable expected OIDs"
+            )
+        return None
+    if host is None or repository is None or number is None or url is None:
+        parser.error(
+            "--expected-host, --expected-repository, --expected-pr-number, and "
+            "--expected-pr-url are required with immutable expected OIDs"
+        )
+    assert host is not None
+    assert repository is not None
+    assert number is not None
+    assert url is not None
+    if host != "github.com":
+        parser.error("--expected-host must be github.com")
+    try:
+        canonical_repository = require_github_repository(
+            repository, "--expected-repository"
+        )
+    except RuntimeError as error:
+        parser.error(str(error))
+    if number < 1:
+        parser.error("--expected-pr-number must be a positive pull-request number")
+    try:
+        canonical_url = require_canonical_pull_request_url(
+            url, canonical_repository, number, "--expected-pr-url"
+        )
+    except RuntimeError as error:
+        parser.error(str(error))
+    return ExpectedReviewTarget(
+        host=host,
+        repository=canonical_repository,
+        number=number,
+        url=canonical_url,
+    )
+
+
 def ensure_expected_identity(
     identity: ImmutableIdentity | None, expected: tuple[str, str] | None
 ) -> None:
@@ -217,6 +312,22 @@ def ensure_expected_identity(
         raise RuntimeError(
             "immutable pull-request identity does not match the expected base/head OIDs"
         )
+
+
+def ensure_expected_target(
+    identity: ImmutableIdentity | None, target: ExpectedReviewTarget | None
+) -> None:
+    """Fail closed when collected artifact identity differs from the resolved target."""
+    if target is None:
+        return
+    if identity is None:
+        raise RuntimeError("GitHub returned no immutable pull-request identity")
+    if (
+        identity.repository.casefold() != target.repository.casefold()
+        or identity.number != target.number
+        or identity.url != target.url
+    ):
+        raise RuntimeError("pull-request identity does not match the expected target")
 
 
 def review_scope(metadata: dict[str, Any]) -> ReviewScope:
@@ -261,14 +372,21 @@ def review_scope(metadata: dict[str, Any]) -> ReviewScope:
     )
 
 
-def linked_issue_reference(issue: object) -> tuple[str, int, str]:
+def linked_issue_reference(issue: object) -> tuple[str, str, int, str]:
     """Return one validated canonical linked-issue identity."""
     if not isinstance(issue, dict):
         raise RuntimeError("GitHub returned an invalid linked issue reference")
+    issue_id = issue.get("id")
     repository_data = issue.get("repository")
     number = issue.get("number")
     url = issue.get("url")
-    if not isinstance(repository_data, dict) or not isinstance(number, int):
+    if (
+        not isinstance(issue_id, str)
+        or not issue_id
+        or not isinstance(repository_data, dict)
+        or isinstance(number, bool)
+        or not isinstance(number, int)
+    ):
         raise RuntimeError("GitHub returned an incomplete linked issue reference")
     owner_data = repository_data.get("owner")
     name = repository_data.get("name")
@@ -282,19 +400,18 @@ def linked_issue_reference(issue: object) -> tuple[str, int, str]:
         or not isinstance(url, str)
     ):
         raise RuntimeError("GitHub returned an incomplete linked issue reference")
-    parsed_url = urlparse(url)
-    path_parts = parsed_url.path.strip("/").split("/")
-    if (
-        parsed_url.scheme != "https"
-        or parsed_url.hostname != "github.com"
-        or len(path_parts) != 4
-        or path_parts[0].casefold() != owner.casefold()
-        or path_parts[1].casefold() != name.casefold()
-        or path_parts[2] != "issues"
-        or path_parts[3] != str(number)
-    ):
+    try:
+        repository = require_github_repository(
+            f"{owner}/{name}", "GitHub linked issue repository"
+        )
+    except RuntimeError as error:
+        raise RuntimeError(
+            "GitHub returned an invalid linked issue repository"
+        ) from error
+    canonical_url = f"https://github.com/{repository}/issues/{number}"
+    if url != canonical_url:
         raise RuntimeError("GitHub returned an invalid linked issue URL")
-    return f"{owner}/{name}", number, url
+    return issue_id, repository, number, canonical_url
 
 
 def canonical_json(value: object, label: str) -> str:
@@ -316,6 +433,8 @@ def paginated_issue_comments(repository: str, number: int) -> list[dict[str, Any
     response = json.loads(
         gh(
             "api",
+            "--hostname",
+            "github.com",
             "--paginate",
             "--slurp",
             f"repos/{repository}/issues/{number}/comments",
@@ -339,8 +458,8 @@ def linked_requirements(metadata: dict[str, Any]) -> LinkedRequirements:
     identities = sorted(linked_issue_reference(issue) for issue in references)
     if len(identities) != len(set(identities)):
         raise RuntimeError("GitHub returned duplicate linked issue references")
-    records: list[dict[str, object]] = []
-    for repository, number, expected_url in identities:
+    items: list[LinkedRequirement] = []
+    for expected_id, repository, number, expected_url in identities:
         issue_data = json.loads(
             gh(
                 "issue",
@@ -357,8 +476,7 @@ def linked_requirements(metadata: dict[str, Any]) -> LinkedRequirements:
         issue_id = issue_data.get("id")
         body = issue_data.get("body")
         if (
-            not isinstance(issue_id, str)
-            or not issue_id
+            issue_id != expected_id
             or issue_data.get("number") != number
             or issue_data.get("url") != expected_url
             or not isinstance(issue_data.get("title"), str)
@@ -370,30 +488,35 @@ def linked_requirements(metadata: dict[str, Any]) -> LinkedRequirements:
             canonical_json(comment, "linked issue comment")
             for comment in paginated_issue_comments(repository, number)
         )
-        records.append(
-            {
-                "issue": {
-                    "body": body,
-                    "id": issue_id,
-                    "number": number,
-                    "state": issue_data["state"],
-                    "title": issue_data["title"],
-                    "url": expected_url,
-                },
-                "comments": [json.loads(comment) for comment in comments],
-                "repository": repository,
-            }
+        content = {
+            "body": body,
+            "comments": [json.loads(comment) for comment in comments],
+            "state": issue_data["state"],
+            "title": issue_data["title"],
+        }
+        items.append(
+            LinkedRequirement(
+                id=expected_id,
+                repository=repository,
+                number=number,
+                url=expected_url,
+                content_sha256=sha256(
+                    canonical_json(content, "linked issue requirements").encode("utf-8")
+                ).hexdigest(),
+            )
         )
-    document = canonical_json(records, "linked issue requirements")
+    document = canonical_json(
+        [item.as_json() for item in items], "linked issue requirements"
+    )
     return LinkedRequirements(
-        count=len(records), sha256=sha256(document.encode("utf-8")).hexdigest()
+        items=tuple(items), sha256=sha256(document.encode("utf-8")).hexdigest()
     )
 
 
 def git_bytes(*arguments: str) -> bytes:
     """Run a read-only Git query and return its byte-exact stdout."""
     result: Any = run_command(
-        ["git", "--no-replace-objects", *arguments],
+        ["git", *git_read_arguments(), *arguments],
         capture_output=True,
         check=False,
         env=git_read_environment(),
@@ -411,10 +534,8 @@ def git_bytes(*arguments: str) -> bytes:
     return stdout
 
 
-def immutable_changed_paths(base_oid: str, head_oid: str) -> ChangedPathManifest:
-    """Derive a NUL-safe changed-path set from immutable local commit objects."""
-    for oid in (base_oid, head_oid):
-        git_bytes("cat-file", "-e", f"{oid}^{{commit}}")
+def immutable_range_paths(base_oid: str, head_oid: str) -> list[bytes]:
+    """Return validated NUL-safe paths from one immutable Git diff range."""
     raw_paths = git_bytes(
         "-c",
         "diff.external=",
@@ -443,9 +564,23 @@ def immutable_changed_paths(base_oid: str, head_oid: str) -> ChangedPathManifest
         for entry in entries
     ):
         raise RuntimeError("Git returned an unsafe changed path")
-    canonical_entries = sorted(entries)
-    if len(canonical_entries) != len(set(canonical_entries)):
+    if len(entries) != len(set(entries)):
         raise RuntimeError("Git returned duplicate changed paths")
+    return entries
+
+
+def immutable_changed_paths(base_oid: str, head_oid: str) -> ChangedPathManifest:
+    """Bind the union of author-intent and current-target immutable paths."""
+    require_complete_git_history()
+    for oid in (base_oid, head_oid):
+        git_bytes("cat-file", "-e", f"{oid}^{{commit}}")
+    merge_base = require_commit_oid(
+        require_unambiguous_git_merge_base(base_oid, head_oid), "immutable merge base"
+    )
+    git_bytes("cat-file", "-e", f"{merge_base}^{{commit}}")
+    author_intent_paths = immutable_range_paths(merge_base, head_oid)
+    current_target_paths = immutable_range_paths(base_oid, head_oid)
+    canonical_entries = sorted(set(author_intent_paths) | set(current_target_paths))
     try:
         paths = tuple(entry.decode("utf-8") for entry in canonical_entries)
     except UnicodeDecodeError as error:
@@ -463,6 +598,20 @@ def gh(*arguments: str, accepted_codes: tuple[int, ...] = (0,)) -> str:
     return result.stdout
 
 
+def pr_metadata(
+    pull_request: str, target: ExpectedReviewTarget | None
+) -> dict[str, Any]:
+    """Read one PR through the retained target when strict evidence is required."""
+    command = ["pr", "view", pull_request]
+    if target is not None:
+        command.extend(("--repo", target.repository_argument()))
+    command.extend(("--json", FIELDS))
+    metadata = json.loads(gh(*command))
+    if not isinstance(metadata, dict):
+        raise RuntimeError("GitHub returned an invalid pull-request object")
+    return metadata
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argument_parser(description=__doc__)
     parser.add_argument(
@@ -475,16 +624,56 @@ def main(argv: Sequence[str] | None = None) -> int:
         metavar="HEAD_OID",
         help="immutable head revision returned by resolve_pr.py",
     )
+    parser.add_argument(
+        "--expected-host",
+        metavar="HOST",
+        help="canonical GitHub host returned by resolve_pr.py",
+    )
+    parser.add_argument(
+        "--expected-repository",
+        metavar="OWNER/REPOSITORY",
+        help="canonical GitHub repository returned by resolve_pr.py",
+    )
+    parser.add_argument(
+        "--expected-pr-number",
+        metavar="NUMBER",
+        type=int,
+        help="canonical pull-request number returned by resolve_pr.py",
+    )
+    parser.add_argument(
+        "--expected-pr-url",
+        metavar="URL",
+        help="canonical pull-request URL returned by resolve_pr.py",
+    )
     parser.add_argument("pull_request", metavar="PR_NUMBER_OR_URL")
     arguments = parser.parse_args(argv)
     pull_request = arguments.pull_request
     expected = expected_identity(
         parser, arguments.expected_base_oid, arguments.expected_head_oid
     )
+    target = expected_target(
+        parser,
+        expected,
+        arguments.expected_host,
+        arguments.expected_repository,
+        arguments.expected_pr_number,
+        arguments.expected_pr_url,
+    )
     require_immutable_identity = expected is not None
     try:
         validate_pr_identifier(pull_request)
-        metadata = json.loads(gh("pr", "view", pull_request, "--json", FIELDS))
+        requested = pull_request_number(pull_request)
+        if target is not None:
+            if requested != target.number:
+                raise RuntimeError(
+                    "requested pull request does not match the expected target number"
+                )
+            if pull_request.startswith("https://"):
+                if pull_request != target.url:
+                    raise RuntimeError(
+                        "requested pull request does not match the expected target URL"
+                    )
+        metadata = pr_metadata(pull_request, target)
         metadata_problem = metadata_error(
             metadata, require_immutable_identity=require_immutable_identity
         )
@@ -499,8 +688,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             )
             return 1
-        repository_data = json.loads(gh("repo", "view", "--json", "nameWithOwner"))
-        repository = repository_data.get("nameWithOwner")
+        if target is None:
+            repository_data = json.loads(gh("repo", "view", "--json", "nameWithOwner"))
+            repository = repository_data.get("nameWithOwner")
+        else:
+            repository = target.repository
         number = metadata.get("number")
         url = metadata.get("url")
         if (
@@ -514,7 +706,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise RuntimeError(
                 f"pull request {url} does not belong to current repository {repository}"
             )
-        if number != requested_number(pull_request):
+        if number != requested:
             raise RuntimeError(
                 "GitHub returned a pull request different from the requested identifier"
             )
@@ -524,6 +716,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             require_immutable_identity=require_immutable_identity,
         )
         ensure_expected_identity(identity, expected)
+        ensure_expected_target(identity, target)
         reviewed_scope = review_scope(metadata) if expected is not None else None
         reviewed_linked_requirements = (
             linked_requirements(metadata) if expected is not None else None
@@ -565,7 +758,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             if not isinstance(checks, list):
                 raise RuntimeError("GitHub returned invalid check evidence")
-        final_metadata = json.loads(gh("pr", "view", pull_request, "--json", FIELDS))
+        final_metadata = pr_metadata(pull_request, target)
         final_problem = metadata_error(
             final_metadata, require_immutable_identity=require_immutable_identity
         )
@@ -581,6 +774,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "immutable pull-request identity changed while collecting evidence"
             )
         ensure_expected_identity(final_identity, expected)
+        ensure_expected_target(final_identity, target)
         final_scope = review_scope(final_metadata) if expected is not None else None
         if final_scope != reviewed_scope:
             raise RuntimeError("review scope changed while collecting evidence")

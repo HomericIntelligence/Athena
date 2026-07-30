@@ -12,12 +12,19 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from pr_identity import require_commit_oid
-from skills._cli import argument_parser, git_read_environment, run_command
+from skills._cli import (
+    argument_parser,
+    git_read_arguments,
+    git_read_environment,
+    require_complete_git_history,
+    require_unambiguous_git_merge_base,
+    run_command,
+)
 
 
 def git(*arguments: str) -> str:
     result = run_command(
-        ["git", "--no-replace-objects", *arguments],
+        ["git", *git_read_arguments(), *arguments],
         capture_output=True,
         env=git_read_environment(),
         text=True,
@@ -36,9 +43,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         base_ref = require_commit_oid(arguments.base_ref, "base OID")
         head_ref = require_commit_oid(arguments.head_ref, "head OID")
+        require_complete_git_history()
         git("rev-parse", "--verify", f"{base_ref}^{{commit}}")
         git("rev-parse", "--verify", f"{head_ref}^{{commit}}")
-        merge_base = git("merge-base", base_ref, head_ref)
+        merge_base = require_commit_oid(
+            require_unambiguous_git_merge_base(base_ref, head_ref), "merge base"
+        )
         behind_count = int(git("rev-list", "--count", f"{head_ref}..{base_ref}"))
     except (RuntimeError, ValueError) as error:
         print(error, file=sys.stderr)
