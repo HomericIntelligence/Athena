@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import redirect_stderr, redirect_stdout
 from hashlib import sha256
 import io
+import json
 import os
 from pathlib import Path
 import tarfile
@@ -34,6 +35,13 @@ def create_repository(root: Path, *, version: str = "1.2.3") -> None:
 
     (root / ".codex-plugin" / "plugin.json").write_text(
         f'{{"name": "athena", "version": "{version}"}}\n',
+        encoding="utf-8",
+    )
+    (root / "package.json").write_text(
+        (
+            '{"name":"@homericintelligence/athena","version":"'
+            f'{version}","keywords":["pi-package"],"pi":{{"skills":["./skills"]}}}}\n'
+        ),
         encoding="utf-8",
     )
     for member in sorted(REQUIRED_MEMBERS):
@@ -113,6 +121,20 @@ class PackagePluginTests(unittest.TestCase):
             self.assertTrue(
                 all(name.split("/", 1)[0] in ARCHIVE_ROOTS for name in names)
             )
+
+    def test_archive_contains_the_native_pi_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            create_repository(root)
+
+            archive_path, _ = build_package(root)
+
+            with tarfile.open(archive_path, mode="r:gz") as archive:
+                manifest = archive.extractfile("package.json")
+                assert manifest is not None
+                package = json.load(manifest)
+            self.assertEqual("@homericintelligence/athena", package["name"])
+            self.assertEqual(["./skills"], package["pi"]["skills"])
 
     def test_source_python_cache_directories_are_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

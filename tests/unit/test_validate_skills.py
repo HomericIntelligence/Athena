@@ -115,6 +115,30 @@ class DistributionTests(unittest.TestCase):
             "version", "Claude marketplace and manifest versions differ"
         )
 
+    def test_pi_manifest_must_declare_only_the_canonical_skill_root(self) -> None:
+        package = self.fixture / "package.json"
+        package.write_text(
+            json.dumps(
+                {
+                    "name": "@homericintelligence/athena",
+                    "version": "0.3.0",
+                    "keywords": ["pi-package"],
+                    "pi": {"skills": ["./wrong"]},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        self.assert_invalid("pi", "load ['./skills']")
+
+    def test_pi_manifest_version_must_match_the_host_manifests(self) -> None:
+        package = self.fixture / "package.json"
+        document = json.loads(package.read_text(encoding="utf-8"))
+        document["version"] = "9.9.9"
+        package.write_text(json.dumps(document), encoding="utf-8")
+
+        self.assert_invalid("version", "Pi, Claude, and Codex manifest versions differ")
+
     def test_manifests_accept_full_semver(self) -> None:
         version = "2.0.0-rc.1+build.5"
         for relative in (
@@ -129,6 +153,10 @@ class DistributionTests(unittest.TestCase):
         document = json.loads(marketplace.read_text(encoding="utf-8"))
         document["metadata"]["version"] = version
         marketplace.write_text(json.dumps(document), encoding="utf-8")
+        package = self.fixture / "package.json"
+        document = json.loads(package.read_text(encoding="utf-8"))
+        document["version"] = version
+        package.write_text(json.dumps(document), encoding="utf-8")
 
         self.assertEqual(validator.validate_repository(self.fixture), [])
 

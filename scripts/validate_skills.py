@@ -41,6 +41,8 @@ APPROVED_MERGE_QUEUE_PARAMETERS: dict[str, object] = {
     "min_entries_to_merge": 1,
     "min_entries_to_merge_wait_minutes": 5,
 }
+PI_PACKAGE_NAME = "@homericintelligence/athena"
+PI_SKILL_ROOT = ["./skills"]
 
 
 class ValidationError(NamedTuple):
@@ -208,6 +210,39 @@ def _validate_codex(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
     if not isinstance(version, str) or SEMVER_PATTERN.fullmatch(version) is None:
         errors.append(
             ValidationError("version", "Codex manifest version must be valid SemVer")
+        )
+    return errors
+
+
+def _validate_pi(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
+    """Validate the native Pi package manifest and its canonical skill resource."""
+    manifest, errors = _read_json(repo_root / "package.json", "pi", repo_root)
+    if manifest is None:
+        return errors
+    if manifest.get("name") != PI_PACKAGE_NAME:
+        errors.append(
+            ValidationError("pi", f"package must be named '{PI_PACKAGE_NAME}'")
+        )
+    version = manifest.get("version")
+    if not isinstance(version, str) or SEMVER_PATTERN.fullmatch(version) is None:
+        errors.append(
+            ValidationError("version", "Pi package version must be valid SemVer")
+        )
+    keywords = manifest.get("keywords")
+    if not isinstance(keywords, list) or "pi-package" not in keywords:
+        errors.append(
+            ValidationError("pi", "package must declare the 'pi-package' keyword")
+        )
+    pi = manifest.get("pi")
+    if (
+        not isinstance(pi, dict)
+        or pi.get("skills") != PI_SKILL_ROOT
+        or set(pi) != {"skills"}
+    ):
+        errors.append(
+            ValidationError(
+                "pi", "package must load ['./skills'] and no other Pi resources"
+            )
         )
     return errors
 
@@ -517,6 +552,7 @@ def validate_repository(repo_root: Path) -> list[ValidationError]:
         *_validate_skills(repo_root),
         *_validate_claude(repo_root),
         *_validate_codex(repo_root),
+        *_validate_pi(repo_root),
         *_validate_layout_and_policy(repo_root),
         *_validate_cli_conventions(repo_root),
         *_validate_repo_review_scorecard(repo_root),
@@ -528,13 +564,15 @@ def validate_repository(repo_root: Path) -> list[ValidationError]:
     codex, _ = _read_json(
         repo_root / ".codex-plugin" / "plugin.json", "version", repo_root
     )
+    pi, _ = _read_json(repo_root / "package.json", "version", repo_root)
     if (
         claude is not None
         and codex is not None
-        and claude.get("version") != codex.get("version")
+        and pi is not None
+        and len({claude.get("version"), codex.get("version"), pi.get("version")}) != 1
     ):
         errors.append(
-            ValidationError("version", "Claude and Codex manifest versions differ")
+            ValidationError("version", "Pi, Claude, and Codex manifest versions differ")
         )
     return errors
 

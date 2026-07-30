@@ -135,6 +135,9 @@ jobs:
         with:
           version: "0.10.8"
           enable-cache: true
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.19.0"
       - name: Install locked build environment
         run: uv sync --locked
       - id: syft
@@ -155,6 +158,76 @@ jobs:
             dist-reproducibility/athena-build-linux-64-*.spdx.json
           cmp dist/athena-build-linux-64-*.spdx.json.sha256 \
             dist-reproducibility/athena-build-linux-64-*.spdx.json.sha256
+      - name: Verify native Pi package source, archive, and delegation surface
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+          PI_VERSION: "0.83.0"
+          PI_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+          PI_CODING_AGENT_DIR: ${{ runner.temp }}/athena-pi-agent
+          npm_config_cache: ${{ runner.temp }}/athena-pi-npm-cache
+        run: |
+          npm install --global --ignore-scripts "@earendil-works/pi-coding-agent@${PI_VERSION}"
+          test "$(pi --version)" = "$PI_VERSION"
+
+          verify_pi_skills() {
+            package_root="$1"
+            agent_directory="$2"
+            rpc_output="$RUNNER_TEMP/$(basename "$agent_directory")-commands.jsonl"
+            printf '%s\n' '{"id":"skills","type":"get_commands"}' |
+              PI_CODING_AGENT_DIR="$agent_directory" PI_OFFLINE=1 \
+                pi --mode rpc --offline --no-session --no-context-files --no-approve > "$rpc_output"
+            node scripts/verify_pi_package.mjs "$package_root" "$rpc_output"
+          }
+
+          pi_source="git:github.com/${GITHUB_REPOSITORY}@${PI_SOURCE_REF}"
+          pi install "$pi_source" --no-approve
+          pi list | grep -F -- "github.com/${GITHUB_REPOSITORY}"
+          git_manifest="$(find "$PI_CODING_AGENT_DIR/git" -type f -name package.json -print -quit)"
+          test -n "$git_manifest"
+          verify_pi_skills "$(dirname "$git_manifest")" "$PI_CODING_AGENT_DIR"
+
+          archive="$(find dist -maxdepth 1 -type f -name 'athena-plugin-*.tar.gz' -print -quit)"
+          test -n "$archive"
+          archive_root="$RUNNER_TEMP/athena-pi-archive"
+          mkdir -p "$archive_root"
+          tar -xzf "$archive" -C "$archive_root"
+          archive_agent_directory="$RUNNER_TEMP/athena-pi-archive-agent"
+          PI_CODING_AGENT_DIR="$archive_agent_directory" pi install "$archive_root" --no-approve
+          verify_pi_skills "$archive_root" "$archive_agent_directory"
+
+          unset PI_SUBAGENT_CHILD
+          subagent_agent_directory="$RUNNER_TEMP/athena-pi-subagents-agent"
+          subagent_output="$RUNNER_TEMP/athena-pi-subagent-probe.jsonl"
+          PI_CODING_AGENT_DIR="$subagent_agent_directory" \
+            pi install npm:pi-subagents@0.37.2 --no-approve
+          printf '%s\n' '{"id":"probe-tool","type":"prompt","message":"/ci-verify-subagent-tool"}' |
+            PI_CODING_AGENT_DIR="$subagent_agent_directory" PI_OFFLINE=1 \
+              pi --mode rpc --offline --no-session --no-context-files --no-skills \
+                --no-prompt-templates --no-approve --tools subagent \
+                --extension "$PWD/scripts/ci_pi_subagent_probe.mjs" > "$subagent_output"
+          node --input-type=module - "$subagent_output" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const entries = readFileSync(process.argv[2], "utf8")
+            .split("\n")
+            .filter(Boolean)
+            .map((line) => JSON.parse(line));
+          const response = entries.find(
+            (entry) => entry.type === "response" && entry.id === "probe-tool",
+          );
+          const notify = entries.find(
+            (entry) => entry.type === "extension_ui_request" && entry.method === "notify",
+          );
+          const payload = notify && JSON.parse(notify.message);
+          if (
+            !response?.success ||
+            payload?.tool?.name !== "subagent" ||
+            payload.tool.active !== true ||
+            payload.tool.sourceInfo?.source !== "npm:pi-subagents@0.37.2" ||
+            payload.tool.sourceInfo?.origin !== "package"
+          ) {
+            throw new Error("pi-subagents did not register the pinned active subagent tool");
+          }
+          NODE
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: athena-plugin

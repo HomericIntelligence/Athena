@@ -71,25 +71,48 @@ codex plugin marketplace remove athena
 
 ### Pi
 
-```bash
-pi install https://github.com/HomericIntelligence/Athena
-```
-
-Invoke `/skill:repo-review`. Update or remove:
+Athena requires Pi `0.83.0`. Install the native package from a signed Athena
+release tag that contains this Pi manifest, or use an immutable commit while a
+release is pending. Do not use `v0.3.0`: it predates native Pi packaging.
 
 ```bash
-pi update https://github.com/HomericIntelligence/Athena
-pi remove https://github.com/HomericIntelligence/Athena
+pi install git:github.com/HomericIntelligence/Athena@<immutable-commit-or-supported-tag>
 ```
+
+Pi discovers Athena's canonical `skills/` corpus as `/skill:<name>` commands;
+for example, invoke `/skill:repo-review`. `pi update --extensions` reconciles
+the configured immutable ref, rather than advancing it. To change versions,
+install the new immutable ref explicitly; remove the configured source when it
+is no longer needed:
+
+```bash
+pi install git:github.com/HomericIntelligence/Athena@<next-immutable-ref>
+pi remove git:github.com/HomericIntelligence/Athena@<configured-ref>
+```
+
+Athena does not bundle third-party Pi packages. Review their source before
+installing them. `pi-subagents` is optional because Athena falls back to
+sequential work when delegation is unavailable; it is required by deployments
+that need the `Agent`/delegation capability. `pi-web-access` is required only
+for workflows that need explicitly scoped web evidence.
+
+```bash
+pi install npm:pi-subagents@0.37.2
+pi install npm:pi-web-access@0.15.0
+```
+
+Mnemosyne and Hephaestus remain Athena's repository dependencies under the
+contract above. They are not copied into, installed by, or represented as Pi
+packages.
 
 ## Release archives
 
 Claude Code and Codex install Athena from the Git-backed marketplace sources above. Each GitHub
 release also provides a checksummed portable archive for offline distribution and provenance; it is
 not a Python package and does not replace marketplace installation. The archive contains only
-harness-consumed skills, host metadata, runtime documentation, assets, and notices. It excludes
-tests, repository scripts, development manifests and lockfiles, task-runner files, CI configuration,
-and generated development output.
+harness-consumed skills, host metadata, the native Pi package manifest, runtime documentation,
+assets, and notices. It excludes tests, repository scripts, development lockfiles, task-runner
+files, CI configuration, and generated development output.
 
 ## Skills
 

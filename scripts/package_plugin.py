@@ -29,6 +29,7 @@ ARCHIVE_ROOTS: Final[tuple[str, ...]] = (
     "CLAUDE.md",
     "LICENSE",
     "NOTICE",
+    "package.json",
     "README.md",
     "SECURITY.md",
     "assets",
@@ -56,6 +57,7 @@ REQUIRED_MEMBERS: Final[frozenset[str]] = frozenset(
         "docs/review/behavior-first-testing.md",
         "docs/review/issue-planning.md",
         "docs/review/repository-scorecard.md",
+        "package.json",
     }
 )
 GENERATED_PYTHON_SUFFIXES: Final[frozenset[str]] = frozenset({".pyc", ".pyo"})
