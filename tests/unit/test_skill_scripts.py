@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import redirect_stderr, redirect_stdout
+import importlib.util
 import io
 import json
 import os
@@ -696,6 +697,406 @@ class ChangeReviewScriptTests(unittest.TestCase):
 
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertEqual([], json.loads(result.stdout)["paths"])
+
+    def test_worktree_path_filter_preserves_a_symlink_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory) / "repo"
+            initialize_repository(repository)
+            (repository / "target.txt").write_text("target\n", encoding="utf-8")
+            (repository / "alternate.txt").write_text("alternate\n", encoding="utf-8")
+            link = repository / "link"
+            link.symlink_to("target.txt")
+            git(repository, "add", "target.txt", "alternate.txt", "link")
+            git(repository, "commit", "--quiet", "-m", "test: add symlink")
+            link.unlink()
+            link.symlink_to("alternate.txt")
+
+            result = run_script(
+                "skills/change-review/scripts/resolve_scope.py",
+                "--worktree",
+                "link",
+                cwd=repository,
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(["link"], json.loads(result.stdout)["paths"])
+
+    def test_worktree_path_filter_is_anchored_at_the_repository_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory) / "repo"
+            initialize_repository(repository)
+            nested = repository / "nested"
+            nested.mkdir()
+            source = repository / "skills" / "change-review"
+            source.mkdir(parents=True)
+            (source / "changed.py").write_text("value = 1\n", encoding="utf-8")
+
+            result = run_script(
+                "skills/change-review/scripts/resolve_scope.py",
+                "--worktree",
+                "skills/change-review",
+                cwd=nested,
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(
+                ["skills/change-review/changed.py"],
+                json.loads(result.stdout)["paths"],
+            )
+
+    def test_staged_scope_uses_index_object_metadata_not_live_worktree_bytes(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory) / "repo"
+            initialize_repository(repository)
+            tracked = repository / "tracked.txt"
+            tracked.write_text("staged\n", encoding="utf-8")
+            git(repository, "add", "tracked.txt")
+            staged_object = git(repository, "rev-parse", ":tracked.txt")
+            tracked.write_text("unstaged\n", encoding="utf-8")
+
+            result = run_script(
+                "skills/change-review/scripts/resolve_scope.py",
+                "--staged",
+                cwd=repository,
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            scope = json.loads(result.stdout)
+            self.assertEqual("index", scope["content_source"])
+            self.assertEqual(
+                [
+                    {
+                        "kind": "git-blob",
+                        "mode": "100644",
+                        "object_id": staged_object,
+                        "path": "tracked.txt",
+                    }
+                ],
+                scope["path_entries"],
+            )
+            self.assertEqual("unstaged\n", tracked.read_text(encoding="utf-8"))
+
+    def test_range_scope_uses_head_tree_metadata_not_live_worktree_bytes(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory) / "repo"
+            initialize_repository(repository)
+            base = git(repository, "rev-parse", "HEAD")
+            tracked = repository / "tracked.txt"
+            tracked.write_text("range\n", encoding="utf-8")
+            git(repository, "commit", "--quiet", "-am", "test: range content")
+            range_head = git(repository, "rev-parse", "HEAD")
+            range_object = git(repository, "rev-parse", f"{range_head}:tracked.txt")
+            tracked.write_text("unrelated worktree\n", encoding="utf-8")
+
+            result = run_script(
+                "skills/change-review/scripts/resolve_scope.py",
+                "--range",
+                f"{base}..{range_head}",
+                cwd=repository,
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            scope = json.loads(result.stdout)
+            self.assertEqual("head-tree", scope["content_source"])
+            self.assertEqual(
+                [
+                    {
+                        "kind": "git-blob",
+                        "mode": "100644",
+                        "object_id": range_object,
+                        "path": "tracked.txt",
+                    }
+                ],
+                scope["path_entries"],
+            )
+            self.assertEqual(
+                "unrelated worktree\n", tracked.read_text(encoding="utf-8")
+            )
+
+    def test_worktree_scope_disables_text_conversion_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory) / "repo"
+            initialize_repository(repository)
+            (repository / ".gitattributes").write_text(
+                "*.probe diff=probe\n", encoding="utf-8"
+            )
+            changed = repository / "changed.probe"
+            changed.write_text("base\n", encoding="utf-8")
+            git(repository, "add", ".gitattributes", "changed.probe")
+            git(repository, "commit", "--quiet", "-m", "test: configure textconv")
+            sentinel = repository / "textconv-ran"
+            converter = repository / "probe_textconv.py"
+            converter.write_text(
+                "#!/usr/bin/env python3\n"
+                "from pathlib import Path\n"
+                f"Path({str(sentinel)!r}).touch()\n"
+                "print('converted')\n",
+                encoding="utf-8",
+            )
+            converter.chmod(0o755)
+            git(repository, "config", "diff.probe.textconv", str(converter))
+            changed.write_text("changed\n", encoding="utf-8")
+
+            result = run_script(
+                "skills/change-review/scripts/resolve_scope.py",
+                "--worktree",
+                cwd=repository,
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("changed.probe", json.loads(result.stdout)["paths"])
+            self.assertFalse(sentinel.exists())
+
+    def test_worktree_scope_does_not_refresh_the_git_index(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory) / "repo"
+            initialize_repository(repository)
+            tracked = repository / "tracked.txt"
+            index = repository / ".git" / "index"
+            before_contents = index.read_bytes()
+            before_mtime = index.stat().st_mtime_ns
+            tracked_stat = tracked.stat()
+            os.utime(
+                tracked,
+                ns=(tracked_stat.st_atime_ns, tracked_stat.st_mtime_ns + 1_000_000_000),
+            )
+
+            result = run_script(
+                "skills/change-review/scripts/resolve_scope.py",
+                "--worktree",
+                cwd=repository,
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(before_contents, index.read_bytes())
+            self.assertEqual(before_mtime, index.stat().st_mtime_ns)
+
+    def test_worktree_scope_marks_symlinks_without_reading_their_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            repository = root / "repo"
+            initialize_repository(repository)
+            external = root / "outside-secret"
+            external.write_text("first\n", encoding="utf-8")
+            link = repository / "linked-secret"
+            link.symlink_to(external)
+
+            first = run_script(
+                "skills/change-review/scripts/resolve_scope.py",
+                "--worktree",
+                cwd=repository,
+            )
+
+            self.assertEqual(0, first.returncode, first.stderr)
+            first_scope = json.loads(first.stdout)
+            self.assertEqual(["linked-secret"], first_scope["paths"])
+            self.assertEqual(
+                [
+                    {
+                        "kind": "symlink",
+                        "path": "linked-secret",
+                        "target": str(external),
+                    }
+                ],
+                first_scope["path_entries"],
+            )
+
+            external.write_text("second\n", encoding="utf-8")
+            second = run_script(
+                "skills/change-review/scripts/resolve_scope.py",
+                "--worktree",
+                cwd=repository,
+            )
+
+            self.assertEqual(0, second.returncode, second.stderr)
+            self.assertEqual(
+                first_scope["scope_digest"],
+                json.loads(second.stdout)["scope_digest"],
+            )
+
+    def test_worktree_scope_binds_an_untracked_regular_file_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory) / "repo"
+            initialize_repository(repository)
+            script = repository / "script.py"
+            script.write_text("print('hello')\n", encoding="utf-8")
+            script.chmod(0o644)
+
+            first = run_script(
+                "skills/change-review/scripts/resolve_scope.py",
+                "--worktree",
+                cwd=repository,
+            )
+
+            self.assertEqual(0, first.returncode, first.stderr)
+            first_scope = json.loads(first.stdout)
+            self.assertEqual(
+                [{"kind": "file", "mode": "0644", "path": "script.py"}],
+                first_scope["path_entries"],
+            )
+            script.chmod(0o755)
+
+            second = run_script(
+                "skills/change-review/scripts/resolve_scope.py",
+                "--worktree",
+                cwd=repository,
+            )
+
+            self.assertEqual(0, second.returncode, second.stderr)
+            second_scope = json.loads(second.stdout)
+            self.assertEqual(
+                [{"kind": "file", "mode": "0755", "path": "script.py"}],
+                second_scope["path_entries"],
+            )
+            self.assertNotEqual(
+                first_scope["scope_digest"], second_scope["scope_digest"]
+            )
+
+    def test_worktree_scope_handles_a_file_replacing_a_tracked_directory(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory) / "repo"
+            initialize_repository(repository)
+            directory = repository / "directory"
+            directory.mkdir()
+            child = directory / "old.py"
+            child.write_text("old\n", encoding="utf-8")
+            git(repository, "add", "directory/old.py")
+            git(repository, "commit", "--quiet", "-m", "test: add directory")
+            child.unlink()
+            directory.rmdir()
+            directory.write_text("replacement\n", encoding="utf-8")
+
+            result = run_script(
+                "skills/change-review/scripts/resolve_scope.py",
+                "--worktree",
+                cwd=repository,
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            scope = json.loads(result.stdout)
+            self.assertEqual(["directory", "directory/old.py"], scope["paths"])
+            self.assertEqual(
+                [
+                    {"kind": "file", "mode": "0644", "path": "directory"},
+                    {"kind": "absent", "path": "directory/old.py"},
+                ],
+                scope["path_entries"],
+            )
+
+    def test_scope_resolution_rejects_an_unstable_capture(self) -> None:
+        module_name = "test_change_review_scope_resolver"
+        specification = importlib.util.spec_from_file_location(
+            module_name,
+            ROOT / "skills/change-review/scripts/resolve_scope.py",
+        )
+        assert specification is not None
+        assert specification.loader is not None
+        module = importlib.util.module_from_spec(specification)
+        sys.modules[module_name] = module
+        try:
+            specification.loader.exec_module(module)
+            first_capture = module.ScopeCapture(
+                paths=("first.py",),
+                tracked_paths=("first.py",),
+                untracked_paths=(),
+                path_entries=(("first.py", "file", None),),
+                tracked_diff=b"first diff",
+                scope_digest="first",
+            )
+            second_capture = module.ScopeCapture(
+                paths=("second.py",),
+                tracked_paths=("second.py",),
+                untracked_paths=(),
+                path_entries=(("second.py", "file", None),),
+                tracked_diff=b"second diff",
+                scope_digest="second",
+            )
+
+            with (
+                patch.object(
+                    module,
+                    "git_text",
+                    side_effect=["/temporary/repository", "a" * 40],
+                ),
+                patch.object(
+                    module,
+                    "capture_scope",
+                    side_effect=[first_capture, second_capture],
+                ),
+                self.assertRaisesRegex(
+                    RuntimeError, "change scope changed while resolving"
+                ),
+            ):
+                module.resolve_scope("worktree", None, ())
+        finally:
+            sys.modules.pop(module_name, None)
+
+    def test_worktree_and_staged_diffs_use_the_resolved_head_oid(self) -> None:
+        module_name = "test_change_review_immutable_head"
+        specification = importlib.util.spec_from_file_location(
+            module_name,
+            ROOT / "skills/change-review/scripts/resolve_scope.py",
+        )
+        assert specification is not None
+        assert specification.loader is not None
+        module = importlib.util.module_from_spec(specification)
+        sys.modules[module_name] = module
+        try:
+            specification.loader.exec_module(module)
+            head = "a" * 40
+            repository_root = Path("/temporary/repository")
+            for scope in ("worktree", "staged"):
+                with patch.object(module, "git_bytes", return_value=b"") as command:
+                    module.tracked_paths(scope, "b" * 40, head, (), repository_root)
+                    module.tracked_diff(scope, "b" * 40, head, (), repository_root)
+
+                for arguments, _ in command.call_args_list:
+                    self.assertIn(head, arguments)
+                    self.assertNotIn("HEAD", arguments)
+        finally:
+            sys.modules.pop(module_name, None)
+
+    def test_diffs_force_submodule_and_rename_visibility(self) -> None:
+        module_name = "test_change_review_submodules"
+        specification = importlib.util.spec_from_file_location(
+            module_name,
+            ROOT / "skills/change-review/scripts/resolve_scope.py",
+        )
+        assert specification is not None
+        assert specification.loader is not None
+        module = importlib.util.module_from_spec(specification)
+        sys.modules[module_name] = module
+        try:
+            specification.loader.exec_module(module)
+            repository_root = Path("/temporary/repository")
+            for scope in ("worktree", "staged", "range"):
+                with patch.object(module, "git_bytes", return_value=b"") as command:
+                    module.tracked_paths(
+                        scope,
+                        "b" * 40,
+                        "a" * 40,
+                        (),
+                        repository_root,
+                    )
+                    module.tracked_diff(
+                        scope,
+                        "b" * 40,
+                        "a" * 40,
+                        (),
+                        repository_root,
+                    )
+
+                for arguments, _ in command.call_args_list:
+                    self.assertIn("--ignore-submodules=none", arguments)
+                    self.assertIn("--no-renames", arguments)
+        finally:
+            sys.modules.pop(module_name, None)
 
 
 class WorktreeScriptTests(unittest.TestCase):

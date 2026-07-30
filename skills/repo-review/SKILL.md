@@ -1,6 +1,6 @@
 ---
 name: repo-review
-description: Perform an architecture-first, full-inventory repository review with adaptive surface and language checks. Use to assess a repository and, unless `--report-only` is requested, publish deduplicated GitHub tracking issues or a GitLab epic for actionable findings.
+description: Perform an architecture-first, full-inventory repository review with adaptive surface and language checks. Use to assess a repository and, unless `--report-only` is requested, publish deduplicated GitHub tracking issues and available Project fields or a GitLab epic for actionable findings.
 argument-hint: "[quick|default] [--report-only]"
 allowed-tools: [Read, Bash, Grep, Glob, Agent]
 ---
@@ -35,11 +35,14 @@ them sequentially. A failed, timed-out, or sampled section must be retried or
 completed sequentially before finalizing; it is not complete merely because it
 was assigned.
 
-Use GitHub parent/sub-issues when the forge supports them. On GitLab, use a
-group epic and child issues when those capabilities are available. If the forge
-cannot safely perform the requested hierarchy, return a ready-to-publish plan
-and identify the capability gap rather than guessing an API or claiming a
-published artifact.
+Use GitHub parent/sub-issues when the forge supports them. Before GitHub
+publication, discover a writable configured Project and its item-creation
+capability. Add the tracking hierarchy to that Project whenever it is available;
+use existing fields only when an unambiguous mapping whose semantics are
+verified is available. On GitLab, use a group epic and child issues when those
+capabilities are available. If the forge cannot safely perform the requested
+hierarchy, return a ready-to-publish plan and identify the capability gap rather
+than guessing an API or claiming a published artifact.
 
 ## Required workflow
 
@@ -131,7 +134,7 @@ Verdicts:
 ### 5. De-duplicate and deliver actionable findings
 
 Before any external write, search the existing issue backlog, recently closed
-work, pull requests, and tracker artifacts for the same failure mode and
+work, pull/merge requests, and tracker artifacts for the same failure mode and
 remediation. Consolidate duplicate findings by product outcome, not matching
 words. Do not create work items for `nit` or `FYI` findings.
 
@@ -139,7 +142,15 @@ If no actionable findings remain after de-duplication, do not create an empty
 tracker. Return the clean review result and residual risks instead.
 
 Immediately before publication, re-check the repository and forge identities,
-the inspected revision, and tracker targets. Then, when directly authorized:
+the inspected revision, and tracker targets. For GitHub, also discover the
+writable configured Project and its item-creation capability, separately from
+a mapping to its existing fields. Add Project items whenever the first
+capability exists. A field is usable only when its current name, type, allowed
+values, and meaning unambiguously match review metadata; never create, rename,
+or guess a Project field. When no writable Project can add items, record that
+specific membership N/A/capability boundary. When item creation exists but no
+field mapping does, add the items and record the fields as N/A. Then, when
+directly authorized:
 
 1. Create or update one actor-owned tracking issue on GitHub, or one GitLab
    epic, that records the review revision, scope, architecture decision,
@@ -149,9 +160,16 @@ the inspected revision, and tracker targets. Then, when directly authorized:
    with severity, precise evidence, impact, governing contract, remediation,
    and functional verification. Link it to the GitHub tracker as a sub-issue or
    to the GitLab epic as a child issue.
-3. Link pre-existing matching issues instead of creating duplicates. Record all
-   returned URLs or IDs. If a step fails, report the partial result honestly and
-   leave the remaining ready-to-publish items in the report.
+3. Link each pre-existing matching issue to the GitHub tracker as a sub-issue
+   or to the GitLab epic as a child issue instead of creating a duplicate.
+4. On GitHub with a writable Project that can add items, find or add the tracker
+   and each created or linked child issue as Project items. Set only applicable
+   mapped fields, such as severity, review status, architecture disposition, or
+   reviewed revision; preserve existing unrelated fields and record returned
+   Project item URLs or IDs. Do not claim a Project *field* update when no
+   compatible field exists. Record all returned URLs or IDs. If a step fails,
+   report the partial result honestly and leave the remaining ready-to-publish
+   items in the report.
 
 Review prose never approves, labels, merges, or triggers implementation. It is
 evidence for the repository's human and forge policy.
@@ -170,8 +188,9 @@ Produce:
 4. Consolidated findings without duplicates, followed by behavior-first test
    evidence and commands run or coverage gaps.
 5. GO/CONDITIONAL GO/NO-GO verdict and ordered remediation plan.
-6. The tracking epic/issue and child-item URLs, or a ready-to-publish plan and
-   the reason publication was withheld.
+6. The tracking epic/issue, child-item, and applicable GitHub Project-item URLs,
+   or a ready-to-publish plan and the reason publication was withheld or a
+   Project mapping was N/A.
 
 ### Quick report
 

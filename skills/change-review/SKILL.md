@@ -27,9 +27,10 @@ Use exactly one scope:
 Before inspection, resolve the installed
 [`scripts/resolve_scope.py`](scripts/resolve_scope.py) helper against this skill
 directory and invoke it with the selected scope and optional paths. It returns
-the selected paths, immutable base/head commits, selected untracked paths, and
-a content-bound `scope_digest` without writing Git state. Read every path in
-that manifest.
+the selected paths, `content_source`, scope-appropriate `path_entries`,
+immutable base/head commits, selected untracked paths, and a content-bound
+`scope_digest` without writing Git state. Read every eligible object in that
+manifest.
 
 Paths further restrict the selected diff; reject a path outside the repository
 root. For `--range`, report the immutable base and head commits. For
@@ -44,9 +45,32 @@ that `untracked_scope` boundary in the report; never imply that those files were
 reviewed. The default worktree scope must include raw untracked file content in
 its digest, not only their paths.
 
-Read every selected changed file in full, including relevant callers, tests,
-configuration, and public contracts. Generated files receive only the review
-appropriate to their source and generation contract.
+Treat each manifest path as a lexical repository object, never as permission to
+follow a filesystem link. Select the bytes to inspect from `content_source`:
+
+- **`worktree`:** `path_entries.kind: file` is a no-follow live filesystem
+  object whose recorded mode is part of the manifest identity. Read it in full
+  with relevant callers, tests, configuration, and public contracts. For
+  `symlink`, report its manifest path and raw target as untrusted metadata, but
+  never use `Read` or a filesystem operation that follows the target.
+- **`index`:** `git-blob`, `git-symlink`, `git-submodule`, and `absent` entries
+  describe the staged index. Inspect the reported immutable object ID or the
+  index object directly; never substitute live worktree bytes. Treat a
+  `git-symlink` as raw Git-object metadata, never as a filesystem path.
+- **`head-tree`:** entries describe the explicit range head tree. Inspect the
+  reported immutable object ID or that head-tree object directly; never
+  substitute the current checkout. Treat a `git-symlink` as raw Git-object
+  metadata, never as a filesystem path.
+
+For an `absent`, `other`, or `git-other` entry, inspect the selected Git
+diff/object metadata where possible and record the access boundary or coverage
+gap. Generated files receive only the review appropriate to their source and
+generation contract.
+
+Revalidate the manifest before inspection when the host offers a no-follow file
+capability. If the host cannot safely keep a selected filesystem object inside
+the resolved scope, do not dereference it; use tracked Git-object evidence where
+available and report the remaining file-content coverage gap.
 
 ## Required review flow
 
