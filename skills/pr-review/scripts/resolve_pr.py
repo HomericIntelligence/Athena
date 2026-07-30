@@ -11,7 +11,11 @@ from typing import Any, Sequence
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from pr_identity import repository_from_pr_url, validate_pr_identifier
+from pr_identity import (
+    require_commit_oid,
+    repository_from_pr_url,
+    validate_pr_identifier,
+)
 from skills._cli import argument_parser, run_command
 
 
@@ -41,6 +45,10 @@ def _resolve_open_pr(identifier: str) -> dict[str, Any]:
     )
     if pull_request.get("state") != "OPEN":
         raise RuntimeError(f"pull request {identifier} is not open")
+    for field in ("baseRefOid", "headRefOid"):
+        require_commit_oid(
+            pull_request.get(field), f"GitHub immutable PR revision {field}"
+        )
     return pull_request
 
 

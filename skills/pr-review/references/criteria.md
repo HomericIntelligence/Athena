@@ -36,7 +36,9 @@ not replace or duplicate the architecture, language, principles, or test rules.
 - Distinguish pre-existing failures from pull/merge-request-introduced failures
   using the base revision where needed. Do not call a pull/merge request
   merge-ready from incomplete, stale, skipped, or mismatched evidence.
-- Keep findings on the pull/merge request. Use inline comments or discussions
-  only for actionable changed lines; put cross-cutting findings in the one
-  batched review summary. Never post a clean review or alter labels, workflow
-  state, or merge state.
+- Keep findings on the pull/merge request. Publish every independently
+  actionable changed-line finding as exactly one inline comment or discussion;
+  do not combine it with another finding in a summary. Reserve one optional
+  batched summary for genuinely cross-cutting findings and review evidence that
+  cannot be anchored to a changed line. Never post a clean review or alter
+  labels, workflow state, or merge state.

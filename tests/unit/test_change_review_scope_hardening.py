@@ -57,6 +57,40 @@ def load_resolver(module_name: str) -> Any:
 class ChangeReviewScopeHardeningTests(unittest.TestCase):
     """Exercise safety boundaries without pinning implementation prose."""
 
+    def test_scope_resolution_never_runs_configured_fsmonitor(self) -> None:
+        """A repository monitor must not execute while resolving a scope."""
+        for scope in ("worktree", "staged"):
+            with self.subTest(scope=scope), tempfile.TemporaryDirectory() as temp:
+                repository = Path(temp) / "repo"
+                initialize_repository(repository)
+                tracked = repository / "tracked.txt"
+                tracked.write_text(f"{scope} change\n", encoding="utf-8")
+                if scope == "staged":
+                    git(repository, "add", tracked.name)
+
+                sentinel = repository / f"{scope}-fsmonitor-ran"
+                monitor = repository / "fsmonitor.py"
+                monitor.write_text(
+                    "#!/usr/bin/env python3\n"
+                    "from pathlib import Path\n"
+                    f"Path({str(sentinel)!r}).touch()\n",
+                    encoding="utf-8",
+                )
+                monitor.chmod(0o755)
+                git(repository, "config", "core.fsmonitor", str(monitor))
+
+                result = subprocess.run(
+                    [sys.executable, str(RESOLVER), f"--{scope}"],
+                    cwd=repository,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertIn(tracked.name, json.loads(result.stdout)["paths"])
+                self.assertFalse(sentinel.exists())
+
     def test_worktree_scope_never_runs_configured_filter_commands(self) -> None:
         for filter_key in ("clean", "process"):
             with (
@@ -108,6 +142,41 @@ class ChangeReviewScopeHardeningTests(unittest.TestCase):
                 self.assertEqual(0, result.returncode, result.stderr)
                 self.assertIn(probe.name, json.loads(result.stdout)["paths"])
                 self.assertFalse(sentinel.exists())
+
+    def test_range_scope_ignores_replacement_refs(self) -> None:
+        """An immutable range must use the named commit objects, not replacements."""
+        with tempfile.TemporaryDirectory() as temp:
+            repository = Path(temp) / "repo"
+            initialize_repository(repository)
+            base = git(repository, "rev-parse", "HEAD")
+            changed = repository / "replacement.txt"
+            changed.write_text("head-only\n", encoding="utf-8")
+            git(repository, "add", changed.name)
+            git(repository, "commit", "--quiet", "-m", "test: replacement target")
+            head = git(repository, "rev-parse", "HEAD")
+            git(repository, "replace", head, base)
+
+            result = subprocess.run(
+                [sys.executable, str(RESOLVER), "--range", f"{base}..{head}"],
+                cwd=repository,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual([changed.name], json.loads(result.stdout)["paths"])
+
+            worktree = subprocess.run(
+                [sys.executable, str(RESOLVER), "--worktree"],
+                cwd=repository,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(0, worktree.returncode, worktree.stderr)
+            self.assertEqual([], json.loads(worktree.stdout)["paths"])
 
     def test_worktree_scope_reviews_smudged_bytes_as_raw_changes(self) -> None:
         """A clean-filter-equivalent byte stream remains reviewable raw source."""
@@ -197,6 +266,51 @@ class ChangeReviewScopeHardeningTests(unittest.TestCase):
             self.assertEqual(1, result.returncode)
             self.assertIn(submodule_path, result.stderr)
             self.assertIn("submodule", result.stderr)
+
+    def test_worktree_scope_rejects_head_move_after_stable_captures(self) -> None:
+        """Equal captures cannot validate a worktree whose HEAD moved between them."""
+        module_name = "test_change_review_head_rebind"
+        module = load_resolver(module_name)
+        original_cwd = Path.cwd()
+        try:
+            with tempfile.TemporaryDirectory() as temp:
+                repository = Path(temp) / "repo"
+                initialize_repository(repository)
+                original_head = git(repository, "rev-parse", "HEAD")
+                git(
+                    repository,
+                    "commit",
+                    "--allow-empty",
+                    "--quiet",
+                    "-m",
+                    "test: move head",
+                )
+
+                original_capture = module.capture_scope
+                captures = 0
+
+                def capture_then_move_head(*arguments: object) -> object:
+                    nonlocal captures
+                    capture = original_capture(*arguments)
+                    captures += 1
+                    if captures == 1:
+                        git(repository, "checkout", "--quiet", original_head)
+                    return capture
+
+                os.chdir(repository)
+                with (
+                    patch.object(
+                        module, "capture_scope", side_effect=capture_then_move_head
+                    ),
+                    self.assertRaisesRegex(
+                        RuntimeError, "HEAD changed while resolving"
+                    ),
+                ):
+                    module.resolve_scope("worktree", None, ())
+                self.assertEqual(2, captures)
+        finally:
+            os.chdir(original_cwd)
+            sys.modules.pop(module_name, None)
 
     def test_worktree_scope_fails_closed_at_the_candidate_cap(self) -> None:
         module_name = "test_change_review_candidate_cap"

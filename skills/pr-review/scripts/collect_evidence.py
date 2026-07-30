@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 import json
-import re
 import sys
 from typing import Any, Sequence
 from urllib.parse import urlparse
@@ -15,7 +14,11 @@ from urllib.parse import urlparse
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from pr_identity import repository_from_pr_url, validate_pr_identifier
+from pr_identity import (
+    COMMIT_OID,
+    repository_from_pr_url,
+    validate_pr_identifier,
+)
 from skills._cli import argument_parser, run_command
 
 
@@ -26,7 +29,6 @@ FIELDS = (
     "number,title,body,state,isDraft,author,baseRefName,headRefName,"
     "baseRefOid,headRefOid,reviews,statusCheckRollup,closingIssuesReferences,url"
 )
-COMMIT_OID = re.compile(r"[0-9a-f]{40}")
 
 
 @dataclass(frozen=True)
@@ -227,6 +229,8 @@ def review_scope(metadata: dict[str, Any]) -> ReviewScope:
             ],
             "state": metadata["state"],
             "isDraft": metadata["isDraft"],
+            "baseRefName": metadata["baseRefName"],
+            "headRefName": metadata["headRefName"],
         }
         canonical_scope = json.dumps(
             fields,
@@ -245,7 +249,11 @@ def review_scope(metadata: dict[str, Any]) -> ReviewScope:
 
 def git_bytes(*arguments: str) -> bytes:
     """Run a read-only Git query and return its byte-exact stdout."""
-    result: Any = run_command(["git", *arguments], capture_output=True, check=False)
+    result: Any = run_command(
+        ["git", "--no-replace-objects", *arguments],
+        capture_output=True,
+        check=False,
+    )
     if result.returncode != 0:
         stderr = result.stderr
         if isinstance(stderr, bytes):
@@ -436,7 +444,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "changed_files": changed_files,
         "changed_paths": changed_files,
         "checks": checks,
-        "pull_request": metadata,
+        "pull_request": final_metadata,
     }
     if identity is not None:
         evidence["reviewed_identity"] = identity.as_json()

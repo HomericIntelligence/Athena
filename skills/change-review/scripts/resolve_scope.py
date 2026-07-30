@@ -29,10 +29,7 @@ MAX_WORKTREE_CANDIDATES = 50_000
 
 def git_bytes(*arguments: str, repository_root: Path | None = None) -> bytes:
     """Run Git and return its raw stdout or raise a concise error."""
-    command = ["git"]
-    if repository_root is not None:
-        command.extend(("-C", os.fspath(repository_root)))
-    command.extend(arguments)
+    command = git_command(arguments, repository_root)
     result = run_command(command, capture_output=True, text=False, check=False)
     stdout = cast(bytes, result.stdout)
     stderr = cast(bytes, result.stderr)
@@ -99,7 +96,7 @@ def content_fingerprint(chunks: Iterable[bytes]) -> ContentFingerprint:
 
 def git_command(arguments: Sequence[str], repository_root: Path | None) -> list[str]:
     """Build one Git command without shell interpolation."""
-    command = ["git"]
+    command = ["git", "-c", "core.fsmonitor=false", "--no-replace-objects"]
     if repository_root is not None:
         command.extend(("-C", os.fspath(repository_root)))
     command.extend(arguments)
@@ -1091,6 +1088,8 @@ def resolve_scope(
     second_capture = capture_scope(scope, base, head, paths, repository_root)
     if first_capture != second_capture:
         raise RuntimeError("change scope changed while resolving; retry the review")
+    if scope != "range" and verified_commit("HEAD", repository_root) != head:
+        raise RuntimeError("HEAD changed while resolving; retry the review")
     return {
         "base": base,
         "content_source": (

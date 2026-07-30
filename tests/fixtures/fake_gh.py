@@ -29,6 +29,8 @@ def main() -> int:
             "author": {"login": "reviewer"},
             "baseRefName": "main",
             "headRefName": "feature",
+            "baseRefOid": "a" * 40,
+            "headRefOid": "b" * 40,
             "statusCheckRollup": [],
             "url": f"https://github.com/{repository}/pull/{number}",
         }

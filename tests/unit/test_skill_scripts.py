@@ -134,7 +134,11 @@ class ScriptConventionTests(unittest.TestCase):
                 "git",
             ),
             ("skills/pr-review/scripts/collect_evidence.py", ("1",), "gh"),
-            ("skills/pr-review/scripts/diff_context.py", ("HEAD", "HEAD"), "git"),
+            (
+                "skills/pr-review/scripts/diff_context.py",
+                ("a" * 40, "b" * 40),
+                "git",
+            ),
             ("skills/pr-review/scripts/resolve_pr.py", ("1",), "gh"),
             ("skills/change-review/scripts/resolve_scope.py", ("--worktree",), "git"),
             (
@@ -234,6 +238,28 @@ class PullRequestScriptTests(unittest.TestCase):
 
                 self.assertEqual(1, result.returncode)
                 self.assertIn(message, result.stderr)
+
+    def test_resolve_pr_rejects_non_oid_provider_revisions(self) -> None:
+        for field, value in (
+            ("baseRefOid", "main"),
+            ("headRefOid", "HEAD"),
+            ("baseRefOid", "a" * 39),
+            ("headRefOid", "B" * 40),
+        ):
+            with self.subTest(field=field, value=value):
+                with tempfile.TemporaryDirectory() as temporary_directory:
+                    root = Path(temporary_directory)
+                    env = self.make_fake_tools(root, [])
+                    env["FAKE_GH_VIEW_JSON"] = json.dumps({field: value})
+                    result = run_script(
+                        "skills/pr-review/scripts/resolve_pr.py",
+                        "42",
+                        cwd=root,
+                        env=env,
+                    )
+
+                self.assertEqual(1, result.returncode)
+                self.assertIn("immutable PR revision", result.stderr)
 
     def test_resolve_pr_reports_no_candidate_and_usage_errors(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -360,6 +386,33 @@ class PullRequestScriptTests(unittest.TestCase):
         self.assertEqual(f"{base}...{head}", context["author_intent_range"])
         self.assertEqual(f"{base}..{head}", context["current_base_range"])
 
+    def test_diff_context_ignores_replacement_refs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory) / "repo"
+            initialize_repository(repository)
+            common = git(repository, "rev-parse", "HEAD")
+            git(repository, "checkout", "-q", "-b", "target")
+            (repository / "tracked.txt").write_text("target\n", encoding="utf-8")
+            git(repository, "commit", "-qam", "test: target")
+            target = git(repository, "rev-parse", "HEAD")
+            git(repository, "checkout", "-q", "-b", "feature", common)
+            (repository / "tracked.txt").write_text("feature\n", encoding="utf-8")
+            git(repository, "commit", "-qam", "test: feature")
+            feature = git(repository, "rev-parse", "HEAD")
+            git(repository, "replace", feature, target)
+
+            result = run_script(
+                "skills/pr-review/scripts/diff_context.py",
+                target,
+                feature,
+                cwd=repository,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        context = json.loads(result.stdout)
+        self.assertEqual(common, context["merge_base"])
+        self.assertEqual(1, context["behind_count"])
+
     def test_diff_context_rejects_missing_arguments_and_invalid_refs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             repository = Path(temporary_directory) / "repo"
@@ -392,6 +445,30 @@ class PullRequestScriptTests(unittest.TestCase):
 
         self.assertEqual(2, result.returncode)
         self.assertIn("usage:", result.stderr)
+
+    def test_diff_context_rejects_mutable_or_malformed_revisions(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory) / "repo"
+            initialize_repository(repository)
+            head = git(repository, "rev-parse", "HEAD")
+
+            for revision in (
+                "HEAD",
+                "main",
+                head[:12],
+                head.upper(),
+                f"{head}^{{commit}}",
+            ):
+                with self.subTest(revision=revision):
+                    result = run_script(
+                        "skills/pr-review/scripts/diff_context.py",
+                        revision,
+                        head,
+                        cwd=repository,
+                    )
+
+                    self.assertEqual(1, result.returncode)
+                    self.assertIn("lowercase 40-hex", result.stderr)
 
     def test_collect_evidence_combines_pr_metadata_files_and_checks(self) -> None:
         requested_fields = ""

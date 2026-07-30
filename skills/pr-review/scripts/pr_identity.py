@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 
 PR_URL = re.compile(r"https://github\.com/[^/\s]+/[^/\s]+/pull/[1-9][0-9]*/?")
+COMMIT_OID = re.compile(r"[0-9a-f]{40}\Z")
 
 
 def validate_pr_identifier(value: str) -> None:
@@ -16,6 +17,13 @@ def validate_pr_identifier(value: str) -> None:
     ):
         return
     raise RuntimeError(f"invalid pull-request identifier: {value!r}")
+
+
+def require_commit_oid(value: object, label: str) -> str:
+    """Return one canonical immutable commit OID or fail closed."""
+    if not isinstance(value, str) or COMMIT_OID.fullmatch(value) is None:
+        raise RuntimeError(f"{label} must be a lowercase 40-hex Git commit OID")
+    return value
 
 
 def repository_from_pr_url(url: str, number: int) -> str:

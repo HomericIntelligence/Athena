@@ -160,6 +160,17 @@ If the forge or host lacks the needed capability, return a ready-to-publish
 plan and state the coverage gap. Never claim that a comment, issue, epic, or
 annotation was created when it was not.
 
+For every delivery channel that supports source locations, publish each
+independently actionable changed-scope finding as exactly one source annotation
+or inline comment on its verified changed line. Do not collapse independent
+findings into a general summary or duplicate one finding across several
+locations. Choose the causal changed line when the defect manifests elsewhere.
+Use a general summary only for architecture, scope, evidence, or other
+genuinely cross-cutting content that has no valid changed-line anchor; it must
+not restate an inline finding. If a required finding cannot be anchored and the
+forge cannot publish a valid cross-cutting summary, return a ready-to-publish
+batch instead of silently weakening its location.
+
 ## Review flow
 
 1. Resolve the exact artifact and current revision.

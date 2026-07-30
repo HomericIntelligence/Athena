@@ -11,12 +11,16 @@ from typing import Sequence
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
+from pr_identity import require_commit_oid
 from skills._cli import argument_parser, run_command
 
 
 def git(*arguments: str) -> str:
     result = run_command(
-        ["git", *arguments], capture_output=True, text=True, check=False
+        ["git", "--no-replace-objects", *arguments],
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or f"git {' '.join(arguments)} failed")
@@ -25,14 +29,12 @@ def git(*arguments: str) -> str:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argument_parser(description=__doc__)
-    parser.add_argument("base_ref", metavar="BASE_REF")
-    parser.add_argument("head_ref", metavar="HEAD_REF")
+    parser.add_argument("base_ref", metavar="BASE_OID")
+    parser.add_argument("head_ref", metavar="HEAD_OID")
     arguments = parser.parse_args(argv)
-    base_ref, head_ref = arguments.base_ref, arguments.head_ref
     try:
-        for label, value in (("base ref", base_ref), ("head ref", head_ref)):
-            if value.startswith("-"):
-                raise RuntimeError(f"{label} must not begin with '-': {value!r}")
+        base_ref = require_commit_oid(arguments.base_ref, "base OID")
+        head_ref = require_commit_oid(arguments.head_ref, "head OID")
         git("rev-parse", "--verify", f"{base_ref}^{{commit}}")
         git("rev-parse", "--verify", f"{head_ref}^{{commit}}")
         merge_base = git("merge-base", base_ref, head_ref)

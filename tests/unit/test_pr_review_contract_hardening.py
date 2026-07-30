@@ -24,6 +24,8 @@ def pull_request(
     state: str = "OPEN",
     base_oid: str = BASE_OID,
     head_oid: str = HEAD_OID,
+    base_ref_name: str = "main",
+    head_ref_name: str = "feature",
     title: str = "Immutable evidence",
     body: str | None = "",
     is_draft: bool = False,
@@ -37,8 +39,8 @@ def pull_request(
         "state": state,
         "isDraft": is_draft,
         "author": {"login": "reviewer"},
-        "baseRefName": "main",
-        "headRefName": "feature",
+        "baseRefName": base_ref_name,
+        "headRefName": head_ref_name,
         "baseRefOid": base_oid,
         "headRefOid": head_oid,
         "statusCheckRollup": [],
@@ -124,10 +126,13 @@ class ImmutableEvidenceTests(unittest.TestCase):
         metadata_sequence: list[dict[str, object]],
         *,
         changed_path: str = "changed.txt",
+        replace_head_with_base: bool = False,
     ) -> tuple[subprocess.CompletedProcess[str], int, str, str]:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             base_oid, head_oid = initialize_repository(root, changed_path)
+            if replace_head_with_base:
+                git(root, "replace", head_oid, base_oid)
             bin_directory = root / "bin"
             bin_directory.mkdir()
             gh_path = bin_directory / "gh"
@@ -196,6 +201,7 @@ class ImmutableEvidenceTests(unittest.TestCase):
         self.assertEqual(
             "Immutable evidence", evidence["reviewed_scope"]["fields"]["title"]
         )
+        self.assertEqual("main", evidence["reviewed_scope"]["fields"]["baseRefName"])
         self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
 
     def test_rejects_missing_immutable_identity(self) -> None:
@@ -254,6 +260,40 @@ class ImmutableEvidenceTests(unittest.TestCase):
 
         self.assertEqual(1, result.returncode)
         self.assertEqual(2, call_count)
+
+    def test_rejects_branch_scope_that_changes_while_collecting_evidence(self) -> None:
+        result, call_count, _, _ = self.run_collector(
+            [pull_request(), pull_request(base_ref_name="release")]
+        )
+
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(2, call_count)
+
+    def test_emits_final_revalidated_metadata(self) -> None:
+        initial = pull_request()
+        initial["reviews"] = [{"id": "initial"}]
+        final = pull_request()
+        final["reviews"] = [{"id": "final"}]
+
+        result, _, _, _ = self.run_collector([initial, final])
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            [{"id": "final"}], json.loads(result.stdout)["pull_request"]["reviews"]
+        )
+
+    def test_immutable_changed_paths_ignore_replacement_refs(self) -> None:
+        result, call_count, _, _ = self.run_collector(
+            [pull_request(), pull_request()],
+            changed_path="replacement.txt",
+            replace_head_with_base=True,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(2, call_count)
+        self.assertEqual(
+            ["replacement.txt"], json.loads(result.stdout)["changed_files"]
+        )
 
     def test_binds_a_newline_path_without_querying_provider_file_metadata(self) -> None:
         path = "line\nbreak.py"
