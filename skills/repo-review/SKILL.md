@@ -181,8 +181,11 @@ as N/A. Then, when directly authorized:
    with severity, precise evidence, impact, governing contract, remediation,
    and functional verification. Link it to the GitHub tracker as a sub-issue or
    to the GitLab epic as a child issue.
-3. Link each pre-existing matching issue to the GitHub tracker as a sub-issue
-   or to the GitLab epic as a child issue instead of creating a duplicate.
+3. Link a pre-existing matching issue only when it is open and still covers
+   the current remediation. Never make a closed or remediated issue the sole
+   active child for a regression: create a deduplicated regression child and
+   retain the old issue as context, or obtain explicit authority to reopen the
+   old issue before linking it as the active child.
 4. On GitHub with a writable Project that can add items, find or add the tracker
    and each created or linked child issue as Project items. Set only applicable
    mapped fields, such as severity, review status, architecture disposition, or

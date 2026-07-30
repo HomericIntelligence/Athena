@@ -217,6 +217,212 @@ class ScriptConventionTests(unittest.TestCase):
                     self.assertNotIn("Traceback", result.stderr)
 
 
+class FakeGitHubCliFixtureTests(unittest.TestCase):
+    def run_fake_gh(
+        self,
+        root: Path,
+        *arguments: str,
+        settings: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        environment = os.environ.copy()
+        if settings is not None:
+            environment.update(settings)
+        return run_script(
+            "tests/fixtures/fake_gh.py", *arguments, cwd=root, env=environment
+        )
+
+    def test_fake_gh_rejects_duplicate_repository_options(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            result = self.run_fake_gh(
+                Path(temporary_directory),
+                "pr",
+                "view",
+                "42",
+                "--repo",
+                "github.com/owner/repository",
+                "--repo",
+                "github.com/attacker/repository",
+                "--json",
+                "number",
+                settings={"FAKE_GH_REQUIRE_REPOSITORY": "owner/repository"},
+            )
+
+        self.assertEqual(9, result.returncode)
+
+    def test_fake_gh_rejects_a_repository_option_without_a_value(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            result = self.run_fake_gh(
+                Path(temporary_directory),
+                "pr",
+                "view",
+                "42",
+                "--repo",
+                "github.com/owner/repository",
+                "--repo",
+                settings={"FAKE_GH_REQUIRE_REPOSITORY": "owner/repository"},
+            )
+
+        self.assertEqual(9, result.returncode)
+
+    def test_fake_gh_simulates_a_complex_pull_request_view(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fields_file = root / "requested-fields.txt"
+            result = self.run_fake_gh(
+                root,
+                "pr",
+                "view",
+                "7",
+                "--repo",
+                "github.com/owner/repository",
+                "--json",
+                "number,commits",
+                settings={
+                    "FAKE_GH_REQUIRE_REPOSITORY": "owner/repository",
+                    "FAKE_GH_SIMULATE_COMPLEXITY_DROP": "1",
+                    "FAKE_GH_VIEW_FIELDS_FILE": str(fields_file),
+                    "FAKE_GH_VIEW_JSON": json.dumps({"number": 7}),
+                },
+            )
+            requested_fields = fields_file.read_text(encoding="utf-8")
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("number,commits", requested_fields)
+        self.assertEqual(
+            {"author": None, "number": 7, "statusCheckRollup": None, "title": None},
+            {
+                key: json.loads(result.stdout)[key]
+                for key in ("author", "number", "statusCheckRollup", "title")
+            },
+        )
+
+    def test_fake_gh_supports_configured_command_responses(self) -> None:
+        default_view = {
+            "author": {"login": "reviewer"},
+            "baseRefName": "main",
+            "baseRefOid": "a" * 40,
+            "headRefName": "feature",
+            "headRefOid": "b" * 40,
+            "number": 7,
+            "state": "OPEN",
+            "statusCheckRollup": [],
+            "title": "Fake pull request",
+            "url": "https://github.com/owner/repository/pull/7",
+        }
+        candidates = [{"number": 7, "state": "OPEN"}]
+        cases: tuple[tuple[tuple[str, ...], dict[str, str], int, object, str], ...] = (
+            (
+                ("pr", "view", "7", "--json", "number"),
+                {},
+                0,
+                default_view,
+                "",
+            ),
+            (
+                ("pr", "view", "7"),
+                {"FAKE_GH_VIEW_JSON": json.dumps(["not a mapping"])},
+                0,
+                json.dumps(["not a mapping"]) + "\n",
+                "",
+            ),
+            (
+                ("pr", "view", "7"),
+                {"FAKE_GH_VIEW_RAW": "not JSON"},
+                0,
+                "not JSON\n",
+                "",
+            ),
+            (
+                ("pr", "list", "--repo", "github.com/owner/repository"),
+                {
+                    "FAKE_GH_CANDIDATES_JSON": json.dumps(candidates),
+                    "FAKE_GH_REQUIRE_REPOSITORY": "owner/repository",
+                },
+                0,
+                candidates,
+                "",
+            ),
+            (
+                ("pr", "list", "--repo", "github.com/attacker/repository"),
+                {"FAKE_GH_REQUIRE_REPOSITORY": "owner/repository"},
+                9,
+                "",
+                "expected an explicit retained GitHub repository\n",
+            ),
+            (
+                ("pr", "diff"),
+                {"FAKE_GH_CHANGED_FILES": "first.py\nsecond.py"},
+                0,
+                "first.py\nsecond.py\n",
+                "",
+            ),
+            (
+                ("pr", "diff"),
+                {"FAKE_GH_DIFF_ERROR": "diff unavailable"},
+                1,
+                "",
+                "diff unavailable\n",
+            ),
+            (
+                ("pr", "checks"),
+                {"FAKE_GH_CHECKS": '["pending"]', "FAKE_GH_CHECKS_EXIT": "8"},
+                8,
+                '["pending"]\n',
+                "",
+            ),
+            (
+                ("repo", "view"),
+                {"FAKE_GH_REPOSITORY": "owner/alternative"},
+                0,
+                {"nameWithOwner": "owner/alternative"},
+                "",
+            ),
+            (
+                ("repo", "view"),
+                {"FAKE_GH_FORBID_REPO_VIEW": "1"},
+                10,
+                "",
+                "ambient repository lookup is forbidden\n",
+            ),
+            (
+                ("api", "repos/owner/repository/pulls/7/files"),
+                {
+                    "FAKE_GH_FILES_JSON": json.dumps(
+                        [
+                            {"filename": "kept.py"},
+                            {"filename": 7},
+                            {"other": "ignored.py"},
+                            "not an object",
+                        ]
+                    )
+                },
+                0,
+                "kept.py\n",
+                "",
+            ),
+            (
+                ("api", "repos/owner/repository/pulls/7/files"),
+                {"FAKE_GH_FILES_JSON": json.dumps({"filename": "ignored.py"})},
+                0,
+                "",
+                "",
+            ),
+            (("unknown",), {}, 2, "", "unexpected gh invocation: ['unknown']\n"),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            for arguments, settings, exit_code, stdout, stderr in cases:
+                with self.subTest(arguments=arguments):
+                    result = self.run_fake_gh(root, *arguments, settings=settings)
+
+                    self.assertEqual(exit_code, result.returncode)
+                    self.assertEqual(stderr, result.stderr)
+                    if isinstance(stdout, (dict, list)):
+                        self.assertEqual(stdout, json.loads(result.stdout))
+                    else:
+                        self.assertEqual(stdout, result.stdout)
+
+
 class PullRequestScriptTests(unittest.TestCase):
     def make_fake_tools(
         self, root: Path, candidates: list[dict[str, object]]

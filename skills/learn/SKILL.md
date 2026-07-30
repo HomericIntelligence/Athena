@@ -30,9 +30,12 @@ or revalidation failure is blocking.
    wording, then inspect each same-intent candidate.
 4. Search Git history for prior consolidation, provenance, and the durable
    decision rule each candidate preserves.
-5. Query open pull requests in the resolved Mnemosyne repository by candidate title and changed
-   `skills/<name>.md` path. If one already changes a same-intent entry, inspect it and either stack on
-   its branch with explicit authority or stop for user direction; never create a conflicting PR.
+5. Query every open pull request in the resolved Mnemosyne repository. Enumerate its changed flat
+   `skills/*.md` artifacts and inspect their changed content to derive each retrieval intent; a title
+   or candidate path is only a discovery aid, never sufficient duplicate evidence. If any open pull
+   request has the same or an ambiguous retrieval intent, fail closed: leave Mnemosyne unchanged and
+   obtain user direction before mutation. Work atop that branch only with explicit authority; never
+   create a conflicting PR.
 6. Record one disposition before mutating: `amend`, `consolidate`, `create`, or
    `reject`.
    - Amend exactly one canonical entry when its retrieval intent matches and
@@ -45,10 +48,11 @@ or revalidation failure is blocking.
    - Reject the lesson as `no learnable change` when it adds no durable,
      verified delta.
 
-   An ambiguous candidate set, conflicting active change, unverifiable delta,
-   or unsafe retirement is a blocking consolidation failure. Leave Mnemosyne
-   unchanged, report the candidate paths and evidence gap, and obtain user
-   direction; do not evade consolidation by creating another near-duplicate.
+   An ambiguous candidate set, semantic overlap in an open pull request,
+   unverifiable delta, or unsafe retirement is a blocking consolidation failure.
+   Leave Mnemosyne unchanged, report the candidate paths and intent evidence
+   gap, and obtain user direction; do not evade consolidation by creating
+   another near-duplicate.
    Do not report `learn` as completed after a rejection or blocked
    consolidation.
 

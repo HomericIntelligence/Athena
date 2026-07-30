@@ -3,12 +3,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
 import json
+import subprocess
 import sys
-from typing import Any, Sequence
+import threading
+import time
+from typing import Any, IO, Sequence
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
@@ -40,6 +43,84 @@ FIELDS = (
     "baseRefOid,headRefOid,reviews,statusCheckRollup,closingIssuesReferences,url"
 )
 ISSUE_FIELDS = "id,number,url,title,body,state"
+READ_CHUNK_SIZE = 64 * 1024
+LINKED_ISSUE_COMMENT_PAGE_SIZE = 100
+MAX_LINKED_ISSUE_COMMENT_PAGES = 10
+MAX_LINKED_ISSUE_COMMENTS = 1_000
+MAX_LINKED_ISSUE_COMMENT_PAGE_BYTES = 256 * 1024
+MAX_LINKED_ISSUE_COMMENT_BYTES = 1024 * 1024
+MAX_LINKED_ISSUE_COMMENT_STDERR_BYTES = 16 * 1024
+LINKED_ISSUE_COMMENT_REQUEST_TIMEOUT_SECONDS = 30.0
+PROVIDER_POLL_SECONDS = 0.01
+PROVIDER_READER_JOIN_SECONDS = 1.0
+MAX_LINKED_REQUIREMENT_METADATA_BYTES = 256 * 1024
+MAX_LINKED_REQUIREMENT_BODY_BYTES = 256 * 1024
+MAX_LINKED_REQUIREMENT_REQUESTS = 48
+MAX_LINKED_REQUIREMENT_PAGES = 24
+MAX_LINKED_REQUIREMENT_COMMENTS = 2_000
+MAX_LINKED_REQUIREMENT_BYTES = 2 * 1024 * 1024
+
+
+class LinkedRequirementsCoverageGap(RuntimeError):
+    """A linked requirement exceeds bounded evidence collection limits."""
+
+
+@dataclass
+class LinkedRequirementBudget:
+    """One cumulative provider budget shared by both strict evidence reads."""
+
+    pages: int = 0
+    comments: int = 0
+    bytes_read: int = 0
+    requests: int = 0
+
+    def remaining_bytes(self) -> int:
+        """Return remaining aggregate provider-output capacity."""
+        return MAX_LINKED_REQUIREMENT_BYTES - self.bytes_read
+
+    def reserve_request(self) -> None:
+        """Reserve one bounded provider request before issuing it."""
+        if self.requests >= MAX_LINKED_REQUIREMENT_REQUESTS:
+            raise LinkedRequirementsCoverageGap(
+                "linked issue requirements exceed the safe aggregate request limit"
+            )
+        self.requests += 1
+
+    def reserve_comment_page(self) -> None:
+        """Reserve one aggregate comment page and its provider request."""
+        if self.pages >= MAX_LINKED_REQUIREMENT_PAGES:
+            raise LinkedRequirementsCoverageGap(
+                "linked issue requirements exceed the safe aggregate page limit"
+            )
+        self.reserve_request()
+
+    def record_bytes(self, count: int) -> None:
+        """Account for one provider response without crossing the byte budget."""
+        if count > self.remaining_bytes():
+            raise LinkedRequirementsCoverageGap(
+                "linked issue requirements exceed the safe aggregate byte limit"
+            )
+        self.bytes_read += count
+
+    def record_comment_page(self, count: int) -> None:
+        """Account for one successful provider page and its item count."""
+        if self.comments + count > MAX_LINKED_REQUIREMENT_COMMENTS:
+            raise LinkedRequirementsCoverageGap(
+                "linked issue requirements exceed the safe aggregate comment limit"
+            )
+        self.pages += 1
+        self.comments += count
+
+
+@dataclass
+class ProviderStream:
+    """One bounded asynchronous stdout or stderr capture."""
+
+    maximum_bytes: int
+    output: bytearray = field(default_factory=bytearray)
+    overflowed: threading.Event = field(default_factory=threading.Event)
+    completed: threading.Event = field(default_factory=threading.Event)
+    error: OSError | ValueError | None = None
 
 
 @dataclass(frozen=True)
@@ -428,29 +509,249 @@ def canonical_json(value: object, label: str) -> str:
         raise RuntimeError(f"GitHub returned invalid {label}") from error
 
 
-def paginated_issue_comments(repository: str, number: int) -> list[dict[str, Any]]:
-    """Read every linked-issue comment through an explicit repository endpoint."""
-    response = json.loads(
-        gh(
-            "api",
-            "--hostname",
-            "github.com",
-            "--paginate",
-            "--slurp",
-            f"repos/{repository}/issues/{number}/comments",
+def drain_provider_stream(stream: IO[bytes], capture: ProviderStream) -> None:
+    """Read one provider pipe without allowing it to grow without bound."""
+    try:
+        while True:
+            read_size = min(
+                READ_CHUNK_SIZE, capture.maximum_bytes - len(capture.output) + 1
+            )
+            if read_size <= 0:
+                capture.overflowed.set()
+                return
+            chunk = stream.read(read_size)
+            if not chunk:
+                return
+            if len(capture.output) + len(chunk) > capture.maximum_bytes:
+                capture.overflowed.set()
+                return
+            capture.output.extend(chunk)
+    except (OSError, ValueError) as error:
+        capture.error = error
+    finally:
+        try:
+            stream.close()
+        except OSError:
+            pass
+        capture.completed.set()
+
+
+def reap_provider(
+    process: subprocess.Popen[bytes],
+    streams: Sequence[IO[bytes]],
+    readers: Sequence[threading.Thread],
+) -> None:
+    """Kill and reap a failed provider request without leaking reader threads."""
+    if process.poll() is None:
+        process.kill()
+    for stream in streams:
+        try:
+            stream.close()
+        except (OSError, ValueError):
+            pass
+    process.wait()
+    for reader in readers:
+        reader.join(PROVIDER_READER_JOIN_SECONDS)
+
+
+def provider_return_code(
+    process: subprocess.Popen[bytes],
+    stdout: ProviderStream,
+    stderr: ProviderStream,
+    stdout_limit_error: str,
+) -> int:
+    """Wait for bounded output and a completed provider before the deadline."""
+    deadline = time.monotonic() + LINKED_ISSUE_COMMENT_REQUEST_TIMEOUT_SECONDS
+    while True:
+        if stdout.overflowed.is_set():
+            raise LinkedRequirementsCoverageGap(stdout_limit_error)
+        if stderr.overflowed.is_set():
+            raise LinkedRequirementsCoverageGap(
+                "linked issue response exceeds the safe stderr limit"
+            )
+        if stdout.error is not None or stderr.error is not None:
+            raise RuntimeError("cannot read linked issue provider output")
+        return_code = process.poll()
+        if (
+            return_code is not None
+            and stdout.completed.is_set()
+            and stderr.completed.is_set()
+        ):
+            return process.wait()
+        if time.monotonic() >= deadline:
+            raise LinkedRequirementsCoverageGap(
+                "linked issue provider exceeded the safe provider deadline"
+            )
+        time.sleep(PROVIDER_POLL_SECONDS)
+
+
+def bounded_gh_output(
+    arguments: Sequence[str], *, maximum_bytes: int, limit_error: str
+) -> bytes:
+    """Run one deadline-bound GitHub request with bounded stdout and stderr."""
+    command = ["gh", *arguments]
+    try:
+        try:
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except FileNotFoundError as error:
+            raise RuntimeError(
+                f"required command unavailable: {error.filename or command[0]}"
+            ) from error
+        stdout = process.stdout
+        stderr = process.stderr
+        if stdout is None or stderr is None:
+            process.kill()
+            process.wait()
+            raise RuntimeError("GitHub did not provide linked issue provider output")
+        stdout_capture = ProviderStream(maximum_bytes)
+        stderr_capture = ProviderStream(MAX_LINKED_ISSUE_COMMENT_STDERR_BYTES)
+        readers = (
+            threading.Thread(
+                target=drain_provider_stream,
+                args=(stdout, stdout_capture),
+                daemon=True,
+            ),
+            threading.Thread(
+                target=drain_provider_stream,
+                args=(stderr, stderr_capture),
+                daemon=True,
+            ),
         )
+        for reader in readers:
+            reader.start()
+        try:
+            return_code = provider_return_code(
+                process, stdout_capture, stderr_capture, limit_error
+            )
+        except BaseException:
+            reap_provider(process, (stdout, stderr), readers)
+            raise
+        for reader in readers:
+            reader.join(PROVIDER_READER_JOIN_SECONDS)
+        if return_code != 0:
+            message = (
+                bytes(stderr_capture.output).decode("utf-8", errors="replace").strip()
+            )
+            raise RuntimeError(message or f"gh {' '.join(arguments)} failed")
+        return bytes(stdout_capture.output)
+    except OSError as error:
+        raise RuntimeError(f"cannot collect linked issue comments: {error}") from error
+
+
+def paginated_issue_comments(
+    repository: str, number: int, budget: LinkedRequirementBudget | None = None
+) -> list[dict[str, Any]]:
+    """Read bounded linked-issue comments through explicit canonical pages."""
+    collection_budget = budget if budget is not None else LinkedRequirementBudget()
+    comments: list[dict[str, Any]] = []
+    bytes_read = 0
+    for page in range(1, MAX_LINKED_ISSUE_COMMENT_PAGES + 2):
+        remaining_bytes = MAX_LINKED_ISSUE_COMMENT_BYTES - bytes_read
+        aggregate_remaining_bytes = collection_budget.remaining_bytes()
+        if remaining_bytes <= 0:
+            raise LinkedRequirementsCoverageGap(
+                "linked issue comments exceed the safe byte limit"
+            )
+        if aggregate_remaining_bytes <= 0:
+            raise LinkedRequirementsCoverageGap(
+                "linked issue requirements exceed the safe aggregate byte limit"
+            )
+        collection_budget.reserve_comment_page()
+        response = bounded_gh_output(
+            (
+                "api",
+                "--hostname",
+                "github.com",
+                "--method",
+                "GET",
+                (
+                    f"repos/{repository}/issues/{number}/comments?"
+                    f"per_page={LINKED_ISSUE_COMMENT_PAGE_SIZE}&page={page}"
+                ),
+            ),
+            maximum_bytes=min(
+                MAX_LINKED_ISSUE_COMMENT_PAGE_BYTES,
+                remaining_bytes,
+                aggregate_remaining_bytes,
+            ),
+            limit_error="linked issue comments exceed the safe byte limit",
+        )
+        bytes_read += len(response)
+        collection_budget.record_bytes(len(response))
+        try:
+            page_comments = json.loads(response)
+        except json.JSONDecodeError as error:
+            raise RuntimeError(
+                "GitHub returned invalid linked issue comment pages"
+            ) from error
+        if not isinstance(page_comments, list):
+            raise RuntimeError("GitHub returned invalid linked issue comment pages")
+        if not all(isinstance(comment, dict) for comment in page_comments):
+            raise RuntimeError("GitHub returned an invalid linked issue comment")
+        if page > MAX_LINKED_ISSUE_COMMENT_PAGES:
+            if page_comments:
+                raise LinkedRequirementsCoverageGap(
+                    "linked issue comments exceed the safe page limit"
+                )
+            return comments
+        if len(comments) + len(page_comments) > MAX_LINKED_ISSUE_COMMENTS:
+            raise LinkedRequirementsCoverageGap(
+                "linked issue comments exceed the safe comment limit"
+            )
+        collection_budget.record_comment_page(len(page_comments))
+        comments.extend(page_comments)
+        if len(page_comments) < LINKED_ISSUE_COMMENT_PAGE_SIZE:
+            return comments
+    raise AssertionError("bounded linked issue comment pagination did not terminate")
+
+
+def structured_error(error: str, details: str) -> None:
+    """Emit a machine-readable, fail-closed evidence error."""
+    print(json.dumps({"error": error, "details": details}, sort_keys=True))
+
+
+def linked_issue_metadata(
+    repository: str, number: int, budget: LinkedRequirementBudget
+) -> dict[str, Any]:
+    """Read bounded linked-issue metadata through the shared provider budget."""
+    aggregate_remaining_bytes = budget.remaining_bytes()
+    if aggregate_remaining_bytes <= 0:
+        raise LinkedRequirementsCoverageGap(
+            "linked issue requirements exceed the safe aggregate byte limit"
+        )
+    budget.reserve_request()
+    response = bounded_gh_output(
+        (
+            "issue",
+            "view",
+            str(number),
+            "--repo",
+            f"github.com/{repository}",
+            "--json",
+            ISSUE_FIELDS,
+        ),
+        maximum_bytes=min(
+            MAX_LINKED_REQUIREMENT_METADATA_BYTES, aggregate_remaining_bytes
+        ),
+        limit_error="linked issue metadata exceeds the safe metadata byte limit",
     )
-    if not isinstance(response, list):
-        raise RuntimeError("GitHub returned invalid linked issue comment pages")
-    if response and not all(isinstance(page, list) for page in response):
-        raise RuntimeError("GitHub returned invalid linked issue comment pages")
-    comments = [comment for page in response for comment in page]
-    if not all(isinstance(comment, dict) for comment in comments):
-        raise RuntimeError("GitHub returned an invalid linked issue comment")
-    return comments
+    budget.record_bytes(len(response))
+    try:
+        issue_data = json.loads(response)
+    except json.JSONDecodeError as error:
+        raise RuntimeError("GitHub returned an invalid linked issue") from error
+    if not isinstance(issue_data, dict):
+        raise RuntimeError("GitHub returned an invalid linked issue")
+    return issue_data
 
 
-def linked_requirements(metadata: dict[str, Any]) -> LinkedRequirements:
+def linked_requirements(
+    metadata: dict[str, Any], budget: LinkedRequirementBudget | None = None
+) -> LinkedRequirements:
     """Bind every linked issue's requirement content and complete comment history."""
     references = metadata.get("closingIssuesReferences")
     if not isinstance(references, list):
@@ -458,21 +759,10 @@ def linked_requirements(metadata: dict[str, Any]) -> LinkedRequirements:
     identities = sorted(linked_issue_reference(issue) for issue in references)
     if len(identities) != len(set(identities)):
         raise RuntimeError("GitHub returned duplicate linked issue references")
+    collection_budget = budget if budget is not None else LinkedRequirementBudget()
     items: list[LinkedRequirement] = []
     for expected_id, repository, number, expected_url in identities:
-        issue_data = json.loads(
-            gh(
-                "issue",
-                "view",
-                str(number),
-                "--repo",
-                f"github.com/{repository}",
-                "--json",
-                ISSUE_FIELDS,
-            )
-        )
-        if not isinstance(issue_data, dict):
-            raise RuntimeError("GitHub returned an invalid linked issue")
+        issue_data = linked_issue_metadata(repository, number, collection_budget)
         issue_id = issue_data.get("id")
         body = issue_data.get("body")
         if (
@@ -484,9 +774,19 @@ def linked_requirements(metadata: dict[str, Any]) -> LinkedRequirements:
             or not isinstance(issue_data.get("state"), str)
         ):
             raise RuntimeError("GitHub returned incomplete linked issue requirements")
+        if (
+            isinstance(body, str)
+            and len(body.encode("utf-8", errors="surrogatepass"))
+            > MAX_LINKED_REQUIREMENT_BODY_BYTES
+        ):
+            raise LinkedRequirementsCoverageGap(
+                "linked issue metadata exceeds the safe body limit"
+            )
         comments = sorted(
             canonical_json(comment, "linked issue comment")
-            for comment in paginated_issue_comments(repository, number)
+            for comment in paginated_issue_comments(
+                repository, number, collection_budget
+            )
         )
         content = {
             "body": body,
@@ -678,15 +978,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             metadata, require_immutable_identity=require_immutable_identity
         )
         if metadata_problem:
-            print(
-                json.dumps(
-                    {
-                        "error": "incomplete PR metadata",
-                        "details": metadata_problem,
-                    },
-                    sort_keys=True,
-                )
-            )
+            structured_error("incomplete PR metadata", metadata_problem)
             return 1
         if target is None:
             repository_data = json.loads(gh("repo", "view", "--json", "nameWithOwner"))
@@ -718,8 +1010,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         ensure_expected_identity(identity, expected)
         ensure_expected_target(identity, target)
         reviewed_scope = review_scope(metadata) if expected is not None else None
+        linked_requirement_budget = (
+            LinkedRequirementBudget() if expected is not None else None
+        )
         reviewed_linked_requirements = (
-            linked_requirements(metadata) if expected is not None else None
+            linked_requirements(metadata, linked_requirement_budget)
+            if expected is not None
+            else None
         )
         changed_path_manifest: ChangedPathManifest | None = None
         check_evidence: dict[str, str] | None = None
@@ -763,7 +1060,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             final_metadata, require_immutable_identity=require_immutable_identity
         )
         if final_problem:
-            raise RuntimeError(final_problem)
+            structured_error("incomplete PR metadata", final_problem)
+            return 1
         final_identity = immutable_identity(
             final_metadata,
             repository,
@@ -779,12 +1077,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         if final_scope != reviewed_scope:
             raise RuntimeError("review scope changed while collecting evidence")
         final_linked_requirements = (
-            linked_requirements(final_metadata) if expected is not None else None
+            linked_requirements(final_metadata, linked_requirement_budget)
+            if expected is not None
+            else None
         )
         if final_linked_requirements != reviewed_linked_requirements:
             raise RuntimeError(
                 "linked issue requirements changed while collecting evidence"
             )
+    except LinkedRequirementsCoverageGap as error:
+        structured_error("linked issue requirements coverage gap", str(error))
+        return 1
     except (RuntimeError, json.JSONDecodeError) as error:
         print(error, file=sys.stderr)
         return 1

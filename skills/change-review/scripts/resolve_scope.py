@@ -52,11 +52,10 @@ def git_bytes(*arguments: str, repository_root: Path | None = None) -> bytes:
 
 def git_text(*arguments: str, repository_root: Path | None = None) -> str:
     """Run Git and decode a single-line textual response."""
-    return (
-        git_bytes(*arguments, repository_root=repository_root)
-        .decode("utf-8", errors="surrogateescape")
-        .strip()
+    output = git_bytes(*arguments, repository_root=repository_root).decode(
+        "utf-8", errors="surrogateescape"
     )
+    return output[:-1] if output.endswith("\n") else output
 
 
 def path_list(document: bytes) -> list[str]:
@@ -885,26 +884,26 @@ def git_mode_for_worktree_file(entry: PathEntry) -> str:
     return "100755" if int(entry.mode, 8) & 0o111 else "100644"
 
 
-def worktree_matches_head(
-    snapshot: WorktreePathSnapshot, head_entry: PathEntry | None
+def worktree_matches_entry(
+    snapshot: WorktreePathSnapshot, tree_entry: PathEntry | None
 ) -> bool:
-    """Compare raw no-follow worktree state to an immutable HEAD tree entry."""
-    if head_entry is None:
+    """Compare raw no-follow worktree state to one immutable tree entry."""
+    if tree_entry is None:
         return snapshot.entry.kind == "absent"
-    if head_entry.kind == "git-blob":
+    if tree_entry.kind == "git-blob":
         return (
             snapshot.entry.kind == "file"
-            and snapshot.object_id == head_entry.object_id
-            and git_mode_for_worktree_file(snapshot.entry) == head_entry.mode
+            and snapshot.object_id == tree_entry.object_id
+            and git_mode_for_worktree_file(snapshot.entry) == tree_entry.mode
         )
-    if head_entry.kind == "git-symlink":
+    if tree_entry.kind == "git-symlink":
         return (
             snapshot.entry.kind == "symlink"
-            and snapshot.object_id == head_entry.object_id
-            and head_entry.mode == "120000"
+            and snapshot.object_id == tree_entry.object_id
+            and tree_entry.mode == "120000"
         )
     raise RuntimeError(
-        f"worktree scope cannot safely compare Git object kind for {head_entry.path}"
+        f"worktree scope cannot safely compare Git object kind for {tree_entry.path}"
     )
 
 
@@ -945,8 +944,6 @@ def worktree_tracked_capture(
     content_length = 0
     for path in candidates:
         snapshot = worktree_path_snapshot(repository_root, path, object_format)
-        if path in metadata.skip_worktree_paths and snapshot.entry.kind == "absent":
-            continue
         head_entry = metadata.head_entries.get(path)
         index_entry = metadata.index_entries.get(path)
         if (
@@ -959,7 +956,22 @@ def worktree_tracked_capture(
                 "worktree scope cannot safely determine submodule state for "
                 f"{path}; use --staged or --range"
             )
-        if worktree_matches_head(snapshot, head_entry):
+        index_differs_from_head = index_entry != head_entry
+        if path in metadata.skip_worktree_paths and snapshot.entry.kind == "absent":
+            if index_differs_from_head:
+                raise RuntimeError(
+                    "worktree scope cannot safely inspect staged change in "
+                    f"skip-worktree path {path}; use --staged"
+                )
+            continue
+        if index_differs_from_head and not worktree_matches_entry(
+            snapshot, index_entry
+        ):
+            raise RuntimeError(
+                "worktree scope cannot safely inspect staged change whose live "
+                f"bytes differ from the index for {path}; use --staged"
+            )
+        if worktree_matches_entry(snapshot, head_entry):
             continue
         selected_paths.append(path)
         add_worktree_snapshot(digest, snapshot)

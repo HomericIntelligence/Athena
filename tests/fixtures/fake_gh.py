@@ -13,12 +13,13 @@ def load_json(name: str, default: object) -> object:
     return json.loads(os.environ.get(name, json.dumps(default)))
 
 
-def option_value(arguments: list[str], name: str) -> str | None:
-    """Return one CLI option value without accepting ambient target selection."""
-    for index, argument in enumerate(arguments[:-1]):
-        if argument == name:
-            return arguments[index + 1]
-    return None
+def option_values(arguments: list[str], name: str) -> list[str | None]:
+    """Return every CLI option value without accepting ambient target selection."""
+    return [
+        arguments[index + 1] if index + 1 < len(arguments) else None
+        for index, argument in enumerate(arguments)
+        if argument == name
+    ]
 
 
 def require_explicit_repository(arguments: list[str]) -> int | None:
@@ -26,7 +27,7 @@ def require_explicit_repository(arguments: list[str]) -> int | None:
     expected = os.environ.get("FAKE_GH_REQUIRE_REPOSITORY")
     if expected is None:
         return None
-    if option_value(arguments, "--repo") != f"github.com/{expected}":
+    if option_values(arguments, "--repo") != [f"github.com/{expected}"]:
         print("expected an explicit retained GitHub repository", file=sys.stderr)
         return 9
     return None

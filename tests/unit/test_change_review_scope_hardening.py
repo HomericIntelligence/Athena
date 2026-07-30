@@ -178,6 +178,74 @@ class ChangeReviewScopeHardeningTests(unittest.TestCase):
             self.assertEqual(0, worktree.returncode, worktree.stderr)
             self.assertEqual([], json.loads(worktree.stdout)["paths"])
 
+    def test_worktree_scope_preserves_trailing_whitespace_in_repository_root(
+        self,
+    ) -> None:
+        """The resolver must not retarget a checkout whose name ends in whitespace."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            sibling = root / "repo"
+            initialize_repository(sibling)
+            git(sibling, "commit", "--allow-empty", "--quiet", "-m", "test: diverge")
+            for suffix in (" ", "\t", "\n"):
+                with self.subTest(suffix=repr(suffix)):
+                    repository = root / f"repo{suffix}"
+                    initialize_repository(repository)
+                    tracked = repository / "tracked.txt"
+                    tracked.write_text("changed\n", encoding="utf-8")
+                    expected_head = git(repository, "rev-parse", "HEAD")
+
+                    result = subprocess.run(
+                        [sys.executable, str(RESOLVER), "--worktree"],
+                        cwd=repository,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    scope = json.loads(result.stdout)
+                    self.assertEqual(expected_head, scope["head"])
+                    self.assertEqual([tracked.name], scope["tracked_paths"])
+
+    def test_worktree_scope_rejects_index_changes_missing_from_live_bytes(
+        self,
+    ) -> None:
+        """A default review cannot silently omit a staged change it cannot inspect."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for operation in ("modify", "add", "delete"):
+                with self.subTest(operation=operation):
+                    repository = root / operation
+                    initialize_repository(repository)
+                    tracked = repository / "tracked.txt"
+                    if operation == "modify":
+                        tracked.write_text("staged\n", encoding="utf-8")
+                        git(repository, "add", tracked.name)
+                        tracked.write_text("base\n", encoding="utf-8")
+                    elif operation == "add":
+                        added = repository / "staged.txt"
+                        added.write_text("staged\n", encoding="utf-8")
+                        git(repository, "add", added.name)
+                        added.unlink()
+                    else:
+                        git(
+                            repository,
+                            "update-index",
+                            "--force-remove",
+                            tracked.name,
+                        )
+
+                    result = subprocess.run(
+                        [sys.executable, str(RESOLVER), "--worktree"],
+                        cwd=repository,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+
+                    self.assertEqual(1, result.returncode)
+
     def test_worktree_scope_reviews_smudged_bytes_as_raw_changes(self) -> None:
         """A clean-filter-equivalent byte stream remains reviewable raw source."""
         with tempfile.TemporaryDirectory() as temp:

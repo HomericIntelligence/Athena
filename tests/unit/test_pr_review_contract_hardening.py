@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from hashlib import sha256
+import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -11,7 +13,9 @@ import stat
 import subprocess
 import sys
 import tempfile
+from typing import Any
 import unittest
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -50,6 +54,28 @@ def pull_request(
         "closingIssuesReferences": closing_issues or [],
         "url": url,
     }
+
+
+def linked_requirement_fixture(
+    number: int = 10, issue_id: str = "I_1"
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Create one canonical linked issue and its corresponding requirement."""
+    return (
+        {
+            "id": issue_id,
+            "number": number,
+            "repository": {"name": "requirements", "owner": {"login": "owner"}},
+            "url": f"https://github.com/owner/requirements/issues/{number}",
+        },
+        {
+            "id": issue_id,
+            "number": number,
+            "url": f"https://github.com/owner/requirements/issues/{number}",
+            "title": "Requirements",
+            "body": "Acceptance criterion",
+            "state": "OPEN",
+        },
+    )
 
 
 def git(repository: Path, *arguments: str) -> str:
@@ -184,6 +210,59 @@ def initialize_ambiguous_merge_base_repository(
     return base_oid, head_oid
 
 
+def load_collector(module_name: str) -> Any:
+    """Load a fresh collector module for direct process-boundary behavior tests."""
+    specification = importlib.util.spec_from_file_location(module_name, SCRIPT)
+    assert specification is not None
+    assert specification.loader is not None
+    module = importlib.util.module_from_spec(specification)
+    sys.modules[module_name] = module
+    script_directory = str(SCRIPT.parent)
+    sys.path.insert(0, script_directory)
+    try:
+        specification.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(module_name, None)
+        raise
+    finally:
+        sys.path.remove(script_directory)
+    return module
+
+
+class BoundedOutputProcess:
+    """Deterministic subprocess stand-in for bounded linked-comment reads."""
+
+    def __init__(
+        self,
+        output: bytes = b"",
+        *,
+        stderr_output: bytes = b"",
+        returncode: int = 0,
+        poll_result: int | None = 0,
+        has_stdout: bool = True,
+        has_stderr: bool = True,
+    ) -> None:
+        self.stdout = io.BytesIO(output) if has_stdout else None
+        self.stderr = io.BytesIO(stderr_output) if has_stderr else None
+        self.returncode = returncode
+        self.poll_result = poll_result
+        self.killed = False
+        self.wait_calls = 0
+
+    def kill(self) -> None:
+        """Record cancellation of an overflowing child process."""
+        self.killed = True
+
+    def poll(self) -> int | None:
+        """Return the configured child state."""
+        return self.poll_result
+
+    def wait(self) -> int:
+        """Return the configured process status."""
+        self.wait_calls += 1
+        return self.returncode
+
+
 def bind_repository_identity(
     metadata_sequence: list[dict[str, object]], base_oid: str, head_oid: str
 ) -> list[dict[str, object]]:
@@ -215,6 +294,14 @@ def option_value(name):
     return None
 
 
+def is_linked_issue_comments_endpoint():
+    return any(
+        "/issues/" in argument
+        and argument.split("?", maxsplit=1)[0].endswith("/comments")
+        for argument in arguments
+    )
+
+
 if arguments[:2] == ["pr", "view"]:
     if (
         os.environ.get("ATHENA_TEST_FORBID_AMBIENT_TARGET") == "1"
@@ -239,16 +326,50 @@ elif arguments[:2] == ["issue", "view"]:
     ):
         print("linked issue reads must use the canonical GitHub target", file=sys.stderr)
         raise SystemExit(11)
+    body_bytes = os.environ.get("ATHENA_TEST_GH_ISSUE_BODY_BYTES")
+    if body_bytes is not None:
+        number = int(arguments[2])
+        print(
+            json.dumps(
+                {
+                    "id": "I_1",
+                    "number": number,
+                    "url": f"https://github.com/owner/requirements/issues/{number}",
+                    "title": "Requirements",
+                    "body": "x" * int(body_bytes),
+                    "state": "OPEN",
+                }
+            )
+        )
+        raise SystemExit(0)
     state_path = Path(os.environ["ATHENA_TEST_GH_ISSUE_STATE"])
     count = int(state_path.read_text(encoding="utf-8")) if state_path.exists() else 0
     state_path.write_text(str(count + 1), encoding="utf-8")
     sequence = json.loads(os.environ["ATHENA_TEST_GH_ISSUE_SEQUENCE"])
     print(json.dumps(sequence[min(count, len(sequence) - 1)]))
 elif arguments[:1] == ["api"]:
-    if any("/issues/" in argument and argument.endswith("/comments") for argument in arguments):
+    if is_linked_issue_comments_endpoint():
         if ["--hostname", "github.com"] not in [arguments[index:index + 2] for index in range(len(arguments) - 1)]:
             print("linked issue comments must use the canonical GitHub host", file=sys.stderr)
             raise SystemExit(8)
+        if "--paginate" in arguments or "--slurp" in arguments:
+            print("linked issue comments must use bounded explicit pages", file=sys.stderr)
+            raise SystemExit(12)
+        body_bytes = os.environ.get("ATHENA_TEST_GH_COMMENT_BODY_BYTES")
+        if body_bytes is not None:
+            print(json.dumps([{"id": 1, "body": "x" * int(body_bytes)}]))
+            raise SystemExit(0)
+        comment_count = os.environ.get("ATHENA_TEST_GH_COMMENT_COUNT")
+        if comment_count is not None:
+            print(
+                json.dumps(
+                    [
+                        {"id": index, "body": "Comment"}
+                        for index in range(int(comment_count))
+                    ]
+                )
+            )
+            raise SystemExit(0)
         state_path = os.environ.get("ATHENA_TEST_GH_COMMENT_STATE")
         sequence_raw = os.environ.get("ATHENA_TEST_GH_COMMENT_SEQUENCE")
         if state_path is None or sequence_raw is None:
@@ -258,7 +379,7 @@ elif arguments[:1] == ["api"]:
             count = int(path.read_text(encoding="utf-8")) if path.exists() else 0
             path.write_text(str(count + 1), encoding="utf-8")
             sequence = json.loads(sequence_raw)
-            print(json.dumps([sequence[min(count, len(sequence) - 1)]]))
+            print(json.dumps(sequence[min(count, len(sequence) - 1)]))
     elif os.environ.get("ATHENA_TEST_FORBID_GH_API") == "1":
         print("strict review must not query the provider file list", file=sys.stderr)
         raise SystemExit(7)
@@ -268,6 +389,259 @@ else:
     print(f"unexpected gh invocation: {arguments}", file=sys.stderr)
     raise SystemExit(2)
 """
+
+
+class BoundedLinkedCommentReaderTests(unittest.TestCase):
+    """Exercise bounded provider-output failure behavior without live GitHub I/O."""
+
+    def setUp(self) -> None:
+        self.module_name = f"test_collect_evidence_bounded_{id(self)}"
+        self.collector = load_collector(self.module_name)
+
+    def tearDown(self) -> None:
+        sys.modules.pop(self.module_name, None)
+
+    def test_streams_a_bounded_successful_provider_response(self) -> None:
+        process = BoundedOutputProcess(b"[{}]")
+
+        with patch.object(self.collector.subprocess, "Popen", return_value=process):
+            response = self.collector.bounded_gh_output(
+                ("api", "example"),
+                maximum_bytes=4,
+                limit_error="must not overflow",
+            )
+
+        self.assertEqual(b"[{}]", response)
+        self.assertEqual(1, process.wait_calls)
+        self.assertFalse(process.killed)
+
+    def test_reports_an_unavailable_gh_command(self) -> None:
+        with (
+            patch.object(
+                self.collector.subprocess,
+                "Popen",
+                side_effect=FileNotFoundError(2, "not found", "gh"),
+            ),
+            self.assertRaisesRegex(RuntimeError, "required command unavailable: gh"),
+        ):
+            self.collector.bounded_gh_output(
+                ("api", "example"),
+                maximum_bytes=4,
+                limit_error="must not overflow",
+            )
+
+    def test_rejects_a_provider_process_without_stdout(self) -> None:
+        process = BoundedOutputProcess(has_stdout=False)
+
+        with (
+            patch.object(self.collector.subprocess, "Popen", return_value=process),
+            self.assertRaisesRegex(RuntimeError, "did not provide linked issue"),
+        ):
+            self.collector.bounded_gh_output(
+                ("api", "example"),
+                maximum_bytes=4,
+                limit_error="must not overflow",
+            )
+
+        self.assertTrue(process.killed)
+        self.assertEqual(1, process.wait_calls)
+
+    def test_cancels_a_provider_process_when_output_exceeds_the_limit(self) -> None:
+        process = BoundedOutputProcess(b"overflow", poll_result=None)
+
+        with (
+            patch.object(self.collector.subprocess, "Popen", return_value=process),
+            self.assertRaisesRegex(
+                self.collector.LinkedRequirementsCoverageGap, "safe byte limit"
+            ),
+        ):
+            self.collector.bounded_gh_output(
+                ("api", "example"),
+                maximum_bytes=4,
+                limit_error="safe byte limit",
+            )
+
+        self.assertTrue(process.killed)
+        self.assertEqual(1, process.wait_calls)
+
+    def test_surfaces_a_nonzero_provider_exit_with_bounded_stderr(self) -> None:
+        process = BoundedOutputProcess(
+            stderr_output=b"provider rejected request\n", returncode=1
+        )
+
+        with (
+            patch.object(self.collector.subprocess, "Popen", return_value=process),
+            self.assertRaisesRegex(RuntimeError, "provider rejected request"),
+        ):
+            self.collector.bounded_gh_output(
+                ("api", "example"),
+                maximum_bytes=4,
+                limit_error="must not overflow",
+            )
+
+    def test_cancels_a_provider_process_when_stderr_exceeds_the_limit(self) -> None:
+        process = BoundedOutputProcess(stderr_output=b"overflow", poll_result=None)
+
+        with (
+            patch.object(
+                self.collector,
+                "MAX_LINKED_ISSUE_COMMENT_STDERR_BYTES",
+                4,
+                create=True,
+            ),
+            patch.object(self.collector.subprocess, "Popen", return_value=process),
+            self.assertRaisesRegex(
+                self.collector.LinkedRequirementsCoverageGap, "safe stderr limit"
+            ),
+        ):
+            self.collector.bounded_gh_output(
+                ("api", "example"),
+                maximum_bytes=4,
+                limit_error="must not overflow",
+            )
+
+        self.assertTrue(process.killed)
+        self.assertEqual(1, process.wait_calls)
+
+    def test_cancels_a_provider_process_that_misses_its_deadline(self) -> None:
+        process = BoundedOutputProcess(poll_result=None)
+
+        with (
+            patch.object(
+                self.collector,
+                "LINKED_ISSUE_COMMENT_REQUEST_TIMEOUT_SECONDS",
+                0,
+                create=True,
+            ),
+            patch.object(self.collector.subprocess, "Popen", return_value=process),
+            self.assertRaisesRegex(
+                self.collector.LinkedRequirementsCoverageGap, "provider deadline"
+            ),
+        ):
+            self.collector.bounded_gh_output(
+                ("api", "example"),
+                maximum_bytes=4,
+                limit_error="must not overflow",
+            )
+
+        self.assertTrue(process.killed)
+        self.assertEqual(1, process.wait_calls)
+
+    def test_wraps_operating_system_failures_from_the_provider_reader(self) -> None:
+        with (
+            patch.object(
+                self.collector.subprocess,
+                "Popen",
+                side_effect=PermissionError("denied"),
+            ),
+            self.assertRaisesRegex(
+                RuntimeError, "cannot collect linked issue comments"
+            ),
+        ):
+            self.collector.bounded_gh_output(
+                ("api", "example"),
+                maximum_bytes=4,
+                limit_error="must not overflow",
+            )
+
+    def test_rejects_malformed_linked_comment_pages(self) -> None:
+        cases = (
+            (b"not json", "invalid linked issue comment pages"),
+            (b'{"id": 1}', "invalid linked issue comment pages"),
+            (b"[1]", "invalid linked issue comment"),
+        )
+        for response, message in cases:
+            with self.subTest(response=response):
+                with (
+                    patch.object(
+                        self.collector, "bounded_gh_output", return_value=response
+                    ),
+                    self.assertRaisesRegex(RuntimeError, message),
+                ):
+                    self.collector.paginated_issue_comments("owner/requirements", 10)
+
+    def test_fails_closed_before_reading_when_comment_bytes_are_exhausted(self) -> None:
+        with (
+            patch.object(self.collector, "MAX_LINKED_ISSUE_COMMENT_BYTES", 0),
+            patch.object(
+                self.collector,
+                "bounded_gh_output",
+                side_effect=AssertionError("reader must not run"),
+            ),
+            self.assertRaisesRegex(
+                self.collector.LinkedRequirementsCoverageGap, "safe byte limit"
+            ),
+        ):
+            self.collector.paginated_issue_comments("owner/requirements", 10)
+
+    def test_fails_closed_when_the_next_nonempty_page_exceeds_the_page_budget(
+        self,
+    ) -> None:
+        with (
+            patch.object(self.collector, "LINKED_ISSUE_COMMENT_PAGE_SIZE", 1),
+            patch.object(self.collector, "MAX_LINKED_ISSUE_COMMENT_PAGES", 1),
+            patch.object(
+                self.collector,
+                "bounded_gh_output",
+                side_effect=(b"[{}]", b"[{}]"),
+            ),
+            self.assertRaisesRegex(
+                self.collector.LinkedRequirementsCoverageGap, "safe page limit"
+            ),
+        ):
+            self.collector.paginated_issue_comments("owner/requirements", 10)
+
+    def test_fails_closed_when_comment_count_exceeds_the_budget(self) -> None:
+        with (
+            patch.object(self.collector, "MAX_LINKED_ISSUE_COMMENTS", 0),
+            patch.object(self.collector, "bounded_gh_output", return_value=b"[{}]"),
+            self.assertRaisesRegex(
+                self.collector.LinkedRequirementsCoverageGap, "safe comment limit"
+            ),
+        ):
+            self.collector.paginated_issue_comments("owner/requirements", 10)
+
+    def test_shared_budget_bounds_aggregate_comment_pages(self) -> None:
+        budget = self.collector.LinkedRequirementBudget()
+
+        with (
+            patch.object(self.collector, "MAX_LINKED_REQUIREMENT_PAGES", 1),
+            patch.object(self.collector, "bounded_gh_output", return_value=b"[]"),
+            self.assertRaisesRegex(
+                self.collector.LinkedRequirementsCoverageGap,
+                "aggregate page limit",
+            ),
+        ):
+            self.collector.paginated_issue_comments("owner/requirements", 10, budget)
+            self.collector.paginated_issue_comments("owner/requirements", 11, budget)
+
+    def test_shared_budget_bounds_aggregate_comment_count(self) -> None:
+        budget = self.collector.LinkedRequirementBudget()
+
+        with (
+            patch.object(self.collector, "MAX_LINKED_REQUIREMENT_COMMENTS", 1),
+            patch.object(self.collector, "bounded_gh_output", return_value=b"[{}]"),
+            self.assertRaisesRegex(
+                self.collector.LinkedRequirementsCoverageGap,
+                "aggregate comment limit",
+            ),
+        ):
+            self.collector.paginated_issue_comments("owner/requirements", 10, budget)
+            self.collector.paginated_issue_comments("owner/requirements", 11, budget)
+
+    def test_shared_budget_bounds_aggregate_comment_bytes(self) -> None:
+        budget = self.collector.LinkedRequirementBudget()
+
+        with (
+            patch.object(self.collector, "MAX_LINKED_REQUIREMENT_BYTES", 2),
+            patch.object(self.collector, "bounded_gh_output", return_value=b"[]"),
+            self.assertRaisesRegex(
+                self.collector.LinkedRequirementsCoverageGap,
+                "aggregate byte limit",
+            ),
+        ):
+            self.collector.paginated_issue_comments("owner/requirements", 10, budget)
+            self.collector.paginated_issue_comments("owner/requirements", 11, budget)
 
 
 class ImmutableEvidenceTests(unittest.TestCase):
@@ -281,7 +655,10 @@ class ImmutableEvidenceTests(unittest.TestCase):
         ),
         replace_head_with_base: bool = False,
         linked_issue_sequence: list[dict[str, object]] | None = None,
-        linked_comment_sequence: list[list[dict[str, object]]] | None = None,
+        linked_comment_sequence: list[object] | None = None,
+        linked_comment_body_bytes: int | None = None,
+        linked_comment_count: int | None = None,
+        linked_issue_body_bytes: int | None = None,
         expected_target: bool = True,
         hostile_target_environment: bool = False,
     ) -> tuple[subprocess.CompletedProcess[str], int, str, str]:
@@ -313,6 +690,16 @@ class ImmutableEvidenceTests(unittest.TestCase):
                 environment["ATHENA_TEST_GH_COMMENT_STATE"] = str(comment_state_path)
                 environment["ATHENA_TEST_GH_COMMENT_SEQUENCE"] = json.dumps(
                     linked_comment_sequence
+                )
+            if linked_comment_body_bytes is not None:
+                environment["ATHENA_TEST_GH_COMMENT_BODY_BYTES"] = str(
+                    linked_comment_body_bytes
+                )
+            if linked_comment_count is not None:
+                environment["ATHENA_TEST_GH_COMMENT_COUNT"] = str(linked_comment_count)
+            if linked_issue_body_bytes is not None:
+                environment["ATHENA_TEST_GH_ISSUE_BODY_BYTES"] = str(
+                    linked_issue_body_bytes
                 )
             environment["ATHENA_TEST_FORBID_GH_API"] = "1"
             if hostile_target_environment:
@@ -688,6 +1075,145 @@ class ImmutableEvidenceTests(unittest.TestCase):
 
         self.assertEqual(1, result.returncode)
         self.assertEqual(2, call_count)
+
+    def test_bounds_linked_issue_comment_pages_as_a_structured_coverage_gap(
+        self,
+    ) -> None:
+        reference, requirement = linked_requirement_fixture()
+        page = [{"id": index, "body": "Comment"} for index in range(100)]
+
+        result, call_count, _, _ = self.run_collector(
+            [pull_request(closing_issues=[reference])],
+            linked_issue_sequence=[requirement],
+            linked_comment_sequence=[page] * 10,
+        )
+
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(1, call_count)
+        error = json.loads(result.stdout)
+        self.assertEqual("linked issue requirements coverage gap", error["error"])
+        self.assertIn("page limit", error["details"])
+        self.assertEqual("", result.stderr)
+
+    def test_bounds_linked_issue_comment_count_as_a_structured_coverage_gap(
+        self,
+    ) -> None:
+        reference, requirement = linked_requirement_fixture()
+
+        result, call_count, _, _ = self.run_collector(
+            [pull_request(closing_issues=[reference])],
+            linked_issue_sequence=[requirement],
+            linked_comment_count=1001,
+        )
+
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(1, call_count)
+        error = json.loads(result.stdout)
+        self.assertEqual("linked issue requirements coverage gap", error["error"])
+        self.assertIn("comment limit", error["details"])
+        self.assertEqual("", result.stderr)
+
+    def test_bounds_linked_issue_comment_bytes_as_a_structured_coverage_gap(
+        self,
+    ) -> None:
+        reference, requirement = linked_requirement_fixture()
+
+        result, call_count, _, _ = self.run_collector(
+            [pull_request(closing_issues=[reference])],
+            linked_issue_sequence=[requirement],
+            linked_comment_body_bytes=2 * 1024 * 1024,
+        )
+
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(1, call_count)
+        error = json.loads(result.stdout)
+        self.assertEqual("linked issue requirements coverage gap", error["error"])
+        self.assertIn("byte limit", error["details"])
+        self.assertEqual("", result.stderr)
+
+    def test_bounds_linked_issue_metadata_body_as_a_structured_coverage_gap(
+        self,
+    ) -> None:
+        reference, _ = linked_requirement_fixture()
+
+        result, call_count, _, _ = self.run_collector(
+            [pull_request(closing_issues=[reference])],
+            linked_issue_body_bytes=2 * 1024 * 1024,
+        )
+
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(1, call_count)
+        error = json.loads(result.stdout)
+        self.assertEqual("linked issue requirements coverage gap", error["error"])
+        self.assertIn("metadata byte limit", error["details"])
+        self.assertEqual("", result.stderr)
+
+    def test_rejects_malformed_linked_comment_pages_end_to_end(self) -> None:
+        reference, requirement = linked_requirement_fixture()
+        cases = (
+            ({"id": 1}, "GitHub returned invalid linked issue comment pages\n"),
+            (
+                ["not-a-comment-object"],
+                "GitHub returned an invalid linked issue comment\n",
+            ),
+        )
+        for page, expected_error in cases:
+            with self.subTest(page=page):
+                result, call_count, _, _ = self.run_collector(
+                    [pull_request(closing_issues=[reference])],
+                    linked_issue_sequence=[requirement],
+                    linked_comment_sequence=[page],
+                )
+
+                self.assertEqual(1, result.returncode)
+                self.assertEqual(1, call_count)
+                self.assertEqual("", result.stdout)
+                self.assertEqual(expected_error, result.stderr)
+
+    def test_bounds_linked_requirements_across_final_revalidation(self) -> None:
+        fixtures = [
+            linked_requirement_fixture(number, f"I_{index:02d}")
+            for index, number in enumerate(range(10, 23))
+        ]
+        references = [reference for reference, _ in fixtures]
+        requirements = [requirement for _, requirement in fixtures]
+
+        result, call_count, _, _ = self.run_collector(
+            [
+                pull_request(closing_issues=references),
+                pull_request(closing_issues=references),
+            ],
+            linked_issue_sequence=[*requirements, *requirements],
+            linked_comment_sequence=[[]] * 26,
+        )
+
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(2, call_count)
+        error = json.loads(result.stdout)
+        self.assertEqual("linked issue requirements coverage gap", error["error"])
+        self.assertIn("aggregate request limit", error["details"])
+        self.assertEqual("", result.stderr)
+
+    def test_reports_final_partial_pr_metadata_as_a_structured_error(self) -> None:
+        initial = pull_request()
+        final = pull_request()
+        final["headRefName"] = None
+
+        result, call_count, _, _ = self.run_collector([initial, final])
+
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(2, call_count)
+        self.assertEqual(
+            {
+                "error": "incomplete PR metadata",
+                "details": (
+                    "GitHub returned incomplete or invalid PR metadata fields: "
+                    "headRefName"
+                ),
+            },
+            json.loads(result.stdout),
+        )
+        self.assertEqual("", result.stderr)
 
     def test_emits_final_revalidated_metadata(self) -> None:
         initial = pull_request()
