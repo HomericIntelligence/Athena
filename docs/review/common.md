@@ -199,8 +199,15 @@ are never publication authority.
   remain read-only. Indirect invocation does not confer forge-write authority.
 - **PR review:** an explicit direct user request may publish one logical,
   comment-only review batch on its supported forge: a GitHub `COMMENT` review
-  or GitLab merge-request discussions. `--report-only` remains read-only. The
-  `--prevalidated` profile never posts or executes commands.
+  or GitLab merge-request discussions. On GitHub, accumulate every anchorable
+  finding before any write and submit the complete set in the `comments` array
+  of exactly one atomic `COMMENT` review; never split it into one review or
+  `POST` per inline finding. If the complete batch cannot be safely sent, make
+  no GitHub write and return the entire ready-to-publish batch. If a `POST` is
+  indeterminate or cannot be verified, do not retry, fall back to per-finding
+  posts, or make further writes; report the posting state as indeterminate.
+  `--report-only` remains read-only. The `--prevalidated` profile never posts
+  or executes commands.
 - **Repository review:** an explicit direct user request may create a
   deduplicated tracking hierarchy and work items. On GitHub, use a writable
   configured Project and its existing unambiguous fields when available;
