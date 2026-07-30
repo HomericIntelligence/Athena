@@ -47,7 +47,10 @@ The canonical plan contains:
 
 Run `advise` before planning. It must finish its required knowledge sync before
 the plan is drafted. Do not create speculative features, unrelated refactors,
-or generic framework layers without a demonstrated current consumer.
+or generic framework layers without a demonstrated current consumer. For a new
+module, abstraction, public interface, dependency, configuration path, or state
+owner, identify the current consumer and why reuse, deletion, consolidation, or
+a direct local change is not the simpler behaviorally complete option.
 
 ## Issue review artifact
 

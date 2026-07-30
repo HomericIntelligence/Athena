@@ -112,6 +112,33 @@ generic style slogans:
 - **POLA:** reject surprising defaults, hidden state, silent failure, ambiguous
   ownership, and interfaces inconsistent with repository precedent.
 
+### Simplicity and code-reduction comparison
+
+When two credible alternatives are architecture-aligned and preserve the same
+current requirements, behavior, safety, compatibility, clarity, and functional
+verification, choose the simpler implementation. Prefer, in order:
+
+1. reusing an existing narrow capability;
+2. deleting or consolidating redundant behavior or ownership;
+3. a direct local change; then
+4. a new module, abstraction, public interface, dependency, configuration
+   path, or state owner only when a current requirement or documented
+   architectural boundary requires it.
+
+Compare total implementation and maintenance surface: concepts, control-flow
+paths, invariants, interfaces, dependencies, configuration, state, and net
+maintained code. Among otherwise equally simple alternatives, choose the one
+with the least net code and configuration. This is not code golf: never remove
+required behavior, behavior-first tests, validation, explicit error handling,
+observability, readability, or an architectural boundary merely to reduce line
+count. A larger approach must identify the present requirement or lower total
+complexity that justifies it.
+
+For a KISS, YAGNI, or DRY finding, name the concrete behaviorally complete
+simpler alternative and the unnecessary code, abstraction, or duplicate
+authority it avoids. Do not issue a generic "reduce code" finding or treat raw
+line count alone as evidence.
+
 When a principle produces a material finding, name the principle and describe
 the concrete boundary or behavior it affects. Do not report a vague "SOLID
 violation."
@@ -206,9 +233,13 @@ batch instead of silently weakening its location.
 2. Read repository guidance and establish architecture alignment.
 3. Classify the scope and choose only applicable review surfaces and language
    profiles.
-4. Inspect evidence and test behavior, including relevant error and boundary
+4. When a change introduces a module, abstraction, public interface,
+   dependency, configuration path, state owner, or overlapping behavior,
+   compare a credible equivalent alternative using the simplicity and
+   code-reduction rule above. Do not invent a hypothetical reduction finding.
+5. Inspect evidence and test behavior, including relevant error and boundary
    paths.
-5. De-duplicate findings, rank them by severity, and independently label the
+6. De-duplicate findings, rank them by severity, and independently label the
    required response so blockers are distinct from optional mentoring.
-6. Deliver findings through the scope-specific channel only after full
+7. Deliver findings through the scope-specific channel only after full
    coverage is complete.
