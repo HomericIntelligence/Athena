@@ -264,11 +264,7 @@ def nofollow_parent_descriptor(
     repository_root: Path, relative_path: str
 ) -> tuple[int, str]:
     """Open a path's parent without following any repository symlink."""
-    if (
-        not hasattr(os, "O_NOFOLLOW")
-        or not hasattr(os, "O_DIRECTORY")
-        or os.open not in os.supports_dir_fd
-    ):
+    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
         raise RuntimeError(
             "host cannot inspect repository paths without following links"
         )

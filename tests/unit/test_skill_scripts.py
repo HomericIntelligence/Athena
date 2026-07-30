@@ -1098,6 +1098,35 @@ class ChangeReviewScriptTests(unittest.TestCase):
         finally:
             sys.modules.pop(module_name, None)
 
+    def test_nofollow_inspection_accepts_open_dir_fd_support_without_registry_entry(
+        self,
+    ) -> None:
+        module_name = "test_change_review_open_dir_fd"
+        specification = importlib.util.spec_from_file_location(
+            module_name,
+            ROOT / "skills/change-review/scripts/resolve_scope.py",
+        )
+        assert specification is not None
+        assert specification.loader is not None
+        module = importlib.util.module_from_spec(specification)
+        sys.modules[module_name] = module
+        try:
+            specification.loader.exec_module(module)
+            with tempfile.TemporaryDirectory() as temporary_directory:
+                repository = Path(temporary_directory) / "repo"
+                initialize_repository(repository)
+                supported = frozenset(
+                    operation
+                    for operation in module.os.supports_dir_fd
+                    if operation is not module.os.open
+                )
+                with patch.object(module.os, "supports_dir_fd", supported):
+                    entry = module.worktree_path_entry(repository, "tracked.txt")
+
+            self.assertEqual("file", entry.kind)
+        finally:
+            sys.modules.pop(module_name, None)
+
 
 class WorktreeScriptTests(unittest.TestCase):
     def test_prepare_worktree_uses_explicit_path_and_start_point(self) -> None:
