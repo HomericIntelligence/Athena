@@ -8,6 +8,8 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -22,6 +24,9 @@ from scripts.package_plugin import (
     main,
     read_plugin_version,
 )
+
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def create_repository(root: Path, *, version: str = "1.2.3") -> None:
@@ -57,6 +62,116 @@ def write_archive(path: Path, member: tarfile.TarInfo, data: bytes = b"") -> Non
 
 
 class PackagePluginTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("node"), "Pi helper contracts require Node.js")
+    def test_pi_rpc_inventory_verifier_requires_exact_package_provenance(self) -> None:
+        """Package skill discovery accepts only the expected package-origin commands."""
+        verifier = ROOT / "scripts" / "verify_pi_package.mjs"
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "package"
+            for skill in ("advise", "learn", "pr-review"):
+                skill_path = root / "skills" / skill
+                skill_path.mkdir(parents=True)
+                (skill_path / "SKILL.md").write_text("fixture\n", encoding="utf-8")
+            inventory = Path(temporary_directory) / "commands.jsonl"
+            commands = [
+                {
+                    "name": f"skill:{skill}",
+                    "source": "skill",
+                    "sourceInfo": {"origin": "package", "baseDir": str(root)},
+                }
+                for skill in ("advise", "learn", "pr-review")
+            ]
+            inventory.write_text(
+                json.dumps(
+                    {
+                        "id": "skills",
+                        "type": "response",
+                        "command": "get_commands",
+                        "success": True,
+                        "data": {"commands": commands},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            accepted = subprocess.run(
+                ["node", str(verifier), str(root), str(inventory)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, accepted.returncode, accepted.stderr)
+            self.assertIn("Verified 3 Pi package skills", accepted.stdout)
+
+            rejected_commands = [
+                {
+                    "name": "skill:advise",
+                    "source": "skill",
+                    "sourceInfo": {"origin": "user", "baseDir": str(root)},
+                },
+                *commands[1:],
+            ]
+            inventory.write_text(
+                json.dumps(
+                    {
+                        "id": "skills",
+                        "type": "response",
+                        "command": "get_commands",
+                        "success": True,
+                        "data": {"commands": rejected_commands},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            rejected = subprocess.run(
+                ["node", str(verifier), str(root), str(inventory)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertNotEqual(0, rejected.returncode)
+            self.assertIn("Pi skill inventory mismatch", rejected.stderr)
+
+    @unittest.skipUnless(shutil.which("node"), "Pi helper contracts require Node.js")
+    def test_ci_subagent_probe_reports_the_registered_active_package_tool(self) -> None:
+        """The CI-only probe produces structured package-origin tool evidence."""
+        probe = (ROOT / "scripts" / "ci_pi_subagent_probe.mjs").as_uri()
+        script = f"""
+import probe from {json.dumps(probe)};
+let registration;
+probe({{
+  registerCommand: (name, value) => {{ registration = {{ name, value }}; }},
+  getAllTools: () => [{{
+    name: "subagent",
+    sourceInfo: {{ origin: "package", source: "npm:pi-subagents@0.37.2" }},
+  }}],
+  getActiveTools: () => ["subagent"],
+}});
+let notification;
+await registration.value.handler("", {{
+  ui: {{ notify: (message, type) => {{ notification = {{ message, type }}; }} }},
+}});
+const payload = JSON.parse(notification.message);
+if (
+  registration.name !== "ci-verify-subagent-tool" ||
+  notification.type !== "info" ||
+  payload.tool?.name !== "subagent" ||
+  payload.tool.active !== true ||
+  payload.tool.sourceInfo?.origin !== "package"
+) {{
+  throw new Error("invalid pi-subagents probe evidence");
+}}
+"""
+        result = subprocess.run(
+            ["node", "--input-type=module", "--eval", script],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+
     def test_build_is_byte_reproducible_and_writes_checksum(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)

@@ -9,6 +9,11 @@ Athena publishes two checksummed SPDX 2.3 software bills of materials with each 
   authoritative `ubuntu-24.04`/`linux-64` build environment, uv, and the immutable GitHub Actions
   used by the package job.
 
+The committed `ci/pi-runtime/` npm lockfile captures exact Pi CLI and delegation-package integrity
+data. The package job copies it into an isolated temporary Pi runtime, which Syft scans after Pi
+package installation and retains as a second native inventory for Grype. It is CI evidence rather
+than a release asset, and Athena never bundles those third-party packages.
+
 Host capabilities, the runner operating system, and commands used only in examples are outside the
 dependency scope. Athena remains a plugin distribution and does not add a Python package or runtime
 dependency for SBOM generation.
@@ -24,9 +29,10 @@ installed package remains represented as a build-environment dependency.
 
 ## Vulnerability policy
 
-The required `security/dependency-scan` job scans the native Linux build-environment inventory with
-the locked Grype version. Scanner, database, configuration, or report failures block the gate. The
-database must pass its hash check, be no more than 120 hours old, and complete an update check.
+The required `security/dependency-scan` job scans both native inventories—the Linux build environment
+and the isolated Pi runtime—with the locked Grype version. Scanner, database, configuration, or
+report failures block the gate. The database must pass its hash check, be no more than 120 hours old,
+and complete an update check.
 
 Fixable Critical and High findings block the gate. Unfixed Critical and High findings and all lower
 severities remain visible in the retained full JSON report but are non-blocking. Vulnerability

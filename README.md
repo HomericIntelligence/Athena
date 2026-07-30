@@ -71,22 +71,23 @@ codex plugin marketplace remove athena
 
 ### Pi
 
-Athena requires Pi `0.83.0`. Install the native package from a signed Athena
-release tag that contains this Pi manifest, or use an immutable commit while a
-release is pending. Do not use `v0.3.0`: it predates native Pi packaging.
+Athena requires Pi `0.83.0`. The first Athena release with the native Pi
+manifest will be `v0.4.0`; until that signed tag exists, install an immutable
+commit. Do not use `v0.3.0`: it predates native Pi packaging.
 
 ```bash
 pi install git:github.com/HomericIntelligence/Athena@<immutable-commit-or-supported-tag>
 ```
 
 Pi discovers Athena's canonical `skills/` corpus as `/skill:<name>` commands;
-for example, invoke `/skill:repo-review`. `pi update --extensions` reconciles
-the configured immutable ref, rather than advancing it. To change versions,
-install the new immutable ref explicitly; remove the configured source when it
-is no longer needed:
+for example, invoke `/skill:repo-review`. Update only Athena's configured
+source; it reconciles the configured immutable ref rather than advancing it.
+To change versions, install the new immutable ref explicitly; remove the
+configured source when it is no longer needed:
 
 ```bash
 pi install git:github.com/HomericIntelligence/Athena@<next-immutable-ref>
+pi update git:github.com/HomericIntelligence/Athena@<configured-ref>
 pi remove git:github.com/HomericIntelligence/Athena@<configured-ref>
 ```
 

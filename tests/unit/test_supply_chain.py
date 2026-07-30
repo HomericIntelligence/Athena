@@ -776,6 +776,70 @@ class WorkflowContractTests(unittest.TestCase):
             "athena-plugin", release["jobs"]["release"]["steps"][1]["with"]["name"]
         )
 
+    def test_pi_runtime_is_locked_updated_and_scanned_before_ci_executes_it(
+        self,
+    ) -> None:
+        """The real Pi/npm dependency tree must be an SCA-gated CI input."""
+        root = Path(__file__).resolve().parents[2]
+        runtime_root = root / "ci" / "pi-runtime"
+        manifest = json.loads(
+            (runtime_root / "package.json").read_text(encoding="utf-8")
+        )
+        lock = json.loads(
+            (runtime_root / "package-lock.json").read_text(encoding="utf-8")
+        )
+        dependabot = yaml.safe_load(
+            (root / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+        )
+        required = yaml.safe_load(
+            (root / ".github" / "workflows" / "_required.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        self.assertEqual(
+            {
+                "@earendil-works/pi-coding-agent": "0.83.0",
+                "pi-subagents": "0.37.2",
+            },
+            manifest["dependencies"],
+        )
+        self.assertEqual(3, lock["lockfileVersion"])
+        for package in manifest["dependencies"]:
+            resolved = lock["packages"][f"node_modules/{package}"]
+            self.assertIn("integrity", resolved)
+            self.assertEqual(manifest["dependencies"][package], resolved["version"])
+        self.assertIn(
+            {
+                "package-ecosystem": "npm",
+                "directory": "/ci/pi-runtime",
+                "schedule": {"interval": "weekly"},
+            },
+            dependabot["updates"],
+        )
+
+        package_job = required["jobs"]["package"]
+        pi_step = next(
+            step
+            for step in package_job["steps"]
+            if step.get("name")
+            == "Verify native Pi package source, archive, and delegation surface"
+        )
+        self.assertIn('npm ci --prefix "$PI_RUNTIME_ROOT"', pi_step["run"])
+        self.assertIn("--ignore-scripts --engine-strict", pi_step["run"])
+        self.assertIn('scan "$PI_RUNTIME_ROOT" -o json', pi_step["run"])
+        self.assertIn("syft-pi-runtime.json", json.dumps(package_job))
+
+        scan_job = required["jobs"]["security-dependency-scan"]
+        scan_step = next(
+            step
+            for step in scan_job["steps"]
+            if step.get("name")
+            == "Scan dependency inventories and enforce vulnerability policy"
+        )
+        self.assertIn("syft-environment.json", scan_step["run"])
+        self.assertIn("syft-pi-runtime.json", scan_step["run"])
+
     def test_all_external_actions_are_commit_pinned(self) -> None:
         root = Path(__file__).resolve().parents[2]
         for path in (root / ".github" / "workflows").glob("*.yml"):

@@ -135,9 +135,6 @@ jobs:
         with:
           version: "0.10.8"
           enable-cache: true
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: "22.19.0"
       - name: Install locked build environment
         run: uv sync --locked
       - id: syft
@@ -161,15 +158,27 @@ jobs:
       - name: Verify native Pi package source, archive, and delegation surface
         env:
           GIT_TERMINAL_PROMPT: "0"
-          PI_VERSION: "0.83.0"
+          PI_RUNTIME_LOCK_ROOT: ${{ github.workspace }}/ci/pi-runtime
+          PI_RUNTIME_ROOT: ${{ runner.temp }}/athena-pi-runtime
           PI_SOURCE_REPOSITORY: >-
             ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           PI_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}
-          PI_CODING_AGENT_DIR: ${{ runner.temp }}/athena-pi-agent
+          PI_SOURCE_AGENT_DIRECTORY: ${{ runner.temp }}/athena-pi-runtime/source-agent
+          PI_ARCHIVE_AGENT_DIRECTORY: ${{ runner.temp }}/athena-pi-runtime/archive-agent
+          PI_SUBAGENT_AGENT_DIRECTORY: ${{ runner.temp }}/athena-pi-runtime/subagents-agent
           npm_config_cache: ${{ runner.temp }}/athena-pi-npm-cache
         run: |
-          npm install --global --ignore-scripts "@earendil-works/pi-coding-agent@${PI_VERSION}"
-          test "$(pi --version)" = "$PI_VERSION"
+          mkdir -p "$PI_RUNTIME_ROOT"
+          cp "$PI_RUNTIME_LOCK_ROOT/package.json" \
+            "$PI_RUNTIME_LOCK_ROOT/package-lock.json" "$PI_RUNTIME_ROOT/"
+          npm ci --prefix "$PI_RUNTIME_ROOT" --ignore-scripts --engine-strict
+          export PATH="$PI_RUNTIME_ROOT/node_modules/.bin:$PATH"
+          pi_version="$(node -p 'require(process.argv[1]).version' \
+            "$PI_RUNTIME_ROOT/node_modules/@earendil-works/pi-coding-agent/package.json")"
+          test "$(pi --version)" = "$pi_version"
+          pi_subagents_version="$(node -p 'require(process.argv[1]).version' \
+            "$PI_RUNTIME_ROOT/node_modules/pi-subagents/package.json")"
+          export PI_SUBAGENTS_SOURCE="npm:pi-subagents@${pi_subagents_version}"
 
           verify_pi_skills() {
             package_root="$1"
@@ -182,28 +191,29 @@ jobs:
           }
 
           pi_source="git:github.com/${PI_SOURCE_REPOSITORY}@${PI_SOURCE_REF}"
-          pi install "$pi_source" --no-approve
-          pi list | grep -F -- "github.com/${PI_SOURCE_REPOSITORY}"
-          git_manifest="$(find "$PI_CODING_AGENT_DIR/git" -type f -name package.json -print -quit)"
+          PI_CODING_AGENT_DIR="$PI_SOURCE_AGENT_DIRECTORY" \
+            pi install "$pi_source" --no-approve
+          PI_CODING_AGENT_DIR="$PI_SOURCE_AGENT_DIRECTORY" \
+            pi list | grep -F -- "github.com/${PI_SOURCE_REPOSITORY}"
+          git_manifest="$(find "$PI_SOURCE_AGENT_DIRECTORY/git" -type f \
+            -name package.json -print -quit)"
           test -n "$git_manifest"
-          verify_pi_skills "$(dirname "$git_manifest")" "$PI_CODING_AGENT_DIR"
+          verify_pi_skills "$(dirname "$git_manifest")" "$PI_SOURCE_AGENT_DIRECTORY"
 
           archive="$(find dist -maxdepth 1 -type f -name 'athena-plugin-*.tar.gz' -print -quit)"
           test -n "$archive"
           archive_root="$RUNNER_TEMP/athena-pi-archive"
           mkdir -p "$archive_root"
           tar -xzf "$archive" -C "$archive_root"
-          archive_agent_directory="$RUNNER_TEMP/athena-pi-archive-agent"
-          PI_CODING_AGENT_DIR="$archive_agent_directory" pi install "$archive_root" --no-approve
-          verify_pi_skills "$archive_root" "$archive_agent_directory"
+          PI_CODING_AGENT_DIR="$PI_ARCHIVE_AGENT_DIRECTORY" pi install "$archive_root" --no-approve
+          verify_pi_skills "$archive_root" "$PI_ARCHIVE_AGENT_DIRECTORY"
 
           unset PI_SUBAGENT_CHILD
-          subagent_agent_directory="$RUNNER_TEMP/athena-pi-subagents-agent"
           subagent_output="$RUNNER_TEMP/athena-pi-subagent-probe.jsonl"
-          PI_CODING_AGENT_DIR="$subagent_agent_directory" \
-            pi install npm:pi-subagents@0.37.2 --no-approve
+          PI_CODING_AGENT_DIR="$PI_SUBAGENT_AGENT_DIRECTORY" \
+            pi install "$PI_SUBAGENTS_SOURCE" --no-approve
           printf '%s\n' '{"id":"probe-tool","type":"prompt","message":"/ci-verify-subagent-tool"}' |
-            PI_CODING_AGENT_DIR="$subagent_agent_directory" PI_OFFLINE=1 \
+            PI_CODING_AGENT_DIR="$PI_SUBAGENT_AGENT_DIRECTORY" PI_OFFLINE=1 \
               pi --mode rpc --offline --no-session --no-context-files --no-skills \
                 --no-prompt-templates --no-approve --tools subagent \
                 --extension "$PWD/scripts/ci_pi_subagent_probe.mjs" > "$subagent_output"
@@ -224,12 +234,15 @@ jobs:
             !response?.success ||
             payload?.tool?.name !== "subagent" ||
             payload.tool.active !== true ||
-            payload.tool.sourceInfo?.source !== "npm:pi-subagents@0.37.2" ||
+            payload.tool.sourceInfo?.source !== process.env.PI_SUBAGENTS_SOURCE ||
             payload.tool.sourceInfo?.origin !== "package"
           ) {
             throw new Error("pi-subagents did not register the pinned active subagent tool");
           }
           NODE
+          "${{ steps.syft.outputs.cmd }}" scan "$PI_RUNTIME_ROOT" -o json \
+            > dist-internal/syft-pi-runtime.json
+          test -s dist-internal/syft-pi-runtime.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: athena-plugin
@@ -244,7 +257,9 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: athena-sca-input
-          path: dist-internal/syft-environment.json
+          path: |
+            dist-internal/syft-environment.json
+            dist-internal/syft-pi-runtime.json
           if-no-files-found: error
 
   security-dependency-scan:
@@ -273,19 +288,24 @@ jobs:
         with:
           name: athena-sca-input
           path: dist-internal
-      - name: Scan dependency inventory and enforce vulnerability policy
+      - name: Scan dependency inventories and enforce vulnerability policy
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          uv run python scripts/scan_vulnerabilities.py
-          --inventory dist-internal/syft-environment.json
-          --grype "${{ steps.grype.outputs.cmd }}"
-      - name: Retain the full vulnerability report
-        if: always() && hashFiles('dist-internal/grype.json') != ''
+        run: |
+          uv run python scripts/scan_vulnerabilities.py \
+            --inventory dist-internal/syft-environment.json \
+            --report dist-internal/grype-environment.json \
+            --grype "${{ steps.grype.outputs.cmd }}"
+          uv run python scripts/scan_vulnerabilities.py \
+            --inventory dist-internal/syft-pi-runtime.json \
+            --report dist-internal/grype-pi-runtime.json \
+            --grype "${{ steps.grype.outputs.cmd }}"
+      - name: Retain the full vulnerability reports
+        if: always() && hashFiles('dist-internal/grype-*.json') != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: athena-grype-report
-          path: dist-internal/grype.json
+          path: dist-internal/grype-*.json
           if-no-files-found: error
 
   pr-policy:

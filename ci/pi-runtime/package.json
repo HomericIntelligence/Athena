@@ -1,0 +1,13 @@
+{
+  "name": "athena-pi-ci-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Locked CI-only Pi runtime for Athena package verification.",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.83.0",
+    "pi-subagents": "0.37.2"
+  }
+}
