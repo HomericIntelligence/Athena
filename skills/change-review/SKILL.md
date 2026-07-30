@@ -32,6 +32,19 @@ immutable base/head commits, selected untracked paths, and a content-bound
 `scope_digest` without writing Git state. Read every eligible object in that
 manifest.
 
+For worktree safety, the helper compares raw no-follow filesystem content with
+immutable Git objects; it must never invoke configured Git clean/process/text
+conversion or external-diff hooks on live files. Treat that raw manifest as the
+review scope rather than claiming filter-converted equivalence. When a product
+contract depends on a conversion, assess it through safe repository evidence or
+record the conversion-specific coverage gap.
+
+Safe worktree resolution is deliberately bounded. If it reports an oversized
+candidate manifest, unsupported no-follow capability, or a submodule-state
+boundary, record the coverage gap and rerun with narrower `PATH` arguments or a
+staged/range scope. Never sample paths or silently treat inaccessible state as
+reviewed.
+
 Paths further restrict the selected diff; reject a path outside the repository
 root. For `--range`, report the immutable base and head commits. For
 `--worktree` or `--staged`, report `HEAD`, the selected paths, and the returned

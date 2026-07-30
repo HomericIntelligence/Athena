@@ -28,8 +28,13 @@ fatal. See [`docs/dependency-resolution.md`](docs/dependency-resolution.md).
 The knowledge backend is mandatory. `learn` always uses an isolated worktree and creates a pull
 request; it never writes directly to the knowledge repository's default branch.
 
-Script-backed skills require Git, GitHub CLI, and Python 3.10 or newer on the host. Athena ships the
-scripts as plugin resources; it does not install a Python package or third-party runtime library.
+Script-backed skills require Git and Python 3.10 or newer on the host. Dependency resolution and the
+GitHub pull-request helper route additionally require authenticated GitHub CLI (`gh`) access. GitHub
+issue and repository routes require the authenticated GitHub capability selected by their own skill.
+GitLab issue, merge-request, and epic routes instead require an authenticated GitLab capability
+supplied by the host; they must not fall back to GitHub CLI. Skills that do not select a forge route
+do not require a forge client. Athena ships scripts as plugin resources; it does not install a Python
+package or third-party runtime library.
 
 ## Install
 

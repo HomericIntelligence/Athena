@@ -25,17 +25,32 @@ or revalidation failure is blocking.
 2. Derive the canonical retrieval intent: the trigger/context, desired outcome,
    constraints, and failure mode another agent needs to recognize. Do not use a
    title, issue number, or session wording as the identity.
-3. Search flat `skills/*.md`, excluding optional notes, for semantic overlap.
-4. Search Git history for prior consolidation and provenance.
+3. Search flat `skills/*.md`, excluding optional notes, for every semantic
+   match. Group entries by retrieval intent rather than title, issue number, or
+   wording, then inspect each same-intent candidate.
+4. Search Git history for prior consolidation, provenance, and the durable
+   decision rule each candidate preserves.
 5. Query open pull requests in the resolved Mnemosyne repository by candidate title and changed
-   `skills/<name>.md` path. If one already changes the canonical entry, inspect it and either stack on
+   `skills/<name>.md` path. If one already changes a same-intent entry, inspect it and either stack on
    its branch with explicit authority or stop for user direction; never create a conflicting PR.
-6. Record one disposition before mutating: `amend`, `create`, or `reject`.
-   Amend the canonical entry when its retrieval intent matches and there is a
-   material verified decision-rule, workflow, parameter, or failure-mode delta.
-   Create an entry only for a materially distinct intent. Reject the lesson as
-   `no learnable change` when it adds no durable, verified delta. Do not report
-   `learn` as completed after a rejection.
+6. Record one disposition before mutating: `amend`, `consolidate`, `create`, or
+   `reject`.
+   - Amend exactly one canonical entry when its retrieval intent matches and
+     there is a material verified decision-rule, workflow, parameter, or
+     failure-mode delta.
+   - Consolidate when two or more current entries have the same retrieval
+     intent: select one canonical entry, merge every non-superseded verified
+     rule, and retire the duplicates in the same pull request.
+   - Create only for a materially distinct intent.
+   - Reject the lesson as `no learnable change` when it adds no durable,
+     verified delta.
+
+   An ambiguous candidate set, conflicting active change, unverifiable delta,
+   or unsafe retirement is a blocking consolidation failure. Leave Mnemosyne
+   unchanged, report the candidate paths and evidence gap, and obtain user
+   direction; do not evade consolidation by creating another near-duplicate.
+   Do not report `learn` as completed after a rejection or blocked
+   consolidation.
 
 ## Canonicalization rules
 
@@ -45,10 +60,19 @@ to execute or verify that rule. Do not create near-duplicates for different
 repositories, issue numbers, tool output, names, timestamps, or conversational
 phrasing when the trigger and desired outcome already match a canonical entry.
 
-An amendment folds the new verified delta into that canonical entry and removes
-superseded or repeated guidance. A creation names the distinct trigger and
-outcome precisely enough for retrieval. A rejection leaves Mnemosyne unchanged
-and reports the matching entry or the reason the evidence is not durable.
+Before adding new guidance, consolidate every verified same-intent set into one
+canonical entry. Choose the entry with the clearest reusable retrieval intent
+and strongest provenance, fold all non-superseded verified deltas into it, and
+retire duplicate entries in the same pull request. Preserve history in Git; do
+not retain duplicate active entries merely as provenance. If a candidate has a
+materially distinct rule, an active consumer that cannot be safely migrated, or
+uncertain provenance, stop without mutation and request direction.
+
+An amendment folds the new verified delta into one already-canonical entry and
+removes superseded or repeated guidance. A creation names the distinct trigger
+and outcome precisely enough for retrieval. A rejection leaves Mnemosyne
+unchanged and reports the matching entry or the reason the evidence is not
+durable.
 
 Repository audits belong in `repo-review`; PR audits belong in `pr-review`; review depth is a mode,
 not another skill.
@@ -119,16 +143,21 @@ Never modify the shared checkout's active worktree. From its fetched default bra
    relevant failed approaches, parameters, and evidence. Omit session transcript
    detail that no active consumer needs.
 4. For an amendment, update only the canonical entry, fold in the verified
-   delta, and remove repeated or superseded guidance. Git and pull-request
-   history provide provenance; optional raw evidence may be added to `.notes.md`
-   only when a current consumer needs it.
+   delta, and remove repeated or superseded guidance. For a consolidation,
+   merge every non-superseded verified rule into the selected canonical entry,
+   retire each duplicate in the same pull request, and preserve provenance in
+   Git history. Do not retire a candidate until its active consumers are safely
+   migrated under the authorized scope; otherwise stop without mutation.
+   Optional raw evidence may be added to `.notes.md` only when a current
+   consumer needs it.
 5. Run the resolved Mnemosyne repository's own validation and tests.
-6. Verify no duplicate intent or stale consolidated name was introduced.
+6. Verify exactly one active entry remains for the retrieval intent and no
+   duplicate intent or stale consolidated name was introduced.
 7. Commit with a cryptographic signature and DCO sign-off, push the feature branch, and open a PR
    against the resolved repository's default branch. The PR body must contain `Closes #N` when a
    tracking issue exists.
-8. Report the `amend` or `create` disposition, PR URL, and exact validation
-   evidence. Do not auto-merge.
+8. Report the `amend`, `consolidate`, or `create` disposition, retired entries
+   when applicable, PR URL, and exact validation evidence. Do not auto-merge.
 
 If a push or PR cannot be created, preserve the isolated worktree and report the blocker. A Learn
 run is successful only when it returns a PR URL. Never fall back to writing inside Athena or a

@@ -93,15 +93,16 @@ When a principle produces a material finding, name the principle and describe
 the concrete boundary or behavior it affects. Do not report a vague "SOLID
 violation."
 
-## Finding quality and severity
+## Finding quality, severity, and disposition
 
-Every material finding contains:
+Every reported finding contains:
 
 1. a severity: `critical`, `major`, `minor`, `nit`, or `FYI`;
-2. an exact `path:line` or a precise artifact location;
-3. the observed behavior or contract gap;
-4. the impact and governing architecture, language, or policy evidence; and
-5. a proportionate remediation direction.
+2. an independent disposition: `required`, `suggestion`, `nit`, or `FYI`;
+3. an exact `path:line` or a precise artifact location;
+4. the observed behavior or contract gap;
+5. the impact and governing architecture, language, or policy evidence; and
+6. a proportionate remediation direction.
 
 Use `critical` for correctness, security, data-loss, or irreversible failures.
 Use `major` for a material architectural, behavioral, reliability, or
@@ -109,6 +110,24 @@ maintainability problem that should be resolved before acceptance. Use `minor`
 for a genuine but non-blocking improvement. Use `nit` and `FYI` only for clearly
 non-blocking polish or mentoring. Do not turn a personal preference into a
 required change.
+
+Severity ranks the consequence; disposition states the response expected. They
+are separate fields, so a reviewer must not hide a real problem by labeling it
+as a suggestion or inflate a preference into a blocker.
+
+- **required:** resolve or explicitly accept through the target repository's
+  authoritative process before acceptance. Every `critical` or `major` finding
+  is `required`; an architecture violation remains required regardless of diff
+  size or passing checks.
+- **suggestion:** an optional improvement that does not block acceptance. Use
+  it only when current behavior and architecture are safe without the change.
+- **nit:** localized non-blocking polish. It requests no acceptance decision
+  and must not conceal a behavior, security, or architecture concern.
+- **FYI:** informational context or mentoring; no action is requested.
+
+`minor` findings may be `required` or `suggestion` according to the concrete
+impact. `nit` and `FYI` severities use their matching non-blocking disposition.
+Do not create work items or acceptance blockers for `nit` or `FYI`.
 
 ## Delivery boundaries
 
@@ -149,7 +168,7 @@ annotation was created when it was not.
    profiles.
 4. Inspect evidence and test behavior, including relevant error and boundary
    paths.
-5. De-duplicate findings, rank them by severity, and distinguish blockers from
-   optional mentoring.
+5. De-duplicate findings, rank them by severity, and independently label the
+   required response so blockers are distinct from optional mentoring.
 6. Deliver findings through the scope-specific channel only after full
    coverage is complete.

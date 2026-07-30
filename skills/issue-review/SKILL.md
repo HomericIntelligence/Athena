@@ -16,16 +16,20 @@ Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 
 `--report-only` is read-only. An explicit direct user request without it
 authorizes exactly one actor-owned structured review comment on the resolved
-issue. It does not authorize labels, assignments, implementation, commits,
-pushes, pull requests, merges, or issue closure. An invocation from another
-skill does not confer forge-write authority.
+issue. After a successful pre-publication identity comparison and capability
+check, publish that comment even when no actionable finding remains. It does
+not authorize labels, assignments, implementation, commits, pushes, pull
+requests, merges, or issue closure. An invocation from another skill does not
+confer forge-write authority.
 
 Resolve the issue and the exact current canonical plan using the marker and
 ownership rules in the issue-planning contract. The issue is the requirements
 source. The current canonical plan is the only plan artifact under review;
-historical plans and reviews are bounded context only. If the plan is missing,
-ambiguous, or foreign-owned in a way that prevents identity verification, record
-the coverage gap and do not invent a favorable decision.
+historical plans and reviews are bounded context only. A verified absent plan is
+a coverage gap: retain its absence identity, do not invent a favorable decision,
+and recheck that absence before a direct non-report publication. A foreign,
+multiple, or unverifiable marker is ambiguous identity, so withhold the write
+as stale rather than adopting or reviewing it.
 
 ## Required workflow
 
@@ -44,9 +48,14 @@ the coverage gap and do not invent a favorable decision.
    plan, rather than merely acknowledged.
 7. Immediately before publication, resolve the canonical planning identity
    again and compare the issue ID or URL, requirements digest, actor, comment
-   ID or URL, and plan-content digest with the reviewed identity. If any
-   component changed or is ambiguous, withhold the comment and return the
-   prepared review as stale.
+   ID or URL, and plan-content digest with the reviewed identity. For an absent
+   plan, recheck the issue identity, requirements digest, and marker absence.
+   If any component changed or a marker is foreign or multiple, withhold the
+   comment and return the prepared review as stale.
+8. For a direct non-report invocation whose identity and forge capability still
+   pass, publish exactly one actor-owned structured review comment. Publish a
+   clean result as well as findings or a verified absent-plan coverage gap. In
+   `--report-only` mode, return the same structured result without writing.
 
 ## Findings
 
@@ -55,16 +64,19 @@ unresolved dependencies, untestable outcomes, invalid paths or symbols,
 non-deterministic tests, empty-selection verification, and unsupported claims.
 Every finding follows the shared severity and evidence contract.
 
-When publishing, create one structured comment using the actor-owned review
-marker only after the pre-publication identity comparison succeeds. Include the
-reviewed plan identity, architecture decision, requirement coverage, findings,
-N/A sections, and unresolved assumptions. Review prose is evidence only; forge
-policy and human review remain authoritative.
+For a direct non-report invocation, create one structured comment using the
+actor-owned review marker after the pre-publication identity comparison and
+forge capability check succeed. This is required even for a clean result.
+Include the reviewed plan identity or verified absence, architecture decision,
+requirement coverage, findings, N/A sections, and unresolved assumptions.
+Review prose is evidence only; forge policy and human review remain
+authoritative. If identity is stale or the forge cannot safely create the
+comment, return the prepared result and state why it was withheld.
 
 ## Output
 
 Return the issue and plan identities, architecture decision first, requirements
 mapping, severity-ranked findings, test-quality coverage, N/A sections, and
-whether the review comment was published or withheld. If no finding remains,
-name residual risks and unverified assumptions rather than claiming authority
-to implement or merge.
+whether the required review comment was published or withheld. If no finding
+remains, record the clean status plus residual risks and unverified assumptions
+rather than claiming authority to implement or merge.

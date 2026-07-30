@@ -1037,7 +1037,7 @@ class ChangeReviewScriptTests(unittest.TestCase):
         finally:
             sys.modules.pop(module_name, None)
 
-    def test_worktree_and_staged_diffs_use_the_resolved_head_oid(self) -> None:
+    def test_worktree_and_staged_scopes_use_the_resolved_head_oid(self) -> None:
         module_name = "test_change_review_immutable_head"
         specification = importlib.util.spec_from_file_location(
             module_name,
@@ -1051,14 +1051,36 @@ class ChangeReviewScriptTests(unittest.TestCase):
             specification.loader.exec_module(module)
             head = "a" * 40
             repository_root = Path("/temporary/repository")
-            for scope in ("worktree", "staged"):
-                with patch.object(module, "git_bytes", return_value=b"") as command:
-                    module.tracked_paths(scope, "b" * 40, head, (), repository_root)
-                    module.tracked_diff(scope, "b" * 40, head, (), repository_root)
+            worktree_capture = module.WorktreeTrackedCapture(
+                paths=(),
+                fingerprint=module.ContentFingerprint(0, "a" * 64),
+            )
+            with patch.object(
+                module, "worktree_tracked_capture", return_value=worktree_capture
+            ) as capture:
+                module.tracked_paths("worktree", "b" * 40, head, (), repository_root)
+                module.tracked_diff("worktree", "b" * 40, head, (), repository_root)
 
-                for arguments, _ in command.call_args_list:
-                    self.assertIn(head, arguments)
-                    self.assertNotIn("HEAD", arguments)
+            for arguments, _ in capture.call_args_list:
+                self.assertEqual(head, arguments[0])
+
+            with (
+                patch.object(module, "git_bytes", return_value=b"") as command,
+                patch.object(
+                    module,
+                    "git_stream_fingerprint",
+                    return_value=module.ContentFingerprint(0, "b" * 64),
+                ) as fingerprint,
+            ):
+                module.tracked_paths("staged", "b" * 40, head, (), repository_root)
+                module.tracked_diff("staged", "b" * 40, head, (), repository_root)
+
+            for arguments, _ in command.call_args_list:
+                self.assertIn(head, arguments)
+                self.assertNotIn("HEAD", arguments)
+            for arguments, _ in fingerprint.call_args_list:
+                self.assertIn(head, arguments)
+                self.assertNotIn("HEAD", arguments)
         finally:
             sys.modules.pop(module_name, None)
 
@@ -1075,7 +1097,7 @@ class ChangeReviewScriptTests(unittest.TestCase):
         try:
             specification.loader.exec_module(module)
             repository_root = Path("/temporary/repository")
-            for scope in ("worktree", "staged", "range"):
+            for scope in ("staged", "range"):
                 with patch.object(module, "git_bytes", return_value=b"") as command:
                     module.tracked_paths(
                         scope,
@@ -1084,13 +1106,18 @@ class ChangeReviewScriptTests(unittest.TestCase):
                         (),
                         repository_root,
                     )
-                    module.tracked_diff(
-                        scope,
-                        "b" * 40,
-                        "a" * 40,
-                        (),
-                        repository_root,
-                    )
+                    with patch.object(
+                        module,
+                        "git_stream_fingerprint",
+                        return_value=module.ContentFingerprint(0, "a" * 64),
+                    ):
+                        module.tracked_diff(
+                            scope,
+                            "b" * 40,
+                            "a" * 40,
+                            (),
+                            repository_root,
+                        )
 
                 for arguments, _ in command.call_args_list:
                     self.assertIn("--ignore-submodules=none", arguments)
