@@ -49,7 +49,7 @@ def create_repository(root: Path, *, version: str = "1.2.3") -> None:
         ),
         encoding="utf-8",
     )
-    for member in sorted(REQUIRED_MEMBERS):
+    for member in sorted(REQUIRED_MEMBERS - {"package.json"}):
         path = root / member
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(f"fixture for {member}\n", encoding="utf-8")
