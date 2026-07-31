@@ -7,194 +7,67 @@ allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
 
 # Test-Driven Development (TDD)
 
-## Overview
-
-Write the test first. Watch it fail. Write minimal code to pass.
-
-**Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
-
-**Violating the letter of the rules is violating the spirit of the rules.**
+Why: seeing a focused test fail proves it can detect the missing product
+behavior; seeing it pass proves the smallest implementation satisfies it.
 
 Use Athena's shared [behavior-first testing guidance](../../docs/review/behavior-first-testing.md)
-for the good-test/bad-test matrix, deterministic evidence rules, and false-pass
-checks. Test observable product behavior and core contracts, not the wording or
-layout of documentation or a private implementation arrangement.
+for good-test/bad-test criteria, determinism, and false-pass checks. Test
+observable product behavior and core contracts, not wording, documentation
+layout, or a private implementation arrangement.
 
-## When to Use
+## Use and rule
 
-**Always:**
-
-- New features
-- Bug fixes
-- Refactoring
-- Behavior changes
-
-**Exceptions (ask your human partner):**
-
-- Throwaway prototypes
-- Generated code
-- Configuration files
-- Documentation-only wording and layout changes
-
-**Integration with myrmidon-swarm:** apply this cycle to each test sub-task. A specialist writes
-failing tests before an executor writes implementation.
-
-Thinking "skip TDD just this once"? Stop. That's rationalization.
-
-## The Iron Law
+Use TDD for features, bug fixes, refactoring, and behavior changes. Ask the
+human partner before exempting a throwaway prototype, generated code,
+configuration-only work, or documentation-only wording/layout change. In a
+swarm, the test specialist completes RED before implementation begins.
 
 ```text
 NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
 ```
 
-Write code before the test? Remove only the newly written, in-scope implementation you authored for
-this task, then start over. If its provenance or scope is unclear, preserve it and request human
-direction.
+If you wrote in-scope implementation first, remove only that newly authored
+work and start with RED. Preserve pre-existing or user-authored work and ask for
+direction when provenance or scope is unclear.
 
-**No exceptions:**
+## RED–GREEN–REFACTOR
 
-- Don't keep it as "reference"
-- Don't "adapt" it while writing tests
-- Don't look at it
-- Do not delete pre-existing or user-authored work
+1. **RED:** Write one minimal, clearly named test for one observable behavior,
+   data contract, security property, or executable artifact outcome. Use real
+   code unless a controlled substitute is needed at a genuine external boundary.
+2. **Verify RED:** Discover the repository's focused test command and run it.
+   The test must fail—not error—for the expected missing behavior. A filtered
+   command must prove it selected a relevant test; C++/CMake tests must be wired
+   to a real build and test target. If the test passes, it covers existing
+   behavior; if it errors, fix the test setup and run it again.
+3. **GREEN:** Write the simplest behaviorally complete code that passes. Do not
+   add speculative features, unrelated refactors, or implementation beyond the
+   test's demonstrated need.
+4. **Verify GREEN:** Run the discovered relevant suite. The new and existing
+   tests must pass without errors or warnings; fix code rather than weakening a
+   test.
+5. **REFACTOR:** After green, remove duplication, clarify names, or extract a
+   helper without adding behavior. Keep tests green, then start the next RED
+   cycle.
 
-Implement fresh from tests. Period.
+For documentation-only changes, use existing Markdown, link, and executable
+example validation. Do not create production code or a text-assertion harness
+to manufacture a RED phase.
 
-## Red-Green-Refactor
+## Evidence before completion
 
-### RED — Write Failing Test
+Discover commands from `AGENTS.md`, task runners, manifests, lockfiles, and
+required CI; prefer repository-native entry points. Record focused and relevant
+suite, coverage, type, and lint commands when applicable. If they conflict or
+no safe command is discoverable, ask the user rather than borrow another
+repository's command.
 
-Write one minimal test showing what should happen.
-
-**Requirements:**
-
-- One behavior per test
-- Clear descriptive name
-- Test real code (no mocks unless unavoidable)
-- Assert a computable product outcome, data contract, security property, or executable artifact
-  structure; never freeze documentation prose, headings, counts, or paragraph presence
-
-### Verify RED — Watch It Fail
-
-**MANDATORY. Never skip.**
-
-Discover the target repository's focused test command from its guidance, task runner, manifests,
-lockfiles, and required CI, then run `<repository-focused-test-command>`.
-
-Confirm:
-
-- Test fails (not errors)
-- Failure message is expected
-- Fails because feature is missing (not typos)
-
-For a name-filtered command, prove it selected at least one relevant registered
-test. For C++ or CMake, also prove the test source is wired to a real build and
-test target. A green command that selected no test is a coverage failure.
-
-**Test passes?** You're testing existing behavior. Fix the test.
-
-**Test errors?** Fix the error, re-run until it fails correctly.
-
-Do not invent production code or a test harness to force a RED phase for documentation-only work.
-Use existing markdown lint and link validation for syntax and navigation. A link checker may prove a
-target resolves; a text assertion must not dictate what the documentation says.
-
-### GREEN — Minimal Code
-
-Write the simplest code to pass the test. No more.
-
-Don't add features, refactor other code, or "improve" beyond what the test demands.
-
-### Verify GREEN — Watch It Pass
-
-**MANDATORY.**
-
-Run the repository's discovered full relevant suite: `<repository-test-command>`.
-
-Confirm:
-
-- The new test passes
-- All other tests still pass
-- No errors or warnings
-
-**Test fails?** Fix code, not test.
-
-**Other tests fail?** Fix now before continuing.
-
-### REFACTOR — Clean Up
-
-After green only:
-
-- Remove duplication
-- Improve names
-- Extract helpers
-
-Keep tests green throughout. Don't add behavior.
-
-### Repeat
-
-Next failing test for next behavior.
-
-## Repository tooling
-
-Discover commands from `AGENTS.md`, task runners, manifests, lockfiles, and required CI. Prefer the
-same entry points CI uses. Record the focused test, relevant suite, coverage, typing, and lint
-commands when applicable. If repository sources conflict or no safe command is discoverable, ask
-the user; never substitute another repository's commands into an unrelated target.
-
-## Good Tests
-
-| Quality | Good | Bad |
-| --------- | ------ | ----- |
-| **Minimal** | One thing. "and" in name? Split it. | `test('validates email and domain and whitespace')` |
-| **Clear** | Name describes behavior | `test_1` |
-| **Shows intent** | Demonstrates desired API | Obscures what code should do |
-
-## Common Rationalizations — All Wrong
-
-| Excuse | Reality |
-| -------- | --------- |
-| "Too simple to test" | Simple code breaks. Test takes 30 seconds. |
-| "I'll test after" | Tests passing immediately prove nothing. |
-| "Tests after achieve same goals" | Tests-after = "what does this do?" Tests-first = "what should this do?" |
-| "Already manually tested" | Ad-hoc ≠ systematic. No record, can't re-run. |
-| "Deleting X hours is wasteful" | Sunk cost fallacy. Keeping unverified code is technical debt. |
-| "Keep as reference, write tests first" | You'll adapt it. That's testing after. Delete means delete. |
-| "Need to explore first" | Fine. Throw away exploration, start with TDD. |
-
-## Red Flags — STOP and Start Over
-
-- Code written before test
-- Test passes immediately without implementation
-- Can't explain why test failed
-- "Tests added later"
-- Rationalizing "just this once"
-
-**All of these mean: Delete code. Start over with TDD.**
-
-## Verification Checklist
-
-Before marking work complete:
-
-- [ ] Each changed observable product behavior and bug regression has proportionate coverage
-- [ ] No test pins documentation wording or another non-behavioral string
-- [ ] No test relies on ambient time, live services, test order, or mock arrangement without controlling that product condition
-- [ ] Watched each test fail before implementing
-- [ ] Each test failed for the expected reason
-- [ ] Wrote minimal code to pass each test
-- [ ] Each focused or filtered test command demonstrably selected relevant tests
-- [ ] C++/CMake test sources, when changed, are wired to a real test target
-- [ ] All relevant tests pass with the repository's discovered test command
-- [ ] The repository-defined type check passes
-- [ ] The repository-defined linter passes
-
-Can't check all boxes? You skipped TDD. Start over.
-
-## After Completion
-
-Verify with fresh runnable evidence per the evidence-integrity policy before claiming work
-complete; a prior run or implementation diff is not evidence of the current state.
-Run `learn` when the session produced a durable testing lesson; it must publish through a PR.
+Before completion, confirm proportionate coverage for every changed observable
+behavior and bug regression; controlled time, services, randomness, state, and
+mocks where the product requires them; non-empty focused test selection; and
+fresh passing relevant tests, type checks, and lint. Follow the evidence policy
+before claiming success. Use `learn` for a durable testing lesson; its own
+authority and delivery rules determine whether it publishes a PR.
 
 ---
 

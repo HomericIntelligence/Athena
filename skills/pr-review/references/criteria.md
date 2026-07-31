@@ -1,8 +1,7 @@
 # Pull/merge-request-specific review criteria
 
-Use these criteria after the shared review contract, language routing, and
-behavior-first testing guidance. They own pull/merge-request-specific evidence only; they do
-not replace or duplicate the architecture, language, principles, or test rules.
+Use the shared review contract, language routing, and behavior-first testing
+first. This file owns only evidence unique to a pull or merge request.
 
 ## Requirements and prior work
 
@@ -12,34 +11,16 @@ not replace or duplicate the architecture, language, principles, or test rules.
   all-state pull/merge requests on the configured forge for already-landed,
   superseded, duplicate, or zombie work.
 - Map every changed path to stated scope. Identify silent additions, reductions,
-  or required acceptance criteria that have no changed behavior or verification.
+  or required acceptance criteria with no changed behavior or verification.
 - Reconcile proposed follow-ups against the backlog. Recommend a linked
-  follow-up for genuinely out-of-scope work, but do not create one without
-  separate authority.
-
-## Pull/merge-request identity and diff lenses
-
-- Bind evidence to the reviewed immutable base and head identities. Never
-  substitute branch names for verified source revisions.
-- Inspect both author-intent and current-base lenses. Verify behind count,
-  conflicts, landed work, revert/deletion risk, and current-head checks when
-  the selected profile permits that evidence.
-- Read every changed file in full context, linked issue, cited ADR, public
-  contract, affected test, and applicable generation source. Retry failed or
-  sampled dimensions before calculating a score.
+  follow-up for genuinely out-of-scope work, but create none without separate
+  authority.
 
 ## Integration and hygiene
 
 - Check commit signatures, DCO, commit convention, hook bypasses, lockfiles,
   vendored/generated artifacts, dependency changes, single-purpose scope,
   release handoff, and applicable compatibility.
-- Distinguish pre-existing failures from pull/merge-request-introduced failures
-  using the base revision where needed. Do not call a pull/merge request
-  merge-ready from incomplete, stale, skipped, or mismatched evidence.
-- Keep findings on the pull/merge request. Publish every independently
-  actionable changed-line finding as exactly one inline comment or discussion;
-  do not combine it with another finding in a summary. Reserve one optional
-  batched summary for genuinely cross-cutting findings and review evidence that
-  cannot be anchored to a changed line. Never post a clean review or alter
-  labels, workflow state, or merge state, except for the documented
-  `--enable-auto-merge-on-go` GitHub-only sequence after its exact GO gate.
+- Distinguish base failures from review-introduced failures. Do not call a pull
+  or merge request merge-ready from incomplete, stale, skipped, or mismatched
+  evidence.

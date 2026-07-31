@@ -5,8 +5,9 @@
 [![Latest release](https://img.shields.io/github/v/release/HomericIntelligence/Athena)](https://github.com/HomericIntelligence/Athena/releases)
 [![License: BSD-3-Clause](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
 
-Portable repository-review, development, and agent-orchestration skills for **Claude Code**,
-**Codex**, and **Pi**.
+Portable, architecture-first repository-review, development, and orchestration skills for
+**Claude Code**, **Codex**, and **Pi**. They give every harness the same trusted, evidence-based
+workflow without requiring a host-specific runtime.
 
 Athena is distributed only as an AI-harness plugin. It does not publish a Python wheel, source
 distribution, or runtime library.
@@ -20,13 +21,11 @@ Athena has two hard dependencies:
 | Knowledge | `HomericIntelligence/Mnemosyne` | `HOMERIC_INTELLIGENCE_MNEMOSYNE_OWNER` | `$HOME/.agent_brain/knowledge` |
 | Automation | `HomericIntelligence/Hephaestus` | `HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER` | `$HOME/.agent_brain/automation` |
 
-Without an explicit override, Athena prefers a same-named repository in the current repository's
-GitHub owner only when GitHub verifies it is a fork of the corresponding default. Otherwise it uses
-the default. An invalid override, authentication failure, checkout mismatch, or update failure is
-fatal. See [`docs/dependency-resolution.md`](docs/dependency-resolution.md).
-
-The knowledge backend is mandatory. `learn` always uses an isolated worktree and creates a pull
-request; it never writes directly to the knowledge repository's default branch.
+Athena resolves a trusted, current dependency checkout under the
+[`dependency-resolution` contract](docs/dependency-resolution.md); invalid overrides, trust or
+authentication failures, checkout mismatches, and update failures are fatal. The knowledge backend
+is mandatory. For a verified, non-duplicate lesson with direct write authority, `learn` uses an
+isolated worktree and pull request; otherwise it reports without mutation.
 
 Script-backed skills require Git and Python 3.10 or newer on the host. Dependency resolution and the
 GitHub pull-request helper route additionally require authenticated GitHub CLI (`gh`) access. GitHub

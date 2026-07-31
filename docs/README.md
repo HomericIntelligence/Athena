@@ -1,7 +1,7 @@
 # Athena documentation
 
-Athena is a self-contained AI-harness plugin distribution. These documents define its local
-architecture, dependency contracts, and governance.
+**Why:** Athena ships one portable skill corpus, so its architecture, dependency, and governance
+contracts must be easy to find without duplicating them in every host integration.
 
 ## Architecture
 
@@ -21,6 +21,8 @@ architecture, dependency contracts, and governance.
 
 ## Review framework
 
+- [`review/README.md`](review/README.md): why the review system exists, its high-level flow, and
+  the right contract to read for each review scope.
 - [`review/common.md`](review/common.md): architecture-first shared contract, findings, and
   delivery boundaries.
 - [`review/language-routing.md`](review/language-routing.md): language and toolchain profiles.
@@ -30,6 +32,8 @@ architecture, dependency contracts, and governance.
   and scoring sections.
 - [`review/issue-planning.md`](review/issue-planning.md): canonical issue-plan and issue-review
   artifacts.
+- [`review/design-docs.md`](review/design-docs.md): concise, why-first structure for new design
+  documents.
 
 The root [`AGENTS.md`](../AGENTS.md) is the authoritative repository-agent contract. Installation
 and lifecycle commands are maintained in [`README.md`](../README.md).

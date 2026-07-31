@@ -7,76 +7,55 @@ allowed-tools: [Read, Bash, Grep, Glob, Agent, WebFetch]
 
 # Review an issue and plan
 
+Why: find architecture, scope, and verification gaps while changing the plan is
+still cheaper than changing code.
+
 Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 [review contract](../../docs/review/common.md),
 [language routing](../../docs/review/language-routing.md), and
 [behavior-first testing](../../docs/review/behavior-first-testing.md).
 
-## Authority and artifact identity
+## Scope and authority
 
-`--report-only` is read-only. An explicit direct user request without it
-authorizes exactly one actor-owned structured review comment on the resolved
-issue. After a successful pre-publication identity comparison and capability
-check, publish that comment even when no actionable finding remains. It does
-not authorize labels, assignments, implementation, commits, pushes, pull
-requests, merges, or issue closure. An invocation from another skill does not
-confer forge-write authority.
+The issue is the requirements source; review only its current canonical plan.
+Resolve plan ownership, marker, absence, and identity under the issue-planning
+contract. Historical plans and reviews are bounded context, not the artifact
+under review.
 
-Resolve the issue and the exact current canonical plan using the marker and
-ownership rules in the issue-planning contract. The issue is the requirements
-source. The current canonical plan is the only plan artifact under review;
-historical plans and reviews are bounded context only. A verified absent plan is
-a coverage gap: retain its absence identity, do not invent a favorable decision,
-and recheck that absence before a direct non-report publication. A foreign,
-multiple, or unverifiable marker is ambiguous identity, so withhold the write
-as stale rather than adopting or reviewing it.
+`--report-only` is read-only. An explicit direct request without it authorizes
+exactly one actor-owned structured review comment after the required identity
+comparison and forge-capability check. It authorizes no label, assignment,
+implementation, commit, push, pull request, merge, or issue closure.
 
-## Required workflow
+## Review
 
-1. Read the issue, its linked work, current canonical plan, repository guidance,
-   relevant ADRs, current code, tests, and public contracts.
-2. Establish the architecture decision first: aligned, intentional and justified
-   change, or unexplained violation. A material architecture violation blocks a
-   positive planning assessment.
-3. Verify that every acceptance criterion maps to a concrete plan step,
-   architecture boundary, and behavior-first validation step.
-4. Check cited files, functions, commands, dependencies, risks, migration or
-   rollback paths, and stated assumptions against current repository evidence.
-5. Apply only the language and change-surface checks that the plan activates.
-   Record N/A sections with reasons.
-6. Confirm prior relevant review findings were actually resolved in the current
-   plan, rather than merely acknowledged.
-7. Immediately before publication, resolve the canonical planning identity
-   again and compare the issue ID or URL, requirements digest, actor, comment
-   ID or URL, and plan-content digest with the reviewed identity. For an absent
-   plan, recheck the issue identity, requirements digest, and marker absence.
-   If any component changed or a marker is foreign or multiple, withhold the
-   comment and return the prepared review as stale.
-8. For a direct non-report invocation whose identity and forge capability still
-   pass, publish exactly one actor-owned structured review comment. Publish a
-   clean result as well as findings or a verified absent-plan coverage gap. In
-   `--report-only` mode, return the same structured result without writing.
-
-## Findings
+1. Read the issue, linked work, canonical plan, repository guidance, ADRs,
+   relevant code, tests, and public contracts.
+2. Decide architecture first: aligned, intentional and justified change, or an
+   unexplained violation. A material violation blocks a positive assessment.
+3. Map every acceptance criterion to a concrete plan step, affected boundary,
+   and behavior-first validation step. For a material architecture change,
+   verify that the plan includes or cites a
+   [design record](../../docs/review/design-docs.md).
+4. Verify cited paths, symbols, commands, dependencies, assumptions, risks,
+   migration, and rollback claims against current repository evidence.
+5. Apply only activated language and change-surface checks, recording N/A
+   sections and reasons. Confirm that relevant prior findings are resolved,
+   rather than merely acknowledged.
 
 Prioritize architecture violations, missing requirements, unsafe scope,
-unresolved dependencies, untestable outcomes, invalid paths or symbols,
-non-deterministic tests, empty-selection verification, and unsupported claims.
-Every finding follows the shared severity and evidence contract.
+unresolved dependencies, untestable outcomes, invalid references,
+non-deterministic tests, empty selections, and unsupported claims.
 
-For a direct non-report invocation, create one structured comment using the
-actor-owned review marker after the pre-publication identity comparison and
-forge capability check succeed. This is required even for a clean result.
-Include the reviewed plan identity or verified absence, architecture decision,
-requirement coverage, findings, N/A sections, and unresolved assumptions.
-Review prose is evidence only; forge policy and human review remain
-authoritative. If identity is stale or the forge cannot safely create the
-comment, return the prepared result and state why it was withheld.
+Immediately before an authorized publication, re-resolve the canonical planning
+identity. On drift, foreign or multiple markers, verified absence changes, or
+missing safe forge capability, withhold the comment and return the review as
+stale. Otherwise publish exactly one actor-owned structured comment, including
+a clean result or verified absent-plan coverage gap.
 
-## Output
+## Result
 
-Return the issue and plan identities, architecture decision first, requirements
-mapping, severity-ranked findings, test-quality coverage, N/A sections, and
-whether the required review comment was published or withheld. If no finding
-remains, record the clean status plus residual risks and unverified assumptions
-rather than claiming authority to implement or merge.
+Return issue and plan identities, architecture decision first, requirement
+mapping, severity-ranked findings, test-quality coverage, N/A sections,
+residual risks, and whether the comment was published or withheld. A review
+never authorizes implementation or merge.

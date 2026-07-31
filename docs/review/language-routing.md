@@ -1,67 +1,55 @@
 # Language and toolchain routing
 
-Athena review skills use this routing contract after they establish the
-repository architecture and identify the changed surfaces. Repository guidance,
-formatter, linter, type checker, compiler, test runner, and framework policy
-take precedence over these defaults. Reviewers use current primary language or
-framework documentation when a repository has no local rule. If that material
-is unavailable to the host, use available repository evidence and report the
-documentation coverage gap rather than silently assuming a generic practice.
+**Why:** Architecture-first review still needs language-specific evidence. Routing prevents a generic
+checklist from substituting for the conventions, failure modes, and tools of the code actually changed.
 
-A genuinely unknown executable language is a coverage gap. Do not silently
-treat it as adequately reviewed by a generic checklist.
+Repository guidance, selected formatter, linter, type checker, compiler, test runner, and framework
+policy override these defaults. When the repository has no local rule, use current primary language or
+framework documentation; if it is unavailable, use repository evidence and report the documentation
+coverage gap. An unknown executable language is a coverage gap, never a generic-checklist pass.
+
+## Select a profile
+
+After the shared architecture gate and surface classification, use every applicable deep or routed
+profile below. Do not route an intentionally excluded language through an invented generic overlay;
+apply the shared architecture, surface, security, and behavior review instead.
 
 ## Deep profiles
 
 ### Python
 
-Review public type and data contracts, exception boundaries, resource lifetime,
-async or concurrency behavior, import and packaging effects, and test isolation.
-Prefer repository-selected formatters, linters, type checkers, and test tools.
-Check that runtime validation protects untyped boundaries and that mocks remain
-at genuine external boundaries.
-
-Use the current [Python typing documentation](https://docs.python.org/3/library/typing.html)
-as the baseline when the repository does not define a stricter public-type
-contract.
+Review public type and data contracts, exception boundaries, resource lifetime, async or concurrency,
+import and packaging effects, and test isolation. Prefer repository-selected formatters, linters, type
+checkers, and test tools. Runtime validation protects untyped boundaries; mocks stay at genuine external
+boundaries. When local rules do not define a stricter public-type contract, use the current
+[Python typing documentation](https://docs.python.org/3/library/typing.html).
 
 ### C++
 
-Review explicit interfaces and ABI impact, ownership and lifetime, RAII,
-error-handling conventions, constness, value and reference semantics,
-concurrency and data races, exception safety, and measured performance claims.
-Use configured compiler warnings, formatters, static analysis, sanitizers, and
-test targets when they exist. A C++ test must be wired into a real build target
-before it is accepted as evidence.
-
-Use the [C++ Core Guidelines](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines)
-as the default language reference when repository guidance does not supersede
-them.
+Review interfaces and ABI impact, ownership and lifetime, RAII, error conventions, constness, value and
+reference semantics, concurrency and data races, exception safety, and measured performance claims. Use
+configured warnings, formatters, static analysis, sanitizers, and test targets. A C++ test is evidence
+only when wired into a real build target. Default to the
+[C++ Core Guidelines](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines) when local guidance
+does not supersede them.
 
 ### Go
 
-Review package and API design, `context.Context` propagation and cancellation,
-goroutine lifetime, error wrapping and handling, zero-value behavior, data-race
-risks, and public documentation. Use `gofmt`, configured static analysis, race
-testing, and package tests where applicable. A name-filtered `go test -run`
-command is evidence only after its match set is proven non-empty.
-
-Use [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments) as the
-default idiom reference when repository guidance does not supersede it.
+Review package and API design, `context.Context` propagation and cancellation, goroutine lifetime,
+error wrapping and handling, zero-value behavior, data-race risks, and public documentation. Use
+`gofmt`, configured static analysis, race testing, and package tests where applicable. A filtered
+`go test -run` command is evidence only after its match set is proven non-empty. Default to
+[Go Code Review Comments](https://go.dev/wiki/CodeReviewComments) when local guidance does not supersede
+them.
 
 ### Mojo
 
-Review ownership, lifetime, argument conventions, resource destructors, error
-contracts, and `fn` versus `def` semantics. For accelerator code, also inspect
-CPU/GPU boundaries, data movement, launch assumptions, and evidence for any
-performance claim. For Python interoperability, review both sides of the
-boundary and the runtime type and ownership contract.
-
-Use the repository's Mojo tooling and current official Modular guidance. In
-particular, consult [modular/skills](https://github.com/modular/skills):
-`mojo-syntax` for modern syntax, `mojo-gpu-fundamentals` for accelerator code,
-and `mojo-python-interop` for Python/Mojo boundaries. Use Mojo's native testing
-facilities when available.
+Review ownership, lifetime, argument conventions, resource destructors, error contracts, and `fn` versus
+`def` semantics. For accelerator code, inspect CPU/GPU boundaries, data movement, launch assumptions,
+and performance evidence. For Python interoperability, review both sides of the boundary and runtime
+type and ownership contracts. Use repository tooling and current official Modular guidance, especially
+[modular/skills](https://github.com/modular/skills): `mojo-syntax`, `mojo-gpu-fundamentals`, and
+`mojo-python-interop`. Use native Mojo testing when available.
 
 ## Routed profiles
 
@@ -83,12 +71,11 @@ facilities when available.
 | Jinja, Go Template, templ, HTML | Escaping and injection boundaries, template data contracts, rendering or accessibility behavior where applicable, generated-output ownership, and executable example or render checks. |
 | Vim Script | Script-local versus global state, quoting and escaping, mappings and autocommands, command injection, option restoration, editor-version compatibility, and repeatable headless editor tests when available. |
 
-The following are intentionally outside Athena's dedicated routing matrix:
-Cython, PowerShell, SQL/PLpgSQL/PLSQL, HCL, Nix, Starlark, Jsonnet, CSS, SCSS,
-MDX, Liquid, XSLT, Jupyter Notebook, TeX, BibTeX (including BibTeX Style),
-Roff, ANTLR, Tree-sitter Query, Rocq (including Rocq Prover), Red, and POV-Ray
-SDL. Each is an intentional N/A for a dedicated language profile, not an
-unknown-language coverage gap. Apply the shared architecture, surface,
-security, and behavior review when a changed artifact requires it, but do not
-invent a generic language overlay or a dedicated profile without a demonstrated
-product need.
+## Intentionally excluded dedicated profiles
+
+The following are intentional N/A for a dedicated language profile, not unknown-language coverage gaps:
+Cython, PowerShell, SQL/PLpgSQL/PLSQL, HCL, Nix, Starlark, Jsonnet, CSS, SCSS, MDX, Liquid, XSLT,
+Jupyter Notebook, TeX, BibTeX (including BibTeX Style), Roff, ANTLR, Tree-sitter Query, Rocq
+(including Rocq Prover), Red, and POV-Ray SDL. Apply shared architecture, surface, security, and
+behavior review when their artifact requires it; do not invent a generic or dedicated overlay without a
+demonstrated product need.

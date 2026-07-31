@@ -1,9 +1,31 @@
 # Required repository resolution
 
-Athena has two hard repository dependencies. Skills fail closed when a required dependency cannot
-be resolved, authenticated, checked out, or updated.
+**Why:** Athena must use trusted, current knowledge and automation rather than a
+similarly named fork, stale checkout, or unverified remote.
 
-## Owner precedence
+## At a glance
+
+Athena resolves a trusted owner, synchronizes an exact checkout, and binds use
+to its reported revision. Any trust, authentication, checkout, or update failure
+stops the dependent skill.
+
+```mermaid
+flowchart LR
+    A["Resolve dependency"] --> B{"Explicit owner?"}
+    B -->|yes| C["Validate override"]
+    B -->|no| D{"Trusted organization fork?"}
+    D -->|yes| E["Use maintained fork"]
+    D -->|no| F["Use canonical upstream"]
+    C --> G["Verify origin and clean checkout"]
+    E --> G
+    F --> G
+    G --> H["Fetch, fast-forward, bind SHA"]
+    H --> I["Revalidate automatic-fork trust before use"]
+```
+
+## Component details
+
+### Owner selection
 
 For dependency `<Repository>` with environment override `<OWNER_VARIABLE>`:
 
@@ -48,14 +70,14 @@ the organization/viewer-permission gate. Before using any resolved dependency, r
 repository, commit SHA, and trust basis (`explicit override`, `maintained organization fork`, or
 `canonical upstream`).
 
-## Dependencies
+### Dependency map
 
 | Purpose | Repository | Override | Checkout |
 | --- | --- | --- | --- |
 | Knowledge | `Mnemosyne` | `HOMERIC_INTELLIGENCE_MNEMOSYNE_OWNER` | `$HOME/.agent_brain/knowledge` |
 | Automation | `Hephaestus` | `HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER` | `$HOME/.agent_brain/automation` |
 
-## Checkout contract
+### Checkout and revalidation
 
 Requirements are authenticated `gh`, `git`, and network access. Create `$HOME/.agent_brain` when
 needed. Clone the resolved repository when its checkout is absent. For an existing checkout:
