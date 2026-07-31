@@ -40,8 +40,8 @@ This phase is read-only.
    | `blocked` | Candidates or an open PR have same or ambiguous intent, provenance is uncertain, or retirement is unsafe. | Leave Mnemosyne unchanged and request direction. |
 
 Never evade a blocked consolidation by creating a near-duplicate. An existing matching or ambiguous
-open PR is a no-mutation boundary; work on its branch only with explicit user authority and never
-create a competing PR. Do not report `learn` complete after `reject` or `blocked`.
+open PR is a no-mutation boundary. Enter Existing-PR mode only with direct user authority for that
+exact PR; never create a competing PR. Do not report `learn` complete after `reject` or `blocked`.
 
 Generalize the smallest reusable decision rule. Keep task-specific facts only when another agent
 needs them to execute or verify that rule. Preserve history in Git, not duplicate active entries.
@@ -56,43 +56,72 @@ wording tests, or non-consumed artifacts merely to support a lesson.
 
 Read-only discovery never authorizes mutation. Before creating a branch or worktree, editing,
 committing, pushing, or opening a PR, establish authority for the resolved repository and full
-delivery path. A direct user request to invoke `learn` supplies it; a recommendation or indirect
-invocation does not. Without it, return the read-only disposition and proposed repository, base,
-branch, files, and PR target.
+delivery path. A direct user request to invoke `learn` supplies new-PR authority; updating an
+existing PR also needs direct user authority for that exact discovered PR. A recommendation or
+indirect invocation does not. Without it, return the read-only disposition and proposed repository,
+base, branch, files, and PR target.
+
+## Existing-PR mode
+
+Use this mode only for a discovered matching or ambiguous open PR after direct user authority names
+or accepts that exact PR. Re-fetch and bind its canonical repository, URL/number, `OPEN` state,
+source repository/ref, and head OID before editing. Create an isolated worktree on that source ref
+at the bound head OID, verify its `HEAD`, and never modify the shared checkout or default branch.
+
+Immediately before publishing, re-fetch the same identity and head. Push only to the bound PR source
+ref, using the provider's safe expected-head/lease protection. If the ref moves, the source repository
+is not safely writable, or any binding differs, preserve the worktree and stop. Do not create a
+branch, open another PR, or retarget the change. Use the disposition-specific write allowlist below.
 
 ## Coordinate safely
 
 When available, partition independent discovery, overlap analysis, drafting, and verification into
-bounded work items; otherwise perform them sequentially without weakening evidence. Give every
-writer an isolated worktree from the same resolved default-branch SHA and non-overlapping ownership;
-read-only work items never edit. The coordinator owns each canonical entry or assigns one integration
-owner, rejects unrelated edits, runs focused validation after each integration and complete relevant
-validation after the combined result, and alone commits, pushes, and opens the PR. Stop on ownership
-overlap, base drift, or unexpected scope.
+bounded work items; otherwise perform them sequentially without weakening evidence. New-PR writers
+use isolated worktrees from the same resolved default-branch SHA; Existing-PR writers use only the
+bound PR head. Give writers non-overlapping ownership; read-only work items never edit. The
+coordinator owns each canonical entry or assigns one integration owner, rejects unrelated edits, runs
+focused validation after each integration and complete relevant validation after the combined result,
+and alone commits, pushes, and opens a new PR when applicable. Stop on ownership overlap, base drift,
+or unexpected scope.
 
-Without native isolation, retain the resolved checkout as the current directory and invoke the
-installed `../git-worktrees/scripts/prepare_worktree.py` by absolute path with branch `skill/<slug>`,
-`--path $HOME/.agent_brain/worktrees/knowledge-<slug>`,
-`--path-root $HOME/.agent_brain/worktrees`, and `--start-point <resolved-default-SHA>`.
+Without native isolation, use the installed `../git-worktrees/scripts/prepare_worktree.py` by absolute
+path only for new-PR work: retain the resolved checkout as the current directory; use branch
+`skill/<slug>`, `--path $HOME/.agent_brain/worktrees/knowledge-<slug>`,
+`--path-root $HOME/.agent_brain/worktrees`, and `--start-point <resolved-default-SHA>`. Never use
+this fallback to reconstruct an Existing-PR worktree.
 
 ## Deliver an authorized change
 
-1. Never modify the shared checkout. Derive `slug` and `name` from lowercase ASCII letters, digits,
-   and single hyphens using `[a-z0-9][a-z0-9-]*`; reject empty, control, `/`, `..`, and leading `-`
-   values. Add a collision-resistant suffix when needed.
-2. Create branch `skill/<slug>` at `$HOME/.agent_brain/worktrees/knowledge-<slug>`; resolve the path
-   first, require it directly below `$HOME/.agent_brain/worktrees`, and reject symlinked parents or
-   destinations.
-3. Resolve and write only `skills/<name>.md` below that worktree's `skills/` directory. Include
-   searchable intent, semantic version, verification, generalized use and workflow, relevant failed
-   approaches, parameters, and evidence; omit unused session transcript detail.
-4. Apply the selected disposition. Amend only the canonical entry. During consolidation, migrate
-   active consumers before retiring duplicates; optional `.notes.md` evidence needs a current consumer.
+1. Never modify the shared checkout. For a new PR, derive `slug` and `name` from lowercase ASCII
+   letters, digits, and single hyphens using `[a-z0-9][a-z0-9-]*`; reject empty, control, `/`, `..`,
+   and leading `-` values. Add a collision-resistant suffix when needed. Create `skill/<slug>` at
+   `$HOME/.agent_brain/worktrees/knowledge-<slug>` from the resolved default-branch SHA; resolve the
+   path first, require it directly below `$HOME/.agent_brain/worktrees`, and reject symlinked parents
+   or destinations. This is the new-PR path for `create` and `consolidate`, not Existing-PR mode.
+2. Before editing, resolve a closed, disposition-specific write allowlist of exact repository-relative
+   paths:
+
+   | Disposition | Allowed paths |
+   | --- | --- |
+   | `amend` | The resolved canonical entry only. |
+   | `create` | One new `skills/<name>.md` entry only. |
+   | `consolidate` | The canonical entry, each named duplicate to retire, and each verified active consumer that must migrate. |
+
+   A template- or schema-required companion is allowed only when named in this list. Optional
+   `.notes.md` evidence needs a current consumer. Do not discover new write paths while editing.
+3. For `create`, read the resolved Mnemosyne template, schema, and validation rules before drafting.
+   Use every required frontmatter field, including `name`, `description`, `category`, `date`, and
+   `version`, plus the required section structure. Include searchable intent, verification,
+   generalized use and workflow, relevant failed approaches, parameters, and evidence; omit unused
+   session transcript detail.
+4. Apply the selected disposition inside its allowlist. Amend only the canonical entry. During
+   consolidation, migrate verified active consumers before retiring every named duplicate.
 5. Run Mnemosyne's relevant complete validation. Verify exactly one active entry remains for the
    intent and no duplicate intent or stale consolidated name was introduced.
-6. Sign and DCO-attest the commit, push the feature branch, and open a PR against the resolved default
-   branch. Include `Closes #N` when a tracking issue exists; never auto-merge.
-7. Report the disposition, any retired entries, PR URL, and exact validation evidence.
+6. Sign and DCO-attest the commit. For a new PR, push the feature branch and open a PR against the
+   resolved default branch; include `Closes #N` when a tracking issue exists. For Existing-PR mode,
+   push only to the already bound source ref and do not open another PR. Never auto-merge.
+7. Report the disposition, bound or new PR URL, any retired entries, and exact validation evidence.
 
 A write disposition succeeds only with its PR URL. If validation, push, or PR creation fails, preserve
 the isolated worktree and report the blocker; never fall back to Athena, a default branch, or another

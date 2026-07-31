@@ -54,15 +54,22 @@ LINKED_ISSUE_COMMENT_REQUEST_TIMEOUT_SECONDS = 30.0
 PROVIDER_POLL_SECONDS = 0.01
 PROVIDER_READER_JOIN_SECONDS = 1.0
 MAX_LINKED_REQUIREMENT_METADATA_BYTES = 256 * 1024
-MAX_LINKED_REQUIREMENT_BODY_BYTES = 256 * 1024
 MAX_LINKED_REQUIREMENT_REQUESTS = 48
 MAX_LINKED_REQUIREMENT_PAGES = 24
 MAX_LINKED_REQUIREMENT_COMMENTS = 2_000
 MAX_LINKED_REQUIREMENT_BYTES = 2 * 1024 * 1024
+MAX_CHANGED_PATH_MANIFEST_BYTES = 2 * 1024 * 1024
+MAX_CHANGED_PATHS = 10_000
+MAX_CHANGED_PATH_STDERR_BYTES = 16 * 1024
+CHANGED_PATH_REQUEST_TIMEOUT_SECONDS = 30.0
 
 
 class LinkedRequirementsCoverageGap(RuntimeError):
     """A linked requirement exceeds bounded evidence collection limits."""
+
+
+class ChangedPathCoverageGap(RuntimeError):
+    """Changed paths exceed the bounded immutable-evidence collector."""
 
 
 @dataclass
@@ -121,6 +128,22 @@ class ProviderStream:
     overflowed: threading.Event = field(default_factory=threading.Event)
     completed: threading.Event = field(default_factory=threading.Event)
     error: OSError | ValueError | None = None
+
+
+@dataclass
+class ChangedPathStream:
+    """Incrementally validate a bounded NUL-delimited Git path manifest."""
+
+    maximum_bytes: int
+    maximum_paths: int
+    bytes_read: int = 0
+    paths: list[bytes] = field(default_factory=list)
+    seen_paths: set[bytes] = field(default_factory=set)
+    trailing: bytearray = field(default_factory=bytearray)
+    limit_error: str | None = None
+    overflowed: threading.Event = field(default_factory=threading.Event)
+    completed: threading.Event = field(default_factory=threading.Event)
+    error: OSError | RuntimeError | ValueError | None = None
 
 
 @dataclass(frozen=True)
@@ -532,6 +555,69 @@ def drain_provider_stream(stream: IO[bytes], capture: ProviderStream) -> None:
         try:
             stream.close()
         except OSError:
+            # Another cleanup path may already have closed this best-effort pipe.
+            pass
+        capture.completed.set()
+
+
+def validate_changed_path(entry: bytes) -> None:
+    """Reject an empty or unsafe Git-relative path entry."""
+    if not entry:
+        raise RuntimeError("Git returned an empty changed path")
+    if entry.startswith(b"/") or any(
+        component in {b".", b".."} for component in entry.split(b"/")
+    ):
+        raise RuntimeError("Git returned an unsafe changed path")
+
+
+def drain_changed_path_stream(stream: IO[bytes], capture: ChangedPathStream) -> None:
+    """Incrementally collect one bounded, NUL-delimited Git path manifest."""
+    try:
+        while True:
+            read_size = min(
+                READ_CHUNK_SIZE, capture.maximum_bytes - capture.bytes_read + 1
+            )
+            if read_size <= 0:
+                capture.limit_error = (
+                    "changed-path manifest exceeds the safe byte limit"
+                )
+                capture.overflowed.set()
+                return
+            chunk = stream.read(read_size)
+            if not chunk:
+                if capture.trailing:
+                    raise RuntimeError(
+                        "Git returned a malformed NUL-delimited changed-path manifest"
+                    )
+                return
+            if capture.bytes_read + len(chunk) > capture.maximum_bytes:
+                capture.limit_error = (
+                    "changed-path manifest exceeds the safe byte limit"
+                )
+                capture.overflowed.set()
+                return
+            capture.bytes_read += len(chunk)
+            entries = (bytes(capture.trailing) + chunk).split(b"\0")
+            capture.trailing = bytearray(entries.pop())
+            for entry in entries:
+                validate_changed_path(entry)
+                if entry in capture.seen_paths:
+                    raise RuntimeError("Git returned duplicate changed paths")
+                if len(capture.paths) >= capture.maximum_paths:
+                    capture.limit_error = (
+                        "changed-path manifest exceeds the safe path limit"
+                    )
+                    capture.overflowed.set()
+                    return
+                capture.seen_paths.add(entry)
+                capture.paths.append(entry)
+    except (OSError, RuntimeError, ValueError) as error:
+        capture.error = error
+    finally:
+        try:
+            stream.close()
+        except (OSError, ValueError):
+            # A sibling cleanup path can close the pipe before this reader exits.
             pass
         capture.completed.set()
 
@@ -548,6 +634,7 @@ def reap_provider(
         try:
             stream.close()
         except (OSError, ValueError):
+            # Reaping is best effort after either reader may have closed the pipe.
             pass
     process.wait()
     for reader in readers:
@@ -556,21 +643,32 @@ def reap_provider(
 
 def provider_return_code(
     process: subprocess.Popen[bytes],
-    stdout: ProviderStream,
+    stdout: ProviderStream | ChangedPathStream,
     stderr: ProviderStream,
     stdout_limit_error: str,
+    *,
+    timeout_seconds: float,
+    stderr_limit_error: str,
+    deadline_error: str,
+    output_error: str,
+    coverage_gap: type[RuntimeError],
 ) -> int:
     """Wait for bounded output and a completed provider before the deadline."""
-    deadline = time.monotonic() + LINKED_ISSUE_COMMENT_REQUEST_TIMEOUT_SECONDS
+    deadline = time.monotonic() + timeout_seconds
     while True:
         if stdout.overflowed.is_set():
-            raise LinkedRequirementsCoverageGap(stdout_limit_error)
-        if stderr.overflowed.is_set():
-            raise LinkedRequirementsCoverageGap(
-                "linked issue response exceeds the safe stderr limit"
+            path_limit_error = (
+                stdout.limit_error if isinstance(stdout, ChangedPathStream) else None
             )
-        if stdout.error is not None or stderr.error is not None:
-            raise RuntimeError("cannot read linked issue provider output")
+            raise coverage_gap(path_limit_error or stdout_limit_error)
+        if stderr.overflowed.is_set():
+            raise coverage_gap(stderr_limit_error)
+        if stdout.error is not None:
+            if isinstance(stdout.error, RuntimeError):
+                raise stdout.error
+            raise RuntimeError(output_error)
+        if stderr.error is not None:
+            raise RuntimeError(output_error)
         return_code = process.poll()
         if (
             return_code is not None
@@ -579,9 +677,7 @@ def provider_return_code(
         ):
             return process.wait()
         if time.monotonic() >= deadline:
-            raise LinkedRequirementsCoverageGap(
-                "linked issue provider exceeded the safe provider deadline"
-            )
+            raise coverage_gap(deadline_error)
         time.sleep(PROVIDER_POLL_SECONDS)
 
 
@@ -625,7 +721,15 @@ def bounded_gh_output(
             reader.start()
         try:
             return_code = provider_return_code(
-                process, stdout_capture, stderr_capture, limit_error
+                process,
+                stdout_capture,
+                stderr_capture,
+                limit_error,
+                timeout_seconds=LINKED_ISSUE_COMMENT_REQUEST_TIMEOUT_SECONDS,
+                stderr_limit_error="linked issue response exceeds the safe stderr limit",
+                deadline_error="linked issue provider exceeded the safe provider deadline",
+                output_error="cannot read linked issue provider output",
+                coverage_gap=LinkedRequirementsCoverageGap,
             )
         except BaseException:
             reap_provider(process, (stdout, stderr), readers)
@@ -774,14 +878,6 @@ def linked_requirements(
             or not isinstance(issue_data.get("state"), str)
         ):
             raise RuntimeError("GitHub returned incomplete linked issue requirements")
-        if (
-            isinstance(body, str)
-            and len(body.encode("utf-8", errors="surrogatepass"))
-            > MAX_LINKED_REQUIREMENT_BODY_BYTES
-        ):
-            raise LinkedRequirementsCoverageGap(
-                "linked issue metadata exceeds the safe body limit"
-            )
         comments = sorted(
             canonical_json(comment, "linked issue comment")
             for comment in paginated_issue_comments(
@@ -813,6 +909,74 @@ def linked_requirements(
     )
 
 
+def bounded_git_path_manifest(arguments: Sequence[str]) -> list[bytes]:
+    """Collect one immutable Git path manifest without unbounded buffering."""
+    command = ["git", *git_read_arguments(), *arguments]
+    try:
+        try:
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=git_read_environment(),
+            )
+        except FileNotFoundError as error:
+            raise RuntimeError(
+                f"required command unavailable: {error.filename or command[0]}"
+            ) from error
+        stdout = process.stdout
+        stderr = process.stderr
+        if stdout is None or stderr is None:
+            process.kill()
+            process.wait()
+            raise RuntimeError("Git did not provide changed-path output")
+        stdout_capture = ChangedPathStream(
+            MAX_CHANGED_PATH_MANIFEST_BYTES, MAX_CHANGED_PATHS
+        )
+        stderr_capture = ProviderStream(MAX_CHANGED_PATH_STDERR_BYTES)
+        readers = (
+            threading.Thread(
+                target=drain_changed_path_stream,
+                args=(stdout, stdout_capture),
+                daemon=True,
+            ),
+            threading.Thread(
+                target=drain_provider_stream,
+                args=(stderr, stderr_capture),
+                daemon=True,
+            ),
+        )
+        for reader in readers:
+            reader.start()
+        try:
+            return_code = provider_return_code(
+                process,
+                stdout_capture,
+                stderr_capture,
+                "changed-path manifest exceeds the safe byte limit",
+                timeout_seconds=CHANGED_PATH_REQUEST_TIMEOUT_SECONDS,
+                stderr_limit_error="changed-path response exceeds the safe stderr limit",
+                deadline_error="changed-path provider exceeded the safe provider deadline",
+                output_error="cannot read immutable changed-path output",
+                coverage_gap=ChangedPathCoverageGap,
+            )
+        except BaseException:
+            reap_provider(process, (stdout, stderr), readers)
+            raise
+        for reader in readers:
+            reader.join(PROVIDER_READER_JOIN_SECONDS)
+        if return_code != 0:
+            message = (
+                bytes(stderr_capture.output).decode("utf-8", errors="replace").strip()
+            )
+            raise RuntimeError(message or f"git {' '.join(arguments)} failed")
+        return stdout_capture.paths
+    except OSError as error:
+        raise RuntimeError(
+            f"cannot collect immutable changed paths: {error}"
+        ) from error
+
+
 def git_bytes(*arguments: str) -> bytes:
     """Run a read-only Git query and return its byte-exact stdout."""
     result: Any = run_command(
@@ -836,37 +1000,23 @@ def git_bytes(*arguments: str) -> bytes:
 
 def immutable_range_paths(base_oid: str, head_oid: str) -> list[bytes]:
     """Return validated NUL-safe paths from one immutable Git diff range."""
-    raw_paths = git_bytes(
-        "-c",
-        "diff.external=",
-        "-c",
-        "diff.autoRefreshIndex=false",
-        "diff",
-        "--name-only",
-        "-z",
-        "--no-renames",
-        "--ignore-submodules=none",
-        "--no-ext-diff",
-        "--no-textconv",
-        base_oid,
-        head_oid,
-    )
-    if raw_paths and not raw_paths.endswith(b"\0"):
-        raise RuntimeError(
-            "Git returned a malformed NUL-delimited changed-path manifest"
+    return bounded_git_path_manifest(
+        (
+            "-c",
+            "diff.external=",
+            "-c",
+            "diff.autoRefreshIndex=false",
+            "diff",
+            "--name-only",
+            "-z",
+            "--no-renames",
+            "--ignore-submodules=none",
+            "--no-ext-diff",
+            "--no-textconv",
+            base_oid,
+            head_oid,
         )
-    entries = raw_paths[:-1].split(b"\0") if raw_paths else []
-    if any(not entry for entry in entries):
-        raise RuntimeError("Git returned an empty changed path")
-    if any(
-        entry.startswith(b"/")
-        or any(component in {b".", b".."} for component in entry.split(b"/"))
-        for entry in entries
-    ):
-        raise RuntimeError("Git returned an unsafe changed path")
-    if len(entries) != len(set(entries)):
-        raise RuntimeError("Git returned duplicate changed paths")
-    return entries
+    )
 
 
 def immutable_changed_paths(base_oid: str, head_oid: str) -> ChangedPathManifest:
@@ -1085,6 +1235,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise RuntimeError(
                 "linked issue requirements changed while collecting evidence"
             )
+    except ChangedPathCoverageGap as error:
+        structured_error("changed path coverage gap", str(error))
+        return 1
     except LinkedRequirementsCoverageGap as error:
         structured_error("linked issue requirements coverage gap", str(error))
         return 1

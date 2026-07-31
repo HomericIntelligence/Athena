@@ -613,6 +613,7 @@ class WorktreeMetadata:
     head_entries: dict[str, PathEntry]
     index_entries: dict[str, PathEntry]
     skip_worktree_paths: frozenset[str]
+    intent_to_add_paths: frozenset[str]
 
 
 def add_worktree_candidate(candidates: set[str], path: str) -> None:
@@ -672,11 +673,12 @@ def parse_tagged_index_record(record: bytes) -> tuple[PathEntry, bool]:
 def worktree_metadata(
     head: str, paths: Sequence[str], repository_root: Path
 ) -> WorktreeMetadata:
-    """Stream bounded HEAD/index metadata without running a worktree diff."""
+    """Stream bounded HEAD/index metadata without reading worktree bytes."""
     candidates: set[str] = set()
     head_entries: dict[str, PathEntry] = {}
     index_entries: dict[str, PathEntry] = {}
     skip_worktree_paths: set[str] = set()
+    staged_change_paths: set[str] = set()
 
     def consume_head(record: bytes) -> None:
         entry = parse_head_tree_record(record)
@@ -690,6 +692,14 @@ def worktree_metadata(
         if skip_worktree:
             skip_worktree_paths.add(entry.path)
 
+    def consume_staged_change(record: bytes) -> None:
+        path = os.fsdecode(record)
+        if path not in candidates:
+            raise RuntimeError(
+                f"staged change path was missing from worktree scope metadata: {path}"
+            )
+        staged_change_paths.add(path)
+
     consume_git_nul_records(
         pathspec_arguments(["ls-tree", "-r", "-z", head], paths),
         repository_root,
@@ -700,10 +710,37 @@ def worktree_metadata(
         repository_root,
         consume_index,
     )
+    consume_git_nul_records(
+        pathspec_arguments(
+            [
+                "-c",
+                "diff.autoRefreshIndex=false",
+                "diff",
+                "--cached",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--ignore-submodules=none",
+                "--name-only",
+                "-z",
+                "--no-renames",
+                "--ita-invisible-in-index",
+                head,
+            ],
+            paths,
+        ),
+        repository_root,
+        consume_staged_change,
+    )
+    intent_to_add_paths = frozenset(
+        path
+        for path in index_entries
+        if path not in head_entries and path not in staged_change_paths
+    )
     return WorktreeMetadata(
         head_entries=head_entries,
         index_entries=index_entries,
         skip_worktree_paths=frozenset(skip_worktree_paths),
+        intent_to_add_paths=intent_to_add_paths,
     )
 
 
@@ -713,6 +750,7 @@ class FileSnapshot:
 
     fingerprint: ContentFingerprint
     object_id: str | None
+    mode: str
 
 
 @dataclass(frozen=True)
@@ -835,6 +873,7 @@ def read_regular_file_snapshot_without_following(
                 length=content_length, digest=content_digest.hexdigest()
             ),
             object_id=object_digest.hexdigest() if object_digest is not None else None,
+            mode=f"{stat.S_IMODE(final_stat.st_mode):04o}",
         )
     finally:
         os.close(descriptor)
@@ -859,7 +898,7 @@ def worktree_path_snapshot(
             repository_root, relative_path, object_format
         )
         return WorktreePathSnapshot(
-            entry=entry,
+            entry=PathEntry(entry.path, "file", mode=snapshot.mode),
             content=snapshot.fingerprint,
             object_id=snapshot.object_id,
         )
@@ -964,8 +1003,10 @@ def worktree_tracked_capture(
                     f"skip-worktree path {path}; use --staged"
                 )
             continue
-        if index_differs_from_head and not worktree_matches_entry(
-            snapshot, index_entry
+        if (
+            index_differs_from_head
+            and path not in metadata.intent_to_add_paths
+            and not worktree_matches_entry(snapshot, index_entry)
         ):
             raise RuntimeError(
                 "worktree scope cannot safely inspect staged change whose live "

@@ -282,30 +282,51 @@ FAKE_GH = """#!/usr/bin/env python3
 import json
 import os
 from pathlib import Path
+import re
 import sys
 
 arguments = sys.argv[1:]
 
 
-def option_value(name):
-    for index, argument in enumerate(arguments[:-1]):
-        if argument == name:
-            return arguments[index + 1]
-    return None
+def option_values(name):
+    indexes = [index for index, argument in enumerate(arguments) if argument == name]
+    if any(
+        index + 1 == len(arguments) or arguments[index + 1].startswith("--")
+        for index in indexes
+    ):
+        return None
+    return [arguments[index + 1] for index in indexes]
 
 
-def is_linked_issue_comments_endpoint():
+def has_exact_option(name, expected):
+    return option_values(name) == [expected]
+
+
+def is_linked_issue_comments_request():
     return any(
-        "/issues/" in argument
-        and argument.split("?", maxsplit=1)[0].endswith("/comments")
+        "/issues/" in argument and "/comments" in argument
         for argument in arguments
+    )
+
+
+def is_canonical_linked_issue_comments_request():
+    endpoint = (
+        r"repos/owner/requirements/issues/[1-9][0-9]*/comments"
+        r"\?per_page=100&page=[1-9][0-9]*"
+    )
+    return (
+        len(arguments) == 6
+        and arguments[:1] == ["api"]
+        and has_exact_option("--hostname", "github.com")
+        and has_exact_option("--method", "GET")
+        and re.fullmatch(endpoint, arguments[-1]) is not None
     )
 
 
 if arguments[:2] == ["pr", "view"]:
     if (
         os.environ.get("ATHENA_TEST_FORBID_AMBIENT_TARGET") == "1"
-        and option_value("--repo") != "github.com/owner/repository"
+        and not has_exact_option("--repo", "github.com/owner/repository")
     ):
         print("strict review must use the retained GitHub target", file=sys.stderr)
         raise SystemExit(9)
@@ -322,7 +343,7 @@ elif arguments[:2] == ["repo", "view"]:
 elif arguments[:2] == ["issue", "view"]:
     if (
         os.environ.get("ATHENA_TEST_FORBID_AMBIENT_TARGET") == "1"
-        and option_value("--repo") != "github.com/owner/requirements"
+        and not has_exact_option("--repo", "github.com/owner/requirements")
     ):
         print("linked issue reads must use the canonical GitHub target", file=sys.stderr)
         raise SystemExit(11)
@@ -348,13 +369,10 @@ elif arguments[:2] == ["issue", "view"]:
     sequence = json.loads(os.environ["ATHENA_TEST_GH_ISSUE_SEQUENCE"])
     print(json.dumps(sequence[min(count, len(sequence) - 1)]))
 elif arguments[:1] == ["api"]:
-    if is_linked_issue_comments_endpoint():
-        if ["--hostname", "github.com"] not in [arguments[index:index + 2] for index in range(len(arguments) - 1)]:
-            print("linked issue comments must use the canonical GitHub host", file=sys.stderr)
+    if is_linked_issue_comments_request():
+        if not is_canonical_linked_issue_comments_request():
+            print("linked issue comments must use the canonical request target", file=sys.stderr)
             raise SystemExit(8)
-        if "--paginate" in arguments or "--slurp" in arguments:
-            print("linked issue comments must use bounded explicit pages", file=sys.stderr)
-            raise SystemExit(12)
         body_bytes = os.environ.get("ATHENA_TEST_GH_COMMENT_BODY_BYTES")
         if body_bytes is not None:
             print(json.dumps([{"id": 1, "body": "x" * int(body_bytes)}]))
@@ -389,6 +407,114 @@ else:
     print(f"unexpected gh invocation: {arguments}", file=sys.stderr)
     raise SystemExit(2)
 """
+
+
+def run_fake_gh(*arguments: str) -> subprocess.CompletedProcess[str]:
+    """Run the fixture under strict target binding with isolated state."""
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        root = Path(temporary_directory)
+        executable = root / "gh"
+        executable.write_text(FAKE_GH, encoding="utf-8")
+        executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "ATHENA_TEST_FORBID_AMBIENT_TARGET": "1",
+                "ATHENA_TEST_GH_STATE": str(root / "pr-state"),
+                "ATHENA_TEST_GH_PR_SEQUENCE": json.dumps([pull_request()]),
+                "ATHENA_TEST_GH_ISSUE_BODY_BYTES": "0",
+            }
+        )
+        return subprocess.run(
+            [sys.executable, str(executable), *arguments],
+            capture_output=True,
+            env=environment,
+            text=True,
+            check=False,
+        )
+
+
+class FakeGhArgumentValidationTests(unittest.TestCase):
+    """Keep strict integration fixtures from accepting malformed target commands."""
+
+    def test_rejects_duplicate_or_valueless_repository_options(self) -> None:
+        cases = (
+            (
+                (
+                    "pr",
+                    "view",
+                    "9",
+                    "--repo",
+                    "github.com/owner/repository",
+                    "--repo",
+                    "attacker.invalid/owner/repository",
+                ),
+                9,
+            ),
+            (("pr", "view", "9", "--repo", "--json", "number"), 9),
+            (
+                (
+                    "issue",
+                    "view",
+                    "10",
+                    "--repo",
+                    "github.com/owner/requirements",
+                    "--repo",
+                    "attacker.invalid/owner/requirements",
+                ),
+                11,
+            ),
+            (("issue", "view", "10", "--repo", "--json", "id"), 11),
+        )
+
+        for arguments, expected_code in cases:
+            with self.subTest(arguments=arguments):
+                result = run_fake_gh(*arguments)
+
+                self.assertEqual(expected_code, result.returncode)
+
+    def test_requires_the_exact_linked_issue_comment_target(self) -> None:
+        valid = (
+            "api",
+            "--hostname",
+            "github.com",
+            "--method",
+            "GET",
+            "repos/owner/requirements/issues/10/comments?per_page=100&page=1",
+        )
+        invalid = (
+            (
+                "api",
+                "--hostname",
+                "github.com",
+                "--hostname",
+                "attacker.invalid",
+                "--method",
+                "GET",
+                "repos/owner/requirements/issues/10/comments?per_page=100&page=1",
+            ),
+            (
+                "api",
+                "--hostname",
+                "github.com",
+                "--method",
+                "GET",
+                "repos/attacker/requirements/issues/10/comments?per_page=100&page=1",
+            ),
+            (
+                "api",
+                "--hostname",
+                "github.com",
+                "--method",
+                "GET",
+                "repos/owner/requirements/issues/10/comments?per_page=100",
+            ),
+        )
+
+        self.assertEqual(0, run_fake_gh(*valid).returncode)
+        for arguments in invalid:
+            with self.subTest(arguments=arguments):
+                self.assertEqual(8, run_fake_gh(*arguments).returncode)
 
 
 class BoundedLinkedCommentReaderTests(unittest.TestCase):
@@ -642,6 +768,110 @@ class BoundedLinkedCommentReaderTests(unittest.TestCase):
         ):
             self.collector.paginated_issue_comments("owner/requirements", 10, budget)
             self.collector.paginated_issue_comments("owner/requirements", 11, budget)
+
+
+class BoundedChangedPathReaderTests(unittest.TestCase):
+    """Exercise bounded immutable path collection without a live Git process."""
+
+    def setUp(self) -> None:
+        self.module_name = f"test_collect_evidence_paths_{id(self)}"
+        self.collector = load_collector(self.module_name)
+
+    def tearDown(self) -> None:
+        sys.modules.pop(self.module_name, None)
+
+    def test_streams_a_bounded_path_manifest(self) -> None:
+        process = BoundedOutputProcess(b"alpha\0beta\0")
+
+        with patch.object(self.collector.subprocess, "Popen", return_value=process):
+            paths = self.collector.immutable_range_paths(BASE_OID, HEAD_OID)
+
+        self.assertEqual([b"alpha", b"beta"], paths)
+        self.assertEqual(1, process.wait_calls)
+        self.assertFalse(process.killed)
+
+    def test_fails_closed_when_a_path_manifest_exceeds_the_byte_limit(self) -> None:
+        process = BoundedOutputProcess(b"alpha\0", poll_result=None)
+
+        with (
+            patch.object(self.collector, "MAX_CHANGED_PATH_MANIFEST_BYTES", 4),
+            patch.object(self.collector.subprocess, "Popen", return_value=process),
+            self.assertRaisesRegex(
+                self.collector.ChangedPathCoverageGap, "safe byte limit"
+            ),
+        ):
+            self.collector.immutable_range_paths(BASE_OID, HEAD_OID)
+
+        self.assertTrue(process.killed)
+        self.assertEqual(1, process.wait_calls)
+
+    def test_fails_closed_when_a_path_manifest_exceeds_the_path_limit(self) -> None:
+        process = BoundedOutputProcess(b"alpha\0beta\0", poll_result=None)
+
+        with (
+            patch.object(self.collector, "MAX_CHANGED_PATHS", 1),
+            patch.object(self.collector.subprocess, "Popen", return_value=process),
+            self.assertRaisesRegex(
+                self.collector.ChangedPathCoverageGap, "safe path limit"
+            ),
+        ):
+            self.collector.immutable_range_paths(BASE_OID, HEAD_OID)
+
+        self.assertTrue(process.killed)
+        self.assertEqual(1, process.wait_calls)
+
+    def test_fails_closed_when_a_path_manifest_misses_its_deadline(self) -> None:
+        process = BoundedOutputProcess(poll_result=None)
+
+        with (
+            patch.object(self.collector, "CHANGED_PATH_REQUEST_TIMEOUT_SECONDS", 0),
+            patch.object(self.collector.subprocess, "Popen", return_value=process),
+            self.assertRaisesRegex(
+                self.collector.ChangedPathCoverageGap, "provider deadline"
+            ),
+        ):
+            self.collector.immutable_range_paths(BASE_OID, HEAD_OID)
+
+        self.assertTrue(process.killed)
+        self.assertEqual(1, process.wait_calls)
+
+    def test_reports_a_path_capacity_gap_as_structured_evidence(self) -> None:
+        arguments = (
+            "--expected-base-oid",
+            BASE_OID,
+            "--expected-head-oid",
+            HEAD_OID,
+            "--expected-host",
+            "github.com",
+            "--expected-repository",
+            "owner/repository",
+            "--expected-pr-number",
+            "9",
+            "--expected-pr-url",
+            "https://github.com/owner/repository/pull/9",
+            "9",
+        )
+        output = io.StringIO()
+
+        with (
+            patch.object(self.collector, "pr_metadata", return_value=pull_request()),
+            patch.object(
+                self.collector,
+                "immutable_changed_paths",
+                side_effect=self.collector.ChangedPathCoverageGap("safe path limit"),
+            ),
+            patch("sys.stdout", output),
+        ):
+            exit_code = self.collector.main(arguments)
+
+        self.assertEqual(1, exit_code)
+        self.assertEqual(
+            {
+                "details": "safe path limit",
+                "error": "changed path coverage gap",
+            },
+            json.loads(output.getvalue()),
+        )
 
 
 class ImmutableEvidenceTests(unittest.TestCase):
@@ -1131,7 +1361,7 @@ class ImmutableEvidenceTests(unittest.TestCase):
         self.assertIn("byte limit", error["details"])
         self.assertEqual("", result.stderr)
 
-    def test_bounds_linked_issue_metadata_body_as_a_structured_coverage_gap(
+    def test_bounds_linked_issue_metadata_response_as_a_structured_coverage_gap(
         self,
     ) -> None:
         reference, _ = linked_requirement_fixture()

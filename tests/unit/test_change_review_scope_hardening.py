@@ -246,6 +246,64 @@ class ChangeReviewScopeHardeningTests(unittest.TestCase):
 
                     self.assertEqual(1, result.returncode)
 
+    def test_worktree_scope_reviews_intent_to_add_as_live_addition(self) -> None:
+        """Intent-to-add records have no staged content to compare against live bytes."""
+        with tempfile.TemporaryDirectory() as temp:
+            repository = Path(temp) / "repo"
+            initialize_repository(repository)
+            pending = repository / "pending.py"
+            pending.write_text("value = 1\n", encoding="utf-8")
+            git(repository, "add", "--intent-to-add", pending.name)
+
+            result = subprocess.run(
+                [sys.executable, str(RESOLVER), "--worktree"],
+                cwd=repository,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            scope = json.loads(result.stdout)
+            self.assertEqual([pending.name], scope["paths"])
+            self.assertEqual([pending.name], scope["tracked_paths"])
+            self.assertEqual([], scope["untracked_paths"])
+            self.assertEqual(
+                [{"kind": "file", "mode": "0644", "path": pending.name}],
+                scope["path_entries"],
+            )
+
+    @unittest.skipUnless(
+        hasattr(os, "O_NONBLOCK") and hasattr(os, "O_NOFOLLOW"),
+        "requires no-follow regular-file inspection support",
+    )
+    def test_worktree_scope_uses_descriptor_mode_after_metadata_race(self) -> None:
+        """An executable-bit change cannot be omitted after a stale pre-open stat."""
+        module_name = "test_change_review_verified_descriptor_mode"
+        module = load_resolver(module_name)
+        try:
+            with tempfile.TemporaryDirectory() as temp:
+                repository = Path(temp) / "repo"
+                initialize_repository(repository)
+                tracked = repository / "tracked.txt"
+                tracked.chmod(0o755)
+                head = git(repository, "rev-parse", "HEAD")
+                original_entry = module.worktree_path_entry
+
+                def stale_entry(repository_root: Path, relative_path: str) -> Any:
+                    if relative_path == tracked.name:
+                        return module.PathEntry(relative_path, "file", mode="0644")
+                    return original_entry(repository_root, relative_path)
+
+                with patch.object(
+                    module, "worktree_path_entry", side_effect=stale_entry
+                ):
+                    capture = module.worktree_tracked_capture(head, (), repository)
+
+                self.assertEqual((tracked.name,), capture.paths)
+        finally:
+            sys.modules.pop(module_name, None)
+
     def test_worktree_scope_reviews_smudged_bytes_as_raw_changes(self) -> None:
         """A clean-filter-equivalent byte stream remains reviewable raw source."""
         with tempfile.TemporaryDirectory() as temp:

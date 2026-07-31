@@ -15,6 +15,7 @@ from unittest.mock import patch
 from scripts.package_plugin import (
     ARCHIVE_ROOTS,
     PackageError,
+    REQUIRED_MEMBERS,
     build_package,
     inspect_archive,
     main,
@@ -35,27 +36,7 @@ def create_repository(root: Path, *, version: str = "1.2.3") -> None:
         f'{{"name": "athena", "version": "{version}"}}\n',
         encoding="utf-8",
     )
-    for member in (
-        "skills/repo-review/SKILL.md",
-        "skills/pr-review/SKILL.md",
-        "skills/pr-review/references/criteria.md",
-        "skills/pr-review/references/delivery.md",
-        "skills/pr-review/references/evidence.md",
-        "skills/pr-review/references/prevalidated.md",
-        "skills/change-review/SKILL.md",
-        "skills/change-review/scripts/resolve_scope.py",
-        "skills/change-review/references/scope-resolution.md",
-        "skills/issue-review/SKILL.md",
-        "skills/plan-issue/SKILL.md",
-        "docs/dependency-resolution.md",
-        "docs/review/common.md",
-        "docs/review/README.md",
-        "docs/review/design-docs.md",
-        "docs/review/language-routing.md",
-        "docs/review/behavior-first-testing.md",
-        "docs/review/issue-planning.md",
-        "docs/review/repository-scorecard.md",
-    ):
+    for member in sorted(REQUIRED_MEMBERS):
         path = root / member
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(f"fixture for {member}\n", encoding="utf-8")
