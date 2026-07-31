@@ -1,120 +1,132 @@
 ---
 name: learn
-description: Preserve a verified lesson in required Mnemosyne and always deliver it through a pull request. Uses Athena's canonical dependency-resolution contract and fails if ~/.agent_brain/knowledge cannot be prepared.
+description: Preserve a verified, non-duplicate Mnemosyne lesson through an isolated-worktree pull request when direct write authority exists; otherwise report without mutation. Fails closed if ~/.agent_brain/knowledge cannot be prepared.
 argument-hint: <lesson or session summary>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 ---
 
 # Learn
 
-Capture behavior-changing knowledge in Mnemosyne. This workflow always creates a branch, signed
-commit, push, and pull request. It never writes directly to a default branch and never treats a
-local-only edit as success.
+Why: one general, canonical rule is more discoverable and safer than many session-specific copies.
+First decide whether a durable delta exists; write only an authorized result through a reviewable PR.
 
 ## Prepare the knowledge repository
 
-Prepare Mnemosyne at `$HOME/.agent_brain/knowledge` by following the canonical
-[`dependency-resolution` contract](../../docs/dependency-resolution.md) exactly. Do not restate its
-owner precedence, trust gates, checkout rules, or revalidation requirements in this skill. Report
-the exact repository, commit SHA, and trust basis. Any resolution, authentication, checkout, update,
-or revalidation failure is blocking.
+Prepare Mnemosyne at `$HOME/.agent_brain/knowledge` under the canonical
+[`dependency-resolution` contract](../../docs/dependency-resolution.md). Report the resolved
+repository, commit SHA, and trust basis. Any resolution, authentication, checkout, update, or
+revalidation failure is blocking.
 
-## Before writing
+## Decide before writing
+
+This phase is read-only.
 
 1. Run `advise` with the proposed lesson.
-2. Search flat `skills/*.md`, excluding optional notes, for semantic overlap.
-3. Search Git history for prior consolidation and provenance.
-4. Query open pull requests in the resolved Mnemosyne repository by candidate title and changed
-   `skills/<name>.md` path. If one already changes the canonical entry, inspect it and either stack on
-   its branch with explicit authority or stop for user direction; never create a conflicting PR.
-5. Amend the canonical entry when its intent matches; create a new entry only for a distinct search
-   intent. If the proposed lesson contains no material knowledge or verification change, fail with
-   `no learnable change` before mutating anything. Do not report `learn` as completed.
+2. Define retrieval intent as the trigger/context, desired outcome, constraints, and failure mode;
+   never use title, issue number, or session wording as identity.
+3. Search flat `skills/*.md` (not optional notes), group semantic matches by intent, and inspect each
+   candidate and its Git history for provenance and prior consolidation.
+4. Inspect every open PR in the resolved Mnemosyne repository: enumerate its changed flat
+   `skills/*.md` artifacts and derive intent from their changed content. A title or path only finds a
+   candidate; it is never sufficient duplicate evidence.
+5. Record exactly one disposition before mutation:
 
-Repository audits belong in `repo-review`; PR audits belong in `pr-review`; review depth is a mode,
-not another skill.
+   | Disposition | Use when | Action |
+   | --- | --- | --- |
+   | `amend` | One canonical entry has a material verified delta. | Update that entry only. |
+   | `consolidate` | Two or more current entries share intent. | Select one canonical entry, merge non-superseded rules, and retire duplicates in the same PR. |
+   | `create` | Intent is materially distinct. | Add one precisely named entry. |
+   | `reject` | No durable, verified delta exists. | Report `no learnable change`; leave Mnemosyne unchanged. |
+   | `blocked` | Candidates or an open PR have same or ambiguous intent, provenance is uncertain, or retirement is unsafe. | Leave Mnemosyne unchanged and request direction. |
 
-Learn records verified knowledge; it does not embed executable Athena behavior in Mnemosyne. When a
-lesson requires an Athena implementation, first make that change through normal Athena development:
-put each Bash or Python helper in `skills/<name>/scripts/`, reference it from the owning `SKILL.md`,
-and add executable behavior tests under `tests/unit/`. Never paste an inline Bash or Python program
-into skill Markdown. Run the complete Athena gates before learning the verified result through the
-mandatory Mnemosyne PR.
+Never evade a blocked consolidation by creating a near-duplicate. An existing matching or ambiguous
+open PR is a no-mutation boundary. Enter Existing-PR mode only with direct user authority for that
+exact PR; never create a competing PR. Do not report `learn` complete after `reject` or `blocked`.
 
-Athena skill guidance must follow [`../../docs/policies/development.md`](../../docs/policies/development.md).
-Do not teach agents to create prose-string tests, documentation snapshots, manually maintained
-changelogs, generated documentation, duplicated registries/catalogs/inventories, or unrelated files.
-Tests must exercise computable behavior or executable artifact contracts and fail for the defect
-they claim to detect. Apply KISS, YAGNI, TDD, DRY, SOLID, modularity, and least astonishment when
-deciding whether a lesson should cause repository work at all.
+Generalize the smallest reusable decision rule. Keep task-specific facts only when another agent
+needs them to execute or verify that rule. Preserve history in Git, not duplicate active entries.
+Repository audits belong in `repo-review`; PR audits belong in `pr-review`; review depth is a mode.
 
-## External-write authority checkpoint
+If a lesson requires Athena implementation, complete that normal development first. Follow
+[`development.md`](../../docs/policies/development.md): keep helpers in `skills/<name>/scripts/`,
+add behavior-based executable tests under `tests/unit/`, and do not add inline executable Markdown,
+wording tests, or non-consumed artifacts merely to support a lesson.
 
-Before creating a branch or worktree, editing Mnemosyne, committing, pushing, or opening the
-mandatory pull request, establish explicit user authority for the resolved repository and the
-complete branch, commit, push, and PR workflow. A direct user request to invoke `learn` supplies
-that authority. An indirect recommendation or invocation by another skill does not: show the
-repository, trust basis, base revision, proposed branch, intended files, and PR target, then obtain
-explicit user approval before mutation.
+## Authority
 
-Read-only resolution, search, and planning do not authorize later mutation. If authority is absent,
-stop before creating mutable state and report that Learn has not run successfully. Once authorized,
-the workflow may not substitute a local-only edit for its mandatory PR outcome.
+Read-only discovery never authorizes mutation. Before creating a branch or worktree, editing,
+committing, pushing, or opening a PR, establish authority for the resolved repository and full
+delivery path. A direct user request to invoke `learn` supplies new-PR authority; updating an
+existing PR also needs direct user authority for that exact discovered PR. A recommendation or
+indirect invocation does not. Without it, return the read-only disposition and proposed repository,
+base, branch, files, and PR target.
 
-## Delegation and integration
+## Existing-PR mode
 
-When the host supports subagents, partition independent discovery, overlap analysis, drafting, and
-verification into bounded work items. Run dependency-independent items concurrently in the
-background, up to the host's safe limit. If delegation or background execution is unavailable, run
-the same items sequentially without weakening their evidence requirements.
+Use this mode only for a discovered matching or ambiguous open PR after direct user authority names
+or accepts that exact PR. Re-fetch and bind its canonical repository, URL/number, `OPEN` state,
+source repository/ref, and head OID before editing. Create an isolated worktree on that source ref
+at the bound head OID, verify its `HEAD`, and never modify the shared checkout or default branch.
 
-Every writing subagent receives an isolated worktree based on the same resolved Mnemosyne default-
-branch revision and an explicit, non-overlapping file ownership set. Each canonical knowledge entry
-belongs to the coordinator or one designated integration item. Read-only agents may inspect shared
-evidence but must not edit it. Stop concurrent work on any ownership overlap, changed base revision,
-or unexpected scope. When the host does not provide native isolation, retain the resolved Mnemosyne
-checkout as the current working directory and invoke Athena's tested
-`../git-worktrees/scripts/prepare_worktree.py` by its absolute path resolved from this skill
-directory, with the exact `skill/<slug>` branch,
-`--path $HOME/.agent_brain/worktrees/knowledge-<slug>`,
-`--path-root $HOME/.agent_brain/worktrees`, and `--start-point <resolved-default-SHA>`.
+Immediately before publishing, re-fetch the same identity and head. Push only to the bound PR source
+ref, using the provider's safe expected-head/lease protection. If the ref moves, the source repository
+is not safely writable, or any binding differs, preserve the worktree and stop. Do not create a
+branch, open another PR, or retarget the change. Use the disposition-specific write allowlist below.
 
-The coordinator reviews each result and diff, rejects unrelated edits, and integrates accepted work
-sequentially into the single delivery worktree described below. Run focused validation after each
-integration and the resolved repository's complete relevant validation after the combined result.
-Only the coordinator performs the authorized commit, push, and PR creation.
+## Coordinate safely
 
-## Isolated write contract
+When available, partition independent discovery, overlap analysis, drafting, and verification into
+bounded work items; otherwise perform them sequentially without weakening evidence. New-PR writers
+use isolated worktrees from the same resolved default-branch SHA; Existing-PR writers use only the
+bound PR head. Give writers non-overlapping ownership; read-only work items never edit. The
+coordinator owns each canonical entry or assigns one integration owner, rejects unrelated edits, runs
+focused validation after each integration and complete relevant validation after the combined result,
+and alone commits, pushes, and opens a new PR when applicable. Stop on ownership overlap, base drift,
+or unexpected scope.
 
-Never modify the shared checkout's active worktree. From its fetched default branch:
+Without native isolation, use the installed `../git-worktrees/scripts/prepare_worktree.py` by absolute
+path only for new-PR work: retain the resolved checkout as the current directory; use branch
+`skill/<slug>`, `--path $HOME/.agent_brain/worktrees/knowledge-<slug>`,
+`--path-root $HOME/.agent_brain/worktrees`, and `--start-point <resolved-default-SHA>`. Never use
+this fallback to reconstruct an Existing-PR worktree.
 
-1. Derive `slug` and `name` using only lowercase ASCII letters, digits, and single hyphens. Require
-   the pattern `[a-z0-9][a-z0-9-]*`; reject `/`, `..`, leading `-`, control characters, and empty
-   values. Add a short collision-resistant suffix when the branch or worktree already exists.
-2. Create an isolated worktree under `$HOME/.agent_brain/worktrees/knowledge-<slug>` on branch
-   `skill/<slug>`. Resolve the path before creating it and require it to remain directly beneath
-   `$HOME/.agent_brain/worktrees`; reject symlinked parents or destinations.
-3. Write `skills/<name>.md` only after resolving the destination and proving it remains directly
-   beneath the worktree's `skills/` directory. Include name, searchable description, category, date, semantic version,
-   verification level, tags, when-to-use, verified workflow, failed attempts, results, parameters,
-   and evidence.
-4. For an amendment, update only the canonical entry. Git and pull-request history provide
-   provenance; optional raw evidence may be added to `.notes.md` only when a current consumer needs
-   it.
-5. Run the resolved Mnemosyne repository's own validation and tests.
-6. Verify no duplicate intent or stale consolidated name was introduced.
-7. Commit with a cryptographic signature and DCO sign-off, push the feature branch, and open a PR
-   against the resolved repository's default branch. The PR body must contain `Closes #N` when a
-   tracking issue exists.
-8. Report the PR URL and exact validation evidence. Do not auto-merge.
+## Deliver an authorized change
 
-If a push or PR cannot be created, preserve the isolated worktree and report the blocker. A Learn
-run is successful only when it returns a PR URL. Never fall back to writing inside Athena or a
-different repository.
+1. Never modify the shared checkout. For a new PR, derive `slug` and `name` from lowercase ASCII
+   letters, digits, and single hyphens using `[a-z0-9][a-z0-9-]*`; reject empty, control, `/`, `..`,
+   and leading `-` values. Add a collision-resistant suffix when needed. Create `skill/<slug>` at
+   `$HOME/.agent_brain/worktrees/knowledge-<slug>` from the resolved default-branch SHA; resolve the
+   path first, require it directly below `$HOME/.agent_brain/worktrees`, and reject symlinked parents
+   or destinations. This is the new-PR path for `create` and `consolidate`, not Existing-PR mode.
+2. Before editing, resolve a closed, disposition-specific write allowlist of exact repository-relative
+   paths:
 
-Preserve all delegated and delivery worktrees until their unique work is integrated or explicitly
-rejected. Cleanup is a separate mutation: remove only worktrees created by this Learn invocation,
-only with user authority, and only after rechecking that no uncommitted or unintegrated state
-remains. Otherwise report each worktree's path, owner, revision, cleanliness, and integration state
-and leave it intact. Never delete branches, discard changes, force removal, or touch a pre-existing
-worktree.
+   | Disposition | Allowed paths |
+   | --- | --- |
+   | `amend` | The resolved canonical entry only. |
+   | `create` | One new `skills/<name>.md` entry only. |
+   | `consolidate` | The canonical entry, each named duplicate to retire, and each verified active consumer that must migrate. |
+
+   A template- or schema-required companion is allowed only when named in this list. Optional
+   `.notes.md` evidence needs a current consumer. Do not discover new write paths while editing.
+3. For `create`, read the resolved Mnemosyne template, schema, and validation rules before drafting.
+   Use every required frontmatter field, including `name`, `description`, `category`, `date`, and
+   `version`, plus the required section structure. Include searchable intent, verification,
+   generalized use and workflow, relevant failed approaches, parameters, and evidence; omit unused
+   session transcript detail.
+4. Apply the selected disposition inside its allowlist. Amend only the canonical entry. During
+   consolidation, migrate verified active consumers before retiring every named duplicate.
+5. Run Mnemosyne's relevant complete validation. Verify exactly one active entry remains for the
+   intent and no duplicate intent or stale consolidated name was introduced.
+6. Sign and DCO-attest the commit. For a new PR, push the feature branch and open a PR against the
+   resolved default branch; include `Closes #N` when a tracking issue exists. For Existing-PR mode,
+   push only to the already bound source ref and do not open another PR. Never auto-merge.
+7. Report the disposition, bound or new PR URL, any retired entries, and exact validation evidence.
+
+A write disposition succeeds only with its PR URL. If validation, push, or PR creation fails, preserve
+the isolated worktree and report the blocker; never fall back to Athena, a default branch, or another
+repository. Preserve delegated and delivery worktrees until their unique work is integrated or
+explicitly rejected. Cleanup is separate: remove only worktrees created by this invocation, only with
+user authority, only after confirming no uncommitted or unintegrated state remains. Otherwise report
+each worktree's path, owner, revision, cleanliness, and integration state and leave it intact. Never
+delete branches, discard changes, force removal, or touch a pre-existing worktree.

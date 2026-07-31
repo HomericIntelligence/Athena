@@ -13,9 +13,32 @@ def load_json(name: str, default: object) -> object:
     return json.loads(os.environ.get(name, json.dumps(default)))
 
 
+def option_values(arguments: list[str], name: str) -> list[str | None]:
+    """Return every CLI option value without accepting ambient target selection."""
+    return [
+        arguments[index + 1] if index + 1 < len(arguments) else None
+        for index, argument in enumerate(arguments)
+        if argument == name
+    ]
+
+
+def require_explicit_repository(arguments: list[str]) -> int | None:
+    """Reject fake calls that do not carry the test's retained GitHub target."""
+    expected = os.environ.get("FAKE_GH_REQUIRE_REPOSITORY")
+    if expected is None:
+        return None
+    if option_values(arguments, "--repo") != [f"github.com/{expected}"]:
+        print("expected an explicit retained GitHub repository", file=sys.stderr)
+        return 9
+    return None
+
+
 def main() -> int:
     arguments = sys.argv[1:]
     if arguments[:2] == ["pr", "view"]:
+        target_error = require_explicit_repository(arguments)
+        if target_error is not None:
+            return target_error
         if "FAKE_GH_VIEW_RAW" in os.environ:
             print(os.environ["FAKE_GH_VIEW_RAW"])
             return 0
@@ -29,6 +52,8 @@ def main() -> int:
             "author": {"login": "reviewer"},
             "baseRefName": "main",
             "headRefName": "feature",
+            "baseRefOid": "a" * 40,
+            "headRefOid": "b" * 40,
             "statusCheckRollup": [],
             "url": f"https://github.com/{repository}/pull/{number}",
         }
@@ -49,6 +74,9 @@ def main() -> int:
         print(json.dumps(configured))
         return 0
     if arguments[:2] == ["pr", "list"]:
+        target_error = require_explicit_repository(arguments)
+        if target_error is not None:
+            return target_error
         print(json.dumps(load_json("FAKE_GH_CANDIDATES_JSON", [])))
         return 0
     if arguments[:2] == ["pr", "diff"]:
@@ -61,6 +89,9 @@ def main() -> int:
         print(os.environ.get("FAKE_GH_CHECKS", "[]"))
         return int(os.environ.get("FAKE_GH_CHECKS_EXIT", "0"))
     if arguments[:2] == ["repo", "view"]:
+        if os.environ.get("FAKE_GH_FORBID_REPO_VIEW") == "1":
+            print("ambient repository lookup is forbidden", file=sys.stderr)
+            return 10
         print(
             json.dumps(
                 {

@@ -15,6 +15,7 @@ from unittest.mock import patch
 from scripts.package_plugin import (
     ARCHIVE_ROOTS,
     PackageError,
+    REQUIRED_MEMBERS,
     build_package,
     inspect_archive,
     main,
@@ -35,11 +36,7 @@ def create_repository(root: Path, *, version: str = "1.2.3") -> None:
         f'{{"name": "athena", "version": "{version}"}}\n',
         encoding="utf-8",
     )
-    for member in (
-        "skills/repo-review/SKILL.md",
-        "skills/pr-review/SKILL.md",
-        "docs/dependency-resolution.md",
-    ):
+    for member in sorted(REQUIRED_MEMBERS):
         path = root / member
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(f"fixture for {member}\n", encoding="utf-8")
@@ -135,7 +132,7 @@ class PackagePluginTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             create_repository(root)
-            (root / "skills" / "pr-review" / "SKILL.md").unlink()
+            (root / "skills" / "change-review" / "SKILL.md").unlink()
 
             with self.assertRaisesRegex(PackageError, "missing required members"):
                 build_package(root)

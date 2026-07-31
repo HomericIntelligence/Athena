@@ -402,7 +402,7 @@ def _validate_repo_review_scorecard(
     repo_root: Path = REPO_ROOT,
 ) -> list[ValidationError]:
     """Require the review formula to name and weight each criterion unambiguously."""
-    criteria_path = repo_root / "skills" / "repo-review" / "references" / "criteria.md"
+    criteria_path = repo_root / "docs" / "review" / "repository-scorecard.md"
     skill_path = repo_root / "skills" / "repo-review" / "SKILL.md"
     try:
         criteria = criteria_path.read_text(encoding="utf-8")
