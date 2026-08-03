@@ -120,10 +120,15 @@ additional issue or plan artifact, require a capability to add its canonical
 identity and content digest to `reviewed_linked_requirements`; otherwise record
 an issue-alignment coverage gap and do not publish.
 
-`gh pr checks` and `statusCheckRollup` do not bind results to a head OID. In
-strict collection, treat `checks` as empty and `check_evidence` as a coverage
-gap unless another capability returns each check with the reviewed head. Never
-call unbound check data current CI evidence.
+`gh pr checks` and `statusCheckRollup` do not bind results to a head OID; never
+call either current CI evidence. In strict GitHub collection,
+`collect_evidence.py` queries the authenticated commit-scoped Checks API for
+the retained head OID. It emits `check_evidence.status: head_bound` only when
+every returned page is complete, every consumed check run has that exact
+`head_sha`, and the returned run count matches the provider total. Missing,
+stale, mixed-head, partial, malformed, or unavailable provider data leaves
+`checks` empty and emits a `coverage_gap`; it cannot support a merge-ready
+claim.
 
 ### Collect and verify GitLab evidence
 

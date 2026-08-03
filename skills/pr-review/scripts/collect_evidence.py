@@ -72,6 +72,10 @@ class ChangedPathCoverageGap(RuntimeError):
     """Changed paths exceed the bounded immutable-evidence collector."""
 
 
+class CheckEvidenceCoverageGap(RuntimeError):
+    """GitHub checks cannot be bound completely to the reviewed head."""
+
+
 @dataclass
 class LinkedRequirementBudget:
     """One cumulative provider budget shared by both strict evidence reads."""
@@ -1048,6 +1052,86 @@ def gh(*arguments: str, accepted_codes: tuple[int, ...] = (0,)) -> str:
     return result.stdout
 
 
+def head_bound_check_runs(repository: str, head_oid: str) -> list[dict[str, Any]]:
+    """Return complete GitHub check-run evidence bound to one immutable commit."""
+    try:
+        payload = json.loads(
+            gh(
+                "api",
+                "--paginate",
+                "--slurp",
+                "--hostname",
+                "github.com",
+                "--method",
+                "GET",
+                "-H",
+                "Accept: application/vnd.github+json",
+                f"repos/{repository}/commits/{head_oid}/check-runs?per_page=100",
+            )
+        )
+    except (RuntimeError, json.JSONDecodeError) as error:
+        raise CheckEvidenceCoverageGap(
+            "GitHub did not return readable head-bound check evidence"
+        ) from error
+    if not isinstance(payload, list) or not payload:
+        raise CheckEvidenceCoverageGap(
+            "GitHub returned no head-bound check-run response pages"
+        )
+
+    total_count: int | None = None
+    runs: list[dict[str, Any]] = []
+    run_ids: set[int] = set()
+    for page in payload:
+        if not isinstance(page, dict):
+            raise CheckEvidenceCoverageGap("GitHub returned a malformed check-run page")
+        page_total = page.get("total_count")
+        page_runs = page.get("check_runs")
+        if (
+            isinstance(page_total, bool)
+            or not isinstance(page_total, int)
+            or page_total < 0
+            or not isinstance(page_runs, list)
+        ):
+            raise CheckEvidenceCoverageGap(
+                "GitHub returned incomplete check-run evidence"
+            )
+        if total_count is None:
+            total_count = page_total
+        elif page_total != total_count:
+            raise CheckEvidenceCoverageGap(
+                "GitHub returned inconsistent check-run totals"
+            )
+        for run in page_runs:
+            if not isinstance(run, dict):
+                raise CheckEvidenceCoverageGap("GitHub returned a malformed check run")
+            run_id = run.get("id")
+            run_head_oid = run.get("head_sha")
+            if (
+                isinstance(run_id, bool)
+                or not isinstance(run_id, int)
+                or run_id < 1
+                or run_id in run_ids
+                or not isinstance(run.get("name"), str)
+                or not run["name"]
+                or not isinstance(run.get("status"), str)
+                or not isinstance(run.get("conclusion"), str | type(None))
+                or not isinstance(run_head_oid, str)
+                or COMMIT_OID.fullmatch(run_head_oid) is None
+            ):
+                raise CheckEvidenceCoverageGap(
+                    "GitHub returned incomplete check-run evidence"
+                )
+            if run_head_oid != head_oid:
+                raise CheckEvidenceCoverageGap(
+                    "GitHub returned a check run bound to a different head OID"
+                )
+            run_ids.add(run_id)
+            runs.append(run)
+    if total_count is None or len(runs) != total_count:
+        raise CheckEvidenceCoverageGap("GitHub returned partial check-run evidence")
+    return runs
+
+
 def pr_metadata(
     pull_request: str, target: ExpectedReviewTarget | None
 ) -> dict[str, Any]:
@@ -1169,18 +1253,25 @@ def main(argv: Sequence[str] | None = None) -> int:
             else None
         )
         changed_path_manifest: ChangedPathManifest | None = None
-        check_evidence: dict[str, str] | None = None
+        check_evidence: dict[str, str | int] | None = None
         if expected is not None:
             changed_path_manifest = immutable_changed_paths(*expected)
             changed_files = list(changed_path_manifest.paths)
-            # `gh pr checks` does not identify the commit it describes. Do not
-            # attribute that mutable endpoint's output to the reviewed head.
-            checks: list[object] = []
-            check_evidence = {
-                "status": "coverage_gap",
-                "reason": "no head-bound check evidence was collected",
-                "head_oid": expected[1],
-            }
+            try:
+                checks = head_bound_check_runs(repository, expected[1])
+            except CheckEvidenceCoverageGap as error:
+                checks = []
+                check_evidence = {
+                    "status": "coverage_gap",
+                    "reason": str(error),
+                    "head_oid": expected[1],
+                }
+            else:
+                check_evidence = {
+                    "status": "head_bound",
+                    "head_oid": expected[1],
+                    "count": len(checks),
+                }
         else:
             changed_files = [
                 line
