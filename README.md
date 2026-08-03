@@ -27,7 +27,7 @@ authentication failures, checkout mismatches, and update failures are fatal. The
 is mandatory. For a verified, non-duplicate lesson with direct write authority, `learn` uses an
 isolated worktree and pull request; otherwise it reports without mutation.
 
-Script-backed skills require Git and Python 3.10 or newer on the host. Dependency resolution and the
+Script-backed skills require Git and Python 3.13 on the host. Dependency resolution and the
 GitHub pull-request helper route additionally require authenticated GitHub CLI (`gh`) access. GitHub
 issue and repository routes require the authenticated GitHub capability selected by their own skill.
 GitLab issue, merge-request, and epic routes instead require an authenticated GitLab capability
@@ -104,7 +104,7 @@ sequentially with the current agent.
 
 ## Develop
 
-Prerequisites are Git, uv, Just, and Python 3.10+ for repository validation only.
+Prerequisites are Git, uv, Just, and Python 3.13 for repository validation only.
 
 ```bash
 git clone https://github.com/HomericIntelligence/Athena

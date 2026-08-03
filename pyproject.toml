@@ -2,7 +2,7 @@
 name = "athena-development"
 version = "0.0.0"
 description = "Development tooling for the Athena plugin distribution."
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.13,<3.14"
 dependencies = []
 
 [dependency-groups]
