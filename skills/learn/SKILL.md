@@ -37,11 +37,12 @@ This phase is read-only.
    | `consolidate` | Two or more current entries share intent. | Select one canonical entry, merge non-superseded rules, and retire duplicates in the same PR. |
    | `create` | Intent is materially distinct. | Add one precisely named entry. |
    | `reject` | No durable, verified delta exists. | Report `no learnable change`; leave Mnemosyne unchanged. |
-   | `blocked` | Candidates or an open PR have same or ambiguous intent, provenance is uncertain, or retirement is unsafe. | Leave Mnemosyne unchanged and request direction. |
+   | `blocked` | Provenance is uncertain, more than one open PR targets the selected canonical entry, the selected PR is not safely writable, or retirement is unsafe. | Leave Mnemosyne unchanged and request direction. |
 
-Never evade a blocked consolidation by creating a near-duplicate. An existing matching or ambiguous
-open PR is a no-mutation boundary. Enter Existing-PR mode only with direct user authority for that
-exact PR; never create a competing PR. Do not report `learn` complete after `reject` or `blocked`.
+Never evade a blocked consolidation by creating a near-duplicate. When exactly one open PR changes
+the selected canonical entry, it is the delivery target: enter Existing-PR mode and incorporate the
+verified delta there. Never create a competing PR. Stop rather than guessing when multiple open PRs
+target that entry. Do not report `learn` complete after `reject` or `blocked`.
 
 Generalize the smallest reusable decision rule. Keep task-specific facts only when another agent
 needs them to execute or verify that rule. Preserve history in Git, not duplicate active entries.
@@ -56,17 +57,17 @@ wording tests, or non-consumed artifacts merely to support a lesson.
 
 Read-only discovery never authorizes mutation. Before creating a branch or worktree, editing,
 committing, pushing, or opening a PR, establish authority for the resolved repository and full
-delivery path. A direct user request to invoke `learn` supplies new-PR authority; updating an
-existing PR also needs direct user authority for that exact discovered PR. A recommendation or
-indirect invocation does not. Without it, return the read-only disposition and proposed repository,
-base, branch, files, and PR target.
+delivery path. A direct user request to invoke `learn` supplies authority to deliver through either
+a new PR or the single Existing-PR target selected during discovery. A recommendation or indirect
+invocation does not. Without it, return the read-only disposition and proposed repository, base,
+branch, files, and PR target.
 
 ## Existing-PR mode
 
-Use this mode only for a discovered matching or ambiguous open PR after direct user authority names
-or accepts that exact PR. Re-fetch and bind its canonical repository, URL/number, `OPEN` state,
-source repository/ref, and head OID before editing. Create an isolated worktree on that source ref
-at the bound head OID, verify its `HEAD`, and never modify the shared checkout or default branch.
+Use this mode when discovery identifies exactly one open PR that changes the selected canonical
+entry. Re-fetch and bind its canonical repository, URL/number, `OPEN` state, source repository/ref,
+and head OID before editing. Create an isolated worktree on that source ref at the bound head OID,
+verify its `HEAD`, and never modify the shared checkout or default branch.
 
 Immediately before publishing, re-fetch the same identity and head. Push only to the bound PR source
 ref, using the provider's safe expected-head/lease protection. If the ref moves, the source repository
