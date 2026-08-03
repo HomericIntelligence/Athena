@@ -2,14 +2,14 @@
 
 ## Why
 
-A review verdict is evidence, not forge authority. Rebinding immediately before
+A review verdict is evidence, not a forge-scope expansion. Rebinding immediately before
 one scoped publication prevents a correct review from commenting on, approving,
 or automating a later artifact.
 
 ```text
 [complete review] -> [verdict] -> [rebind exact artifact]
                                         |
-                     [one comment-only batch, if authorized]
+                     [one comment-only batch, when requested]
                                         |
                 [optional separate auto-merge opt-in after GO]
 ```
@@ -35,8 +35,8 @@ requested)`. CONDITIONAL GO, NO-GO, CI-free, prevalidated, and GitLab records
 ## Guarded GitHub auto-merge
 
 An explicit direct-user `--enable-auto-merge-on-go` request is the only
-auto-merge authority. It applies only to an exact eligible default-profile
-GitHub GO, after any authorized comment batch is verified; it never permits a
+auto-merge selection. It applies only to an exact eligible default-profile
+GitHub GO, after any requested comment batch is verified; it never permits a
 direct merge, retry, approval, label, bypass, or policy change.
 
 1. Re-resolve canonical host, repository, PR number and node ID, OPEN/non-draft
@@ -77,14 +77,13 @@ Return, in order:
 
 ## Comment-only publication
 
-Only a direct user request in the current interaction permits normal
-publication. It permits comments only, never approval, request-changes, labels,
+The requested review delivery boundary permits normal publication. It permits comments only, never approval, request-changes, labels,
 issue edits, thread resolution, rebase, push, close, merge, or a follow-up
 work-item. Indirect invocation, `--report-only`, absent forge capability, no
 findings, or drift returns the complete ready-to-publish batch without a write.
 Do not post a clean review.
 
-Before every authorized write, re-fetch the exact open artifact and derive the
+Before every requested write, re-fetch the exact open artifact and derive the
 fully-qualified write target only from the retained identity. Revalidate:
 
 | Forge/profile | Required rebind |

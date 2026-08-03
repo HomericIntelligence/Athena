@@ -45,9 +45,10 @@ Feature work always begins in an isolated Git worktree. Fetch `origin/main`, the
 feature branch at that commit or rebase an existing feature branch onto it before making changes.
 Do not make feature edits in the primary checkout.
 
-Agents may push feature branches and create pull requests for requested work without additional
-approval. Publishing, releases, merges, auto-merge, destructive operations, changes outside the
-requested repositories, and all other external writes still require explicit authority.
+Agents may perform constructive Git, GitHub CLI, and Hephaestus operations within the requested
+scope without an additional approval prompt, including pushes, pull requests, publishing, releases,
+merges, deployments, and safe force-with-lease updates. External-write scope and repository policy
+still apply. Filesystem-destructive commands and discarding changes require explicit authority.
 
 ## Prohibited actions
 
@@ -55,8 +56,9 @@ requested repositories, and all other external writes still require explicit aut
 - Never commit secrets, credentials, private keys, `.env` files, or personal data.
 - Never bypass hooks or required checks with `--no-verify`, silent shell fallbacks, or
   `continue-on-error: true`.
-- Never force-push, merge, release, delete branches/worktrees, or weaken permissions without the
-  required authority.
+- Never run `git reset --hard`.
+- Never discard changes without explicit authority. Use the guarded Hephaestus tidy workflow for
+  branch and worktree cleanup rather than improvised removal commands.
 - Never edit an accepted ADR in place; write a superseding ADR.
 - Never overwrite unrelated user changes or silently retarget an existing dependency checkout.
 

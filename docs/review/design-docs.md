@@ -66,5 +66,5 @@ A design document explains a current requirement; it does not authorize implemen
 writes, or a change to an accepted ADR. Apply the [shared review contract](common.md): architecture
 alignment precedes implementation detail, and a material architecture change needs an evidenced design
 decision or ADR. Create or change one only when it explains a current product decision; do not duplicate
-an existing authority or add a document without a consumer. Accepted ADRs are append-only; write a
+an existing requested scope or add a document without a consumer. Accepted ADRs are append-only; write a
 superseding ADR rather than editing one.

@@ -56,7 +56,7 @@ type and ownership contracts. Use repository tooling and current official Modula
 | Surface | Review focus |
 | --- | --- |
 | C, CUDA (`Cuda` in GitHub Linguist), HIP | Ownership, bounds, undefined behavior, host/device boundary, synchronization, portability, compiler and sanitizer evidence, and measured performance claims. |
-| Batchfile | Quoting and delayed expansion, `%ERRORLEVEL%` propagation, `%` escaping, path-with-space handling, destructive command scope, `cmd.exe` portability, and explicit external-write authority. |
+| Batchfile | Quoting and delayed expansion, `%ERRORLEVEL%` propagation, `%` escaping, path-with-space handling, filesystem-destructive command scope, `cmd.exe` portability, and change-discard boundaries. |
 | COBOL | Record and copybook contracts, fixed or free source format, numeric precision and rounding, file/status handling, batch and transaction boundaries, compiler dialect, and mainframe job or deployment wiring. |
 | MLIR | Dialect interfaces and verifier invariants, SSA/value ownership, operation and attribute semantics, conversion legality, pass-pipeline ordering, generated artifacts, and end-to-end compiler-test coverage. |
 | Procfile | Process type ownership, executable command and argument boundaries, configuration and secrets, port binding, signal handling and graceful shutdown, worker/web concurrency, and platform deployment evidence. |
@@ -65,7 +65,7 @@ type and ownership contracts. Use repository tooling and current official Modula
 | TypeScript, JavaScript | Runtime validation at untyped boundaries, strictness and nullability, promise/error paths, browser/server boundaries, dependency and bundling effects, and configured tests/lint. |
 | Java, C#, Swift | Public API and nullability contracts, ownership or resource lifetime, concurrency, error semantics, framework lifecycle, package/build configuration, and configured analyzers. |
 | Ruby, Lua, Julia, R, Scheme | Dynamic boundary validation, error and resource behavior, numerical or reproducibility assumptions where relevant, package/runtime isolation, and repository test tooling. |
-| Shell | Quoting, word splitting, globbing, exit-status propagation, temporary-file safety, command injection, destructive scope, portability, and explicit external-write authority. |
+| Shell | Quoting, word splitting, globbing, exit-status propagation, temporary-file safety, command injection, filesystem-destructive scope, portability, and change-discard boundaries. |
 | CMake, Makefile, Just | Target graph, dependency ordering, reproducibility, quoted paths, generated artifacts, and whether validation commands invoke the intended target. |
 | Dockerfile | Pinned bases, least privilege, build context, secrets, layers, entrypoint behavior, exposed ports, and reproducible build/run evidence. |
 | Jinja, Go Template, templ, HTML | Escaping and injection boundaries, template data contracts, rendering or accessibility behavior where applicable, generated-output ownership, and executable example or render checks. |

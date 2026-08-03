@@ -9,13 +9,13 @@ allowed-tools: [Read, Write, Bash, Grep, Glob, Agent]
 
 Help turn ideas into fully formed designs and specs through natural collaborative dialogue.
 
-Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design and get user approval.
+Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design and proceed with the requested implementation unless a requirement remains unresolved.
 
-**HARD GATE:** Do NOT write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it. This applies to EVERY request regardless of perceived simplicity.
+**DESIGN CHECKPOINT:** Present a scaled design before complex implementation. It is a shared understanding checkpoint, not a permission gate; pause only for unresolved requirements or a filesystem-destructive action.
 
 ## Anti-Pattern: "This Is Too Simple To Need A Design"
 
-Every feature goes through this process. "Simple" projects are where unexamined assumptions cause the most wasted work. The design can be short (a few sentences), but you MUST present it and get approval.
+Every feature goes through this process. "Simple" projects are where unexamined assumptions cause the most wasted work. The design can be short (a few sentences), and should make assumptions and constraints visible before implementation.
 
 ## Checklist
 
@@ -25,7 +25,7 @@ Complete in order:
 2. **Explore project context** — check files, docs, recent commits
 3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
 4. **Propose 2-3 approaches** — with trade-offs and your recommendation
-5. **Present design** — in sections scaled to their complexity, get user approval after each section
+5. **Present design** — in sections scaled to their complexity; ask only to resolve material ambiguity
 6. **Persist when needed** — write `docs/specs/YYYY-MM-DD-<topic>-design.md` only when complexity,
    project policy, or a current downstream consumer requires a durable specification
 7. **Design self-review** — scan for placeholders, contradictions, ambiguity, and scope issues
@@ -74,9 +74,8 @@ project policy, or a current downstream consumer requires a durable specificatio
 `docs(specs): add <topic> design document`.
 
 Before writing or committing a specification, read the target repository's mutation, signing, DCO,
-and review policy and establish explicit user authority for the proposed file and commit. Approval
-of the design content alone does not authorize a repository mutation. Without that authority, keep
-the approved design in the conversation and hand off the proposed path and commit subject.
+and review policy. A specification that is in scope may be written and committed without a separate
+approval prompt; retain it in the conversation when a durable artifact is not needed.
 
 **Spec Self-Review:**
 
@@ -85,11 +84,11 @@ the approved design in the conversation and hand off the proposed path and commi
 3. **Scope check:** Is this focused enough for a single plan?
 4. **Ambiguity check:** Can any requirement be interpreted two ways? Pick one and make it explicit.
 
-**User Review Gate:**
-After self-review of a persisted specification:
+**User Review:**
+After self-review of a persisted specification, report its location and proceed with the requested
+implementation unless the user requests changes:
 > "Spec written and committed to `docs/specs/<filename>`. Please review and let me know if you want changes before we start planning implementation."
 
-Wait for approval. Only proceed once approved.
 
 **Implementation:**
 
@@ -102,7 +101,7 @@ Wait for approval. Only proceed once approved.
 - **One question at a time** — don't overwhelm with multiple questions
 - **YAGNI ruthlessly** — remove unnecessary features from all designs
 - **Explore alternatives** — always propose 2-3 approaches
-- **Incremental validation** — present design sections, get approval before moving on
+- **Incremental validation** — present design sections and resolve material ambiguity before moving on
 - **Invoke `advise` first** — don't propose what's already been built or debugged
 
 ---

@@ -15,12 +15,12 @@ Use the shared [review contract](../../docs/review/common.md),
 [behavior-first testing](../../docs/review/behavior-first-testing.md), and
 [repository scorecard](../../docs/review/repository-scorecard.md).
 
-## Authority and modes
+## Delivery and modes
 
-`--report-only` is read-only. A direct request without it authorizes only the
+`--report-only` is read-only. A requested review without it may perform only the
 documented tracker and work-item publication after review completion; never
 merge, change labels, close issues, push, or modify source. Indirect invocation
-does not confer forge-write authority.
+does not expand its forge-write scope.
 
 `default` gives full coverage and a detailed report. `quick` applies the same
 coverage and standards but returns decisive evidence, blockers, and the top
@@ -89,7 +89,7 @@ requests, and tracker artifacts by product outcome, not wording. Do not create
 work items for `nit` or `FYI`, and do not create an empty tracker when no
 actionable finding remains.
 
-Immediately before every authorized forge write, revalidate the inventory,
+Immediately before every requested forge write, revalidate the inventory,
 repository, and target bindings. On drift, withhold all remaining writes and
 report the stale or partial result honestly. On GitHub, use a writable Project
 only when its item capability and any mapped field semantics are verified; never
@@ -97,12 +97,12 @@ create, rename, or guess fields. On GitLab, use a group epic and child issues
 when available. Otherwise return ready-to-publish artifacts and name the
 capability gap.
 
-When authorized, create or update one actor-owned tracker with the binding,
+When requested, create or update one actor-owned tracker with the binding,
 scope, architecture decision, scorecard, and finding URLs; use a stable marker
 only in content the actor owns. Create one deduplicated child for each remaining
 actionable finding and link it as a GitHub sub-issue or GitLab epic child. Link
 an existing issue only when it is open and still covers the remediation. A
-regression needs its own active child unless explicit authority reopens the old
+regression needs its own active child unless the requested scope reopens the old
 issue. Add tracker and child items to a writable compatible GitHub Project,
 preserving unrelated fields and recording returned URLs or IDs. If a publication
 step fails, report the partial result and leave remaining ready-to-publish items
