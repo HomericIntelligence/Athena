@@ -1,6 +1,6 @@
 ---
 name: learn
-description: Preserve a verified, non-duplicate Mnemosyne lesson through an isolated-worktree pull request when direct write authority exists; otherwise report without mutation. Fails closed if ~/.agent_brain/knowledge cannot be prepared.
+description: Preserve a verified, non-duplicate Mnemosyne lesson through an isolated-worktree pull request when requested; otherwise report without mutation. Fails closed if ~/.agent_brain/knowledge cannot be prepared.
 argument-hint: <lesson or session summary>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 ---
@@ -8,7 +8,7 @@ allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 # Learn
 
 Why: one general, canonical rule is more discoverable and safer than many session-specific copies.
-First decide whether a durable delta exists; write only an authorized result through a reviewable PR.
+First decide whether a durable delta exists; write a requested result through a reviewable PR.
 
 ## Prepare the knowledge repository
 
@@ -53,14 +53,12 @@ If a lesson requires Athena implementation, complete that normal development fir
 add behavior-based executable tests under `tests/unit/`, and do not add inline executable Markdown,
 wording tests, or non-consumed artifacts merely to support a lesson.
 
-## Authority
+## Scope
 
-Read-only discovery never authorizes mutation. Before creating a branch or worktree, editing,
-committing, pushing, or opening a PR, establish authority for the resolved repository and full
-delivery path. A direct user request to invoke `learn` supplies authority to deliver through either
+Read-only discovery does not expand the requested scope. When the task requests durable learning,
+the resolved repository and full delivery path are constructive work that may proceed through either
 a new PR or the single Existing-PR target selected during discovery. A recommendation or indirect
-invocation does not. Without it, return the read-only disposition and proposed repository, base,
-branch, files, and PR target.
+invocation remains read-only; return the proposed repository, base, branch, files, and PR target.
 
 ## Existing-PR mode
 
@@ -91,7 +89,7 @@ path only for new-PR work: retain the resolved checkout as the current directory
 `--path-root $HOME/.agent_brain/worktrees`, and `--start-point <resolved-default-SHA>`. Never use
 this fallback to reconstruct an Existing-PR worktree.
 
-## Deliver an authorized change
+## Deliver a requested change
 
 1. Never modify the shared checkout. For a new PR, derive `slug` and `name` from lowercase ASCII
    letters, digits, and single hyphens using `[a-z0-9][a-z0-9-]*`; reject empty, control, `/`, `..`,

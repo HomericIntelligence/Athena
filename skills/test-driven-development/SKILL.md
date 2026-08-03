@@ -67,7 +67,7 @@ behavior and bug regression; controlled time, services, randomness, state, and
 mocks where the product requires them; non-empty focused test selection; and
 fresh passing relevant tests, type checks, and lint. Follow the evidence policy
 before claiming success. Use `learn` for a durable testing lesson; its own
-authority and delivery rules determine whether it publishes a PR.
+scope and delivery rules determine whether it publishes a PR.
 
 ---
 

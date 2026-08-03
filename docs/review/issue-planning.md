@@ -2,14 +2,14 @@
 
 **Why:** One current, actor-owned plan prevents a stale, foreign, or ambiguous issue comment from
 driving implementation. The issue remains the requirements source; a plan proposes work but never
-authorizes implementation, merge, or forge mutation beyond its explicitly requested comment.
+scopes implementation, merge, or forge mutation beyond its explicitly requested comment.
 
 ## At a glance
 
 | Artifact | Owner and purpose | Write boundary |
 | --- | --- | --- |
-| Canonical plan | One authenticated actor-owned `<!-- athena:plan-issue -->` comment. | `plan-issue` may create or update it only with direct authority. |
-| Plan review | One authenticated actor-owned `<!-- athena:issue-review -->` comment. | `issue-review` may publish it only with direct authority and without `--report-only`. |
+| Canonical plan | One authenticated actor-owned `<!-- athena:plan-issue -->` comment. | `plan-issue` may create or update it when requested. |
+| Plan review | One authenticated actor-owned `<!-- athena:issue-review -->` comment. | `issue-review` may publish it when requested and without `--report-only`. |
 | Missing or ambiguous plan | A coverage gap or identity conflict, never a favorable plan. | Withhold the write and return the prepared artifact. |
 
 ## Canonical plan identity
@@ -20,7 +20,7 @@ marker, multiple occurrences (including repeated markers in one comment), or unv
 an ownership conflict: do not create a second marker, adopt or overwrite foreign content, or publish
 from ambiguity. Preserve issue bodies and comments from other authors and request human direction.
 
-If the marker is absent, `plan-issue` may create one after its authority and identity checks.
+If the marker is absent, `plan-issue` may create one after its scope and identity checks.
 `issue-review` records verified absence as a coverage gap; it must not invent a plan or normalize a
 foreign or multiple marker into absence.
 
@@ -56,7 +56,7 @@ every acceptance criterion has a concrete, safe implementation step, architectur
 behavior-first validation. Identify missing requirements, unsafe or out-of-scope work, incorrect paths
 or boundaries, unverified assumptions, non-deterministic tests, and unresolved dependencies.
 
-With direct authority, no `--report-only`, a successful pre-publication identity comparison, and a safe
+When requested, without `--report-only`, after a successful pre-publication identity comparison, and a safe
 forge capability, `issue-review` publishes exactly one actor-owned structured review comment, including
 when no actionable finding remains. It records reviewed plan identity or verified absence, architecture
 decision, requirement coverage, findings, N/A sections, coverage gaps, concise status, and unresolved

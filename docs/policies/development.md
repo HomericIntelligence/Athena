@@ -6,8 +6,8 @@
 - Use Conventional Commit subjects.
 - Every commit must be cryptographically signed and include a DCO `Signed-off-by` trailer.
 - Never use `--no-verify` or an unguarded force-push. A feature branch may be updated with
-  `--force-with-lease --force-if-includes` only when the workflow requires rewritten history and the
-  user has explicitly authorized it. Never force-push a protected or default branch.
+  `--force-with-lease --force-if-includes` when the workflow requires rewritten history. Never
+  force-push a protected or default branch.
 - Stage intentional paths; do not sweep unrelated user changes into a commit.
 - Accepted ADRs are append-only. Supersede one with a new ADR that links to the prior decision.
 
@@ -17,14 +17,17 @@
 - When tracked by an issue, the body contains `Closes #N` on its own line.
 - Required checks run against the current head revision and must be successful, not stale or
   incorrectly skipped.
-- Auto-merge and merge actions require explicit operator authority and an independent strict review.
+- Auto-merge and merge actions require an independent strict review and the repository-supported
+  merge method.
 - Use a repository-supported merge method; do not guess or impose an organization-wide fallback.
 
 ## Safety
 
 - Never commit credentials, tokens, `.env` files, private keys, or personal data.
-- Destructive commands, publishing, releases, merges, branch deletion, and external writes require
-  the authority stated by the user and repository contract.
+- Filesystem-destructive commands and discarding changes require explicit user authority. `git
+  reset --hard` is prohibited. Treat constructive Git, GitHub CLI, and Hephaestus operations as
+  in-scope when the requested task and repository contract permit them; prefer guarded Hephaestus
+  tooling for branch and worktree cleanup.
 - Preserve unrelated worktree changes. Stop when safe isolation is not possible.
 - Never bypass a failing validation, security, review, or policy gate.
 - Apply these development principles as decision rules:
@@ -61,4 +64,4 @@
 Human and Code Owner review are optional, not required, for Athena changes. CODEOWNERS records
 advisory ownership; the baseline ruleset intentionally requires neither an approval count nor a
 Code Owner approval. Workflow, release, dependency, and security-control changes remain subject to
-the repository's required checks and explicit authority boundaries.
+the repository's required checks and requested-scope boundaries.

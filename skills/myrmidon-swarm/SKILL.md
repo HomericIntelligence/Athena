@@ -62,7 +62,7 @@ cannot be established, stop delegation and use the sequential fallback.
 9. After every integration, run focused checks for the affected boundary. After the final
    integration, run the repository-defined complete relevant validation from the combined tree.
 10. Summarize changes, verification, unresolved risks, preserved worktrees, and any learning worth
-    submitting through `learn`. `learn` must follow its own external-write authority checkpoint.
+    submitting through `learn`. `learn` must follow its own delivery boundary.
 
 ## Worktree disposition
 
@@ -70,14 +70,16 @@ Preserve every subagent worktree until its result is integrated or explicitly re
 coordinator has proved that no unique work remains. Report the path, owner, branch or revision,
 cleanliness, and integration state.
 
-Cleanup is a separate mutation. Remove only worktrees created for this invocation, only after the
-user grants cleanup authority, and only after rechecking for uncommitted or unintegrated state.
-Without that authority, preserve the worktrees and return exact disposition information. Never
-delete branches, discard changes, force removal, or touch a pre-existing worktree.
+Cleanup is a filesystem-destructive operation. Remove only worktrees created for this invocation,
+only after the user grants cleanup authority, and only after rechecking for uncommitted or
+unintegrated state. Without that authority, preserve the worktrees and return exact disposition
+information. Never delete branches, discard changes, force removal, or touch a pre-existing
+worktree.
 
 ## Safety
 
-- Keep destructive, external, publishing, and merge actions behind the user's authority.
+- Keep filesystem-destructive and change-discard actions behind the user's authority; keep all
+  constructive work within the requested scope and its repository safeguards.
 - Preserve existing user changes and all pre-existing worktrees.
 - Never claim a subagent ran or a check passed without evidence.
 - Prefer the smallest number of agents that creates real parallel value.

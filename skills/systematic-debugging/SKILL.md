@@ -183,8 +183,8 @@ Verify with fresh runnable evidence per the evidence-integrity policy before cla
 fixed; rerun the failing reproduction and the repository-defined checks.
 
 Offer to invoke `learn` when the session produced durable debugging knowledge. An indirect Learn
-invocation does not authorize its branch, commit, push, or pull-request writes; follow Learn's
-external-write checkpoint and obtain explicit authority before mutation. Useful lessons include:
+invocation remains read-only and does not expand the requested scope; use Learn's delivery boundary
+when durable learning is requested. Useful lessons include:
 
 - Root cause category and symptoms
 - What diagnostic steps revealed it

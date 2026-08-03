@@ -15,11 +15,11 @@ Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 [language routing](../../docs/review/language-routing.md), and
 [behavior-first testing](../../docs/review/behavior-first-testing.md).
 
-## Scope and authority
+## Scope and delivery
 
-`--draft` is read-only. An explicit direct request without it authorizes only
-the actor-owned canonical-plan issue comment described by the issue-planning
-contract; it does not authorize implementation, labels, assignments, commits,
+`--draft` is read-only. A requested plan without it may publish only the
+actor-owned canonical-plan issue comment described by the issue-planning
+contract; it does not expand scope to implementation, labels, assignments, commits,
 pushes, pull requests, merges, or other forge mutations.
 
 Use the forge's native issue-comment mechanism. If it cannot safely identify or
