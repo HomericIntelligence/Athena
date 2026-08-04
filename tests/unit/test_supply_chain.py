@@ -823,6 +823,9 @@ class WorkflowContractTests(unittest.TestCase):
             "4b85cd9786d736e22dc1f3ae91067b4cc5a24b2c",
             pi_step["env"]["PI_RUNTIME_REF"],
         )
+        self.assertIn(
+            'git -C "$PI_RUNTIME_SOURCE_ROOT" fetch --depth=1', pi_step["run"]
+        )
         self.assertIn("npm run build:offline --prefix", pi_step["run"])
         self.assertIn('git -C "$PI_RUNTIME_SOURCE_ROOT" rev-parse HEAD', pi_step["run"])
         self.assertIn('npm ci --prefix "$PI_RUNTIME_ROOT"', pi_step["run"])

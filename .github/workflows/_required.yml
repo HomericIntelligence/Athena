@@ -141,12 +141,6 @@ jobs:
         uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           syft-version: v1.46.0
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: earendil-works/pi
-          ref: 4b85cd9786d736e22dc1f3ae91067b4cc5a24b2c
-          path: ${{ runner.temp }}/athena-pi-runtime-source
-          persist-credentials: false
       - name: Build portable plugin archive and deterministic SBOMs
         run: |
           uv run python scripts/package_plugin.py
@@ -177,6 +171,11 @@ jobs:
           npm_config_cache: ${{ runner.temp }}/athena-pi-npm-cache
         run: |
           mkdir -p "$PI_RUNTIME_ROOT"
+          git init "$PI_RUNTIME_SOURCE_ROOT"
+          git -C "$PI_RUNTIME_SOURCE_ROOT" remote add origin \
+            https://github.com/earendil-works/pi.git
+          git -C "$PI_RUNTIME_SOURCE_ROOT" fetch --depth=1 origin "$PI_RUNTIME_REF"
+          git -C "$PI_RUNTIME_SOURCE_ROOT" checkout --detach FETCH_HEAD
           cp "$PI_RUNTIME_LOCK_ROOT/package.json" \
             "$PI_RUNTIME_LOCK_ROOT/package-lock.json" "$PI_RUNTIME_ROOT/"
           npm ci --prefix "$PI_RUNTIME_ROOT" --ignore-scripts --engine-strict
