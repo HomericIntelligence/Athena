@@ -31,66 +31,75 @@ jobs:
   validate:
     name: validate
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-        with:
-          version: "0.10.8"
-          enable-cache: true
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
         with:
           just-version: "1.36.0"
-      - name: Install locked test environment
-        run: uv sync --locked
-      - name: Validate plugin distribution
-        run: uv run python scripts/validate_skills.py
-      - name: Run contract tests with coverage threshold
-        run: just test
-      - name: Run lint, format, and type checks
-        run: just static
+      - name: Cache podman container storage
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.local/share/containers/storage
+          key: podman-athena-${{ runner.os }}-${{ hashFiles('uv.lock', '.pre-commit-config.yaml') }}
+          restore-keys: |
+            podman-athena-${{ runner.os }}-
+      - name: Build CI image (podman)
+        run: podman build -f ci/Containerfile -t athena-ci:local .
+      - name: Validate plugin distribution (in container)
+        run: just ci-validate
+      - name: Run contract tests with coverage threshold (in container)
+        run: just ci-test
+      - name: Run lint, format, and type checks (in container)
+        run: just ci-static
 
   markdownlint:
     name: markdownlint
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-        with:
-          version: "0.10.8"
-          enable-cache: true
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
         with:
           just-version: "1.36.0"
-      - name: Install locked lint environment
-        run: uv sync --locked
-      - name: Lint public documentation and skills
-        run: just markdownlint
+      - name: Cache podman container storage
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.local/share/containers/storage
+          key: podman-athena-${{ runner.os }}-${{ hashFiles('uv.lock', '.pre-commit-config.yaml') }}
+          restore-keys: |
+            podman-athena-${{ runner.os }}-
+      - name: Build CI image (podman)
+        run: podman build -f ci/Containerfile -t athena-ci:local .
+      - name: Lint public documentation and skills (in container)
+        run: just ci-markdownlint
 
   workflow-schema:
     name: workflow-schema
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-        with:
-          version: "0.10.8"
-          enable-cache: true
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
         with:
           just-version: "1.36.0"
-      - name: Install locked validation tools
-        run: uv sync --locked
-      - name: Validate workflow syntax and schema
-        run: just workflow-check
+      - name: Cache podman container storage
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.local/share/containers/storage
+          key: podman-athena-${{ runner.os }}-${{ hashFiles('uv.lock', '.pre-commit-config.yaml') }}
+          restore-keys: |
+            podman-athena-${{ runner.os }}-
+      - name: Build CI image (podman)
+        run: podman build -f ci/Containerfile -t athena-ci:local .
+      - name: Validate workflow syntax and schema (in container)
+        run: just ci-workflow
 
   justfile-check:
     name: justfile-check
@@ -120,7 +129,7 @@ jobs:
           GITLEAKS_IMAGE: >-
             ghcr.io/gitleaks/gitleaks:v8.30.0@sha256:691af3c7c5a48b16f187ce3446d5f194838f91238f27270ed36eef6359a574d9
         run: >-
-          docker run --rm -v "$PWD:/repo:ro" -w /repo "$GITLEAKS_IMAGE"
+          podman run --rm -v "$PWD:/repo:ro" -w /repo "$GITLEAKS_IMAGE"
           detect --source=. --verbose --exit-code=1
 
   package:
