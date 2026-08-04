@@ -813,6 +813,18 @@ class WorkflowContractTests(unittest.TestCase):
         )
 
         package_job = required["jobs"]["package"]
+        node_setup = next(
+            (
+                step
+                for step in package_job["steps"]
+                if step.get("uses")
+                == "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
+            ),
+            None,
+        )
+        self.assertIsNotNone(node_setup)
+        assert node_setup is not None
+        self.assertEqual("24", node_setup["with"]["node-version"])
         pi_step = next(
             step
             for step in package_job["steps"]
