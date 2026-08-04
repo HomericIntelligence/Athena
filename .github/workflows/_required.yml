@@ -141,6 +141,12 @@ jobs:
         uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           syft-version: v1.46.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: earendil-works/pi
+          ref: 4b85cd9786d736e22dc1f3ae91067b4cc5a24b2c
+          path: ${{ runner.temp }}/athena-pi-runtime-source
+          persist-credentials: false
       - name: Build portable plugin archive and deterministic SBOMs
         run: |
           uv run python scripts/package_plugin.py
@@ -160,6 +166,8 @@ jobs:
           GIT_TERMINAL_PROMPT: "0"
           PI_RUNTIME_LOCK_ROOT: ${{ github.workspace }}/ci/pi-runtime
           PI_RUNTIME_ROOT: ${{ runner.temp }}/athena-pi-runtime
+          PI_RUNTIME_SOURCE_ROOT: ${{ runner.temp }}/athena-pi-runtime-source
+          PI_RUNTIME_REF: 4b85cd9786d736e22dc1f3ae91067b4cc5a24b2c
           PI_SOURCE_REPOSITORY: >-
             ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           PI_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -172,9 +180,12 @@ jobs:
           cp "$PI_RUNTIME_LOCK_ROOT/package.json" \
             "$PI_RUNTIME_LOCK_ROOT/package-lock.json" "$PI_RUNTIME_ROOT/"
           npm ci --prefix "$PI_RUNTIME_ROOT" --ignore-scripts --engine-strict
-          export PATH="$PI_RUNTIME_ROOT/node_modules/.bin:$PATH"
+          test "$(git -C "$PI_RUNTIME_SOURCE_ROOT" rev-parse HEAD)" = "$PI_RUNTIME_REF"
+          npm ci --prefix "$PI_RUNTIME_SOURCE_ROOT" --ignore-scripts --engine-strict
+          npm run build:offline --prefix "$PI_RUNTIME_SOURCE_ROOT"
+          export PATH="$PI_RUNTIME_SOURCE_ROOT/node_modules/.bin:$PATH"
           pi_version="$(node -p 'require(process.argv[1]).version' \
-            "$PI_RUNTIME_ROOT/node_modules/@earendil-works/pi-coding-agent/package.json")"
+            "$PI_RUNTIME_SOURCE_ROOT/packages/coding-agent/package.json")"
           test "$(pi --version)" = "$pi_version"
           pi_subagents_version="$(node -p 'require(process.argv[1]).version' \
             "$PI_RUNTIME_ROOT/node_modules/pi-subagents/package.json")"
@@ -239,9 +250,12 @@ jobs:
             throw new Error("pi-subagents did not register the pinned active subagent tool");
           }
           NODE
+          "${{ steps.syft.outputs.cmd }}" scan "$PI_RUNTIME_SOURCE_ROOT" -o json \
+            > dist-internal/syft-pi-source.json
           "${{ steps.syft.outputs.cmd }}" scan "$PI_RUNTIME_ROOT" -o json \
-            > dist-internal/syft-pi-runtime.json
-          test -s dist-internal/syft-pi-runtime.json
+            > dist-internal/syft-pi-subagents.json
+          test -s dist-internal/syft-pi-source.json
+          test -s dist-internal/syft-pi-subagents.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: athena-plugin
@@ -258,7 +272,8 @@ jobs:
           name: athena-sca-input
           path: |
             dist-internal/syft-environment.json
-            dist-internal/syft-pi-runtime.json
+            dist-internal/syft-pi-source.json
+            dist-internal/syft-pi-subagents.json
           if-no-files-found: error
 
   security-dependency-scan:
@@ -296,8 +311,12 @@ jobs:
             --report dist-internal/grype-environment.json \
             --grype "${{ steps.grype.outputs.cmd }}"
           uv run python scripts/scan_vulnerabilities.py \
-            --inventory dist-internal/syft-pi-runtime.json \
-            --report dist-internal/grype-pi-runtime.json \
+            --inventory dist-internal/syft-pi-source.json \
+            --report dist-internal/grype-pi-source.json \
+            --grype "${{ steps.grype.outputs.cmd }}"
+          uv run python scripts/scan_vulnerabilities.py \
+            --inventory dist-internal/syft-pi-subagents.json \
+            --report dist-internal/grype-pi-subagents.json \
             --grype "${{ steps.grype.outputs.cmd }}"
       - name: Retain the full vulnerability reports
         if: always() && hashFiles('dist-internal/grype-*.json') != ''

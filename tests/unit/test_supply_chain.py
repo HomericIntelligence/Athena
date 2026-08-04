@@ -797,13 +797,7 @@ class WorkflowContractTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(
-            {
-                "@earendil-works/pi-coding-agent": "0.83.0",
-                "pi-subagents": "0.37.2",
-            },
-            manifest["dependencies"],
-        )
+        self.assertEqual({"pi-subagents": "0.37.2"}, manifest["dependencies"])
         self.assertEqual(3, lock["lockfileVersion"])
         for package in manifest["dependencies"]:
             resolved = lock["packages"][f"node_modules/{package}"]
@@ -825,11 +819,19 @@ class WorkflowContractTests(unittest.TestCase):
             if step.get("name")
             == "Verify native Pi package source, archive, and delegation surface"
         )
+        self.assertEqual(
+            "4b85cd9786d736e22dc1f3ae91067b4cc5a24b2c",
+            pi_step["env"]["PI_RUNTIME_REF"],
+        )
+        self.assertIn("npm run build:offline --prefix", pi_step["run"])
+        self.assertIn('git -C "$PI_RUNTIME_SOURCE_ROOT" rev-parse HEAD', pi_step["run"])
         self.assertIn('npm ci --prefix "$PI_RUNTIME_ROOT"', pi_step["run"])
         self.assertIn("--ignore-scripts --engine-strict", pi_step["run"])
         self.assertIn("find_pi_package_root.mjs", pi_step["run"])
+        self.assertIn('scan "$PI_RUNTIME_SOURCE_ROOT" -o json', pi_step["run"])
         self.assertIn('scan "$PI_RUNTIME_ROOT" -o json', pi_step["run"])
-        self.assertIn("syft-pi-runtime.json", json.dumps(package_job))
+        self.assertIn("syft-pi-source.json", json.dumps(package_job))
+        self.assertIn("syft-pi-subagents.json", json.dumps(package_job))
 
         scan_job = required["jobs"]["security-dependency-scan"]
         scan_step = next(
@@ -839,7 +841,8 @@ class WorkflowContractTests(unittest.TestCase):
             == "Scan dependency inventories and enforce vulnerability policy"
         )
         self.assertIn("syft-environment.json", scan_step["run"])
-        self.assertIn("syft-pi-runtime.json", scan_step["run"])
+        self.assertIn("syft-pi-source.json", scan_step["run"])
+        self.assertIn("syft-pi-subagents.json", scan_step["run"])
 
     def test_all_external_actions_are_commit_pinned(self) -> None:
         root = Path(__file__).resolve().parents[2]
