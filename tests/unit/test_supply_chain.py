@@ -818,7 +818,7 @@ class WorkflowContractTests(unittest.TestCase):
                 step
                 for step in package_job["steps"]
                 if step.get("uses")
-                == "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
+                == "actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444"
             ),
             None,
         )
