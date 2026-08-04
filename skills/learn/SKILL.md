@@ -142,8 +142,8 @@ this fallback to reconstruct an Existing-PR worktree.
 6. Run Mnemosyne's relevant complete validation. Verify exactly one active entry remains for the
    intent and no duplicate intent or stale consolidated name was introduced.
 7. Sign and DCO-attest the commit. For a new PR, push the feature branch and open a PR against the
-   resolved default branch; include `Closes #N` when a tracking issue exists. For Existing-PR mode,
-   push only to the already bound source ref and do not open another PR. Never auto-merge.
+   resolved default branch. For Existing-PR mode, push only to the already bound source ref and do
+   not open another PR. Never auto-merge.
 8. Report the disposition, bound or new PR URL, any retired entries, and exact validation evidence.
 
 A write disposition succeeds only with its PR URL. If validation, push, or PR creation fails, preserve
