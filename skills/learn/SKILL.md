@@ -48,6 +48,27 @@ Generalize the smallest reusable decision rule. Keep task-specific facts only wh
 needs them to execute or verify that rule. Preserve history in Git, not duplicate active entries.
 Repository audits belong in `repo-review`; PR audits belong in `pr-review`; review depth is a mode.
 
+## Privacy and proprietary-information gate
+
+Treat the session, its repositories, and all discovery output as sensitive source material. A
+durable lesson must capture only the general pattern, decision rule, and safely shareable evidence;
+it must never store any of the following in a skill, its filename, frontmatter, examples, commit,
+or PR description:
+
+- PII or identifiers that can identify a person, account, customer, or organization;
+- product, project, customer, vendor, or organization names and other non-public identifiers;
+- internal paths, hostnames, URLs, repository names, issue IDs, environment names, or infrastructure
+  details;
+- proprietary source, configuration, prompts, logs, data, metrics, or operational details; or
+- secrets, credentials, tokens, or other access material.
+
+Replace sensitive specifics with a faithful general pattern (for example, "an isolated checkout"
+instead of a local path). When public information provides an equivalent, cite or describe that
+public equivalent rather than copying internal evidence. Never invent a public analogue, a result,
+or verification evidence. If the lesson cannot be made useful without disclosing sensitive or
+proprietary information, select `reject`, leave Mnemosyne unchanged, and report that no safe
+learnable change exists.
+
 If a lesson requires Athena implementation, complete that normal development first. Follow
 [`development.md`](../../docs/policies/development.md): keep helpers in `skills/<name>/scripts/`,
 add behavior-based executable tests under `tests/unit/`, and do not add inline executable Markdown,
@@ -115,12 +136,15 @@ this fallback to reconstruct an Existing-PR worktree.
    session transcript detail.
 4. Apply the selected disposition inside its allowlist. Amend only the canonical entry. During
    consolidation, migrate verified active consumers before retiring every named duplicate.
-5. Run Mnemosyne's relevant complete validation. Verify exactly one active entry remains for the
+5. Before committing, review every proposed artifact and delivery text against the privacy and
+   proprietary-information gate. Remove or generalize sensitive specifics; use a faithful public
+   equivalent only when one exists. If safe generalization is not possible, reject the lesson.
+6. Run Mnemosyne's relevant complete validation. Verify exactly one active entry remains for the
    intent and no duplicate intent or stale consolidated name was introduced.
-6. Sign and DCO-attest the commit. For a new PR, push the feature branch and open a PR against the
-   resolved default branch; include `Closes #N` when a tracking issue exists. For Existing-PR mode,
-   push only to the already bound source ref and do not open another PR. Never auto-merge.
-7. Report the disposition, bound or new PR URL, any retired entries, and exact validation evidence.
+7. Sign and DCO-attest the commit. For a new PR, push the feature branch and open a PR against the
+   resolved default branch. For Existing-PR mode, push only to the already bound source ref and do
+   not open another PR. Never auto-merge.
+8. Report the disposition, bound or new PR URL, any retired entries, and exact validation evidence.
 
 A write disposition succeeds only with its PR URL. If validation, push, or PR creation fails, preserve
 the isolated worktree and report the blocker; never fall back to Athena, a default branch, or another
