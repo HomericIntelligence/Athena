@@ -323,6 +323,20 @@ def is_canonical_linked_issue_comments_request():
     )
 
 
+def is_head_bound_check_runs_request():
+    endpoint = (
+        r"repos/owner/repository/commits/[0-9a-f]{40}/check-runs"
+        r"\\?per_page=100&page=[1-9][0-9]*"
+    )
+    return (
+        arguments[:1] == ["api"]
+        and has_exact_option("--hostname", "github.com")
+        and has_exact_option("--method", "GET")
+        and has_exact_option("-H", "Accept: application/vnd.github+json")
+        and re.fullmatch(endpoint, arguments[-1]) is not None
+    )
+
+
 if arguments[:2] == ["pr", "view"]:
     if (
         os.environ.get("ATHENA_TEST_FORBID_AMBIENT_TARGET") == "1"
@@ -369,7 +383,17 @@ elif arguments[:2] == ["issue", "view"]:
     sequence = json.loads(os.environ["ATHENA_TEST_GH_ISSUE_SEQUENCE"])
     print(json.dumps(sequence[min(count, len(sequence) - 1)]))
 elif arguments[:1] == ["api"]:
-    if is_linked_issue_comments_request():
+    if is_head_bound_check_runs_request():
+        pages = json.loads(os.environ.get("ATHENA_TEST_GH_CHECK_RUN_PAGES", "[]"))
+        page = int(arguments[-1].rsplit("=", maxsplit=1)[-1])
+        if page <= len(pages):
+            response = pages[page - 1]
+        elif pages and isinstance(pages[0], dict):
+            response = {"total_count": pages[0].get("total_count"), "check_runs": []}
+        else:
+            response = []
+        print(json.dumps(response))
+    elif is_linked_issue_comments_request():
         if not is_canonical_linked_issue_comments_request():
             print("linked issue comments must use the canonical request target", file=sys.stderr)
             raise SystemExit(8)
@@ -770,6 +794,93 @@ class BoundedLinkedCommentReaderTests(unittest.TestCase):
             self.collector.paginated_issue_comments("owner/requirements", 11, budget)
 
 
+class HeadBoundCheckEvidenceTests(unittest.TestCase):
+    """Require bounded, fail-closed GitHub check-run collection."""
+
+    def setUp(self) -> None:
+        self.module_name = f"test_collect_evidence_checks_{id(self)}"
+        self.collector = load_collector(self.module_name)
+
+    def tearDown(self) -> None:
+        sys.modules.pop(self.module_name, None)
+
+    def test_preserves_a_bounded_provider_failure_as_a_coverage_gap(self) -> None:
+        with (
+            patch.object(
+                self.collector,
+                "bounded_gh_output",
+                side_effect=self.collector.CheckEvidenceCoverageGap(
+                    "check-run response exceeds the safe byte limit"
+                ),
+            ),
+            patch.object(
+                self.collector,
+                "gh",
+                return_value=json.dumps(
+                    [
+                        {
+                            "total_count": 1,
+                            "check_runs": [
+                                {
+                                    "id": 1,
+                                    "name": "required-checks",
+                                    "head_sha": HEAD_OID,
+                                    "status": "completed",
+                                    "conclusion": "success",
+                                }
+                            ],
+                        }
+                    ]
+                ),
+            ),
+            self.assertRaisesRegex(
+                self.collector.CheckEvidenceCoverageGap, "safe byte limit"
+            ),
+        ):
+            self.collector.head_bound_check_runs("owner/repository", HEAD_OID)
+
+    def test_rejects_check_runs_that_exceed_the_page_limit(self) -> None:
+        responses = (
+            json.dumps(
+                {
+                    "total_count": 2,
+                    "check_runs": [
+                        {
+                            "id": 1,
+                            "name": "first-check",
+                            "head_sha": HEAD_OID,
+                            "status": "completed",
+                            "conclusion": "success",
+                        }
+                    ],
+                }
+            ).encode(),
+            json.dumps(
+                {
+                    "total_count": 2,
+                    "check_runs": [
+                        {
+                            "id": 2,
+                            "name": "second-check",
+                            "head_sha": HEAD_OID,
+                            "status": "completed",
+                            "conclusion": "success",
+                        }
+                    ],
+                }
+            ).encode(),
+        )
+
+        with (
+            patch.object(self.collector, "MAX_CHECK_RUN_PAGES", 1),
+            patch.object(self.collector, "bounded_gh_output", side_effect=responses),
+            self.assertRaisesRegex(
+                self.collector.CheckEvidenceCoverageGap, "safe page limit"
+            ),
+        ):
+            self.collector.head_bound_check_runs("owner/repository", HEAD_OID)
+
+
 class BoundedChangedPathReaderTests(unittest.TestCase):
     """Exercise bounded immutable path collection without a live Git process."""
 
@@ -889,6 +1000,7 @@ class ImmutableEvidenceTests(unittest.TestCase):
         linked_comment_body_bytes: int | None = None,
         linked_comment_count: int | None = None,
         linked_issue_body_bytes: int | None = None,
+        head_bound_check_pages: list[object] | None = None,
         expected_target: bool = True,
         hostile_target_environment: bool = False,
     ) -> tuple[subprocess.CompletedProcess[str], int, str, str]:
@@ -931,6 +1043,10 @@ class ImmutableEvidenceTests(unittest.TestCase):
                 environment["ATHENA_TEST_GH_ISSUE_BODY_BYTES"] = str(
                     linked_issue_body_bytes
                 )
+            if head_bound_check_pages is not None:
+                environment["ATHENA_TEST_GH_CHECK_RUN_PAGES"] = json.dumps(
+                    head_bound_check_pages
+                ).replace(HEAD_OID, head_oid)
             environment["ATHENA_TEST_FORBID_GH_API"] = "1"
             if hostile_target_environment:
                 environment["GH_HOST"] = "attacker.invalid"
@@ -1009,6 +1125,149 @@ class ImmutableEvidenceTests(unittest.TestCase):
         self.assertEqual("feature", evidence["reviewed_scope"]["fields"]["headRefName"])
         self.assertEqual(0, evidence["reviewed_linked_requirements"]["count"])
         self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
+
+    def test_collects_check_runs_bound_to_the_reviewed_head(self) -> None:
+        result, _, _, head_oid = self.run_collector(
+            [pull_request(), pull_request()],
+            head_bound_check_pages=[
+                {
+                    "total_count": 1,
+                    "check_runs": [
+                        {
+                            "id": 1,
+                            "name": "required-checks",
+                            "head_sha": HEAD_OID,
+                            "status": "completed",
+                            "conclusion": "success",
+                        }
+                    ],
+                }
+            ],
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        evidence = json.loads(result.stdout)
+        self.assertEqual("head_bound", evidence["check_evidence"]["status"])
+        self.assertEqual(head_oid, evidence["check_evidence"]["head_oid"])
+        self.assertEqual(1, evidence["check_evidence"]["count"])
+        self.assertEqual("required-checks", evidence["checks"][0]["name"])
+
+    def test_treats_missing_head_bound_check_evidence_as_a_coverage_gap(self) -> None:
+        result, _, _, _ = self.run_collector(
+            [pull_request(), pull_request()], head_bound_check_pages=[]
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        evidence = json.loads(result.stdout)
+        self.assertEqual([], evidence["checks"])
+        self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
+        self.assertIn("malformed check-run page", evidence["check_evidence"]["reason"])
+
+    def test_treats_stale_check_runs_as_a_coverage_gap(self) -> None:
+        result, _, _, _ = self.run_collector(
+            [pull_request(), pull_request()],
+            head_bound_check_pages=[
+                {
+                    "total_count": 1,
+                    "check_runs": [
+                        {
+                            "id": 1,
+                            "name": "required-checks",
+                            "head_sha": BASE_OID,
+                            "status": "completed",
+                            "conclusion": "success",
+                        }
+                    ],
+                }
+            ],
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        evidence = json.loads(result.stdout)
+        self.assertEqual([], evidence["checks"])
+        self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
+        self.assertIn("different head OID", evidence["check_evidence"]["reason"])
+
+    def test_treats_mixed_head_check_runs_as_a_coverage_gap(self) -> None:
+        result, _, _, _ = self.run_collector(
+            [pull_request(), pull_request()],
+            head_bound_check_pages=[
+                {
+                    "total_count": 2,
+                    "check_runs": [
+                        {
+                            "id": 1,
+                            "name": "current-check",
+                            "head_sha": HEAD_OID,
+                            "status": "completed",
+                            "conclusion": "success",
+                        },
+                        {
+                            "id": 2,
+                            "name": "stale-check",
+                            "head_sha": BASE_OID,
+                            "status": "completed",
+                            "conclusion": "success",
+                        },
+                    ],
+                }
+            ],
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        evidence = json.loads(result.stdout)
+        self.assertEqual([], evidence["checks"])
+        self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
+        self.assertIn("different head OID", evidence["check_evidence"]["reason"])
+
+    def test_treats_partial_check_runs_as_a_coverage_gap(self) -> None:
+        result, _, _, _ = self.run_collector(
+            [pull_request(), pull_request()],
+            head_bound_check_pages=[
+                {
+                    "total_count": 2,
+                    "check_runs": [
+                        {
+                            "id": 1,
+                            "name": "required-checks",
+                            "head_sha": HEAD_OID,
+                            "status": "completed",
+                            "conclusion": "success",
+                        }
+                    ],
+                }
+            ],
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        evidence = json.loads(result.stdout)
+        self.assertEqual([], evidence["checks"])
+        self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
+        self.assertIn("partial", evidence["check_evidence"]["reason"])
+
+    def test_treats_malformed_check_runs_as_a_coverage_gap(self) -> None:
+        result, _, _, _ = self.run_collector(
+            [pull_request(), pull_request()],
+            head_bound_check_pages=[
+                {
+                    "total_count": 1,
+                    "check_runs": [
+                        {
+                            "id": 1,
+                            "name": "required-checks",
+                            "status": "completed",
+                            "conclusion": "success",
+                        }
+                    ],
+                }
+            ],
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        evidence = json.loads(result.stdout)
+        self.assertEqual([], evidence["checks"])
+        self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
+        self.assertIn("incomplete", evidence["check_evidence"]["reason"])
 
     def test_requires_an_explicit_review_target_for_strict_evidence(self) -> None:
         result, call_count, _, _ = self.run_collector(

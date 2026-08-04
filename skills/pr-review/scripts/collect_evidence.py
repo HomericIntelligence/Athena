@@ -62,6 +62,12 @@ MAX_CHANGED_PATH_MANIFEST_BYTES = 2 * 1024 * 1024
 MAX_CHANGED_PATHS = 10_000
 MAX_CHANGED_PATH_STDERR_BYTES = 16 * 1024
 CHANGED_PATH_REQUEST_TIMEOUT_SECONDS = 30.0
+MAX_CHECK_RUN_PAGE_BYTES = 256 * 1024
+MAX_CHECK_RUN_BYTES = 2 * 1024 * 1024
+MAX_CHECK_RUN_PAGES = 100
+MAX_CHECK_RUNS = 10_000
+MAX_CHECK_RUN_STDERR_BYTES = 16 * 1024
+CHECK_RUN_REQUEST_TIMEOUT_SECONDS = 30.0
 
 
 class LinkedRequirementsCoverageGap(RuntimeError):
@@ -70,6 +76,10 @@ class LinkedRequirementsCoverageGap(RuntimeError):
 
 class ChangedPathCoverageGap(RuntimeError):
     """Changed paths exceed the bounded immutable-evidence collector."""
+
+
+class CheckEvidenceCoverageGap(RuntimeError):
+    """GitHub checks cannot be bound completely to the reviewed head."""
 
 
 @dataclass
@@ -682,10 +692,31 @@ def provider_return_code(
 
 
 def bounded_gh_output(
-    arguments: Sequence[str], *, maximum_bytes: int, limit_error: str
+    arguments: Sequence[str],
+    *,
+    maximum_bytes: int,
+    limit_error: str,
+    timeout_seconds: float | None = None,
+    stderr_maximum_bytes: int | None = None,
+    stderr_limit_error: str = "linked issue response exceeds the safe stderr limit",
+    deadline_error: str = "linked issue provider exceeded the safe provider deadline",
+    output_error: str = "cannot read linked issue provider output",
+    unavailable_output_error: str = "GitHub did not provide linked issue provider output",
+    operating_system_error: str = "cannot collect linked issue comments",
+    coverage_gap: type[RuntimeError] = LinkedRequirementsCoverageGap,
 ) -> bytes:
     """Run one deadline-bound GitHub request with bounded stdout and stderr."""
     command = ["gh", *arguments]
+    effective_timeout = (
+        LINKED_ISSUE_COMMENT_REQUEST_TIMEOUT_SECONDS
+        if timeout_seconds is None
+        else timeout_seconds
+    )
+    effective_stderr_maximum_bytes = (
+        MAX_LINKED_ISSUE_COMMENT_STDERR_BYTES
+        if stderr_maximum_bytes is None
+        else stderr_maximum_bytes
+    )
     try:
         try:
             process = subprocess.Popen(
@@ -702,9 +733,9 @@ def bounded_gh_output(
         if stdout is None or stderr is None:
             process.kill()
             process.wait()
-            raise RuntimeError("GitHub did not provide linked issue provider output")
+            raise RuntimeError(unavailable_output_error)
         stdout_capture = ProviderStream(maximum_bytes)
-        stderr_capture = ProviderStream(MAX_LINKED_ISSUE_COMMENT_STDERR_BYTES)
+        stderr_capture = ProviderStream(effective_stderr_maximum_bytes)
         readers = (
             threading.Thread(
                 target=drain_provider_stream,
@@ -725,11 +756,11 @@ def bounded_gh_output(
                 stdout_capture,
                 stderr_capture,
                 limit_error,
-                timeout_seconds=LINKED_ISSUE_COMMENT_REQUEST_TIMEOUT_SECONDS,
-                stderr_limit_error="linked issue response exceeds the safe stderr limit",
-                deadline_error="linked issue provider exceeded the safe provider deadline",
-                output_error="cannot read linked issue provider output",
-                coverage_gap=LinkedRequirementsCoverageGap,
+                timeout_seconds=effective_timeout,
+                stderr_limit_error=stderr_limit_error,
+                deadline_error=deadline_error,
+                output_error=output_error,
+                coverage_gap=coverage_gap,
             )
         except BaseException:
             reap_provider(process, (stdout, stderr), readers)
@@ -743,7 +774,7 @@ def bounded_gh_output(
             raise RuntimeError(message or f"gh {' '.join(arguments)} failed")
         return bytes(stdout_capture.output)
     except OSError as error:
-        raise RuntimeError(f"cannot collect linked issue comments: {error}") from error
+        raise RuntimeError(f"{operating_system_error}: {error}") from error
 
 
 def paginated_issue_comments(
@@ -1048,6 +1079,117 @@ def gh(*arguments: str, accepted_codes: tuple[int, ...] = (0,)) -> str:
     return result.stdout
 
 
+def head_bound_check_runs(repository: str, head_oid: str) -> list[dict[str, Any]]:
+    """Return complete GitHub check-run evidence bound to one immutable commit."""
+    total_count: int | None = None
+    runs: list[dict[str, Any]] = []
+    run_ids: set[int] = set()
+    bytes_read = 0
+    for page_number in range(1, MAX_CHECK_RUN_PAGES + 2):
+        if page_number > MAX_CHECK_RUN_PAGES:
+            raise CheckEvidenceCoverageGap(
+                "GitHub check runs exceed the safe page limit"
+            )
+        remaining_bytes = MAX_CHECK_RUN_BYTES - bytes_read
+        if remaining_bytes <= 0:
+            raise CheckEvidenceCoverageGap(
+                "GitHub check runs exceed the safe aggregate byte limit"
+            )
+        try:
+            response = bounded_gh_output(
+                (
+                    "api",
+                    "--hostname",
+                    "github.com",
+                    "--method",
+                    "GET",
+                    "-H",
+                    "Accept: application/vnd.github+json",
+                    (
+                        f"repos/{repository}/commits/{head_oid}/check-runs?"
+                        f"per_page=100&page={page_number}"
+                    ),
+                ),
+                maximum_bytes=min(MAX_CHECK_RUN_PAGE_BYTES, remaining_bytes),
+                limit_error="GitHub check-run response exceeds the safe byte limit",
+                timeout_seconds=CHECK_RUN_REQUEST_TIMEOUT_SECONDS,
+                stderr_maximum_bytes=MAX_CHECK_RUN_STDERR_BYTES,
+                stderr_limit_error="GitHub check-run response exceeds the safe stderr limit",
+                deadline_error="GitHub check-run provider exceeded the safe provider deadline",
+                output_error="cannot read GitHub check-run provider output",
+                unavailable_output_error="GitHub did not provide check-run provider output",
+                operating_system_error="cannot collect GitHub check runs",
+                coverage_gap=CheckEvidenceCoverageGap,
+            )
+        except RuntimeError as error:
+            if isinstance(error, CheckEvidenceCoverageGap):
+                raise
+            raise CheckEvidenceCoverageGap(
+                "GitHub did not return readable head-bound check evidence"
+            ) from error
+        bytes_read += len(response)
+        try:
+            page = json.loads(response)
+        except json.JSONDecodeError as error:
+            raise CheckEvidenceCoverageGap(
+                "GitHub did not return readable head-bound check evidence"
+            ) from error
+        if not isinstance(page, dict):
+            raise CheckEvidenceCoverageGap("GitHub returned a malformed check-run page")
+        page_total = page.get("total_count")
+        page_runs = page.get("check_runs")
+        if (
+            isinstance(page_total, bool)
+            or not isinstance(page_total, int)
+            or page_total < 0
+            or not isinstance(page_runs, list)
+        ):
+            raise CheckEvidenceCoverageGap(
+                "GitHub returned incomplete check-run evidence"
+            )
+        if total_count is None:
+            total_count = page_total
+            if total_count > MAX_CHECK_RUNS:
+                raise CheckEvidenceCoverageGap(
+                    "GitHub check runs exceed the safe run limit"
+                )
+        elif page_total != total_count:
+            raise CheckEvidenceCoverageGap(
+                "GitHub returned inconsistent check-run totals"
+            )
+        for run in page_runs:
+            if not isinstance(run, dict):
+                raise CheckEvidenceCoverageGap("GitHub returned a malformed check run")
+            run_id = run.get("id")
+            run_head_oid = run.get("head_sha")
+            if (
+                isinstance(run_id, bool)
+                or not isinstance(run_id, int)
+                or run_id < 1
+                or run_id in run_ids
+                or not isinstance(run.get("name"), str)
+                or not run["name"]
+                or not isinstance(run.get("status"), str)
+                or not isinstance(run.get("conclusion"), str | type(None))
+                or not isinstance(run_head_oid, str)
+                or COMMIT_OID.fullmatch(run_head_oid) is None
+            ):
+                raise CheckEvidenceCoverageGap(
+                    "GitHub returned incomplete check-run evidence"
+                )
+            if run_head_oid != head_oid:
+                raise CheckEvidenceCoverageGap(
+                    "GitHub returned a check run bound to a different head OID"
+                )
+            run_ids.add(run_id)
+            runs.append(run)
+        if len(runs) == total_count:
+            return runs
+        if not page_runs:
+            raise CheckEvidenceCoverageGap("GitHub returned partial check-run evidence")
+    raise AssertionError("bounded check-run pagination did not terminate")
+
+
 def pr_metadata(
     pull_request: str, target: ExpectedReviewTarget | None
 ) -> dict[str, Any]:
@@ -1169,18 +1311,25 @@ def main(argv: Sequence[str] | None = None) -> int:
             else None
         )
         changed_path_manifest: ChangedPathManifest | None = None
-        check_evidence: dict[str, str] | None = None
+        check_evidence: dict[str, str | int] | None = None
         if expected is not None:
             changed_path_manifest = immutable_changed_paths(*expected)
             changed_files = list(changed_path_manifest.paths)
-            # `gh pr checks` does not identify the commit it describes. Do not
-            # attribute that mutable endpoint's output to the reviewed head.
-            checks: list[object] = []
-            check_evidence = {
-                "status": "coverage_gap",
-                "reason": "no head-bound check evidence was collected",
-                "head_oid": expected[1],
-            }
+            try:
+                checks = head_bound_check_runs(repository, expected[1])
+            except CheckEvidenceCoverageGap as error:
+                checks = []
+                check_evidence = {
+                    "status": "coverage_gap",
+                    "reason": str(error),
+                    "head_oid": expected[1],
+                }
+            else:
+                check_evidence = {
+                    "status": "head_bound",
+                    "head_oid": expected[1],
+                    "count": len(checks),
+                }
         else:
             changed_files = [
                 line
