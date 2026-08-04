@@ -1,0 +1,131 @@
+# Containerfile for athena-ci — CI image for the Athena plugin distribution.
+#
+# This image provides:
+# - Python 3.13 environment (matches requires-python >=3.13,<3.14)
+# - uv with the locked project environment (dev group) pre-installed
+# - pre-commit hook environments baked in (largest speedup)
+# - Non-root user 'ci' for rootless Podman compatibility
+#
+# Toolchain: uv (Odysseus ADR-017). Pattern mirrors Scylla ci/Containerfile.
+#
+# Build (OCI-compliant — works with both podman and docker):
+#   podman build -f ci/Containerfile -t athena-ci:local .
+#   docker build -f ci/Containerfile -t athena-ci:local .
+#
+# Run:
+#   podman run --rm -v .:/workspace:Z athena-ci:local uv run pytest tests
+#   podman run --rm -v .:/workspace:Z athena-ci:local uv run pre-commit run --all-files
+
+# ============================================================================
+# Stage 0: uv binary — installed from a pinned GitHub release so the checksum
+# is reproducible and the build resolves identically under both podman/buildah
+# and docker (no cross-registry COPY of a third-party image). The ghcr.io
+# astral-sh/uv image's version-tag scheme does not track uv CLI versions
+# (0.11.21 does not exist there), so we pin the release tarball instead.
+# ============================================================================
+FROM python:3.13-slim@sha256:6771159cd4fa5d9bba1258caf0b82e6b73458c694d178ad97c5e925c2d0e1a91 AS uv
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL https://github.com/astral-sh/uv/releases/download/0.12.1/uv-x86_64-unknown-linux-gnu.tar.gz -o /tmp/uv.tar.gz \
+    && echo "90b2f223fb69d19db49e117da601f64978593417988530aa733d456141b4bcbb  /tmp/uv.tar.gz" | sha256sum --check \
+    && tar xzf /tmp/uv.tar.gz -C /usr/local/bin --strip-components=1 \
+    && rm /tmp/uv.tar.gz
+
+# ============================================================================
+# Stage 1: Builder — install uv and the locked project environment
+# ============================================================================
+FROM python:3.13-slim@sha256:6771159cd4fa5d9bba1258caf0b82e6b73458c694d178ad97c5e925c2d0e1a91 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    # Build the project virtualenv in a fixed, copyable location.
+    UV_PROJECT_ENVIRONMENT=/opt/athena-venv \
+    # Bytecode-compile on install for faster cold starts.
+    UV_COMPILE_BYTECODE=1 \
+    # Copy (not hardlink) from the cache so the venv is self-contained for the
+    # runtime-stage COPY --from=builder.
+    UV_LINK_MODE=copy \
+    PATH="/opt/athena-venv/bin:$PATH"
+
+# Install build dependencies + git (required by pre-commit hooks)
+# apt-get upgrade picks up any security patches released after the base image was pinned
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    ca-certificates \
+    gcc \
+    g++ \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv (pinned release — keep the version and sha256 in sync with
+# astral-sh/setup-uv in .github/workflows/*.yml when bumping).
+COPY --from=uv /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/
+
+# Layer 1: Dependency files — cache layer invalidated only when deps change.
+WORKDIR /opt/athena-build
+COPY uv.lock pyproject.toml .pre-commit-config.yaml README.md ./
+
+# Layer 2: Install the locked dependency set (dev group) into the venv.
+# --no-install-project defers the project's own install (its full source tree is
+# not present in this layer) so this layer stays cached across source changes.
+RUN uv sync --locked --no-install-project
+
+# Layer 3: Install pre-commit hook environments.
+# Baking this in means 'pre-commit run --all-files' starts immediately,
+# without downloading hook repos or creating virtualenvs at CI time.
+# pre-commit install-hooks requires a git repo, so we init a temporary one.
+RUN git init . && \
+    uv run pre-commit install-hooks && \
+    rm -rf .git
+
+# ============================================================================
+# Stage 2: Runtime — minimal image without build tools
+# ============================================================================
+FROM python:3.13-slim@sha256:6771159cd4fa5d9bba1258caf0b82e6b73458c694d178ad97c5e925c2d0e1a91
+
+LABEL org.opencontainers.image.title="athena-ci"
+LABEL org.opencontainers.image.description="CI container for Athena — validation, linting, packaging"
+LABEL org.opencontainers.image.vendor="Athena"
+LABEL org.opencontainers.image.source="https://github.com/HomericIntelligence/Athena"
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_PROJECT_ENVIRONMENT=/opt/athena-venv \
+    UV_LINK_MODE=copy \
+    PATH="/opt/athena-venv/bin:$PATH"
+
+# Runtime-only system packages (no build tools)
+# apt-get upgrade picks up any security patches released after the base image was pinned
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the uv binaries and the pre-installed project virtualenv from builder.
+COPY --from=uv /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/
+COPY --from=builder /opt/athena-venv /opt/athena-venv
+
+# Copy pre-commit hook cache from builder (baked-in hook envs)
+COPY --from=builder /root/.cache/pre-commit /root/.cache/pre-commit
+
+# Create non-root user for rootless Podman compatibility
+# UID 1000 is the default first user on most Linux systems, matching typical
+# developer UIDs for smooth volume mount permissions without --userns=keep-id
+RUN groupadd -r ci && useradd -r -g ci -u 1000 -m -s /bin/bash ci
+
+# Copy pre-commit cache to ci user's home (pre-commit uses $HOME/.cache)
+RUN cp -r /root/.cache/pre-commit /home/ci/.cache/ 2>/dev/null || true && \
+    chown -R ci:ci /home/ci/.cache
+
+# Working directory is the mounted repo root at runtime
+WORKDIR /workspace
+
+# No ENTRYPOINT — commands are provided externally by CI or run_ci_local.sh
+# Example: podman run --rm -v .:/workspace:Z athena-ci:local uv run pytest
+
+USER ci
