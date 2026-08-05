@@ -844,6 +844,8 @@ class WorkflowContractTests(unittest.TestCase):
             pi_step["run"].index("npm run hydrate:model-data --prefix"),
             pi_step["run"].index("npm run build:offline --prefix"),
         )
+        self.assertIn("pi() {", pi_step["run"])
+        self.assertIn("packages/coding-agent/dist/cli.js", pi_step["run"])
         self.assertIn('git -C "$PI_RUNTIME_SOURCE_ROOT" rev-parse HEAD', pi_step["run"])
         self.assertIn('npm ci --prefix "$PI_RUNTIME_ROOT"', pi_step["run"])
         self.assertIn("--ignore-scripts --engine-strict", pi_step["run"])
