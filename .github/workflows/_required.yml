@@ -164,7 +164,7 @@ jobs:
           PI_RUNTIME_LOCK_ROOT: ${{ github.workspace }}/ci/pi-runtime
           PI_RUNTIME_ROOT: ${{ runner.temp }}/athena-pi-runtime
           PI_RUNTIME_SOURCE_ROOT: ${{ runner.temp }}/athena-pi-runtime-source
-          PI_RUNTIME_REF: 4b85cd9786d736e22dc1f3ae91067b4cc5a24b2c
+          PI_RUNTIME_REF: 2f550d827d468a00d91626ab54118f5802387a46
           PI_SOURCE_REPOSITORY: >-
             ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           PI_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}

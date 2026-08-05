@@ -832,7 +832,7 @@ class WorkflowContractTests(unittest.TestCase):
             == "Verify native Pi package source, archive, and delegation surface"
         )
         self.assertEqual(
-            "4b85cd9786d736e22dc1f3ae91067b4cc5a24b2c",
+            "2f550d827d468a00d91626ab54118f5802387a46",
             pi_step["env"]["PI_RUNTIME_REF"],
         )
         self.assertIn(
