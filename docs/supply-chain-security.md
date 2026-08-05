@@ -14,7 +14,8 @@ CLI and delegation-package runtime dependencies. The package job scans those dep
 after validating Pi package installation and retains the native inventories for Grype. It does not
 scan Pi's example lockfiles or build-time compiler binaries, which are outside the installed
 runtime surface. These are CI evidence rather than release assets, and Athena never bundles those
-third-party packages.
+third-party packages. [Issue #74](https://github.com/HomericIntelligence/Athena/issues/74) tracks
+restoring a broader source inventory when upstream Pi remediates those excluded inputs.
 
 Host capabilities, the runner operating system, and commands used only in examples are outside the
 dependency scope. Athena remains a plugin distribution and does not add a Python package or runtime
