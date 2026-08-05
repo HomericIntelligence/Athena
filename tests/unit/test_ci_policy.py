@@ -569,7 +569,7 @@ class CommandTests(unittest.TestCase):
                 ):
                     ci_policy.main(["required-jobs"])
 
-    def test_manifest_versions_reads_both_hosts(self) -> None:
+    def test_manifest_versions_reads_every_supported_host(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             for directory in (".claude-plugin", ".codex-plugin"):
@@ -578,10 +578,13 @@ class CommandTests(unittest.TestCase):
                 (path / "plugin.json").write_text(
                     '{"version": "1.2.3"}\n', encoding="utf-8"
                 )
+            (root / "package.json").write_text(
+                '{"version": "1.2.3"}\n', encoding="utf-8"
+            )
 
             versions = ci_policy._manifest_versions(root)
 
-        self.assertEqual({"claude": "1.2.3", "codex": "1.2.3"}, versions)
+        self.assertEqual({"claude": "1.2.3", "codex": "1.2.3", "pi": "1.2.3"}, versions)
 
     def test_release_command_validates_github_and_git_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -592,6 +595,9 @@ class CommandTests(unittest.TestCase):
                 (path / "plugin.json").write_text(
                     '{"version": "1.2.3"}\n', encoding="utf-8"
                 )
+            (root / "package.json").write_text(
+                '{"version": "1.2.3"}\n', encoding="utf-8"
+            )
             environment = {
                 "GITHUB_REPOSITORY": "owner/repository",
                 "GITHUB_REF_NAME": "v1.2.3",
@@ -626,6 +632,9 @@ class CommandTests(unittest.TestCase):
                 (path / "plugin.json").write_text(
                     '{"version": "1.2.3"}\n', encoding="utf-8"
                 )
+            (root / "package.json").write_text(
+                '{"version": "1.2.3"}\n', encoding="utf-8"
+            )
             environment = {
                 "GITHUB_REPOSITORY": "owner/repository",
                 "GITHUB_REF_NAME": "v1.2.3",

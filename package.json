@@ -1,0 +1,24 @@
+{
+  "name": "@homericintelligence/athena",
+  "version": "0.4.0",
+  "description": "Portable workflow skills for Claude Code, Codex, and Pi.",
+  "license": "BSD-3-Clause",
+  "homepage": "https://github.com/HomericIntelligence/Athena",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HomericIntelligence/Athena"
+  },
+  "keywords": [
+    "pi-package",
+    "agents",
+    "skills",
+    "claude-code",
+    "codex",
+    "pi"
+  ],
+  "pi": {
+    "skills": [
+      "./skills"
+    ]
+  }
+}
