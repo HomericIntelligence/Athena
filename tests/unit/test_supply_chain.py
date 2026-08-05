@@ -850,7 +850,10 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('npm ci --prefix "$PI_RUNTIME_ROOT"', pi_step["run"])
         self.assertIn("--ignore-scripts --engine-strict", pi_step["run"])
         self.assertIn("find_pi_package_root.mjs", pi_step["run"])
-        self.assertIn('scan "$PI_RUNTIME_SOURCE_ROOT" -o json', pi_step["run"])
+        self.assertIn(
+            '"$PI_RUNTIME_SOURCE_ROOT/packages/coding-agent/npm-shrinkwrap.json"',
+            pi_step["run"],
+        )
         self.assertIn('scan "$PI_RUNTIME_ROOT" -o json', pi_step["run"])
         self.assertIn("syft-pi-source.json", json.dumps(package_job))
         self.assertIn("syft-pi-subagents.json", json.dumps(package_job))

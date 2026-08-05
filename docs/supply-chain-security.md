@@ -9,10 +9,12 @@ Athena publishes two checksummed SPDX 2.3 software bills of materials with each 
   authoritative `ubuntu-24.04`/`linux-64` build environment, uv, and the immutable GitHub Actions
   used by the package job.
 
-The committed `ci/pi-runtime/` npm lockfile captures exact Pi CLI and delegation-package integrity
-data. The package job copies it into an isolated temporary Pi runtime, which Syft scans after Pi
-package installation and retains as a second native inventory for Grype. It is CI evidence rather
-than a release asset, and Athena never bundles those third-party packages.
+The pinned Pi coding-agent shrinkwrap and committed `ci/pi-runtime/` npm lockfile capture the exact
+CLI and delegation-package runtime dependencies. The package job scans those dependency contracts
+after validating Pi package installation and retains the native inventories for Grype. It does not
+scan Pi's example lockfiles or build-time compiler binaries, which are outside the installed
+runtime surface. These are CI evidence rather than release assets, and Athena never bundles those
+third-party packages.
 
 Host capabilities, the runner operating system, and commands used only in examples are outside the
 dependency scope. Athena remains a plugin distribution and does not add a Python package or runtime

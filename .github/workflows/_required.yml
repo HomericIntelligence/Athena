@@ -255,7 +255,8 @@ jobs:
             throw new Error("pi-subagents did not register the pinned active subagent tool");
           }
           NODE
-          "${{ steps.syft.outputs.cmd }}" scan "$PI_RUNTIME_SOURCE_ROOT" -o json \
+          "${{ steps.syft.outputs.cmd }}" scan \
+            "$PI_RUNTIME_SOURCE_ROOT/packages/coding-agent/npm-shrinkwrap.json" -o json \
             > dist-internal/syft-pi-source.json
           "${{ steps.syft.outputs.cmd }}" scan "$PI_RUNTIME_ROOT" -o json \
             > dist-internal/syft-pi-subagents.json
