@@ -184,6 +184,7 @@ jobs:
           npm ci --prefix "$PI_RUNTIME_ROOT" --ignore-scripts --engine-strict
           test "$(git -C "$PI_RUNTIME_SOURCE_ROOT" rev-parse HEAD)" = "$PI_RUNTIME_REF"
           npm ci --prefix "$PI_RUNTIME_SOURCE_ROOT" --ignore-scripts --engine-strict
+          npm run hydrate:model-data --prefix "$PI_RUNTIME_SOURCE_ROOT"
           npm run build:offline --prefix "$PI_RUNTIME_SOURCE_ROOT"
           export PATH="$PI_RUNTIME_SOURCE_ROOT/node_modules/.bin:$PATH"
           pi_version="$(node -p 'require(process.argv[1]).version' \
