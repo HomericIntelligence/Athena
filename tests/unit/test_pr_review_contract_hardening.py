@@ -375,6 +375,120 @@ class SnapshotMaterializationTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "safe size limit"):
                     self.snapshot._repository_size(repository)
 
+    def test_applies_the_free_space_limit_during_fetch_and_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "snapshot"
+            root.mkdir()
+            calls: list[tuple[tuple[str, ...], dict[str, object]]] = []
+
+            def git(*arguments: str, **kwargs: object) -> str:
+                calls.append((arguments, kwargs))
+                if arguments[0] == "init":
+                    Path(arguments[-1]).mkdir()
+                if arguments[:2] == ("rev-parse", "--is-shallow-repository"):
+                    return "false"
+                if arguments[:2] == ("rev-parse", "--verify"):
+                    if arguments[-1] == "refs/athena/base^{commit}":
+                        return "a" * 40
+                    if arguments[-1] == "refs/athena/pr/9/head^{commit}":
+                        return "b" * 40
+                    if arguments[-1] == f"{'b' * 40}^{{commit}}":
+                        return "b" * 40
+                if arguments[0] == "merge-base":
+                    return "a" * 40
+                if arguments[:2] == ("rev-parse", f"{'b' * 40}^{{tree}}"):
+                    return "c" * 40
+                return ""
+
+            with (
+                patch.object(self.snapshot.tempfile, "mkdtemp", return_value=str(root)),
+                patch.object(self.snapshot, "_git", side_effect=git),
+                patch.object(self.snapshot, "_repository_size", return_value=0),
+                patch.object(self.snapshot, "_verify_no_promisor_configuration"),
+                patch.object(self.snapshot, "_make_read_only"),
+                patch.object(
+                    self.snapshot.shutil,
+                    "disk_usage",
+                    return_value=SimpleNamespace(free=100),
+                ),
+            ):
+                self.snapshot.materialize_snapshot(
+                    repository="owner/repository",
+                    number=9,
+                    base_ref="main",
+                    base_oid="a" * 40,
+                    head_oid="b" * 40,
+                )
+
+        fetch = next(kwargs for arguments, kwargs in calls if "fetch" in arguments)
+        checkout = next(
+            kwargs for arguments, kwargs in calls if "checkout" in arguments
+        )
+        self.assertEqual(90, fetch.get("maximum_file_size"))
+        self.assertEqual(90, checkout.get("maximum_file_size"))
+
+    def test_rejects_snapshot_acquisition_failure_modes(self) -> None:
+        cases = {
+            "ambiguous merge base": "ambiguous merge base",
+            "promisor configuration": "partial clone configuration",
+            "shallow history": "complete history",
+            "timeout": "cannot materialize",
+        }
+        for scenario, expected_error in cases.items():
+            with (
+                self.subTest(scenario=scenario),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory) / "snapshot"
+                root.mkdir()
+
+                def git(*arguments: str, **_: object) -> str:
+                    if arguments[0] == "init":
+                        Path(arguments[-1]).mkdir()
+                    if "fetch" in arguments and scenario == "timeout":
+                        raise subprocess.TimeoutExpired(arguments, 30)
+                    if arguments[:2] == ("rev-parse", "--is-shallow-repository"):
+                        return "true" if scenario == "shallow history" else "false"
+                    if arguments[:2] == ("rev-parse", "--verify"):
+                        if arguments[-1] == "refs/athena/base^{commit}":
+                            return "a" * 40
+                        if arguments[-1] == "refs/athena/pr/9/head^{commit}":
+                            return "b" * 40
+                        if arguments[-1] == f"{'b' * 40}^{{commit}}":
+                            return "b" * 40
+                    if arguments[:3] == ("config", "--local", "--get"):
+                        return "origin" if scenario == "promisor configuration" else ""
+                    if arguments[0] == "merge-base":
+                        return (
+                            "a\nb" if scenario == "ambiguous merge base" else "a" * 40
+                        )
+                    if arguments[:2] == ("rev-parse", f"{'b' * 40}^{{tree}}"):
+                        return "c" * 40
+                    return ""
+
+                with (
+                    patch.object(
+                        self.snapshot.tempfile, "mkdtemp", return_value=str(root)
+                    ),
+                    patch.object(self.snapshot, "_git", side_effect=git),
+                    patch.object(self.snapshot, "_repository_size", return_value=0),
+                    patch.object(self.snapshot, "_make_read_only"),
+                    patch.object(self.snapshot, "remove_snapshot"),
+                    patch.object(
+                        self.snapshot.shutil,
+                        "disk_usage",
+                        return_value=SimpleNamespace(free=100),
+                    ),
+                    self.assertRaisesRegex(RuntimeError, expected_error),
+                ):
+                    self.snapshot.materialize_snapshot(
+                        repository="owner/repository",
+                        number=9,
+                        base_ref="main",
+                        base_oid="a" * 40,
+                        head_oid="b" * 40,
+                    )
+
     def test_command_emits_a_materialized_snapshot(self) -> None:
         snapshot = self.snapshot.MaterializedSnapshot(
             root=Path("/tmp/athena-pr-review-test"),

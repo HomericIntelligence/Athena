@@ -5,12 +5,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Sequence
+
+try:
+    import resource as _resource
+except ImportError:  # pragma: no cover - exercised on platforms without resource
+    resource: Any = None
+else:
+    resource = _resource
 import shutil
 import stat
 import subprocess
 import sys
 import tempfile
-from typing import Sequence
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
@@ -56,21 +63,50 @@ def _git(
     cwd: Path | None = None,
     capture_output: bool = False,
     accepted_codes: tuple[int, ...] = (0,),
+    maximum_file_size: int | None = None,
 ) -> str:
     """Run a bounded isolated-repository Git command without ambient config."""
-    result = run_command(
-        ["git", *git_read_arguments(), *arguments],
-        cwd=cwd,
-        stdout=subprocess.PIPE if capture_output else subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        env=git_read_environment(),
-        text=True,
-        check=False,
-        timeout=SNAPSHOT_COMMAND_TIMEOUT_SECONDS,
-    )
+    command_options: dict[str, object] = {
+        "cwd": cwd,
+        "stdout": subprocess.PIPE if capture_output else subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "env": git_read_environment(),
+        "text": True,
+        "check": False,
+        "timeout": SNAPSHOT_COMMAND_TIMEOUT_SECONDS,
+    }
+    if maximum_file_size is not None:
+        if resource is None:
+            raise RuntimeError(
+                "host cannot enforce the immutable pull-request snapshot size limit"
+            )
+        command_options["preexec_fn"] = _file_size_limit(maximum_file_size)
+    try:
+        result = run_command(
+            ["git", *git_read_arguments(), *arguments], **command_options
+        )
+    except subprocess.SubprocessError as error:
+        raise RuntimeError(
+            "cannot materialize the immutable pull-request snapshot"
+        ) from error
     if result.returncode not in accepted_codes:
         raise RuntimeError("cannot materialize the immutable pull-request snapshot")
     return result.stdout.strip() if isinstance(result.stdout, str) else ""
+
+
+def _file_size_limit(maximum_bytes: int) -> object:
+    """Return a child-only POSIX file-size limit for snapshot Git commands."""
+    if maximum_bytes < 1:
+        raise RuntimeError("immutable pull-request snapshot has no usable disk space")
+    if resource is None:
+        raise RuntimeError(
+            "host cannot enforce the immutable pull-request snapshot size limit"
+        )
+
+    def apply() -> None:
+        resource.setrlimit(resource.RLIMIT_FSIZE, (maximum_bytes, maximum_bytes))
+
+    return apply
 
 
 def _require_base_ref(base_ref: str) -> str:
@@ -81,14 +117,15 @@ def _require_base_ref(base_ref: str) -> str:
     return base_ref
 
 
-def _repository_size(path: Path) -> int:
+def _repository_size(path: Path, *, maximum_bytes: int | None = None) -> int:
     """Return the size of a repository within 90 percent of free disk space."""
-    try:
-        maximum_bytes = (shutil.disk_usage(path).free * 9) // 10
-    except OSError as error:
-        raise RuntimeError(
-            "cannot inspect the immutable pull-request snapshot"
-        ) from error
+    if maximum_bytes is None:
+        try:
+            maximum_bytes = (shutil.disk_usage(path).free * 9) // 10
+        except OSError as error:
+            raise RuntimeError(
+                "cannot inspect the immutable pull-request snapshot"
+            ) from error
     total = 0
     for entry in path.rglob("*"):
         try:
@@ -185,6 +222,11 @@ def materialize_snapshot(
     template.mkdir()
     hooks.mkdir()
     try:
+        maximum_snapshot_bytes = (shutil.disk_usage(root).free * 9) // 10
+        if maximum_snapshot_bytes < 1:
+            raise RuntimeError(
+                "immutable pull-request snapshot has no usable disk space"
+            )
         _git(
             "-c",
             f"core.hooksPath={hooks}",
@@ -219,8 +261,9 @@ def materialize_snapshot(
             base_refspec,
             head_refspec,
             cwd=source,
+            maximum_file_size=maximum_snapshot_bytes,
         )
-        _repository_size(source / ".git")
+        _repository_size(source / ".git", maximum_bytes=maximum_snapshot_bytes)
         _verify_no_promisor_configuration(source)
         if (
             _git(
@@ -271,6 +314,7 @@ def materialize_snapshot(
             "--no-recurse-submodules",
             canonical_head,
             cwd=source,
+            maximum_file_size=maximum_snapshot_bytes,
         )
         _make_read_only(root)
     except (OSError, subprocess.TimeoutExpired):
