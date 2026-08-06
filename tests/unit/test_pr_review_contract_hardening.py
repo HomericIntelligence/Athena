@@ -13,6 +13,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 from typing import Any
 import unittest
 from unittest.mock import patch
@@ -356,6 +357,24 @@ class SnapshotMaterializationTests(unittest.TestCase):
                     head_oid="c" * 40,
                 )
 
+    def test_rejects_a_snapshot_larger_than_ninety_percent_of_free_space(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory)
+            snapshot_file = repository / "objects.pack"
+            snapshot_file.write_bytes(b"x" * 90)
+
+            with patch.object(
+                self.snapshot.shutil,
+                "disk_usage",
+                return_value=SimpleNamespace(free=100),
+            ):
+                self.assertEqual(90, self.snapshot._repository_size(repository))
+                snapshot_file.write_bytes(b"x" * 91)
+                with self.assertRaisesRegex(RuntimeError, "safe size limit"):
+                    self.snapshot._repository_size(repository)
+
     def test_command_emits_a_materialized_snapshot(self) -> None:
         snapshot = self.snapshot.MaterializedSnapshot(
             root=Path("/tmp/athena-pr-review-test"),
@@ -427,49 +446,116 @@ class StrictSnapshotFallbackTests(unittest.TestCase):
     def tearDown(self) -> None:
         sys.modules.pop(self.module_name, None)
 
-    def test_derives_the_manifest_from_the_materialized_source_when_head_is_missing(
+    def test_collects_from_a_canonical_snapshot_when_head_is_missing_locally(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
-            source = Path(temporary_directory) / "source"
+            root = Path(temporary_directory)
+            source = root / "source"
             source.mkdir()
-            base_oid, head_oid = initialize_repository(source, "changed.txt")
-            snapshot = self.collector.MaterializedSnapshot(
-                root=source,
-                source_path=source,
-                merge_base=base_oid,
-                tree_oid=git(source, "rev-parse", f"{head_oid}^{{tree}}"),
+            base_oid, head_oid = initialize_divergent_repository(source, "changed.txt")
+            git(source, "update-ref", "refs/pull/9/head", head_oid)
+            remote = root / "repository.git"
+            git(root, "init", "--bare", "--quiet", str(remote))
+            git(source, "remote", "add", "origin", str(remote))
+            git(source, "push", "--quiet", "origin", "main", "refs/pull/9/head")
+
+            caller = root / "caller"
+            caller.mkdir()
+            git(caller, "init", "--quiet")
+            git(
+                caller,
+                "fetch",
+                "--quiet",
+                str(remote),
+                "refs/heads/main:refs/heads/main",
             )
-            target = self.collector.ExpectedReviewTarget(
-                host="github.com",
-                repository="owner/repository",
-                number=9,
-                url="https://github.com/owner/repository/pull/9",
+            self.assertNotEqual(
+                0,
+                subprocess.run(
+                    ["git", "cat-file", "-e", f"{head_oid}^{{commit}}"],
+                    cwd=caller,
+                    capture_output=True,
+                    check=False,
+                ).returncode,
+            )
+            output = io.StringIO()
+            arguments = (
+                "--expected-base-oid",
+                base_oid,
+                "--expected-head-oid",
+                head_oid,
+                "--expected-host",
+                "github.com",
+                "--expected-repository",
+                "owner/repository",
+                "--expected-pr-number",
+                "9",
+                "--expected-pr-url",
+                "https://github.com/owner/repository/pull/9",
+                "9",
+            )
+            snapshot_module = sys.modules["materialize_snapshot"]
+            original_working_directory = Path.cwd()
+            try:
+                os.chdir(caller)
+                with (
+                    patch.object(
+                        self.collector,
+                        "pr_metadata",
+                        side_effect=[
+                            pull_request(
+                                base_oid=base_oid,
+                                head_oid=head_oid,
+                                head_ref_name="fork-owner:feature",
+                            ),
+                            pull_request(
+                                base_oid=base_oid,
+                                head_oid=head_oid,
+                                head_ref_name="fork-owner:feature",
+                            ),
+                        ],
+                    ),
+                    patch.object(
+                        self.collector, "head_bound_check_runs", return_value=[]
+                    ),
+                    patch.object(
+                        snapshot_module,
+                        "canonical_repository_url",
+                        return_value=str(remote),
+                    ),
+                    patch.dict(
+                        os.environ,
+                        {
+                            "GIT_CONFIG_GLOBAL": "/attacker/global-config",
+                            "GIT_DIR": "/attacker/repository",
+                        },
+                    ),
+                    patch("sys.stdout", output),
+                ):
+                    exit_code = self.collector.main(arguments)
+            finally:
+                os.chdir(original_working_directory)
+
+            evidence = json.loads(output.getvalue())
+            self.addCleanup(
+                self.collector.remove_snapshot,
+                Path(evidence["source_snapshot"]["root"]),
+            )
+            caller_remains_without_head = (
+                subprocess.run(
+                    ["git", "cat-file", "-e", f"{head_oid}^{{commit}}"],
+                    cwd=caller,
+                    capture_output=True,
+                    check=False,
+                ).returncode
+                != 0
             )
 
-            with (
-                patch.object(
-                    self.collector,
-                    "local_immutable_objects_available",
-                    return_value=False,
-                ),
-                patch.object(
-                    self.collector, "materialize_snapshot", return_value=snapshot
-                ) as materialize,
-            ):
-                manifest, returned_snapshot = self.collector.strict_changed_paths(
-                    pull_request(base_ref_name="main"), (base_oid, head_oid), target
-                )
-
-        self.assertEqual(("changed.txt",), manifest.paths)
-        self.assertIs(snapshot, returned_snapshot)
-        materialize.assert_called_once_with(
-            repository="owner/repository",
-            number=9,
-            base_ref="main",
-            base_oid=base_oid,
-            head_oid=head_oid,
-        )
+        self.assertEqual(0, exit_code)
+        self.assertEqual(["changed.txt"], evidence["changed_files"])
+        self.assertTrue(evidence["source_snapshot"]["source_path"].endswith("/source"))
+        self.assertTrue(caller_remains_without_head)
 
 
 class BoundedOutputProcess:

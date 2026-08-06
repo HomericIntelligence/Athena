@@ -25,7 +25,6 @@ from skills._cli import (
 
 
 SNAPSHOT_COMMAND_TIMEOUT_SECONDS = 30.0
-MAX_SNAPSHOT_BYTES = 512 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -83,7 +82,13 @@ def _require_base_ref(base_ref: str) -> str:
 
 
 def _repository_size(path: Path) -> int:
-    """Return the bounded on-disk size of an isolated repository."""
+    """Return the size of a repository within 90 percent of free disk space."""
+    try:
+        maximum_bytes = (shutil.disk_usage(path).free * 9) // 10
+    except OSError as error:
+        raise RuntimeError(
+            "cannot inspect the immutable pull-request snapshot"
+        ) from error
     total = 0
     for entry in path.rglob("*"):
         try:
@@ -94,7 +99,7 @@ def _repository_size(path: Path) -> int:
             ) from error
         if stat.S_ISREG(details.st_mode):
             total += details.st_size
-            if total > MAX_SNAPSHOT_BYTES:
+            if total > maximum_bytes:
                 raise RuntimeError(
                     "immutable pull-request snapshot exceeds the safe size limit"
                 )
