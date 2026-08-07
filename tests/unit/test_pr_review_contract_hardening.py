@@ -9,6 +9,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
 import stat
 import subprocess
 import sys
@@ -292,8 +293,15 @@ class SnapshotMaterializationTests(unittest.TestCase):
                 ).returncode,
             )
 
-            with patch.object(
-                self.snapshot, "canonical_repository_url", return_value=str(remote)
+            with (
+                patch.object(
+                    self.snapshot, "canonical_repository_url", return_value=str(remote)
+                ),
+                patch.object(
+                    self.snapshot,
+                    "_create_quota_volume",
+                    side_effect=lambda temporary_root, _: temporary_root / "source",
+                ),
             ):
                 materialized = self.snapshot.materialize_snapshot(
                     repository="owner/repository",
@@ -345,6 +353,11 @@ class SnapshotMaterializationTests(unittest.TestCase):
                 patch.object(
                     self.snapshot, "canonical_repository_url", return_value=str(remote)
                 ),
+                patch.object(
+                    self.snapshot,
+                    "_create_quota_volume",
+                    side_effect=lambda temporary_root, _: temporary_root / "source",
+                ),
                 self.assertRaisesRegex(
                     RuntimeError, "fetched pull-request ref does not match"
                 ),
@@ -355,6 +368,45 @@ class SnapshotMaterializationTests(unittest.TestCase):
                     base_ref="main",
                     base_oid=base_oid,
                     head_oid="c" * 40,
+                )
+
+    def test_rejects_a_real_ambiguous_merge_base_from_canonical_refs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source"
+            source.mkdir()
+            base_oid, head_oid = initialize_ambiguous_merge_base_repository(
+                source, "changed.txt"
+            )
+            remote = root / "remote.git"
+            git(root, "init", "--bare", "--quiet", str(remote))
+            git(source, "remote", "add", "origin", str(remote))
+            git(
+                source,
+                "push",
+                "--quiet",
+                "origin",
+                f"{base_oid}:refs/heads/main",
+                f"{head_oid}:refs/pull/9/head",
+            )
+
+            with (
+                patch.object(
+                    self.snapshot, "canonical_repository_url", return_value=str(remote)
+                ),
+                patch.object(
+                    self.snapshot,
+                    "_create_quota_volume",
+                    side_effect=lambda temporary_root, _: temporary_root / "source",
+                ),
+                self.assertRaisesRegex(RuntimeError, "one unambiguous merge base"),
+            ):
+                self.snapshot.materialize_snapshot(
+                    repository="owner/repository",
+                    number=9,
+                    base_ref="main",
+                    base_oid=base_oid,
+                    head_oid=head_oid,
                 )
 
     def test_rejects_a_snapshot_larger_than_ninety_percent_of_free_space(
@@ -375,7 +427,7 @@ class SnapshotMaterializationTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "safe size limit"):
                     self.snapshot._repository_size(repository)
 
-    def test_applies_the_free_space_limit_during_fetch_and_checkout(self) -> None:
+    def test_does_not_rely_on_per_file_limits_for_snapshot_quota(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory) / "snapshot"
             root.mkdir()
@@ -402,6 +454,9 @@ class SnapshotMaterializationTests(unittest.TestCase):
 
             with (
                 patch.object(self.snapshot.tempfile, "mkdtemp", return_value=str(root)),
+                patch.object(
+                    self.snapshot, "_create_quota_volume", return_value=root / "source"
+                ),
                 patch.object(self.snapshot, "_git", side_effect=git),
                 patch.object(self.snapshot, "_repository_size", return_value=0),
                 patch.object(self.snapshot, "_verify_no_promisor_configuration"),
@@ -424,8 +479,89 @@ class SnapshotMaterializationTests(unittest.TestCase):
         checkout = next(
             kwargs for arguments, kwargs in calls if "checkout" in arguments
         )
-        self.assertEqual(90, fetch.get("maximum_file_size"))
-        self.assertEqual(90, checkout.get("maximum_file_size"))
+        self.assertIsNone(fetch.get("maximum_file_size"))
+        self.assertIsNone(checkout.get("maximum_file_size"))
+        self.assertEqual(root / "source", fetch.get("temporary_directory"))
+        self.assertEqual(root / "source", checkout.get("temporary_directory"))
+
+    def test_creates_a_sparse_volume_with_the_cumulative_snapshot_quota(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "snapshot"
+            root.mkdir()
+            calls: list[tuple[str, ...]] = []
+
+            with (
+                patch.object(
+                    self.snapshot,
+                    "_hdiutil",
+                    side_effect=lambda *arguments: calls.append(arguments),
+                ),
+                patch.object(self.snapshot.sys, "platform", "darwin"),
+                patch.object(Path, "is_mount", return_value=True),
+            ):
+                source = self.snapshot._create_quota_volume(root, 90 * 1024)
+
+        self.assertEqual(root / "source", source)
+        self.assertEqual(
+            (
+                "create",
+                "-quiet",
+                "-type",
+                "SPARSE",
+                "-size",
+                "90k",
+                "-fs",
+                "Case-sensitive HFS+",
+                "-volname",
+                "Athena PR Review",
+                "-nospotlight",
+                str(root / "snapshot.sparseimage"),
+            ),
+            calls[0],
+        )
+        self.assertEqual(
+            (
+                "attach",
+                "-quiet",
+                "-nobrowse",
+                "-mountpoint",
+                str(root / "source"),
+                str(root / "snapshot.sparseimage"),
+            ),
+            calls[1],
+        )
+
+    @unittest.skipUnless(
+        sys.platform == "darwin"
+        and shutil.which("dd") is not None
+        and shutil.which("hdiutil") is not None,
+        "requires the macOS sparse-image quota boundary",
+    )
+    def test_quota_volume_bounds_multiple_files_by_total_capacity(self) -> None:
+        root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
+        self.addCleanup(self.snapshot.remove_snapshot, root)
+        maximum_bytes = 64 * 1024 * 1024
+        source = self.snapshot._create_quota_volume(root, maximum_bytes)
+        self.assertLessEqual(shutil.disk_usage(source).total, maximum_bytes)
+        for name in ("one", "two"):
+            result = subprocess.run(
+                ["dd", "if=/dev/urandom", f"of={source / name}", "bs=1m", "count=24"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+        overflow = subprocess.run(
+            ["dd", "if=/dev/urandom", f"of={source / 'three'}", "bs=1m", "count=24"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertNotEqual(0, overflow.returncode)
+        self.assertLessEqual(
+            sum(path.stat().st_size for path in source.iterdir()), maximum_bytes
+        )
 
     def test_rejects_snapshot_acquisition_failure_modes(self) -> None:
         cases = {
@@ -469,6 +605,11 @@ class SnapshotMaterializationTests(unittest.TestCase):
                 with (
                     patch.object(
                         self.snapshot.tempfile, "mkdtemp", return_value=str(root)
+                    ),
+                    patch.object(
+                        self.snapshot,
+                        "_create_quota_volume",
+                        return_value=root / "source",
                     ),
                     patch.object(self.snapshot, "_git", side_effect=git),
                     patch.object(self.snapshot, "_repository_size", return_value=0),
@@ -637,6 +778,11 @@ class StrictSnapshotFallbackTests(unittest.TestCase):
                         snapshot_module,
                         "canonical_repository_url",
                         return_value=str(remote),
+                    ),
+                    patch.object(
+                        snapshot_module,
+                        "_create_quota_volume",
+                        side_effect=lambda temporary_root, _: temporary_root / "source",
                     ),
                     patch.dict(
                         os.environ,

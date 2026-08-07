@@ -5,14 +5,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Sequence
 
-try:
-    import resource as _resource
-except ImportError:  # pragma: no cover - exercised on platforms without resource
-    resource: Any = None
-else:
-    resource = _resource
 import shutil
 import stat
 import subprocess
@@ -63,24 +57,21 @@ def _git(
     cwd: Path | None = None,
     capture_output: bool = False,
     accepted_codes: tuple[int, ...] = (0,),
-    maximum_file_size: int | None = None,
+    temporary_directory: Path | None = None,
 ) -> str:
     """Run a bounded isolated-repository Git command without ambient config."""
+    environment = git_read_environment()
+    if temporary_directory is not None:
+        environment["TMPDIR"] = str(temporary_directory)
     command_options: dict[str, object] = {
         "cwd": cwd,
         "stdout": subprocess.PIPE if capture_output else subprocess.DEVNULL,
         "stderr": subprocess.DEVNULL,
-        "env": git_read_environment(),
+        "env": environment,
         "text": True,
         "check": False,
         "timeout": SNAPSHOT_COMMAND_TIMEOUT_SECONDS,
     }
-    if maximum_file_size is not None:
-        if resource is None:
-            raise RuntimeError(
-                "host cannot enforce the immutable pull-request snapshot size limit"
-            )
-        command_options["preexec_fn"] = _file_size_limit(maximum_file_size)
     try:
         result = run_command(
             ["git", *git_read_arguments(), *arguments], **command_options
@@ -94,19 +85,65 @@ def _git(
     return result.stdout.strip() if isinstance(result.stdout, str) else ""
 
 
-def _file_size_limit(maximum_bytes: int) -> object:
-    """Return a child-only POSIX file-size limit for snapshot Git commands."""
-    if maximum_bytes < 1:
-        raise RuntimeError("immutable pull-request snapshot has no usable disk space")
-    if resource is None:
+def _hdiutil(*arguments: str) -> None:
+    """Run the macOS disk-image tool or fail closed when it cannot enforce a quota."""
+    try:
+        result = run_command(
+            ["hdiutil", *arguments],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=False,
+        )
+    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+        raise RuntimeError(
+            "host cannot enforce the immutable pull-request snapshot size limit"
+        ) from error
+    if result.returncode != 0:
         raise RuntimeError(
             "host cannot enforce the immutable pull-request snapshot size limit"
         )
 
-    def apply() -> None:
-        resource.setrlimit(resource.RLIMIT_FSIZE, (maximum_bytes, maximum_bytes))
 
-    return apply
+def _create_quota_volume(root: Path, maximum_bytes: int) -> Path:
+    """Mount a sparse filesystem whose total capacity is the snapshot quota."""
+    maximum_kibibytes = maximum_bytes // 1024
+    if maximum_kibibytes < 1:
+        raise RuntimeError("immutable pull-request snapshot has no usable disk space")
+    if sys.platform != "darwin":
+        raise RuntimeError(
+            "host cannot enforce the immutable pull-request snapshot size limit"
+        )
+    image = root / "snapshot.sparseimage"
+    source = root / "source"
+    source.mkdir()
+    _hdiutil(
+        "create",
+        "-quiet",
+        "-type",
+        "SPARSE",
+        "-size",
+        f"{maximum_kibibytes}k",
+        "-fs",
+        "Case-sensitive HFS+",
+        "-volname",
+        "Athena PR Review",
+        "-nospotlight",
+        str(image),
+    )
+    _hdiutil(
+        "attach",
+        "-quiet",
+        "-nobrowse",
+        "-mountpoint",
+        str(source),
+        str(image),
+    )
+    if not source.is_mount():
+        raise RuntimeError(
+            "host cannot enforce the immutable pull-request snapshot size limit"
+        )
+    return source
 
 
 def _require_base_ref(base_ref: str) -> str:
@@ -216,7 +253,6 @@ def materialize_snapshot(
     canonical_head = require_commit_oid(head_oid, "captured head OID")
     canonical_base_ref = _require_base_ref(base_ref)
     root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
-    source = root / "source"
     template = root / "empty-template"
     hooks = root / "empty-hooks"
     template.mkdir()
@@ -227,6 +263,7 @@ def materialize_snapshot(
             raise RuntimeError(
                 "immutable pull-request snapshot has no usable disk space"
             )
+        source = _create_quota_volume(root, maximum_snapshot_bytes)
         _git(
             "-c",
             f"core.hooksPath={hooks}",
@@ -237,6 +274,7 @@ def materialize_snapshot(
             f"--template={template}",
             "--initial-branch=athena-review",
             str(source),
+            temporary_directory=source,
         )
         base_refspec = f"+refs/heads/{canonical_base_ref}:refs/athena/base"
         head_refspec = f"+refs/pull/{number}/head:refs/athena/pr/{number}/head"
@@ -261,7 +299,7 @@ def materialize_snapshot(
             base_refspec,
             head_refspec,
             cwd=source,
-            maximum_file_size=maximum_snapshot_bytes,
+            temporary_directory=source,
         )
         _repository_size(source / ".git", maximum_bytes=maximum_snapshot_bytes)
         _verify_no_promisor_configuration(source)
@@ -314,8 +352,9 @@ def materialize_snapshot(
             "--no-recurse-submodules",
             canonical_head,
             cwd=source,
-            maximum_file_size=maximum_snapshot_bytes,
+            temporary_directory=source,
         )
+        _repository_size(source, maximum_bytes=maximum_snapshot_bytes)
         _make_read_only(root)
     except (OSError, subprocess.TimeoutExpired):
         remove_snapshot(root)
@@ -340,6 +379,9 @@ def remove_snapshot(root: Path) -> None:
         raise RuntimeError(
             "refusing to remove a snapshot outside the managed temporary directory"
         )
+    source = resolved / "source"
+    if source.is_mount():
+        _hdiutil("detach", "-force", "-quiet", str(source))
 
     def make_removable(function: object, path: str, _: object) -> None:
         candidate = Path(path)
