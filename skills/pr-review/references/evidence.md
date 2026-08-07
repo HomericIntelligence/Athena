@@ -58,10 +58,17 @@ means no PR and exit 3 means several candidates.
 
 Do not fetch, pull, clone, invoke a remote helper, or otherwise acquire objects
 through an ambient checkout remote. Use exact OIDs only after verifying local
-commit objects, or require a host materialized read-only snapshot bound to the
-canonical target and both OIDs. For local immutable Git reads, disable
-replacement refs, graft input, and commit-graph reads, and forbid lazy
-promisor-object fetching. A missing object is a source-evidence coverage gap.
+commit objects, or materialize a host-owned read-only snapshot bound to the
+canonical target and both OIDs. The default GitHub collector first preserves
+the local immutable-read path; if either captured object is absent, it creates
+a disposable repository and fetches only `refs/heads/<base>` and
+`refs/pull/<number>/head` from the retained `github.com/owner/repository`
+target. It rejects a ref/OID mismatch, shallow or promisor history, ambiguous
+merge base, resource limit, or acquisition failure before inspection. For
+local immutable Git reads, disable replacement refs, graft input, and
+commit-graph reads, and forbid lazy promisor-object fetching. A missing object
+is a coverage gap only when this exact materialization boundary cannot verify
+it.
 
 #### GitLab
 
@@ -107,13 +114,17 @@ Require these returned bindings before source inspection:
 | `reviewed_scope` | Canonical digest of title, body, closing references, open/draft state, and base/head names. |
 | `reviewed_linked_requirements` | Ordered canonical ID, repository, number, URL, and content digest for every consumed linked issue, plus its aggregate digest. |
 | `changed_path_manifest` | UTF-8 NUL-delimited, sorted union of `merge-base..head` and `base..head` path sets, with count and digest. |
+| `source_snapshot` | Present only when local objects were absent: a detached, read-only source path plus its root, verified merge base, and head tree OID. |
 
-The local repository must be complete and non-shallow with one unambiguous merge
-base. Re-derive the manifest from immutable objects and compare it to the
-returned binding. Compare returned identity and scope to `resolve_pr.py` and
-the retained review fields. Read all changed files, guidance, ADRs, contracts,
-tests, and task definitions from the verified head tree or equivalent immutable
-snapshot, never from mutable checkout paths.
+The selected local repository or returned snapshot must be complete and
+non-shallow with one unambiguous merge base. Re-derive the manifest from its
+immutable objects and compare it to the returned binding. Compare returned
+identity and scope to `resolve_pr.py` and the retained review fields. When
+`source_snapshot` is present, inspect only its `source_path`; otherwise read
+the verified local head tree. Read all changed files, guidance, ADRs,
+contracts, tests, and task definitions from that immutable source, never from
+mutable checkout paths. Dispose of the snapshot only after the final exact
+artifact rebind has completed.
 
 The helper binds every `closingIssuesReferences` item. Before consuming an
 additional issue or plan artifact, require a capability to add its canonical

@@ -9,10 +9,12 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
 import stat
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 from typing import Any
 import unittest
 from unittest.mock import patch
@@ -20,6 +22,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "skills" / "pr-review" / "scripts" / "collect_evidence.py"
+SNAPSHOT_SCRIPT = ROOT / "skills" / "pr-review" / "scripts" / "materialize_snapshot.py"
 DIFF_CONTEXT_SCRIPT = ROOT / "skills" / "pr-review" / "scripts" / "diff_context.py"
 BASE_OID = "a" * 40
 HEAD_OID = "b" * 40
@@ -227,6 +230,659 @@ def load_collector(module_name: str) -> Any:
     finally:
         sys.path.remove(script_directory)
     return module
+
+
+def load_snapshot(module_name: str) -> Any:
+    """Load a fresh snapshot materializer for isolated Git behavior tests."""
+    specification = importlib.util.spec_from_file_location(module_name, SNAPSHOT_SCRIPT)
+    assert specification is not None
+    assert specification.loader is not None
+    module = importlib.util.module_from_spec(specification)
+    sys.modules[module_name] = module
+    script_directory = str(SNAPSHOT_SCRIPT.parent)
+    sys.path.insert(0, script_directory)
+    try:
+        specification.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(module_name, None)
+        raise
+    finally:
+        sys.path.remove(script_directory)
+    return module
+
+
+class SnapshotMaterializationTests(unittest.TestCase):
+    """Verify exact PR source can be acquired without trusting the caller."""
+
+    def setUp(self) -> None:
+        self.module_name = f"test_materialize_snapshot_{id(self)}"
+        self.snapshot = load_snapshot(self.module_name)
+
+    def tearDown(self) -> None:
+        sys.modules.pop(self.module_name, None)
+
+    def test_materializes_a_missing_head_from_only_the_canonical_pr_refs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source"
+            source.mkdir()
+            base_oid, head_oid = initialize_divergent_repository(source, "changed.txt")
+            git(source, "update-ref", "refs/pull/9/head", head_oid)
+            remote = root / "remote.git"
+            git(root, "init", "--bare", "--quiet", str(remote))
+            git(source, "remote", "add", "origin", str(remote))
+            git(source, "push", "--quiet", "origin", "main", "refs/pull/9/head")
+
+            caller = root / "caller"
+            caller.mkdir()
+            git(caller, "init", "--quiet")
+            git(
+                caller,
+                "fetch",
+                "--quiet",
+                str(remote),
+                "refs/heads/main:refs/heads/main",
+            )
+            self.assertNotEqual(
+                0,
+                subprocess.run(
+                    ["git", "cat-file", "-e", f"{head_oid}^{{commit}}"],
+                    cwd=caller,
+                    capture_output=True,
+                    check=False,
+                ).returncode,
+            )
+
+            with (
+                patch.object(
+                    self.snapshot, "canonical_repository_url", return_value=str(remote)
+                ),
+                patch.object(
+                    self.snapshot,
+                    "_create_quota_volume",
+                    side_effect=lambda temporary_root, _: temporary_root / "source",
+                ),
+            ):
+                materialized = self.snapshot.materialize_snapshot(
+                    repository="owner/repository",
+                    number=9,
+                    base_ref="main",
+                    base_oid=base_oid,
+                    head_oid=head_oid,
+                )
+            self.addCleanup(self.snapshot.remove_snapshot, materialized.root)
+
+            self.assertEqual(
+                head_oid, git(materialized.source_path, "rev-parse", "HEAD")
+            )
+            self.assertEqual(
+                base_oid,
+                git(materialized.source_path, "rev-parse", "refs/athena/base"),
+            )
+            self.assertEqual(
+                head_oid,
+                git(materialized.source_path, "rev-parse", "refs/athena/pr/9/head"),
+            )
+            self.assertTrue((materialized.source_path / "changed.txt").is_file())
+            self.assertNotEqual(
+                0,
+                subprocess.run(
+                    ["git", "cat-file", "-e", f"{head_oid}^{{commit}}"],
+                    cwd=caller,
+                    capture_output=True,
+                    check=False,
+                ).returncode,
+            )
+
+    def test_rejects_a_fetched_pull_ref_that_does_not_match_the_captured_head(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source"
+            source.mkdir()
+            base_oid, head_oid = initialize_repository(source, "changed.txt")
+            git(source, "branch", "main", base_oid)
+            git(source, "update-ref", "refs/pull/9/head", head_oid)
+            remote = root / "remote.git"
+            git(root, "init", "--bare", "--quiet", str(remote))
+            git(source, "remote", "add", "origin", str(remote))
+            git(source, "push", "--quiet", "origin", "main", "refs/pull/9/head")
+
+            with (
+                patch.object(
+                    self.snapshot, "canonical_repository_url", return_value=str(remote)
+                ),
+                patch.object(
+                    self.snapshot,
+                    "_create_quota_volume",
+                    side_effect=lambda temporary_root, _: temporary_root / "source",
+                ),
+                self.assertRaisesRegex(
+                    RuntimeError, "fetched pull-request ref does not match"
+                ),
+            ):
+                self.snapshot.materialize_snapshot(
+                    repository="owner/repository",
+                    number=9,
+                    base_ref="main",
+                    base_oid=base_oid,
+                    head_oid="c" * 40,
+                )
+
+    def test_rejects_a_real_ambiguous_merge_base_from_canonical_refs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source"
+            source.mkdir()
+            base_oid, head_oid = initialize_ambiguous_merge_base_repository(
+                source, "changed.txt"
+            )
+            remote = root / "remote.git"
+            git(root, "init", "--bare", "--quiet", str(remote))
+            git(source, "remote", "add", "origin", str(remote))
+            git(
+                source,
+                "push",
+                "--quiet",
+                "origin",
+                f"{base_oid}:refs/heads/main",
+                f"{head_oid}:refs/pull/9/head",
+            )
+
+            with (
+                patch.object(
+                    self.snapshot, "canonical_repository_url", return_value=str(remote)
+                ),
+                patch.object(
+                    self.snapshot,
+                    "_create_quota_volume",
+                    side_effect=lambda temporary_root, _: temporary_root / "source",
+                ),
+                self.assertRaisesRegex(RuntimeError, "one unambiguous merge base"),
+            ):
+                self.snapshot.materialize_snapshot(
+                    repository="owner/repository",
+                    number=9,
+                    base_ref="main",
+                    base_oid=base_oid,
+                    head_oid=head_oid,
+                )
+
+    def test_rejects_a_snapshot_larger_than_ninety_percent_of_free_space(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory)
+            snapshot_file = repository / "objects.pack"
+            snapshot_file.write_bytes(b"x" * 90)
+
+            with patch.object(
+                self.snapshot.shutil,
+                "disk_usage",
+                return_value=SimpleNamespace(free=100),
+            ):
+                self.assertEqual(90, self.snapshot._repository_size(repository))
+                snapshot_file.write_bytes(b"x" * 91)
+                with self.assertRaisesRegex(RuntimeError, "safe size limit"):
+                    self.snapshot._repository_size(repository)
+
+    def test_does_not_rely_on_per_file_limits_for_snapshot_quota(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "snapshot"
+            root.mkdir()
+            calls: list[tuple[tuple[str, ...], dict[str, object]]] = []
+
+            def git(*arguments: str, **kwargs: object) -> str:
+                calls.append((arguments, kwargs))
+                if arguments[0] == "init":
+                    Path(arguments[-1]).mkdir()
+                if arguments[:2] == ("rev-parse", "--is-shallow-repository"):
+                    return "false"
+                if arguments[:2] == ("rev-parse", "--verify"):
+                    if arguments[-1] == "refs/athena/base^{commit}":
+                        return "a" * 40
+                    if arguments[-1] == "refs/athena/pr/9/head^{commit}":
+                        return "b" * 40
+                    if arguments[-1] == f"{'b' * 40}^{{commit}}":
+                        return "b" * 40
+                if arguments[0] == "merge-base":
+                    return "a" * 40
+                if arguments[:2] == ("rev-parse", f"{'b' * 40}^{{tree}}"):
+                    return "c" * 40
+                return ""
+
+            with (
+                patch.object(self.snapshot.tempfile, "mkdtemp", return_value=str(root)),
+                patch.object(
+                    self.snapshot, "_create_quota_volume", return_value=root / "source"
+                ),
+                patch.object(self.snapshot, "_git", side_effect=git),
+                patch.object(self.snapshot, "_repository_size", return_value=0),
+                patch.object(self.snapshot, "_verify_no_promisor_configuration"),
+                patch.object(self.snapshot, "_make_read_only"),
+                patch.object(
+                    self.snapshot.shutil,
+                    "disk_usage",
+                    return_value=SimpleNamespace(free=100),
+                ),
+            ):
+                self.snapshot.materialize_snapshot(
+                    repository="owner/repository",
+                    number=9,
+                    base_ref="main",
+                    base_oid="a" * 40,
+                    head_oid="b" * 40,
+                )
+
+        fetch = next(kwargs for arguments, kwargs in calls if "fetch" in arguments)
+        checkout = next(
+            kwargs for arguments, kwargs in calls if "checkout" in arguments
+        )
+        self.assertIsNone(fetch.get("maximum_file_size"))
+        self.assertIsNone(checkout.get("maximum_file_size"))
+        self.assertEqual(root / "source", fetch.get("temporary_directory"))
+        self.assertEqual(root / "source", checkout.get("temporary_directory"))
+
+    def test_creates_a_sparse_volume_with_the_cumulative_snapshot_quota(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "snapshot"
+            root.mkdir()
+            calls: list[tuple[str, ...]] = []
+
+            with (
+                patch.object(
+                    self.snapshot,
+                    "_hdiutil",
+                    side_effect=lambda *arguments: calls.append(arguments),
+                ),
+                patch.object(self.snapshot.sys, "platform", "darwin"),
+                patch.object(Path, "is_mount", return_value=True),
+            ):
+                source = self.snapshot._create_quota_volume(root, 90 * 1024)
+
+        self.assertEqual(root / "source", source)
+        self.assertEqual(
+            (
+                "create",
+                "-quiet",
+                "-type",
+                "SPARSE",
+                "-size",
+                "90k",
+                "-fs",
+                "Case-sensitive HFS+",
+                "-volname",
+                "Athena PR Review",
+                "-nospotlight",
+                str(root / "snapshot.sparseimage"),
+            ),
+            calls[0],
+        )
+        self.assertEqual(
+            (
+                "attach",
+                "-quiet",
+                "-nobrowse",
+                "-mountpoint",
+                str(root / "source"),
+                str(root / "snapshot.sparseimage"),
+            ),
+            calls[1],
+        )
+
+    @unittest.skipUnless(
+        sys.platform == "darwin"
+        and shutil.which("dd") is not None
+        and shutil.which("hdiutil") is not None,
+        "requires the macOS sparse-image quota boundary",
+    )
+    def test_quota_volume_bounds_multiple_files_by_total_capacity(self) -> None:
+        root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
+        self.addCleanup(self.snapshot.remove_snapshot, root)
+        maximum_bytes = 64 * 1024 * 1024
+        source = self.snapshot._create_quota_volume(root, maximum_bytes)
+        self.assertLessEqual(shutil.disk_usage(source).total, maximum_bytes)
+        for name in ("one", "two"):
+            result = subprocess.run(
+                ["dd", "if=/dev/urandom", f"of={source / name}", "bs=1m", "count=24"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+        overflow = subprocess.run(
+            ["dd", "if=/dev/urandom", f"of={source / 'three'}", "bs=1m", "count=24"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertNotEqual(0, overflow.returncode)
+        self.assertLessEqual(
+            sum(path.stat().st_size for path in source.iterdir()), maximum_bytes
+        )
+
+    def test_rejects_snapshot_acquisition_failure_modes(self) -> None:
+        cases = {
+            "ambiguous merge base": "ambiguous merge base",
+            "promisor configuration": "partial clone configuration",
+            "shallow history": "complete history",
+            "timeout": "cannot materialize",
+        }
+        for scenario, expected_error in cases.items():
+            with (
+                self.subTest(scenario=scenario),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory) / "snapshot"
+                root.mkdir()
+
+                def git(*arguments: str, **_: object) -> str:
+                    if arguments[0] == "init":
+                        Path(arguments[-1]).mkdir()
+                    if "fetch" in arguments and scenario == "timeout":
+                        raise subprocess.TimeoutExpired(arguments, 30)
+                    if arguments[:2] == ("rev-parse", "--is-shallow-repository"):
+                        return "true" if scenario == "shallow history" else "false"
+                    if arguments[:2] == ("rev-parse", "--verify"):
+                        if arguments[-1] == "refs/athena/base^{commit}":
+                            return "a" * 40
+                        if arguments[-1] == "refs/athena/pr/9/head^{commit}":
+                            return "b" * 40
+                        if arguments[-1] == f"{'b' * 40}^{{commit}}":
+                            return "b" * 40
+                    if arguments[:3] == ("config", "--local", "--get"):
+                        return "origin" if scenario == "promisor configuration" else ""
+                    if arguments[0] == "merge-base":
+                        return (
+                            "a\nb" if scenario == "ambiguous merge base" else "a" * 40
+                        )
+                    if arguments[:2] == ("rev-parse", f"{'b' * 40}^{{tree}}"):
+                        return "c" * 40
+                    return ""
+
+                with (
+                    patch.object(
+                        self.snapshot.tempfile, "mkdtemp", return_value=str(root)
+                    ),
+                    patch.object(
+                        self.snapshot,
+                        "_create_quota_volume",
+                        return_value=root / "source",
+                    ),
+                    patch.object(self.snapshot, "_git", side_effect=git),
+                    patch.object(self.snapshot, "_repository_size", return_value=0),
+                    patch.object(self.snapshot, "_make_read_only"),
+                    patch.object(self.snapshot, "remove_snapshot"),
+                    patch.object(
+                        self.snapshot.shutil,
+                        "disk_usage",
+                        return_value=SimpleNamespace(free=100),
+                    ),
+                    self.assertRaisesRegex(RuntimeError, expected_error),
+                ):
+                    self.snapshot.materialize_snapshot(
+                        repository="owner/repository",
+                        number=9,
+                        base_ref="main",
+                        base_oid="a" * 40,
+                        head_oid="b" * 40,
+                    )
+
+    def test_command_emits_a_materialized_snapshot(self) -> None:
+        snapshot = self.snapshot.MaterializedSnapshot(
+            root=Path("/tmp/athena-pr-review-test"),
+            source_path=Path("/tmp/athena-pr-review-test/source"),
+            merge_base="a" * 40,
+            tree_oid="b" * 40,
+        )
+        output = io.StringIO()
+
+        with (
+            patch.object(self.snapshot, "materialize_snapshot", return_value=snapshot),
+            patch("sys.stdout", output),
+        ):
+            exit_code = self.snapshot.main(
+                (
+                    "--repository",
+                    "owner/repository",
+                    "--pr-number",
+                    "9",
+                    "--base-ref",
+                    "main",
+                    "--base-oid",
+                    "a" * 40,
+                    "--head-oid",
+                    "b" * 40,
+                )
+            )
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual(snapshot.as_json(), json.loads(output.getvalue()))
+
+    def test_command_reports_a_materialization_failure(self) -> None:
+        errors = io.StringIO()
+
+        with (
+            patch.object(
+                self.snapshot,
+                "materialize_snapshot",
+                side_effect=RuntimeError("snapshot failed"),
+            ),
+            patch("sys.stderr", errors),
+        ):
+            exit_code = self.snapshot.main(
+                (
+                    "--repository",
+                    "owner/repository",
+                    "--pr-number",
+                    "9",
+                    "--base-ref",
+                    "main",
+                    "--base-oid",
+                    "a" * 40,
+                    "--head-oid",
+                    "b" * 40,
+                )
+            )
+
+        self.assertEqual(1, exit_code)
+        self.assertEqual("snapshot failed\n", errors.getvalue())
+
+
+class StrictSnapshotFallbackTests(unittest.TestCase):
+    """Verify strict evidence switches only missing objects to a snapshot."""
+
+    def setUp(self) -> None:
+        self.module_name = f"test_collect_evidence_snapshot_{id(self)}"
+        self.collector = load_collector(self.module_name)
+
+    def tearDown(self) -> None:
+        sys.modules.pop(self.module_name, None)
+
+    def test_collects_from_a_canonical_snapshot_when_head_is_missing_locally(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source"
+            source.mkdir()
+            base_oid, head_oid = initialize_divergent_repository(source, "changed.txt")
+            git(source, "update-ref", "refs/pull/9/head", head_oid)
+            remote = root / "repository.git"
+            git(root, "init", "--bare", "--quiet", str(remote))
+            git(source, "remote", "add", "origin", str(remote))
+            git(source, "push", "--quiet", "origin", "main", "refs/pull/9/head")
+
+            caller = root / "caller"
+            caller.mkdir()
+            git(caller, "init", "--quiet")
+            git(
+                caller,
+                "fetch",
+                "--quiet",
+                str(remote),
+                "refs/heads/main:refs/heads/main",
+            )
+            self.assertNotEqual(
+                0,
+                subprocess.run(
+                    ["git", "cat-file", "-e", f"{head_oid}^{{commit}}"],
+                    cwd=caller,
+                    capture_output=True,
+                    check=False,
+                ).returncode,
+            )
+            output = io.StringIO()
+            arguments = (
+                "--expected-base-oid",
+                base_oid,
+                "--expected-head-oid",
+                head_oid,
+                "--expected-host",
+                "github.com",
+                "--expected-repository",
+                "owner/repository",
+                "--expected-pr-number",
+                "9",
+                "--expected-pr-url",
+                "https://github.com/owner/repository/pull/9",
+                "9",
+            )
+            snapshot_module = sys.modules["materialize_snapshot"]
+            original_working_directory = Path.cwd()
+            try:
+                os.chdir(caller)
+                with (
+                    patch.object(
+                        self.collector,
+                        "pr_metadata",
+                        side_effect=[
+                            pull_request(
+                                base_oid=base_oid,
+                                head_oid=head_oid,
+                                head_ref_name="fork-owner:feature",
+                            ),
+                            pull_request(
+                                base_oid=base_oid,
+                                head_oid=head_oid,
+                                head_ref_name="fork-owner:feature",
+                            ),
+                        ],
+                    ),
+                    patch.object(
+                        self.collector, "head_bound_check_runs", return_value=[]
+                    ),
+                    patch.object(
+                        snapshot_module,
+                        "canonical_repository_url",
+                        return_value=str(remote),
+                    ),
+                    patch.object(
+                        snapshot_module,
+                        "_create_quota_volume",
+                        side_effect=lambda temporary_root, _: temporary_root / "source",
+                    ),
+                    patch.dict(
+                        os.environ,
+                        {
+                            "GIT_CONFIG_GLOBAL": "/attacker/global-config",
+                            "GIT_DIR": "/attacker/repository",
+                        },
+                    ),
+                    patch("sys.stdout", output),
+                ):
+                    exit_code = self.collector.main(arguments)
+            finally:
+                os.chdir(original_working_directory)
+
+            evidence = json.loads(output.getvalue())
+            self.addCleanup(
+                self.collector.remove_snapshot,
+                Path(evidence["source_snapshot"]["root"]),
+            )
+            caller_remains_without_head = (
+                subprocess.run(
+                    ["git", "cat-file", "-e", f"{head_oid}^{{commit}}"],
+                    cwd=caller,
+                    capture_output=True,
+                    check=False,
+                ).returncode
+                != 0
+            )
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual(["changed.txt"], evidence["changed_files"])
+        self.assertTrue(evidence["source_snapshot"]["source_path"].endswith("/source"))
+        self.assertTrue(caller_remains_without_head)
+
+    def test_missing_head_fallback_rejects_a_real_ambiguous_merge_base(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source"
+            source.mkdir()
+            base_oid, head_oid = initialize_ambiguous_merge_base_repository(
+                source, "changed.txt"
+            )
+            remote = root / "repository.git"
+            git(root, "init", "--bare", "--quiet", str(remote))
+            git(source, "remote", "add", "origin", str(remote))
+            git(
+                source,
+                "push",
+                "--quiet",
+                "origin",
+                f"{base_oid}:refs/heads/main",
+                f"{head_oid}:refs/pull/9/head",
+            )
+            caller = root / "caller"
+            caller.mkdir()
+            git(caller, "init", "--quiet")
+            git(
+                caller,
+                "fetch",
+                "--quiet",
+                str(remote),
+                "refs/heads/main:refs/heads/main",
+            )
+            self.assertNotEqual(
+                0,
+                subprocess.run(
+                    ["git", "cat-file", "-e", f"{head_oid}^{{commit}}"],
+                    cwd=caller,
+                    capture_output=True,
+                    check=False,
+                ).returncode,
+            )
+            snapshot_module = sys.modules["materialize_snapshot"]
+            target = self.collector.ExpectedReviewTarget(
+                host="github.com",
+                repository="owner/repository",
+                number=9,
+                url="https://github.com/owner/repository/pull/9",
+            )
+            original_working_directory = Path.cwd()
+            try:
+                os.chdir(caller)
+                with (
+                    patch.object(
+                        snapshot_module,
+                        "canonical_repository_url",
+                        return_value=str(remote),
+                    ),
+                    patch.object(
+                        snapshot_module,
+                        "_create_quota_volume",
+                        side_effect=lambda temporary_root, _: temporary_root / "source",
+                    ),
+                    self.assertRaisesRegex(RuntimeError, "one unambiguous merge base"),
+                ):
+                    self.collector.strict_changed_paths(
+                        {"baseRefName": "main"}, (base_oid, head_oid), target
+                    )
+            finally:
+                os.chdir(original_working_directory)
 
 
 class BoundedOutputProcess:
@@ -966,6 +1622,9 @@ class BoundedChangedPathReaderTests(unittest.TestCase):
 
         with (
             patch.object(self.collector, "pr_metadata", return_value=pull_request()),
+            patch.object(
+                self.collector, "local_immutable_objects_available", return_value=True
+            ),
             patch.object(
                 self.collector,
                 "immutable_changed_paths",
