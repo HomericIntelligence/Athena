@@ -817,6 +817,73 @@ class StrictSnapshotFallbackTests(unittest.TestCase):
         self.assertTrue(evidence["source_snapshot"]["source_path"].endswith("/source"))
         self.assertTrue(caller_remains_without_head)
 
+    def test_missing_head_fallback_rejects_a_real_ambiguous_merge_base(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source"
+            source.mkdir()
+            base_oid, head_oid = initialize_ambiguous_merge_base_repository(
+                source, "changed.txt"
+            )
+            remote = root / "repository.git"
+            git(root, "init", "--bare", "--quiet", str(remote))
+            git(source, "remote", "add", "origin", str(remote))
+            git(
+                source,
+                "push",
+                "--quiet",
+                "origin",
+                f"{base_oid}:refs/heads/main",
+                f"{head_oid}:refs/pull/9/head",
+            )
+            caller = root / "caller"
+            caller.mkdir()
+            git(caller, "init", "--quiet")
+            git(
+                caller,
+                "fetch",
+                "--quiet",
+                str(remote),
+                "refs/heads/main:refs/heads/main",
+            )
+            self.assertNotEqual(
+                0,
+                subprocess.run(
+                    ["git", "cat-file", "-e", f"{head_oid}^{{commit}}"],
+                    cwd=caller,
+                    capture_output=True,
+                    check=False,
+                ).returncode,
+            )
+            snapshot_module = sys.modules["materialize_snapshot"]
+            target = self.collector.ExpectedReviewTarget(
+                host="github.com",
+                repository="owner/repository",
+                number=9,
+                url="https://github.com/owner/repository/pull/9",
+            )
+            original_working_directory = Path.cwd()
+            try:
+                os.chdir(caller)
+                with (
+                    patch.object(
+                        snapshot_module,
+                        "canonical_repository_url",
+                        return_value=str(remote),
+                    ),
+                    patch.object(
+                        snapshot_module,
+                        "_create_quota_volume",
+                        side_effect=lambda temporary_root, _: temporary_root / "source",
+                    ),
+                    self.assertRaisesRegex(RuntimeError, "one unambiguous merge base"),
+                ):
+                    self.collector.strict_changed_paths(
+                        {"baseRefName": "main"}, (base_oid, head_oid), target
+                    )
+            finally:
+                os.chdir(original_working_directory)
+
 
 class BoundedOutputProcess:
     """Deterministic subprocess stand-in for bounded linked-comment reads."""
