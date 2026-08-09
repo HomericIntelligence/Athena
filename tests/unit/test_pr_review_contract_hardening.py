@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from hashlib import sha256
 import importlib.util
 import io
@@ -249,6 +249,41 @@ def load_snapshot(module_name: str) -> Any:
     finally:
         sys.path.remove(script_directory)
     return module
+
+
+def linux_bounded_quota_available() -> bool:
+    """Return whether this host enforces a bounded unprivileged tmpfs quota.
+
+    Probes the actual unshare + tmpfs mount boundary once (not just binary
+    presence) so restricted user-namespace hosts degrade to a skip instead of
+    failing the end-to-end materialization test.
+    """
+    if not (
+        sys.platform.startswith("linux")
+        and shutil.which("unshare") is not None
+        and shutil.which("mount") is not None
+        and shutil.which("umount") is not None
+    ):
+        return False
+    probe = subprocess.run(
+        [
+            "unshare",
+            "-rm",
+            "--",
+            "sh",
+            "-c",
+            "mkdir -p /tmp/athena-bounded-quota-probe && "
+            "mount -t tmpfs -o size=64k tmpfs /tmp/athena-bounded-quota-probe && "
+            "umount /tmp/athena-bounded-quota-probe",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return probe.returncode == 0
+
+
+LINUX_BOUNDED_QUOTA_AVAILABLE = linux_bounded_quota_available()
 
 
 class SnapshotMaterializationTests(unittest.TestCase):
@@ -689,6 +724,336 @@ class SnapshotMaterializationTests(unittest.TestCase):
 
         self.assertEqual(1, exit_code)
         self.assertEqual("snapshot failed\n", errors.getvalue())
+
+    def test_linux_quota_volume_mounts_a_bounded_tmpfs_when_privileged(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "snapshot"
+            root.mkdir()
+            calls: list[tuple[Path, int]] = []
+
+            def mount(source_directory: Path, maximum_bytes: int) -> bool:
+                source_directory.mkdir()
+                calls.append((source_directory, maximum_bytes))
+                return True
+
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(self.snapshot, "_mount_tmpfs", side_effect=mount),
+            ):
+                source = self.snapshot._create_quota_volume(root, 90 * 1024)
+
+        self.assertEqual(root / "source", source)
+        self.assertEqual([(root / "source", 90 * 1024)], calls)
+
+    def test_linux_quota_volume_falls_back_when_the_tmpfs_mount_is_unavailable(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "snapshot"
+            root.mkdir()
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(self.snapshot, "_mount_tmpfs", return_value=False),
+            ):
+                source = self.snapshot._create_quota_volume(root, 90 * 1024)
+
+        self.assertIsNone(source)
+        self.assertFalse((root / "source").exists())
+
+    def test_mount_tmpfs_bounds_total_capacity_with_the_cumulative_quota(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "snapshot"
+            root.mkdir()
+            source = root / "source"
+            calls: list[tuple[str, ...]] = []
+
+            def mount(
+                command: list[str], **_: object
+            ) -> subprocess.CompletedProcess[str]:
+                calls.append(tuple(command))
+                return subprocess.CompletedProcess(command, 0)
+
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(
+                    self.snapshot.shutil, "which", return_value="/usr/bin/mount"
+                ),
+                patch.object(self.snapshot, "run_command", side_effect=mount),
+                patch.object(Path, "is_mount", return_value=True),
+            ):
+                mounted = self.snapshot._mount_tmpfs(source, 90 * 1024)
+
+        self.assertTrue(mounted)
+        self.assertEqual(
+            (
+                "mount",
+                "-t",
+                "tmpfs",
+                "-o",
+                "size=90k",
+                "tmpfs",
+                str(source),
+            ),
+            calls[0],
+        )
+
+    def test_mount_tmpfs_fails_closed_when_the_mount_does_not_take_effect(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            source = Path(temporary_directory) / "snapshot" / "source"
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(
+                    self.snapshot.shutil, "which", return_value="/usr/bin/mount"
+                ),
+                patch.object(
+                    self.snapshot,
+                    "run_command",
+                    return_value=subprocess.CompletedProcess([], 0),
+                ),
+                patch.object(Path, "is_mount", return_value=False),
+            ):
+                mounted = self.snapshot._mount_tmpfs(source, 90 * 1024)
+
+        self.assertFalse(mounted)
+
+    def test_mount_tmpfs_fails_closed_without_the_mount_command(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            source = Path(temporary_directory) / "source"
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(self.snapshot.shutil, "which", return_value=None),
+            ):
+                mounted = self.snapshot._mount_tmpfs(source, 90 * 1024)
+
+        self.assertFalse(mounted)
+
+    def test_bounded_materialize_spawns_unshare_with_the_captured_target(
+        self,
+    ) -> None:
+        root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        (root / "source").mkdir()
+        calls: list[tuple[str, ...]] = []
+
+        def run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+            calls.append(tuple(command))
+            record = json.dumps(
+                {
+                    "source_path": str(root / "source"),
+                    "merge_base": "a" * 40,
+                    "tree_oid": "b" * 40,
+                },
+                sort_keys=True,
+            )
+            return subprocess.CompletedProcess(command, 0, stdout=record)
+
+        with (
+            patch.object(
+                self.snapshot.shutil, "which", return_value="/usr/bin/unshare"
+            ),
+            patch.object(self.snapshot, "run_command", side_effect=run),
+        ):
+            snapshot = self.snapshot._bounded_materialize(
+                root,
+                90 * 1024,
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+        self.assertEqual(str(root / "source"), str(snapshot.source_path))
+        self.assertEqual("a" * 40, snapshot.merge_base)
+        self.assertEqual("b" * 40, snapshot.tree_oid)
+        self.assertEqual(("/usr/bin/unshare", "-rm", "--"), calls[0][:3])
+        command = calls[0]
+        self.assertIn("--bounded-materialize", command)
+        self.assertIn("https://github.com/owner/repository.git", command)
+        self.assertIn("--maximum-bytes", command)
+        self.assertIn("92160", command)
+
+    def test_bounded_materialize_fails_closed_without_unshare(self) -> None:
+        with (
+            patch.object(self.snapshot.shutil, "which", return_value=None),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "host cannot enforce the immutable pull-request snapshot size limit",
+            ),
+        ):
+            self.snapshot._bounded_materialize(
+                Path("/tmp/athena-pr-review-test"),
+                90 * 1024,
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+    def test_bounded_materialize_fails_closed_when_the_child_cannot_mount(
+        self,
+    ) -> None:
+        with (
+            patch.object(
+                self.snapshot.shutil, "which", return_value="/usr/bin/unshare"
+            ),
+            patch.object(
+                self.snapshot,
+                "run_command",
+                return_value=subprocess.CompletedProcess([], 2),
+            ),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "host cannot enforce the immutable pull-request snapshot size limit",
+            ),
+        ):
+            self.snapshot._bounded_materialize(
+                Path("/tmp/athena-pr-review-test"),
+                90 * 1024,
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+    def test_bounded_materialize_rejects_a_noncanonical_child_record(
+        self,
+    ) -> None:
+        with (
+            patch.object(
+                self.snapshot.shutil, "which", return_value="/usr/bin/unshare"
+            ),
+            patch.object(
+                self.snapshot,
+                "run_command",
+                return_value=subprocess.CompletedProcess(
+                    [], 0, stdout=json.dumps({"source_path": "/attacker/path"})
+                ),
+            ),
+            self.assertRaisesRegex(RuntimeError, "cannot materialize"),
+        ):
+            self.snapshot._bounded_materialize(
+                Path("/tmp/athena-pr-review-test"),
+                90 * 1024,
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+    def test_main_routes_the_internal_bounded_materialize_flag(self) -> None:
+        received: list[tuple[str, ...]] = []
+
+        def bounded_main(arguments: Sequence[str]) -> int:
+            received.append(tuple(arguments))
+            return 0
+
+        with patch.object(self.snapshot, "_bounded_materialize_main", bounded_main):
+            exit_code = self.snapshot.main(
+                (
+                    "--bounded-materialize",
+                    "--root",
+                    "/tmp/athena-pr-review-test",
+                    "--repository-url",
+                    "https://github.com/owner/repository.git",
+                    "--pr-number",
+                    "9",
+                    "--base-ref",
+                    "main",
+                    "--base-oid",
+                    "a" * 40,
+                    "--head-oid",
+                    "b" * 40,
+                    "--maximum-bytes",
+                    "90",
+                )
+            )
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual(
+            (
+                "--root",
+                "/tmp/athena-pr-review-test",
+                "--repository-url",
+                "https://github.com/owner/repository.git",
+                "--pr-number",
+                "9",
+                "--base-ref",
+                "main",
+                "--base-oid",
+                "a" * 40,
+                "--head-oid",
+                "b" * 40,
+                "--maximum-bytes",
+                "90",
+            ),
+            received[0],
+        )
+
+    @unittest.skipUnless(
+        LINUX_BOUNDED_QUOTA_AVAILABLE,
+        "requires a Linux bounded user/mount-namespace quota boundary",
+    )
+    def test_linux_bounded_materialization_without_a_privileged_mount(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source"
+            source.mkdir()
+            base_oid, head_oid = initialize_divergent_repository(source, "changed.txt")
+            git(source, "update-ref", "refs/pull/9/head", head_oid)
+            remote = root / "remote.git"
+            git(root, "init", "--bare", "--quiet", str(remote))
+            git(source, "remote", "add", "origin", str(remote))
+            git(source, "push", "--quiet", "origin", "main", "refs/pull/9/head")
+            quota_consulted: list[bool] = []
+
+            def unavailable_volume(*_: object) -> None:
+                quota_consulted.append(True)
+                return None
+
+            with (
+                patch.object(
+                    self.snapshot,
+                    "canonical_repository_url",
+                    return_value=str(remote),
+                ),
+                patch.object(
+                    self.snapshot,
+                    "_create_quota_volume",
+                    side_effect=unavailable_volume,
+                ),
+            ):
+                materialized = self.snapshot.materialize_snapshot(
+                    repository="owner/repository",
+                    number=9,
+                    base_ref="main",
+                    base_oid=base_oid,
+                    head_oid=head_oid,
+                )
+            self.addCleanup(self.snapshot.remove_snapshot, materialized.root)
+
+            self.assertEqual([True], quota_consulted)
+            self.assertEqual(
+                head_oid, git(materialized.source_path, "rev-parse", "HEAD")
+            )
+            self.assertEqual(
+                base_oid,
+                git(materialized.source_path, "rev-parse", "refs/athena/base"),
+            )
+            self.assertEqual(
+                head_oid,
+                git(materialized.source_path, "rev-parse", "refs/athena/pr/9/head"),
+            )
+            self.assertTrue((materialized.source_path / "changed.txt").is_file())
 
 
 class StrictSnapshotFallbackTests(unittest.TestCase):
