@@ -123,6 +123,7 @@ def _mount_tmpfs(source: Path, maximum_bytes: int) -> bool:
     try:
         source.mkdir()
     except FileExistsError:
+        # Directory already exists from a prior materialization; reuse it.
         pass
     except OSError:
         return False
@@ -197,6 +198,8 @@ def _create_quota_volume(root: Path, maximum_bytes: int) -> Path | None:
         try:
             source.rmdir()
         except OSError:
+            # The mount may have partially created the directory; a failed
+            # rmdir is not fatal - the caller treats None as a fallback.
             pass
         return None
     raise RuntimeError(
@@ -241,6 +244,8 @@ def _detach_best_effort(source: Path) -> None:
     try:
         _detach_volume(source)
     except RuntimeError:
+        # Detach is best-effort; a prior failure must not be masked by a
+        # secondary cleanup error.
         pass
 
 

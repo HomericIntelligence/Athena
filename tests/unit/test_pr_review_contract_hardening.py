@@ -3169,7 +3169,7 @@ class ImmutableEvidenceTests(unittest.TestCase):
                 "error": "incomplete PR metadata",
                 "details": (
                     "GitHub returned incomplete or invalid PR metadata fields: "
-                    "headRefName"
+                    + "headRefName"
                 ),
             },
             json.loads(result.stdout),
