@@ -56,11 +56,12 @@ def git_read_arguments() -> tuple[str, ...]:
     return ("-c", "core.commitGraph=false", "--no-replace-objects")
 
 
-def require_complete_git_history() -> None:
+def require_complete_git_history(*, cwd: Path | None = None) -> None:
     """Reject shallow history before deriving immutable ancestry evidence."""
     result = run_command(
         ["git", *git_read_arguments(), "rev-parse", "--is-shallow-repository"],
         capture_output=True,
+        cwd=cwd,
         env=git_read_environment(),
         text=True,
         check=False,
@@ -77,7 +78,9 @@ def require_complete_git_history() -> None:
         )
 
 
-def require_unambiguous_git_merge_base(base_oid: str, head_oid: str) -> str:
+def require_unambiguous_git_merge_base(
+    base_oid: str, head_oid: str, *, cwd: Path | None = None
+) -> str:
     """Return the sole immutable merge base or reject ambiguous topology."""
     result = run_command(
         [
@@ -89,6 +92,7 @@ def require_unambiguous_git_merge_base(base_oid: str, head_oid: str) -> str:
             head_oid,
         ],
         capture_output=True,
+        cwd=cwd,
         env=git_read_environment(),
         text=True,
         check=False,

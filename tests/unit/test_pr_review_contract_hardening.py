@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from hashlib import sha256
 import importlib.util
 import io
 import json
 import os
 from pathlib import Path
+import shutil
 import stat
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 from typing import Any
 import unittest
 from unittest.mock import patch
@@ -20,6 +22,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "skills" / "pr-review" / "scripts" / "collect_evidence.py"
+SNAPSHOT_SCRIPT = ROOT / "skills" / "pr-review" / "scripts" / "materialize_snapshot.py"
 DIFF_CONTEXT_SCRIPT = ROOT / "skills" / "pr-review" / "scripts" / "diff_context.py"
 BASE_OID = "a" * 40
 HEAD_OID = "b" * 40
@@ -227,6 +230,1472 @@ def load_collector(module_name: str) -> Any:
     finally:
         sys.path.remove(script_directory)
     return module
+
+
+def load_snapshot(module_name: str) -> Any:
+    """Load a fresh snapshot materializer for isolated Git behavior tests."""
+    specification = importlib.util.spec_from_file_location(module_name, SNAPSHOT_SCRIPT)
+    assert specification is not None
+    assert specification.loader is not None
+    module = importlib.util.module_from_spec(specification)
+    sys.modules[module_name] = module
+    script_directory = str(SNAPSHOT_SCRIPT.parent)
+    sys.path.insert(0, script_directory)
+    try:
+        specification.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(module_name, None)
+        raise
+    finally:
+        sys.path.remove(script_directory)
+    return module
+
+
+def linux_bounded_quota_available() -> bool:
+    """Return whether this host enforces a bounded unprivileged tmpfs quota.
+
+    Probes the actual unshare + tmpfs mount boundary once (not just binary
+    presence) so restricted user-namespace hosts degrade to a skip instead of
+    failing the end-to-end materialization test.
+    """
+    if not (
+        sys.platform.startswith("linux")
+        and shutil.which("unshare") is not None
+        and shutil.which("mount") is not None
+        and shutil.which("umount") is not None
+    ):
+        return False
+    probe = subprocess.run(
+        [
+            "unshare",
+            "-rm",
+            "--",
+            "sh",
+            "-c",
+            "mkdir -p /tmp/athena-bounded-quota-probe && "
+            "mount -t tmpfs -o size=64k tmpfs /tmp/athena-bounded-quota-probe && "
+            "umount /tmp/athena-bounded-quota-probe",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return probe.returncode == 0
+
+
+LINUX_BOUNDED_QUOTA_AVAILABLE = linux_bounded_quota_available()
+
+
+class SnapshotMaterializationTests(unittest.TestCase):
+    """Verify exact PR source can be acquired without trusting the caller."""
+
+    def setUp(self) -> None:
+        self.module_name = f"test_materialize_snapshot_{id(self)}"
+        self.snapshot = load_snapshot(self.module_name)
+
+    def tearDown(self) -> None:
+        sys.modules.pop(self.module_name, None)
+
+    def test_materializes_a_missing_head_from_only_the_canonical_pr_refs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source"
+            source.mkdir()
+            base_oid, head_oid = initialize_divergent_repository(source, "changed.txt")
+            git(source, "update-ref", "refs/pull/9/head", head_oid)
+            remote = root / "remote.git"
+            git(root, "init", "--bare", "--quiet", str(remote))
+            git(source, "remote", "add", "origin", str(remote))
+            git(source, "push", "--quiet", "origin", "main", "refs/pull/9/head")
+
+            caller = root / "caller"
+            caller.mkdir()
+            git(caller, "init", "--quiet")
+            git(
+                caller,
+                "fetch",
+                "--quiet",
+                str(remote),
+                "refs/heads/main:refs/heads/main",
+            )
+            self.assertNotEqual(
+                0,
+                subprocess.run(
+                    ["git", "cat-file", "-e", f"{head_oid}^{{commit}}"],
+                    cwd=caller,
+                    capture_output=True,
+                    check=False,
+                ).returncode,
+            )
+
+            with (
+                patch.object(
+                    self.snapshot, "canonical_repository_url", return_value=str(remote)
+                ),
+                patch.object(
+                    self.snapshot,
+                    "_create_quota_volume",
+                    side_effect=lambda temporary_root, _: temporary_root / "source",
+                ),
+            ):
+                materialized = self.snapshot.materialize_snapshot(
+                    repository="owner/repository",
+                    number=9,
+                    base_ref="main",
+                    base_oid=base_oid,
+                    head_oid=head_oid,
+                )
+            self.addCleanup(self.snapshot.remove_snapshot, materialized.root)
+
+            self.assertEqual(
+                head_oid, git(materialized.source_path, "rev-parse", "HEAD")
+            )
+            self.assertEqual(
+                base_oid,
+                git(materialized.source_path, "rev-parse", "refs/athena/base"),
+            )
+            self.assertEqual(
+                head_oid,
+                git(materialized.source_path, "rev-parse", "refs/athena/pr/9/head"),
+            )
+            self.assertTrue((materialized.source_path / "changed.txt").is_file())
+            self.assertNotEqual(
+                0,
+                subprocess.run(
+                    ["git", "cat-file", "-e", f"{head_oid}^{{commit}}"],
+                    cwd=caller,
+                    capture_output=True,
+                    check=False,
+                ).returncode,
+            )
+
+    def test_rejects_a_fetched_pull_ref_that_does_not_match_the_captured_head(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source"
+            source.mkdir()
+            base_oid, head_oid = initialize_repository(source, "changed.txt")
+            git(source, "branch", "main", base_oid)
+            git(source, "update-ref", "refs/pull/9/head", head_oid)
+            remote = root / "remote.git"
+            git(root, "init", "--bare", "--quiet", str(remote))
+            git(source, "remote", "add", "origin", str(remote))
+            git(source, "push", "--quiet", "origin", "main", "refs/pull/9/head")
+
+            with (
+                patch.object(
+                    self.snapshot, "canonical_repository_url", return_value=str(remote)
+                ),
+                patch.object(
+                    self.snapshot,
+                    "_create_quota_volume",
+                    side_effect=lambda temporary_root, _: temporary_root / "source",
+                ),
+                self.assertRaisesRegex(
+                    RuntimeError, "fetched pull-request ref does not match"
+                ),
+            ):
+                self.snapshot.materialize_snapshot(
+                    repository="owner/repository",
+                    number=9,
+                    base_ref="main",
+                    base_oid=base_oid,
+                    head_oid="c" * 40,
+                )
+
+    def test_rejects_a_real_ambiguous_merge_base_from_canonical_refs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source"
+            source.mkdir()
+            base_oid, head_oid = initialize_ambiguous_merge_base_repository(
+                source, "changed.txt"
+            )
+            remote = root / "remote.git"
+            git(root, "init", "--bare", "--quiet", str(remote))
+            git(source, "remote", "add", "origin", str(remote))
+            git(
+                source,
+                "push",
+                "--quiet",
+                "origin",
+                f"{base_oid}:refs/heads/main",
+                f"{head_oid}:refs/pull/9/head",
+            )
+
+            with (
+                patch.object(
+                    self.snapshot, "canonical_repository_url", return_value=str(remote)
+                ),
+                patch.object(
+                    self.snapshot,
+                    "_create_quota_volume",
+                    side_effect=lambda temporary_root, _: temporary_root / "source",
+                ),
+                self.assertRaisesRegex(RuntimeError, "one unambiguous merge base"),
+            ):
+                self.snapshot.materialize_snapshot(
+                    repository="owner/repository",
+                    number=9,
+                    base_ref="main",
+                    base_oid=base_oid,
+                    head_oid=head_oid,
+                )
+
+    def test_rejects_a_snapshot_larger_than_ninety_percent_of_free_space(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository = Path(temporary_directory)
+            snapshot_file = repository / "objects.pack"
+            snapshot_file.write_bytes(b"x" * 90)
+
+            with patch.object(
+                self.snapshot.shutil,
+                "disk_usage",
+                return_value=SimpleNamespace(free=100),
+            ):
+                self.assertEqual(90, self.snapshot._repository_size(repository))
+                snapshot_file.write_bytes(b"x" * 91)
+                with self.assertRaisesRegex(RuntimeError, "safe size limit"):
+                    self.snapshot._repository_size(repository)
+
+    def test_does_not_rely_on_per_file_limits_for_snapshot_quota(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "snapshot"
+            root.mkdir()
+            calls: list[tuple[tuple[str, ...], dict[str, object]]] = []
+
+            def git(*arguments: str, **kwargs: object) -> str:
+                calls.append((arguments, kwargs))
+                if arguments[0] == "init":
+                    Path(arguments[-1]).mkdir()
+                if arguments[:2] == ("rev-parse", "--is-shallow-repository"):
+                    return "false"
+                if arguments[:2] == ("rev-parse", "--verify"):
+                    if arguments[-1] == "refs/athena/base^{commit}":
+                        return "a" * 40
+                    if arguments[-1] == "refs/athena/pr/9/head^{commit}":
+                        return "b" * 40
+                    if arguments[-1] == f"{'b' * 40}^{{commit}}":
+                        return "b" * 40
+                if arguments[0] == "merge-base":
+                    return "a" * 40
+                if arguments[:2] == ("rev-parse", f"{'b' * 40}^{{tree}}"):
+                    return "c" * 40
+                return ""
+
+            with (
+                patch.object(self.snapshot.tempfile, "mkdtemp", return_value=str(root)),
+                patch.object(
+                    self.snapshot, "_create_quota_volume", return_value=root / "source"
+                ),
+                patch.object(self.snapshot, "_git", side_effect=git),
+                patch.object(self.snapshot, "_repository_size", return_value=0),
+                patch.object(self.snapshot, "_verify_no_promisor_configuration"),
+                patch.object(self.snapshot, "_make_read_only"),
+                patch.object(
+                    self.snapshot.shutil,
+                    "disk_usage",
+                    return_value=SimpleNamespace(free=100),
+                ),
+            ):
+                self.snapshot.materialize_snapshot(
+                    repository="owner/repository",
+                    number=9,
+                    base_ref="main",
+                    base_oid="a" * 40,
+                    head_oid="b" * 40,
+                )
+
+        fetch = next(kwargs for arguments, kwargs in calls if "fetch" in arguments)
+        checkout = next(
+            kwargs for arguments, kwargs in calls if "checkout" in arguments
+        )
+        self.assertIsNone(fetch.get("maximum_file_size"))
+        self.assertIsNone(checkout.get("maximum_file_size"))
+        self.assertEqual(root / "source", fetch.get("temporary_directory"))
+        self.assertEqual(root / "source", checkout.get("temporary_directory"))
+
+    def test_creates_a_sparse_volume_with_the_cumulative_snapshot_quota(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "snapshot"
+            root.mkdir()
+            calls: list[tuple[str, ...]] = []
+
+            with (
+                patch.object(
+                    self.snapshot,
+                    "_hdiutil",
+                    side_effect=lambda *arguments: calls.append(arguments),
+                ),
+                patch.object(self.snapshot.sys, "platform", "darwin"),
+                patch.object(Path, "is_mount", return_value=True),
+            ):
+                source = self.snapshot._create_quota_volume(root, 90 * 1024)
+
+        self.assertEqual(root / "source", source)
+        self.assertEqual(
+            (
+                "create",
+                "-quiet",
+                "-type",
+                "SPARSE",
+                "-size",
+                "90k",
+                "-fs",
+                "Case-sensitive HFS+",
+                "-volname",
+                "Athena PR Review",
+                "-nospotlight",
+                str(root / "snapshot.sparseimage"),
+            ),
+            calls[0],
+        )
+        self.assertEqual(
+            (
+                "attach",
+                "-quiet",
+                "-nobrowse",
+                "-mountpoint",
+                str(root / "source"),
+                str(root / "snapshot.sparseimage"),
+            ),
+            calls[1],
+        )
+
+    @unittest.skipUnless(
+        sys.platform == "darwin"
+        and shutil.which("dd") is not None
+        and shutil.which("hdiutil") is not None,
+        "requires the macOS sparse-image quota boundary",
+    )
+    def test_quota_volume_bounds_multiple_files_by_total_capacity(self) -> None:
+        root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
+        self.addCleanup(self.snapshot.remove_snapshot, root)
+        maximum_bytes = 64 * 1024 * 1024
+        source = self.snapshot._create_quota_volume(root, maximum_bytes)
+        self.assertLessEqual(shutil.disk_usage(source).total, maximum_bytes)
+        for name in ("one", "two"):
+            result = subprocess.run(
+                ["dd", "if=/dev/urandom", f"of={source / name}", "bs=1m", "count=24"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+        overflow = subprocess.run(
+            ["dd", "if=/dev/urandom", f"of={source / 'three'}", "bs=1m", "count=24"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertNotEqual(0, overflow.returncode)
+        self.assertLessEqual(
+            sum(path.stat().st_size for path in source.iterdir()), maximum_bytes
+        )
+
+    def test_rejects_snapshot_acquisition_failure_modes(self) -> None:
+        cases = {
+            "ambiguous merge base": "ambiguous merge base",
+            "promisor configuration": "partial clone configuration",
+            "shallow history": "complete history",
+            "timeout": "cannot materialize",
+        }
+        for scenario, expected_error in cases.items():
+            with (
+                self.subTest(scenario=scenario),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory) / "snapshot"
+                root.mkdir()
+
+                def git(*arguments: str, **_: object) -> str:
+                    if arguments[0] == "init":
+                        Path(arguments[-1]).mkdir()
+                    if "fetch" in arguments and scenario == "timeout":
+                        raise subprocess.TimeoutExpired(arguments, 30)
+                    if arguments[:2] == ("rev-parse", "--is-shallow-repository"):
+                        return "true" if scenario == "shallow history" else "false"
+                    if arguments[:2] == ("rev-parse", "--verify"):
+                        if arguments[-1] == "refs/athena/base^{commit}":
+                            return "a" * 40
+                        if arguments[-1] == "refs/athena/pr/9/head^{commit}":
+                            return "b" * 40
+                        if arguments[-1] == f"{'b' * 40}^{{commit}}":
+                            return "b" * 40
+                    if arguments[:3] == ("config", "--local", "--get"):
+                        return "origin" if scenario == "promisor configuration" else ""
+                    if arguments[0] == "merge-base":
+                        return (
+                            "a\nb" if scenario == "ambiguous merge base" else "a" * 40
+                        )
+                    if arguments[:2] == ("rev-parse", f"{'b' * 40}^{{tree}}"):
+                        return "c" * 40
+                    return ""
+
+                with (
+                    patch.object(
+                        self.snapshot.tempfile, "mkdtemp", return_value=str(root)
+                    ),
+                    patch.object(
+                        self.snapshot,
+                        "_create_quota_volume",
+                        return_value=root / "source",
+                    ),
+                    patch.object(self.snapshot, "_git", side_effect=git),
+                    patch.object(self.snapshot, "_repository_size", return_value=0),
+                    patch.object(self.snapshot, "_make_read_only"),
+                    patch.object(self.snapshot, "remove_snapshot"),
+                    patch.object(
+                        self.snapshot.shutil,
+                        "disk_usage",
+                        return_value=SimpleNamespace(free=100),
+                    ),
+                    self.assertRaisesRegex(RuntimeError, expected_error),
+                ):
+                    self.snapshot.materialize_snapshot(
+                        repository="owner/repository",
+                        number=9,
+                        base_ref="main",
+                        base_oid="a" * 40,
+                        head_oid="b" * 40,
+                    )
+
+    def test_command_emits_a_materialized_snapshot(self) -> None:
+        snapshot = self.snapshot.MaterializedSnapshot(
+            root=Path("/tmp/athena-pr-review-test"),
+            source_path=Path("/tmp/athena-pr-review-test/source"),
+            merge_base="a" * 40,
+            tree_oid="b" * 40,
+        )
+        output = io.StringIO()
+
+        with (
+            patch.object(self.snapshot, "materialize_snapshot", return_value=snapshot),
+            patch("sys.stdout", output),
+        ):
+            exit_code = self.snapshot.main(
+                (
+                    "--repository",
+                    "owner/repository",
+                    "--pr-number",
+                    "9",
+                    "--base-ref",
+                    "main",
+                    "--base-oid",
+                    "a" * 40,
+                    "--head-oid",
+                    "b" * 40,
+                )
+            )
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual(snapshot.as_json(), json.loads(output.getvalue()))
+
+    def test_command_reports_a_materialization_failure(self) -> None:
+        errors = io.StringIO()
+
+        with (
+            patch.object(
+                self.snapshot,
+                "materialize_snapshot",
+                side_effect=RuntimeError("snapshot failed"),
+            ),
+            patch("sys.stderr", errors),
+        ):
+            exit_code = self.snapshot.main(
+                (
+                    "--repository",
+                    "owner/repository",
+                    "--pr-number",
+                    "9",
+                    "--base-ref",
+                    "main",
+                    "--base-oid",
+                    "a" * 40,
+                    "--head-oid",
+                    "b" * 40,
+                )
+            )
+
+        self.assertEqual(1, exit_code)
+        self.assertEqual("snapshot failed\n", errors.getvalue())
+
+    def test_linux_quota_volume_mounts_a_bounded_tmpfs_when_privileged(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "snapshot"
+            root.mkdir()
+            calls: list[tuple[Path, int]] = []
+
+            def mount(source_directory: Path, maximum_bytes: int) -> bool:
+                source_directory.mkdir()
+                calls.append((source_directory, maximum_bytes))
+                return True
+
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(self.snapshot, "_mount_tmpfs", side_effect=mount),
+            ):
+                source = self.snapshot._create_quota_volume(root, 90 * 1024)
+
+        self.assertEqual(root / "source", source)
+        self.assertEqual([(root / "source", 90 * 1024)], calls)
+
+    def test_linux_quota_volume_falls_back_when_the_tmpfs_mount_is_unavailable(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "snapshot"
+            root.mkdir()
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(self.snapshot, "_mount_tmpfs", return_value=False),
+            ):
+                source = self.snapshot._create_quota_volume(root, 90 * 1024)
+
+        self.assertIsNone(source)
+        self.assertFalse((root / "source").exists())
+
+    def test_mount_tmpfs_bounds_total_capacity_with_the_cumulative_quota(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory) / "snapshot"
+            root.mkdir()
+            source = root / "source"
+            calls: list[tuple[str, ...]] = []
+
+            def mount(
+                command: list[str], **_: object
+            ) -> subprocess.CompletedProcess[str]:
+                calls.append(tuple(command))
+                return subprocess.CompletedProcess(command, 0)
+
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(
+                    self.snapshot.shutil, "which", return_value="/usr/bin/mount"
+                ),
+                patch.object(self.snapshot, "run_command", side_effect=mount),
+                patch.object(Path, "is_mount", return_value=True),
+            ):
+                mounted = self.snapshot._mount_tmpfs(source, 90 * 1024)
+
+        self.assertTrue(mounted)
+        self.assertEqual(
+            (
+                "mount",
+                "-t",
+                "tmpfs",
+                "-o",
+                "size=90k",
+                "tmpfs",
+                str(source),
+            ),
+            calls[0],
+        )
+
+    def test_mount_tmpfs_fails_closed_when_the_mount_does_not_take_effect(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            source = Path(temporary_directory) / "snapshot" / "source"
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(
+                    self.snapshot.shutil, "which", return_value="/usr/bin/mount"
+                ),
+                patch.object(
+                    self.snapshot,
+                    "run_command",
+                    return_value=subprocess.CompletedProcess([], 0),
+                ),
+                patch.object(Path, "is_mount", return_value=False),
+            ):
+                mounted = self.snapshot._mount_tmpfs(source, 90 * 1024)
+
+        self.assertFalse(mounted)
+
+    def test_mount_tmpfs_fails_closed_without_the_mount_command(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            source = Path(temporary_directory) / "source"
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(self.snapshot.shutil, "which", return_value=None),
+            ):
+                mounted = self.snapshot._mount_tmpfs(source, 90 * 1024)
+
+        self.assertFalse(mounted)
+
+    def test_bounded_materialize_spawns_unshare_with_the_captured_target(
+        self,
+    ) -> None:
+        root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        (root / "source").mkdir()
+        calls: list[tuple[str, ...]] = []
+
+        def run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+            calls.append(tuple(command))
+            record = json.dumps(
+                {
+                    "source_path": str(root / "source"),
+                    "merge_base": "a" * 40,
+                    "tree_oid": "b" * 40,
+                },
+                sort_keys=True,
+            )
+            return subprocess.CompletedProcess(command, 0, stdout=record)
+
+        with (
+            patch.object(
+                self.snapshot.shutil, "which", return_value="/usr/bin/unshare"
+            ),
+            patch.object(self.snapshot, "run_command", side_effect=run),
+        ):
+            snapshot = self.snapshot._bounded_materialize(
+                root,
+                90 * 1024,
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+        self.assertEqual(str(root / "source"), str(snapshot.source_path))
+        self.assertEqual("a" * 40, snapshot.merge_base)
+        self.assertEqual("b" * 40, snapshot.tree_oid)
+        self.assertEqual(("/usr/bin/unshare", "-rm", "--"), calls[0][:3])
+        command = calls[0]
+        self.assertIn("--bounded-materialize", command)
+        self.assertIn("https://github.com/owner/repository.git", command)
+        self.assertIn("--maximum-bytes", command)
+        self.assertIn("92160", command)
+
+    def test_bounded_materialize_fails_closed_without_unshare(self) -> None:
+        with (
+            patch.object(self.snapshot.shutil, "which", return_value=None),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "host cannot enforce the immutable pull-request snapshot size limit",
+            ),
+        ):
+            self.snapshot._bounded_materialize(
+                Path("/tmp/athena-pr-review-test"),
+                90 * 1024,
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+    def test_bounded_materialize_fails_closed_when_the_child_cannot_mount(
+        self,
+    ) -> None:
+        with (
+            patch.object(
+                self.snapshot.shutil, "which", return_value="/usr/bin/unshare"
+            ),
+            patch.object(
+                self.snapshot,
+                "run_command",
+                return_value=subprocess.CompletedProcess([], 2),
+            ),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "host cannot enforce the immutable pull-request snapshot size limit",
+            ),
+        ):
+            self.snapshot._bounded_materialize(
+                Path("/tmp/athena-pr-review-test"),
+                90 * 1024,
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+    def test_bounded_materialize_rejects_a_noncanonical_child_record(
+        self,
+    ) -> None:
+        with (
+            patch.object(
+                self.snapshot.shutil, "which", return_value="/usr/bin/unshare"
+            ),
+            patch.object(
+                self.snapshot,
+                "run_command",
+                return_value=subprocess.CompletedProcess(
+                    [], 0, stdout=json.dumps({"source_path": "/attacker/path"})
+                ),
+            ),
+            self.assertRaisesRegex(RuntimeError, "cannot materialize"),
+        ):
+            self.snapshot._bounded_materialize(
+                Path("/tmp/athena-pr-review-test"),
+                90 * 1024,
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+    def test_main_routes_the_internal_bounded_materialize_flag(self) -> None:
+        received: list[tuple[str, ...]] = []
+
+        def bounded_main(arguments: Sequence[str]) -> int:
+            received.append(tuple(arguments))
+            return 0
+
+        with patch.object(self.snapshot, "_bounded_materialize_main", bounded_main):
+            exit_code = self.snapshot.main(
+                (
+                    "--bounded-materialize",
+                    "--root",
+                    "/tmp/athena-pr-review-test",
+                    "--repository-url",
+                    "https://github.com/owner/repository.git",
+                    "--pr-number",
+                    "9",
+                    "--base-ref",
+                    "main",
+                    "--base-oid",
+                    "a" * 40,
+                    "--head-oid",
+                    "b" * 40,
+                    "--maximum-bytes",
+                    "90",
+                )
+            )
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual(
+            (
+                "--root",
+                "/tmp/athena-pr-review-test",
+                "--repository-url",
+                "https://github.com/owner/repository.git",
+                "--pr-number",
+                "9",
+                "--base-ref",
+                "main",
+                "--base-oid",
+                "a" * 40,
+                "--head-oid",
+                "b" * 40,
+                "--maximum-bytes",
+                "90",
+            ),
+            received[0],
+        )
+
+    @unittest.skipUnless(
+        LINUX_BOUNDED_QUOTA_AVAILABLE,
+        "requires a Linux bounded user/mount-namespace quota boundary",
+    )
+    def test_linux_bounded_materialization_without_a_privileged_mount(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source"
+            source.mkdir()
+            base_oid, head_oid = initialize_divergent_repository(source, "changed.txt")
+            git(source, "update-ref", "refs/pull/9/head", head_oid)
+            remote = root / "remote.git"
+            git(root, "init", "--bare", "--quiet", str(remote))
+            git(source, "remote", "add", "origin", str(remote))
+            git(source, "push", "--quiet", "origin", "main", "refs/pull/9/head")
+            quota_consulted: list[bool] = []
+
+            def unavailable_volume(*_: object) -> None:
+                quota_consulted.append(True)
+                return None
+
+            with (
+                patch.object(
+                    self.snapshot,
+                    "canonical_repository_url",
+                    return_value=str(remote),
+                ),
+                patch.object(
+                    self.snapshot,
+                    "_create_quota_volume",
+                    side_effect=unavailable_volume,
+                ),
+            ):
+                materialized = self.snapshot.materialize_snapshot(
+                    repository="owner/repository",
+                    number=9,
+                    base_ref="main",
+                    base_oid=base_oid,
+                    head_oid=head_oid,
+                )
+            self.addCleanup(self.snapshot.remove_snapshot, materialized.root)
+
+            self.assertEqual([True], quota_consulted)
+            self.assertEqual(
+                head_oid, git(materialized.source_path, "rev-parse", "HEAD")
+            )
+            self.assertEqual(
+                base_oid,
+                git(materialized.source_path, "rev-parse", "refs/athena/base"),
+            )
+            self.assertEqual(
+                head_oid,
+                git(materialized.source_path, "rev-parse", "refs/athena/pr/9/head"),
+            )
+            self.assertTrue((materialized.source_path / "changed.txt").is_file())
+
+
+class LinuxBoundedSnapshotBehaviorTests(unittest.TestCase):
+    """Exercise Linux bounded-namespace quota paths without live mount privileges."""
+
+    def setUp(self) -> None:
+        self.module_name = f"test_linux_bounded_snapshot_{id(self)}"
+        self.snapshot = load_snapshot(self.module_name)
+
+    def tearDown(self) -> None:
+        sys.modules.pop(self.module_name, None)
+
+    def _bounded_main_arguments(self, root: Path) -> tuple[str, ...]:
+        return (
+            "--root",
+            str(root),
+            "--repository-url",
+            "https://github.com/owner/repository.git",
+            "--pr-number",
+            "9",
+            "--base-ref",
+            "main",
+            "--base-oid",
+            "a" * 40,
+            "--head-oid",
+            "b" * 40,
+            "--maximum-bytes",
+            "90",
+        )
+
+    def test_bounded_materialize_main_emits_the_verified_record(self) -> None:
+        root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        output = io.StringIO()
+
+        def acquire(source: Path, **_: object) -> tuple[str, str]:
+            (root / "bounded").mkdir(exist_ok=True)
+            return ("a" * 40, "b" * 40)
+
+        with (
+            patch("sys.stdout", output),
+            patch.object(self.snapshot, "_mount_tmpfs", return_value=True),
+            patch.object(self.snapshot, "_acquire_into", side_effect=acquire),
+            patch.object(self.snapshot.shutil, "copytree"),
+            patch.object(self.snapshot, "_detach_best_effort"),
+            patch.object(self.snapshot, "_make_read_only"),
+        ):
+            exit_code = self.snapshot._bounded_materialize_main(
+                self._bounded_main_arguments(root)
+            )
+
+        self.assertEqual(0, exit_code)
+        record = json.loads(output.getvalue())
+        self.assertEqual("a" * 40, record["merge_base"])
+        self.assertEqual("b" * 40, record["tree_oid"])
+        self.assertEqual(str(root / "source"), record["source_path"])
+
+    def test_bounded_materialize_main_refuses_paths_outside_the_managed_root(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "unmanaged"
+            root.mkdir()
+            errors = io.StringIO()
+            with (
+                patch("sys.stderr", errors),
+                patch.object(self.snapshot, "_mount_tmpfs", return_value=True),
+            ):
+                exit_code = self.snapshot._bounded_materialize_main(
+                    self._bounded_main_arguments(root)
+                )
+
+        self.assertEqual(1, exit_code)
+        self.assertIn("outside the managed temporary directory", errors.getvalue())
+
+    def test_bounded_materialize_main_fails_closed_when_the_mount_is_unavailable(
+        self,
+    ) -> None:
+        root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        errors = io.StringIO()
+
+        with (
+            patch("sys.stderr", errors),
+            patch.object(self.snapshot, "_mount_tmpfs", return_value=False),
+        ):
+            exit_code = self.snapshot._bounded_materialize_main(
+                self._bounded_main_arguments(root)
+            )
+
+        self.assertEqual(2, exit_code)
+        self.assertIn(
+            "host cannot enforce the immutable pull-request snapshot size limit",
+            errors.getvalue(),
+        )
+
+    def test_bounded_materialize_main_reports_acquisition_failures(self) -> None:
+        root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        errors = io.StringIO()
+
+        with (
+            patch("sys.stderr", errors),
+            patch.object(self.snapshot, "_mount_tmpfs", return_value=True),
+            patch.object(
+                self.snapshot,
+                "_acquire_into",
+                side_effect=RuntimeError("fetched base ref does not match"),
+            ),
+            patch.object(self.snapshot, "_detach_best_effort"),
+        ):
+            exit_code = self.snapshot._bounded_materialize_main(
+                self._bounded_main_arguments(root)
+            )
+
+        self.assertEqual(1, exit_code)
+        self.assertIn("fetched base ref does not match", errors.getvalue())
+
+    def test_mount_tmpfs_tolerates_an_existing_source_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            source.mkdir()
+
+            def mount(
+                command: list[str], **_: object
+            ) -> subprocess.CompletedProcess[str]:
+                return subprocess.CompletedProcess(command, 0)
+
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(
+                    self.snapshot.shutil, "which", return_value="/usr/bin/mount"
+                ),
+                patch.object(self.snapshot, "run_command", side_effect=mount),
+                patch.object(Path, "is_mount", return_value=True),
+            ):
+                self.assertTrue(self.snapshot._mount_tmpfs(source, 90 * 1024))
+
+    def test_mount_tmpfs_fails_closed_when_the_source_cannot_be_created(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(
+                    self.snapshot.shutil, "which", return_value="/usr/bin/mount"
+                ),
+                patch.object(Path, "mkdir", side_effect=PermissionError("denied")),
+            ):
+                self.assertFalse(self.snapshot._mount_tmpfs(source, 90 * 1024))
+
+    def test_mount_tmpfs_fails_closed_when_the_mount_command_is_unavailable(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(
+                    self.snapshot.shutil, "which", return_value="/usr/bin/mount"
+                ),
+                patch.object(
+                    self.snapshot,
+                    "run_command",
+                    side_effect=FileNotFoundError(2, "not found", "mount"),
+                ),
+            ):
+                self.assertFalse(self.snapshot._mount_tmpfs(source, 90 * 1024))
+
+    def test_detach_volume_falls_back_to_a_lazy_umount(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            results: list[subprocess.CompletedProcess[str]] = [
+                subprocess.CompletedProcess([], 32),
+                subprocess.CompletedProcess([], 0),
+            ]
+            index = 0
+
+            def run(
+                *_args: object, **_kwargs: object
+            ) -> subprocess.CompletedProcess[str]:
+                nonlocal index
+                result = results[index]
+                index += 1
+                return result
+
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(self.snapshot, "run_command", side_effect=run),
+            ):
+                self.snapshot._detach_volume(source)
+
+    def test_detach_volume_fails_closed_when_both_umounts_fail(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(
+                    self.snapshot,
+                    "run_command",
+                    return_value=subprocess.CompletedProcess([], 32),
+                ),
+                self.assertRaisesRegex(
+                    RuntimeError, "cannot remove the immutable pull-request snapshot"
+                ),
+            ):
+                self.snapshot._detach_volume(source)
+
+    def test_detach_volume_rejects_unknown_platforms(self) -> None:
+        with (
+            patch.object(self.snapshot.sys, "platform", "plan9"),
+            self.assertRaisesRegex(
+                RuntimeError, "cannot remove the immutable pull-request snapshot"
+            ),
+        ):
+            self.snapshot._detach_volume(Path("/tmp/source"))
+
+    def test_require_base_ref_rejects_invalid_branch_names(self) -> None:
+        for invalid in ("", "-leading-dash", "contains..two-dots"):
+            with self.subTest(base_ref=invalid):
+                with self.assertRaisesRegex(
+                    RuntimeError, "invalid pull-request base ref"
+                ):
+                    self.snapshot._require_base_ref(invalid)
+
+    def test_require_base_ref_rejects_a_branch_git_cannot_check(self) -> None:
+        with (
+            patch.object(
+                self.snapshot,
+                "_git",
+                side_effect=RuntimeError("cannot materialize"),
+            ),
+            self.assertRaisesRegex(RuntimeError, "cannot materialize"),
+        ):
+            self.snapshot._require_base_ref("main")
+
+    def test_repository_size_fails_closed_when_disk_usage_is_unavailable(
+        self,
+    ) -> None:
+        with (
+            patch.object(
+                self.snapshot.shutil,
+                "disk_usage",
+                side_effect=OSError("no such device"),
+            ),
+            self.assertRaisesRegex(
+                RuntimeError, "cannot inspect the immutable pull-request snapshot"
+            ),
+        ):
+            self.snapshot._repository_size(Path("/tmp/repository"))
+
+    def test_repository_size_fails_closed_when_an_entry_cannot_be_inspected(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+
+            def fail_lstat() -> os.stat_result:
+                raise OSError("permission denied")
+
+            entry = SimpleNamespace(lstat=fail_lstat)
+            with (
+                patch.object(Path, "rglob", return_value=[entry]),
+                self.assertRaisesRegex(
+                    RuntimeError,
+                    "cannot inspect the immutable pull-request snapshot",
+                ),
+            ):
+                self.snapshot._repository_size(repository, maximum_bytes=100)
+
+    def test_verify_no_promisor_configuration_rejects_promisor_remotes(
+        self,
+    ) -> None:
+        def git(*arguments: str, **_: object) -> str:
+            if arguments[0] == "config" and arguments[-1] == "extensions.partialClone":
+                return ""
+            return "origin"
+
+        with (
+            patch.object(self.snapshot, "_git", side_effect=git),
+            self.assertRaisesRegex(RuntimeError, "promisor configuration"),
+        ):
+            self.snapshot._verify_no_promisor_configuration(Path("/tmp/repository"))
+
+    def test_make_read_only_fails_closed_when_a_chmod_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "file.txt").write_text("data", encoding="utf-8")
+            with (
+                patch.object(
+                    Path,
+                    "chmod",
+                    side_effect=PermissionError("read-only filesystem"),
+                ),
+                self.assertRaisesRegex(
+                    RuntimeError,
+                    "cannot make the immutable pull-request snapshot read-only",
+                ),
+            ):
+                self.snapshot._make_read_only(root)
+
+    def test_bounded_materialize_surfaces_a_child_timeout(self) -> None:
+        with (
+            patch.object(
+                self.snapshot.shutil, "which", return_value="/usr/bin/unshare"
+            ),
+            patch.object(
+                self.snapshot,
+                "run_command",
+                side_effect=subprocess.TimeoutExpired([], 600),
+            ),
+            self.assertRaisesRegex(RuntimeError, "cannot materialize"),
+        ):
+            self.snapshot._bounded_materialize(
+                Path("/tmp/athena-pr-review-test"),
+                90 * 1024,
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+    def test_bounded_materialize_surfaces_operating_system_failures(self) -> None:
+        with (
+            patch.object(
+                self.snapshot.shutil, "which", return_value="/usr/bin/unshare"
+            ),
+            patch.object(
+                self.snapshot,
+                "run_command",
+                side_effect=FileNotFoundError(2, "not found", "unshare"),
+            ),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "host cannot enforce the immutable pull-request snapshot size limit",
+            ),
+        ):
+            self.snapshot._bounded_materialize(
+                Path("/tmp/athena-pr-review-test"),
+                90 * 1024,
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+    def test_bounded_materialize_rejects_an_unexpected_child_exit(self) -> None:
+        with (
+            patch.object(
+                self.snapshot.shutil, "which", return_value="/usr/bin/unshare"
+            ),
+            patch.object(
+                self.snapshot,
+                "run_command",
+                return_value=subprocess.CompletedProcess([], 1),
+            ),
+            self.assertRaisesRegex(RuntimeError, "cannot materialize"),
+        ):
+            self.snapshot._bounded_materialize(
+                Path("/tmp/athena-pr-review-test"),
+                90 * 1024,
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+    def test_bounded_materialize_rejects_an_empty_child_record(self) -> None:
+        with (
+            patch.object(
+                self.snapshot.shutil, "which", return_value="/usr/bin/unshare"
+            ),
+            patch.object(
+                self.snapshot,
+                "run_command",
+                return_value=subprocess.CompletedProcess([], 0, stdout="\n"),
+            ),
+            self.assertRaisesRegex(RuntimeError, "cannot materialize"),
+        ):
+            self.snapshot._bounded_materialize(
+                Path("/tmp/athena-pr-review-test"),
+                90 * 1024,
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+    def test_bounded_materialize_rejects_malformed_child_output(self) -> None:
+        with (
+            patch.object(
+                self.snapshot.shutil, "which", return_value="/usr/bin/unshare"
+            ),
+            patch.object(
+                self.snapshot,
+                "run_command",
+                return_value=subprocess.CompletedProcess([], 0, stdout="not json"),
+            ),
+            self.assertRaisesRegex(RuntimeError, "cannot materialize"),
+        ):
+            self.snapshot._bounded_materialize(
+                Path("/tmp/athena-pr-review-test"),
+                90 * 1024,
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+    def test_materialize_snapshot_cleans_up_on_unexpected_failures(self) -> None:
+        root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        removed: list[Path] = []
+
+        with (
+            patch.object(self.snapshot.tempfile, "mkdtemp", return_value=str(root)),
+            patch.object(
+                self.snapshot,
+                "_create_quota_volume",
+                side_effect=lambda temporary_root, _: temporary_root / "source",
+            ),
+            patch.object(
+                self.snapshot,
+                "_acquire_into",
+                side_effect=KeyboardInterrupt,
+            ),
+            patch.object(
+                self.snapshot,
+                "remove_snapshot",
+                side_effect=lambda path: removed.append(path),
+            ),
+            self.assertRaises(KeyboardInterrupt),
+        ):
+            self.snapshot.materialize_snapshot(
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+        self.assertEqual([root], removed)
+
+
+class StrictSnapshotFallbackTests(unittest.TestCase):
+    """Verify strict evidence switches only missing objects to a snapshot."""
+
+    def setUp(self) -> None:
+        self.module_name = f"test_collect_evidence_snapshot_{id(self)}"
+        self.collector = load_collector(self.module_name)
+
+    def tearDown(self) -> None:
+        sys.modules.pop(self.module_name, None)
+
+    def test_collects_from_a_canonical_snapshot_when_head_is_missing_locally(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source"
+            source.mkdir()
+            base_oid, head_oid = initialize_divergent_repository(source, "changed.txt")
+            git(source, "update-ref", "refs/pull/9/head", head_oid)
+            remote = root / "repository.git"
+            git(root, "init", "--bare", "--quiet", str(remote))
+            git(source, "remote", "add", "origin", str(remote))
+            git(source, "push", "--quiet", "origin", "main", "refs/pull/9/head")
+
+            caller = root / "caller"
+            caller.mkdir()
+            git(caller, "init", "--quiet")
+            git(
+                caller,
+                "fetch",
+                "--quiet",
+                str(remote),
+                "refs/heads/main:refs/heads/main",
+            )
+            self.assertNotEqual(
+                0,
+                subprocess.run(
+                    ["git", "cat-file", "-e", f"{head_oid}^{{commit}}"],
+                    cwd=caller,
+                    capture_output=True,
+                    check=False,
+                ).returncode,
+            )
+            output = io.StringIO()
+            arguments = (
+                "--expected-base-oid",
+                base_oid,
+                "--expected-head-oid",
+                head_oid,
+                "--expected-host",
+                "github.com",
+                "--expected-repository",
+                "owner/repository",
+                "--expected-pr-number",
+                "9",
+                "--expected-pr-url",
+                "https://github.com/owner/repository/pull/9",
+                "9",
+            )
+            snapshot_module = sys.modules["materialize_snapshot"]
+            original_working_directory = Path.cwd()
+            try:
+                os.chdir(caller)
+                with (
+                    patch.object(
+                        self.collector,
+                        "pr_metadata",
+                        side_effect=[
+                            pull_request(
+                                base_oid=base_oid,
+                                head_oid=head_oid,
+                                head_ref_name="fork-owner:feature",
+                            ),
+                            pull_request(
+                                base_oid=base_oid,
+                                head_oid=head_oid,
+                                head_ref_name="fork-owner:feature",
+                            ),
+                        ],
+                    ),
+                    patch.object(
+                        self.collector, "head_bound_check_runs", return_value=[]
+                    ),
+                    patch.object(
+                        snapshot_module,
+                        "canonical_repository_url",
+                        return_value=str(remote),
+                    ),
+                    patch.object(
+                        snapshot_module,
+                        "_create_quota_volume",
+                        side_effect=lambda temporary_root, _: temporary_root / "source",
+                    ),
+                    patch.dict(
+                        os.environ,
+                        {
+                            "GIT_CONFIG_GLOBAL": "/attacker/global-config",
+                            "GIT_DIR": "/attacker/repository",
+                        },
+                    ),
+                    patch("sys.stdout", output),
+                ):
+                    exit_code = self.collector.main(arguments)
+            finally:
+                os.chdir(original_working_directory)
+
+            evidence = json.loads(output.getvalue())
+            self.addCleanup(
+                self.collector.remove_snapshot,
+                Path(evidence["source_snapshot"]["root"]),
+            )
+            caller_remains_without_head = (
+                subprocess.run(
+                    ["git", "cat-file", "-e", f"{head_oid}^{{commit}}"],
+                    cwd=caller,
+                    capture_output=True,
+                    check=False,
+                ).returncode
+                != 0
+            )
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual(["changed.txt"], evidence["changed_files"])
+        self.assertTrue(evidence["source_snapshot"]["source_path"].endswith("/source"))
+        self.assertTrue(caller_remains_without_head)
+
+    def test_missing_head_fallback_rejects_a_real_ambiguous_merge_base(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source"
+            source.mkdir()
+            base_oid, head_oid = initialize_ambiguous_merge_base_repository(
+                source, "changed.txt"
+            )
+            remote = root / "repository.git"
+            git(root, "init", "--bare", "--quiet", str(remote))
+            git(source, "remote", "add", "origin", str(remote))
+            git(
+                source,
+                "push",
+                "--quiet",
+                "origin",
+                f"{base_oid}:refs/heads/main",
+                f"{head_oid}:refs/pull/9/head",
+            )
+            caller = root / "caller"
+            caller.mkdir()
+            git(caller, "init", "--quiet")
+            git(
+                caller,
+                "fetch",
+                "--quiet",
+                str(remote),
+                "refs/heads/main:refs/heads/main",
+            )
+            self.assertNotEqual(
+                0,
+                subprocess.run(
+                    ["git", "cat-file", "-e", f"{head_oid}^{{commit}}"],
+                    cwd=caller,
+                    capture_output=True,
+                    check=False,
+                ).returncode,
+            )
+            snapshot_module = sys.modules["materialize_snapshot"]
+            target = self.collector.ExpectedReviewTarget(
+                host="github.com",
+                repository="owner/repository",
+                number=9,
+                url="https://github.com/owner/repository/pull/9",
+            )
+            original_working_directory = Path.cwd()
+            try:
+                os.chdir(caller)
+                with (
+                    patch.object(
+                        snapshot_module,
+                        "canonical_repository_url",
+                        return_value=str(remote),
+                    ),
+                    patch.object(
+                        snapshot_module,
+                        "_create_quota_volume",
+                        side_effect=lambda temporary_root, _: temporary_root / "source",
+                    ),
+                    self.assertRaisesRegex(RuntimeError, "one unambiguous merge base"),
+                ):
+                    self.collector.strict_changed_paths(
+                        {"baseRefName": "main"}, (base_oid, head_oid), target
+                    )
+            finally:
+                os.chdir(original_working_directory)
 
 
 class BoundedOutputProcess:
@@ -967,6 +2436,9 @@ class BoundedChangedPathReaderTests(unittest.TestCase):
         with (
             patch.object(self.collector, "pr_metadata", return_value=pull_request()),
             patch.object(
+                self.collector, "local_immutable_objects_available", return_value=True
+            ),
+            patch.object(
                 self.collector,
                 "immutable_changed_paths",
                 side_effect=self.collector.ChangedPathCoverageGap("safe path limit"),
@@ -1697,7 +3169,7 @@ class ImmutableEvidenceTests(unittest.TestCase):
                 "error": "incomplete PR metadata",
                 "details": (
                     "GitHub returned incomplete or invalid PR metadata fields: "
-                    "headRefName"
+                    + "headRefName"
                 ),
             },
             json.loads(result.stdout),

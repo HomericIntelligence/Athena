@@ -25,6 +25,11 @@ from pr_identity import (
     repository_from_pr_url,
     validate_pr_identifier,
 )
+from materialize_snapshot import (
+    MaterializedSnapshot,
+    materialize_snapshot,
+    remove_snapshot,
+)
 from skills._cli import (
     argument_parser,
     git_read_arguments,
@@ -940,7 +945,9 @@ def linked_requirements(
     )
 
 
-def bounded_git_path_manifest(arguments: Sequence[str]) -> list[bytes]:
+def bounded_git_path_manifest(
+    arguments: Sequence[str], *, cwd: Path | None = None
+) -> list[bytes]:
     """Collect one immutable Git path manifest without unbounded buffering."""
     command = ["git", *git_read_arguments(), *arguments]
     try:
@@ -950,6 +957,7 @@ def bounded_git_path_manifest(arguments: Sequence[str]) -> list[bytes]:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=git_read_environment(),
+                cwd=cwd,
             )
         except FileNotFoundError as error:
             raise RuntimeError(
@@ -1008,13 +1016,14 @@ def bounded_git_path_manifest(arguments: Sequence[str]) -> list[bytes]:
         ) from error
 
 
-def git_bytes(*arguments: str) -> bytes:
+def git_bytes(*arguments: str, cwd: Path | None = None) -> bytes:
     """Run a read-only Git query and return its byte-exact stdout."""
     result: Any = run_command(
         ["git", *git_read_arguments(), *arguments],
         capture_output=True,
         check=False,
         env=git_read_environment(),
+        cwd=cwd,
     )
     if result.returncode != 0:
         stderr = result.stderr
@@ -1029,7 +1038,9 @@ def git_bytes(*arguments: str) -> bytes:
     return stdout
 
 
-def immutable_range_paths(base_oid: str, head_oid: str) -> list[bytes]:
+def immutable_range_paths(
+    base_oid: str, head_oid: str, *, cwd: Path | None = None
+) -> list[bytes]:
     """Return validated NUL-safe paths from one immutable Git diff range."""
     return bounded_git_path_manifest(
         (
@@ -1046,21 +1057,25 @@ def immutable_range_paths(base_oid: str, head_oid: str) -> list[bytes]:
             "--no-textconv",
             base_oid,
             head_oid,
-        )
+        ),
+        cwd=cwd,
     )
 
 
-def immutable_changed_paths(base_oid: str, head_oid: str) -> ChangedPathManifest:
+def immutable_changed_paths(
+    base_oid: str, head_oid: str, *, cwd: Path | None = None
+) -> ChangedPathManifest:
     """Bind the union of author-intent and current-target immutable paths."""
-    require_complete_git_history()
+    require_complete_git_history(cwd=cwd)
     for oid in (base_oid, head_oid):
-        git_bytes("cat-file", "-e", f"{oid}^{{commit}}")
+        git_bytes("cat-file", "-e", f"{oid}^{{commit}}", cwd=cwd)
     merge_base = require_commit_oid(
-        require_unambiguous_git_merge_base(base_oid, head_oid), "immutable merge base"
+        require_unambiguous_git_merge_base(base_oid, head_oid, cwd=cwd),
+        "immutable merge base",
     )
-    git_bytes("cat-file", "-e", f"{merge_base}^{{commit}}")
-    author_intent_paths = immutable_range_paths(merge_base, head_oid)
-    current_target_paths = immutable_range_paths(base_oid, head_oid)
+    git_bytes("cat-file", "-e", f"{merge_base}^{{commit}}", cwd=cwd)
+    author_intent_paths = immutable_range_paths(merge_base, head_oid, cwd=cwd)
+    current_target_paths = immutable_range_paths(base_oid, head_oid, cwd=cwd)
     canonical_entries = sorted(set(author_intent_paths) | set(current_target_paths))
     try:
         paths = tuple(entry.decode("utf-8") for entry in canonical_entries)
@@ -1068,6 +1083,44 @@ def immutable_changed_paths(base_oid: str, head_oid: str) -> ChangedPathManifest
         raise RuntimeError("Git returned a non-UTF-8 changed path") from error
     canonical_bytes = b"".join(entry + b"\0" for entry in canonical_entries)
     return ChangedPathManifest(paths=paths, sha256=sha256(canonical_bytes).hexdigest())
+
+
+def local_immutable_objects_available(base_oid: str, head_oid: str) -> bool:
+    """Return whether the caller already has both immutable commit objects."""
+    try:
+        for oid in (base_oid, head_oid):
+            git_bytes("cat-file", "-e", f"{oid}^{{commit}}")
+    except RuntimeError:
+        return False
+    return True
+
+
+def strict_changed_paths(
+    metadata: dict[str, Any],
+    expected: tuple[str, str],
+    target: ExpectedReviewTarget,
+) -> tuple[ChangedPathManifest, MaterializedSnapshot | None]:
+    """Derive strict paths locally or from a verified host-owned snapshot."""
+    base_oid, head_oid = expected
+    if local_immutable_objects_available(base_oid, head_oid):
+        return immutable_changed_paths(base_oid, head_oid), None
+    base_ref = metadata.get("baseRefName")
+    if not isinstance(base_ref, str):
+        raise RuntimeError("GitHub returned an invalid pull-request base ref")
+    snapshot = materialize_snapshot(
+        repository=target.repository,
+        number=target.number,
+        base_ref=base_ref,
+        base_oid=base_oid,
+        head_oid=head_oid,
+    )
+    try:
+        return immutable_changed_paths(
+            base_oid, head_oid, cwd=snapshot.source_path
+        ), snapshot
+    except BaseException:
+        remove_snapshot(snapshot.root)
+        raise
 
 
 def gh(*arguments: str, accepted_codes: tuple[int, ...] = (0,)) -> str:
@@ -1311,9 +1364,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             else None
         )
         changed_path_manifest: ChangedPathManifest | None = None
+        source_snapshot: MaterializedSnapshot | None = None
         check_evidence: dict[str, str | int] | None = None
         if expected is not None:
-            changed_path_manifest = immutable_changed_paths(*expected)
+            assert target is not None
+            changed_path_manifest, source_snapshot = strict_changed_paths(
+                metadata, expected, target
+            )
             changed_files = list(changed_path_manifest.paths)
             try:
                 checks = head_bound_check_runs(repository, expected[1])
@@ -1409,6 +1466,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if changed_path_manifest is not None:
         evidence["changed_path_manifest"] = changed_path_manifest.as_json()
+    if source_snapshot is not None:
+        evidence["source_snapshot"] = source_snapshot.as_json()
     if check_evidence is not None:
         evidence["check_evidence"] = check_evidence
     print(json.dumps(evidence, sort_keys=True))
