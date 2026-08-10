@@ -64,11 +64,15 @@ the local immutable-read path; if either captured object is absent, it creates
 a disposable repository and fetches only `refs/heads/<base>` and
 `refs/pull/<number>/head` from the retained `github.com/owner/repository`
 target. It rejects a ref/OID mismatch, shallow or promisor history, ambiguous
-merge base, resource limit, or acquisition failure before inspection. For
-local immutable Git reads, disable replacement refs, graft input, and
-commit-graph reads, and forbid lazy promisor-object fetching. A missing object
-is a coverage gap only when this exact materialization boundary cannot verify
-it.
+merge base, resource limit, or acquisition failure before inspection. The
+snapshot is acquired inside a total-capacity quota boundary: a macOS sparse
+volume, a privileged Linux tmpfs mount, or, on unprivileged Linux hosts, an
+`unshare`-created user and mount namespace whose tmpfs enforces the same
+cumulative size limit. Materialization fails closed when the host has no
+mechanism that can enforce that limit. For local immutable Git reads, disable
+replacement refs, graft input, and commit-graph reads, and forbid lazy
+promisor-object fetching. A missing object is a coverage gap only when this
+exact materialization boundary cannot verify it.
 
 #### GitLab
 
