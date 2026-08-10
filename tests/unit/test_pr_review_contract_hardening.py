@@ -1056,6 +1056,454 @@ class SnapshotMaterializationTests(unittest.TestCase):
             self.assertTrue((materialized.source_path / "changed.txt").is_file())
 
 
+class LinuxBoundedSnapshotBehaviorTests(unittest.TestCase):
+    """Exercise Linux bounded-namespace quota paths without live mount privileges."""
+
+    def setUp(self) -> None:
+        self.module_name = f"test_linux_bounded_snapshot_{id(self)}"
+        self.snapshot = load_snapshot(self.module_name)
+
+    def tearDown(self) -> None:
+        sys.modules.pop(self.module_name, None)
+
+    def _bounded_main_arguments(self, root: Path) -> tuple[str, ...]:
+        return (
+            "--root",
+            str(root),
+            "--repository-url",
+            "https://github.com/owner/repository.git",
+            "--pr-number",
+            "9",
+            "--base-ref",
+            "main",
+            "--base-oid",
+            "a" * 40,
+            "--head-oid",
+            "b" * 40,
+            "--maximum-bytes",
+            "90",
+        )
+
+    def test_bounded_materialize_main_emits_the_verified_record(self) -> None:
+        root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        output = io.StringIO()
+
+        def acquire(source: Path, **_: object) -> tuple[str, str]:
+            (root / "bounded").mkdir(exist_ok=True)
+            return ("a" * 40, "b" * 40)
+
+        with (
+            patch("sys.stdout", output),
+            patch.object(self.snapshot, "_mount_tmpfs", return_value=True),
+            patch.object(self.snapshot, "_acquire_into", side_effect=acquire),
+            patch.object(self.snapshot.shutil, "copytree"),
+            patch.object(self.snapshot, "_detach_best_effort"),
+            patch.object(self.snapshot, "_make_read_only"),
+        ):
+            exit_code = self.snapshot._bounded_materialize_main(
+                self._bounded_main_arguments(root)
+            )
+
+        self.assertEqual(0, exit_code)
+        record = json.loads(output.getvalue())
+        self.assertEqual("a" * 40, record["merge_base"])
+        self.assertEqual("b" * 40, record["tree_oid"])
+        self.assertEqual(str(root / "source"), record["source_path"])
+
+    def test_bounded_materialize_main_refuses_paths_outside_the_managed_root(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "unmanaged"
+            root.mkdir()
+            errors = io.StringIO()
+            with (
+                patch("sys.stderr", errors),
+                patch.object(self.snapshot, "_mount_tmpfs", return_value=True),
+            ):
+                exit_code = self.snapshot._bounded_materialize_main(
+                    self._bounded_main_arguments(root)
+                )
+
+        self.assertEqual(1, exit_code)
+        self.assertIn("outside the managed temporary directory", errors.getvalue())
+
+    def test_bounded_materialize_main_fails_closed_when_the_mount_is_unavailable(
+        self,
+    ) -> None:
+        root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        errors = io.StringIO()
+
+        with (
+            patch("sys.stderr", errors),
+            patch.object(self.snapshot, "_mount_tmpfs", return_value=False),
+        ):
+            exit_code = self.snapshot._bounded_materialize_main(
+                self._bounded_main_arguments(root)
+            )
+
+        self.assertEqual(2, exit_code)
+        self.assertIn(
+            "host cannot enforce the immutable pull-request snapshot size limit",
+            errors.getvalue(),
+        )
+
+    def test_bounded_materialize_main_reports_acquisition_failures(self) -> None:
+        root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        errors = io.StringIO()
+
+        with (
+            patch("sys.stderr", errors),
+            patch.object(self.snapshot, "_mount_tmpfs", return_value=True),
+            patch.object(
+                self.snapshot,
+                "_acquire_into",
+                side_effect=RuntimeError("fetched base ref does not match"),
+            ),
+            patch.object(self.snapshot, "_detach_best_effort"),
+        ):
+            exit_code = self.snapshot._bounded_materialize_main(
+                self._bounded_main_arguments(root)
+            )
+
+        self.assertEqual(1, exit_code)
+        self.assertIn("fetched base ref does not match", errors.getvalue())
+
+    def test_mount_tmpfs_tolerates_an_existing_source_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            source.mkdir()
+
+            def mount(
+                command: list[str], **_: object
+            ) -> subprocess.CompletedProcess[str]:
+                return subprocess.CompletedProcess(command, 0)
+
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(
+                    self.snapshot.shutil, "which", return_value="/usr/bin/mount"
+                ),
+                patch.object(self.snapshot, "run_command", side_effect=mount),
+                patch.object(Path, "is_mount", return_value=True),
+            ):
+                self.assertTrue(self.snapshot._mount_tmpfs(source, 90 * 1024))
+
+    def test_mount_tmpfs_fails_closed_when_the_source_cannot_be_created(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(
+                    self.snapshot.shutil, "which", return_value="/usr/bin/mount"
+                ),
+                patch.object(Path, "mkdir", side_effect=PermissionError("denied")),
+            ):
+                self.assertFalse(self.snapshot._mount_tmpfs(source, 90 * 1024))
+
+    def test_mount_tmpfs_fails_closed_when_the_mount_command_is_unavailable(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(
+                    self.snapshot.shutil, "which", return_value="/usr/bin/mount"
+                ),
+                patch.object(
+                    self.snapshot,
+                    "run_command",
+                    side_effect=FileNotFoundError(2, "not found", "mount"),
+                ),
+            ):
+                self.assertFalse(self.snapshot._mount_tmpfs(source, 90 * 1024))
+
+    def test_detach_volume_falls_back_to_a_lazy_umount(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            results: list[subprocess.CompletedProcess[str]] = [
+                subprocess.CompletedProcess([], 32),
+                subprocess.CompletedProcess([], 0),
+            ]
+            index = 0
+
+            def run(
+                *_args: object, **_kwargs: object
+            ) -> subprocess.CompletedProcess[str]:
+                nonlocal index
+                result = results[index]
+                index += 1
+                return result
+
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(self.snapshot, "run_command", side_effect=run),
+            ):
+                self.snapshot._detach_volume(source)
+
+    def test_detach_volume_fails_closed_when_both_umounts_fail(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            with (
+                patch.object(self.snapshot.sys, "platform", "linux"),
+                patch.object(
+                    self.snapshot,
+                    "run_command",
+                    return_value=subprocess.CompletedProcess([], 32),
+                ),
+                self.assertRaisesRegex(
+                    RuntimeError, "cannot remove the immutable pull-request snapshot"
+                ),
+            ):
+                self.snapshot._detach_volume(source)
+
+    def test_detach_volume_rejects_unknown_platforms(self) -> None:
+        with (
+            patch.object(self.snapshot.sys, "platform", "plan9"),
+            self.assertRaisesRegex(
+                RuntimeError, "cannot remove the immutable pull-request snapshot"
+            ),
+        ):
+            self.snapshot._detach_volume(Path("/tmp/source"))
+
+    def test_require_base_ref_rejects_invalid_branch_names(self) -> None:
+        for invalid in ("", "-leading-dash", "contains..two-dots"):
+            with self.subTest(base_ref=invalid):
+                with self.assertRaisesRegex(
+                    RuntimeError, "invalid pull-request base ref"
+                ):
+                    self.snapshot._require_base_ref(invalid)
+
+    def test_require_base_ref_rejects_a_branch_git_cannot_check(self) -> None:
+        with (
+            patch.object(
+                self.snapshot,
+                "_git",
+                side_effect=RuntimeError("cannot materialize"),
+            ),
+            self.assertRaisesRegex(RuntimeError, "cannot materialize"),
+        ):
+            self.snapshot._require_base_ref("main")
+
+    def test_repository_size_fails_closed_when_disk_usage_is_unavailable(
+        self,
+    ) -> None:
+        with (
+            patch.object(
+                self.snapshot.shutil,
+                "disk_usage",
+                side_effect=OSError("no such device"),
+            ),
+            self.assertRaisesRegex(
+                RuntimeError, "cannot inspect the immutable pull-request snapshot"
+            ),
+        ):
+            self.snapshot._repository_size(Path("/tmp/repository"))
+
+    def test_repository_size_fails_closed_when_an_entry_cannot_be_inspected(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+
+            def fail_lstat() -> os.stat_result:
+                raise OSError("permission denied")
+
+            entry = SimpleNamespace(lstat=fail_lstat)
+            with (
+                patch.object(Path, "rglob", return_value=[entry]),
+                self.assertRaisesRegex(
+                    RuntimeError,
+                    "cannot inspect the immutable pull-request snapshot",
+                ),
+            ):
+                self.snapshot._repository_size(repository, maximum_bytes=100)
+
+    def test_verify_no_promisor_configuration_rejects_promisor_remotes(
+        self,
+    ) -> None:
+        def git(*arguments: str, **_: object) -> str:
+            if arguments[0] == "config" and arguments[-1] == "extensions.partialClone":
+                return ""
+            return "origin"
+
+        with (
+            patch.object(self.snapshot, "_git", side_effect=git),
+            self.assertRaisesRegex(RuntimeError, "promisor configuration"),
+        ):
+            self.snapshot._verify_no_promisor_configuration(Path("/tmp/repository"))
+
+    def test_make_read_only_fails_closed_when_a_chmod_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "file.txt").write_text("data", encoding="utf-8")
+            with (
+                patch.object(
+                    Path,
+                    "chmod",
+                    side_effect=PermissionError("read-only filesystem"),
+                ),
+                self.assertRaisesRegex(
+                    RuntimeError,
+                    "cannot make the immutable pull-request snapshot read-only",
+                ),
+            ):
+                self.snapshot._make_read_only(root)
+
+    def test_bounded_materialize_surfaces_a_child_timeout(self) -> None:
+        with (
+            patch.object(
+                self.snapshot.shutil, "which", return_value="/usr/bin/unshare"
+            ),
+            patch.object(
+                self.snapshot,
+                "run_command",
+                side_effect=subprocess.TimeoutExpired([], 600),
+            ),
+            self.assertRaisesRegex(RuntimeError, "cannot materialize"),
+        ):
+            self.snapshot._bounded_materialize(
+                Path("/tmp/athena-pr-review-test"),
+                90 * 1024,
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+    def test_bounded_materialize_surfaces_operating_system_failures(self) -> None:
+        with (
+            patch.object(
+                self.snapshot.shutil, "which", return_value="/usr/bin/unshare"
+            ),
+            patch.object(
+                self.snapshot,
+                "run_command",
+                side_effect=FileNotFoundError(2, "not found", "unshare"),
+            ),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "host cannot enforce the immutable pull-request snapshot size limit",
+            ),
+        ):
+            self.snapshot._bounded_materialize(
+                Path("/tmp/athena-pr-review-test"),
+                90 * 1024,
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+    def test_bounded_materialize_rejects_an_unexpected_child_exit(self) -> None:
+        with (
+            patch.object(
+                self.snapshot.shutil, "which", return_value="/usr/bin/unshare"
+            ),
+            patch.object(
+                self.snapshot,
+                "run_command",
+                return_value=subprocess.CompletedProcess([], 1),
+            ),
+            self.assertRaisesRegex(RuntimeError, "cannot materialize"),
+        ):
+            self.snapshot._bounded_materialize(
+                Path("/tmp/athena-pr-review-test"),
+                90 * 1024,
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+    def test_bounded_materialize_rejects_an_empty_child_record(self) -> None:
+        with (
+            patch.object(
+                self.snapshot.shutil, "which", return_value="/usr/bin/unshare"
+            ),
+            patch.object(
+                self.snapshot,
+                "run_command",
+                return_value=subprocess.CompletedProcess([], 0, stdout="\n"),
+            ),
+            self.assertRaisesRegex(RuntimeError, "cannot materialize"),
+        ):
+            self.snapshot._bounded_materialize(
+                Path("/tmp/athena-pr-review-test"),
+                90 * 1024,
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+    def test_bounded_materialize_rejects_malformed_child_output(self) -> None:
+        with (
+            patch.object(
+                self.snapshot.shutil, "which", return_value="/usr/bin/unshare"
+            ),
+            patch.object(
+                self.snapshot,
+                "run_command",
+                return_value=subprocess.CompletedProcess([], 0, stdout="not json"),
+            ),
+            self.assertRaisesRegex(RuntimeError, "cannot materialize"),
+        ):
+            self.snapshot._bounded_materialize(
+                Path("/tmp/athena-pr-review-test"),
+                90 * 1024,
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+    def test_materialize_snapshot_cleans_up_on_unexpected_failures(self) -> None:
+        root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        removed: list[Path] = []
+
+        with (
+            patch.object(self.snapshot.tempfile, "mkdtemp", return_value=str(root)),
+            patch.object(
+                self.snapshot,
+                "_create_quota_volume",
+                side_effect=lambda temporary_root, _: temporary_root / "source",
+            ),
+            patch.object(
+                self.snapshot,
+                "_acquire_into",
+                side_effect=KeyboardInterrupt,
+            ),
+            patch.object(
+                self.snapshot,
+                "remove_snapshot",
+                side_effect=lambda path: removed.append(path),
+            ),
+            self.assertRaises(KeyboardInterrupt),
+        ):
+            self.snapshot.materialize_snapshot(
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+        self.assertEqual([root], removed)
+
+
 class StrictSnapshotFallbackTests(unittest.TestCase):
     """Verify strict evidence switches only missing objects to a snapshot."""
 
