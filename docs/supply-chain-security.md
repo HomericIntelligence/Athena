@@ -9,13 +9,13 @@ Athena publishes two checksummed SPDX 2.3 software bills of materials with each 
   authoritative `ubuntu-24.04`/`linux-64` build environment, uv, and the immutable GitHub Actions
   used by the package job.
 
-The pinned Pi coding-agent shrinkwrap and committed `ci/pi-runtime/` npm lockfile capture the exact
-CLI and delegation-package runtime dependencies. The package job scans those dependency contracts
-after validating Pi package installation and retains the native inventories for Grype. It does not
-scan Pi's example lockfiles or build-time compiler binaries, which are outside the installed
-runtime surface. These are CI evidence rather than release assets, and Athena never bundles those
-third-party packages. [Issue #74](https://github.com/HomericIntelligence/Athena/issues/74) tracks
-restoring a broader source inventory when upstream Pi remediates those excluded inputs.
+The pinned coding-agent runtime lockfiles capture the exact CLI and delegation-package dependencies.
+The package job scans those dependency contracts after validating the coding-harness package and
+retains the native inventories for Grype. It does not scan example lockfiles or build-time compiler
+binaries, which are outside the installed runtime surface. These are CI evidence rather than release
+assets, and Athena never bundles those third-party packages. [Issue #74](https://github.com/HomericIntelligence/Athena/issues/74)
+tracks restoring a broader source inventory when the upstream runtime remediates those excluded
+inputs.
 
 Host capabilities, the runner operating system, and commands used only in examples are outside the
 dependency scope. Athena remains a plugin distribution and does not add a Python package or runtime
@@ -33,7 +33,7 @@ installed package remains represented as a build-environment dependency.
 ## Vulnerability policy
 
 The required `security/dependency-scan` job scans both native inventories—the Linux build environment
-and the isolated Pi runtime—with the locked Grype version. Scanner, database, configuration, or
+and the isolated coding-harness runtime—with the locked Grype version. Scanner, database, configuration, or
 report failures block the gate. The database must pass its hash check, be no more than 120 hours old,
 and complete an update check.
 
