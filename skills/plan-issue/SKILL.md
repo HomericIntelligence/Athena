@@ -32,7 +32,9 @@ capability or ownership gap.
    labels, linked work, comments, and relevant design documents; never infer
    requirements from a similar title.
 2. Invoke `advise` with the outcome, architecture, languages, risks, and test
-   needs. Its required knowledge synchronization must finish before planning.
+   needs. In planning mode, use its existing-checkout best-effort result without requiring upstream
+   synchronization; report its revision and trust/freshness limits, or its explicit no-guidance
+   result, and continue issue planning.
 3. Establish architecture before proposing files or abstractions: repository
    guidance, ADRs, boundaries, dependency direction, and public interfaces.
 4. Verify current code, tests, commands, dependencies, paths, and symbols.
@@ -56,7 +58,6 @@ the update if the requirements, marker, comment, or plan content drifted.
 
 ## Result
 
-Return the issue, architecture decision, Mnemosyne revision and relevant
-guidance, plan action or draft, requirement mapping, validation plan, and every
-unresolved decision. If published, return the forge URL or comment identity;
-otherwise state why publication was withheld.
+Return the issue, architecture decision, Mnemosyne revision or no-guidance status and relevant
+guidance, plan action or draft, requirement mapping, validation plan, and every unresolved decision.
+If published, return the forge URL or comment identity; otherwise state why publication was withheld.
