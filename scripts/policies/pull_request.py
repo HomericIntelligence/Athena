@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-
 CONVENTIONAL_SUBJECT = re.compile(
     r"^(feat|fix|docs|refactor|test|chore|revert|ci|build|perf)"
     r"(\([a-z0-9._/-]+\))?!?: .+"
@@ -30,11 +29,11 @@ def flatten_commit_pages(pages: object) -> list[dict[str, Any]]:
                 f"commit pagination page {page_number} is malformed: {error}"
             ) from error
         if not isinstance(nodes, list):
-            raise ValueError(f"commit pagination page {page_number} has invalid nodes")
+            raise TypeError(f"commit pagination page {page_number} has invalid nodes")
         if not isinstance(page_info, dict) or not isinstance(
             page_info.get("hasNextPage"), bool
         ):
-            raise ValueError(
+            raise TypeError(
                 f"commit pagination page {page_number} has invalid pageInfo"
             )
         if any(
@@ -46,7 +45,7 @@ def flatten_commit_pages(pages: object) -> list[dict[str, Any]]:
             )
         page_total = connection.get("totalCount")
         if not isinstance(page_total, int):
-            raise ValueError(
+            raise TypeError(
                 f"commit pagination page {page_number} has invalid totalCount"
             )
         if total_count is None:

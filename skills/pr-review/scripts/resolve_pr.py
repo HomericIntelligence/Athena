@@ -3,11 +3,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
-from pathlib import Path
 import sys
-from typing import Any, Sequence
+from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
@@ -15,19 +16,19 @@ if __package__ in {None, ""}:
 from pr_identity import (
     canonical_pull_request_url,
     pull_request_number,
+    repository_from_pr_url,
     require_commit_oid,
     require_github_host,
     require_github_repository,
-    repository_from_pr_url,
     validate_pr_identifier,
 )
+
 from skills._cli import (
     argument_parser,
     git_read_arguments,
     git_read_environment,
     run_command,
 )
-
 
 FIELDS = "number,url,state,headRefName,baseRefName,headRefOid,baseRefOid"
 
@@ -70,7 +71,7 @@ def current_branch() -> str:
 def load_object(output: str) -> dict[str, Any]:
     value = json.loads(output)
     if not isinstance(value, dict):
-        raise RuntimeError("GitHub returned an invalid pull-request object")
+        raise TypeError("GitHub returned an invalid pull-request object")
     return value
 
 
@@ -156,7 +157,7 @@ def _validate_repository_identity(
     number = pull_request.get("number")
     url = pull_request.get("url")
     if not isinstance(number, int) or not isinstance(url, str):
-        raise RuntimeError("GitHub returned incomplete pull-request identity")
+        raise TypeError("GitHub returned incomplete pull-request identity")
     pull_repository = repository_from_pr_url(url, number)
     if pull_repository.casefold() != target.repository.casefold():
         raise RuntimeError(
@@ -198,7 +199,7 @@ def resolve(explicit: str | None, target: RepositoryTarget) -> dict[str, Any]:
         )
     )
     if not isinstance(raw_candidates, list):
-        raise RuntimeError("GitHub returned an invalid pull-request list")
+        raise TypeError("GitHub returned an invalid pull-request list")
     candidates = [item for item in raw_candidates if isinstance(item, dict)]
     if len(candidates) == 1:
         number = candidates[0].get("number")
@@ -246,7 +247,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ValueError as error:
         print(error, file=sys.stderr)
         return 3
-    except RuntimeError as error:
+    except (RuntimeError, TypeError) as error:
         print(error, file=sys.stderr)
         return 1
     print(json.dumps(pull_request, sort_keys=True))

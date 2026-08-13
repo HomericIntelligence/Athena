@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 
-
 SILENT_FAILURE = re.compile(r"\|\|[ \t]*true(?:[ \t]*$|[ \t]+#)", re.MULTILINE)
 CONTINUE_ON_ERROR = re.compile(
     r"^[ \t]*continue-on-error:[ \t]*true[ \t]*$", re.MULTILINE

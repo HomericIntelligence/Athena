@@ -34,6 +34,7 @@ def run_script(
     *arguments: str,
     cwd: Path,
     env: dict[str, str] | None = None,
+    input_text: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     command = [str(ROOT / relative_path), *arguments]
     process_env = env.copy() if env is not None else os.environ.copy()
@@ -56,6 +57,7 @@ def run_script(
         capture_output=True,
         text=True,
         check=False,
+        input=input_text,
     )
 
 
@@ -1989,7 +1991,10 @@ class TidyDelegationTests(unittest.TestCase):
                 "import json\n"
                 "import os\n"
                 "import sys\n"
-                "print(json.dumps({'argv': sys.argv[1:], 'cwd': os.getcwd()}))\n"
+                "stdin = sys.stdin.read()\n"
+                "print(json.dumps("
+                "{'argv': sys.argv[1:], 'cwd': os.getcwd(), 'stdin': stdin}"
+                "))\n"
                 "print('delegated stderr', file=sys.stderr)\n"
                 "raise SystemExit(37)\n",
                 encoding="utf-8",
@@ -2001,17 +2006,20 @@ class TidyDelegationTests(unittest.TestCase):
             result = run_script(
                 "skills/tidy/scripts/run_tidy.py",
                 str(automation_checkout),
+                "--",
                 "--dry-run",
                 "value with spaces",
                 "$(touch should-not-run)",
                 cwd=target_repository,
                 env=environment,
+                input_text="interactive sentinel\n",
             )
 
         self.assertEqual(37, result.returncode)
         self.assertEqual("delegated stderr", result.stderr.strip())
         invocation = json.loads(result.stdout)
         self.assertEqual(str(target_repository.resolve()), invocation["cwd"])
+        self.assertEqual("interactive sentinel\n", invocation["stdin"])
         self.assertEqual(
             [
                 "run",
@@ -2019,6 +2027,7 @@ class TidyDelegationTests(unittest.TestCase):
                 str(automation_checkout),
                 "--locked",
                 "hephaestus-tidy",
+                "--",
                 "--dry-run",
                 "value with spaces",
                 "$(touch should-not-run)",

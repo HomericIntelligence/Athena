@@ -101,7 +101,7 @@ resolve_image() {
 
 run_in_container() {
     local cmd=("$@")
-    local engine_flags=()
+    local engine_flags=(--rm)
 
     # Podman-specific flags for rootless execution.
     # keep-id:uid=1000,gid=1000 runs the process as the image's non-root 'ci'
@@ -112,7 +112,7 @@ run_in_container() {
         engine_flags+=(--userns=keep-id:uid=1000,gid=1000)
     fi
 
-    "${CONTAINER_ENGINE}" run --rm \
+    "${CONTAINER_ENGINE}" run \
         "${engine_flags[@]}" \
         --volume "${PROJECT_ROOT}:/workspace:Z" \
         --workdir /workspace \
@@ -143,8 +143,8 @@ run_test() {
 
 run_static() {
     log_step "Static checks (ruff lint, format-check, mypy typecheck)"
-    run_in_container uv run ruff check scripts tests skills
-    run_in_container uv run ruff format --check scripts tests skills
+    run_in_container uv run ruff check scripts tests skills &&
+    run_in_container uv run ruff format --check scripts tests skills &&
     run_in_container uv run mypy --strict --explicit-package-bases scripts tests skills/_cli.py skills/*/scripts/*.py
 }
 
@@ -155,7 +155,7 @@ run_markdownlint() {
 
 run_workflow() {
     log_step "Workflow syntax + schema validation"
-    run_in_container uv run yamllint .github/workflows
+    run_in_container uv run yamllint .github/workflows &&
     run_in_container uv run check-jsonschema --builtin-schema vendor.github-workflows .github/workflows/*.yml
 }
 

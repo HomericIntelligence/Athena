@@ -3,25 +3,25 @@
 
 from __future__ import annotations
 
-from datetime import date
 import json
-from pathlib import Path
 import subprocess
 import sys
-from typing import Sequence
+from collections.abc import Sequence
+from datetime import UTC, datetime
+from pathlib import Path
 
 sys.dont_write_bytecode = True
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts.policies.vulnerabilities import (  # noqa: E402
+from scripts.policies.vulnerabilities import (
     ATHENA_ISSUE_URL,
     VulnerabilityPolicyError,
     evaluate_report,
     load_exceptions,
     load_report,
 )
-from skills._cli import argument_parser  # noqa: E402
+from skills._cli import argument_parser
 
 
 def verify_open_exception_issues(exceptions: list[dict[str, str]]) -> None:
@@ -93,7 +93,7 @@ def scan(
     )
     if result.returncode != 0:
         raise OSError(f"Grype failed with exit status {result.returncode}")
-    exceptions = load_exceptions(exceptions_path, today=date.today())
+    exceptions = load_exceptions(exceptions_path, today=datetime.now(UTC).date())
     verify_open_exception_issues(exceptions)
     return evaluate_report(load_report(report_path), exceptions)
 

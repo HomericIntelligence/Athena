@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
 import json
 import os
-from pathlib import Path
 import tempfile
 import unittest
+from hashlib import sha256
+from pathlib import Path
 from unittest.mock import patch
 
 from scripts import ci_policy
@@ -158,7 +158,7 @@ class PullRequestPolicyTests(unittest.TestCase):
                 }
             }
         ]
-        with self.assertRaisesRegex(ValueError, "invalid nodes"):
+        with self.assertRaisesRegex(TypeError, "invalid nodes"):
             ci_policy.flatten_commit_pages(invalid_nodes)
 
         changing_totals = [
@@ -210,7 +210,7 @@ class PullRequestPolicyTests(unittest.TestCase):
         malformed_page_info["data"]["repository"]["pullRequest"]["commits"][
             "pageInfo"
         ] = []
-        with self.assertRaisesRegex(ValueError, "invalid pageInfo"):
+        with self.assertRaisesRegex(TypeError, "invalid pageInfo"):
             ci_policy.flatten_commit_pages([malformed_page_info])
 
         malformed_node = json.loads(json.dumps(base))
@@ -361,9 +361,9 @@ class ReleasePolicyTests(unittest.TestCase):
                 ci_policy.verify_release_assets(directory)
 
     def test_release_spdx_validation_fails_closed(self) -> None:
-        cases: tuple[tuple[object, str], ...] = (
-            ("not-json", "cannot parse"),
-            ([], "must be an object"),
+        cases: tuple[tuple[object, type[Exception], str], ...] = (
+            ("not-json", ValueError, "cannot parse"),
+            ([], TypeError, "must be an object"),
             (
                 {
                     "spdxVersion": "SPDX-2.2",
@@ -371,6 +371,7 @@ class ReleasePolicyTests(unittest.TestCase):
                     "documentNamespace": "athena-plugin-1.2.3",
                     "packages": [],
                 },
+                ValueError,
                 "SPDX-2.3",
             ),
             (
@@ -380,6 +381,7 @@ class ReleasePolicyTests(unittest.TestCase):
                     "documentNamespace": "athena-plugin-1.2.3",
                     "packages": [],
                 },
+                ValueError,
                 "wrong identity",
             ),
             (
@@ -389,6 +391,7 @@ class ReleasePolicyTests(unittest.TestCase):
                     "documentNamespace": "wrong",
                     "packages": [],
                 },
+                ValueError,
                 "invalid namespace",
             ),
             (
@@ -398,6 +401,7 @@ class ReleasePolicyTests(unittest.TestCase):
                     "documentNamespace": "athena-plugin-1.2.3",
                     "packages": {},
                 },
+                TypeError,
                 "packages list",
             ),
             (
@@ -407,10 +411,11 @@ class ReleasePolicyTests(unittest.TestCase):
                     "documentNamespace": "athena-plugin-1.2.3",
                     "packages": [{"name": "athena-plugin", "versionInfo": "9.9.9"}],
                 },
+                ValueError,
                 "matching release package",
             ),
         )
-        for content, message in cases:
+        for content, error_type, message in cases:
             with (
                 self.subTest(message=message),
                 tempfile.TemporaryDirectory() as temporary,
@@ -423,7 +428,7 @@ class ReleasePolicyTests(unittest.TestCase):
                     encoding="utf-8",
                 )
                 write_checksum(plugin)
-                with self.assertRaisesRegex(ValueError, message):
+                with self.assertRaisesRegex(error_type, message):
                     ci_policy.verify_release_assets(directory)
 
     def test_release_build_spdx_is_bound_to_release_version(self) -> None:
@@ -570,12 +575,12 @@ class CommandTests(unittest.TestCase):
             ({"EVENT_NAME": "push", "RESULTS": "not-json"}, "valid JSON"),
             ({"EVENT_NAME": "push", "RESULTS": "[]"}, "JSON object"),
         ):
-            with self.subTest(environment=environment):
-                with (
-                    patch.dict(os.environ, environment, clear=True),
-                    self.assertRaisesRegex(SystemExit, message),
-                ):
-                    ci_policy.main(["required-jobs"])
+            with (
+                self.subTest(environment=environment),
+                patch.dict(os.environ, environment, clear=True),
+                self.assertRaisesRegex(SystemExit, message),
+            ):
+                ci_policy.main(["required-jobs"])
 
     def test_required_jobs_command_rejects_invalid_job_results(self) -> None:
         for results in ('{"validate": []}', '{"validate": {"result": 1}}'):
@@ -639,7 +644,8 @@ class CommandTests(unittest.TestCase):
                 self.assertEqual(0, ci_policy.main(["release", "--root", str(root)]))
 
         run.assert_called_once_with(
-            ["git", "merge-base", "--is-ancestor", "commit", "origin/main"]
+            ["git", "merge-base", "--is-ancestor", "commit", "origin/main"],
+            check=False,
         )
 
     def test_release_command_rejects_lightweight_tag(self) -> None:

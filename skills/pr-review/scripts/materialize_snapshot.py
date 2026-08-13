@@ -3,28 +3,27 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Sequence
-
 import json
 import shutil
 import stat
 import subprocess
 import sys
 import tempfile
+from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from pr_identity import COMMIT_OID, require_commit_oid, require_github_repository
+
 from skills._cli import (
     argument_parser,
     git_read_arguments,
     git_read_environment,
     run_command,
 )
-
 
 SNAPSHOT_COMMAND_TIMEOUT_SECONDS = 30.0
 BOUNDED_MATERIALIZE_TIMEOUT_SECONDS = 600.0
@@ -593,7 +592,7 @@ def _bounded_materialize(
             raise RuntimeError("cannot materialize the immutable pull-request snapshot")
         record = json.loads(lines[-1])
         if not isinstance(record, dict):
-            raise RuntimeError("cannot materialize the immutable pull-request snapshot")
+            raise TypeError("cannot materialize the immutable pull-request snapshot")
         source_path = Path(str(record["source_path"]))
         merge_base = require_commit_oid(record["merge_base"], "immutable merge base")
         tree_oid = require_commit_oid(record["tree_oid"], "immutable head tree")
@@ -691,7 +690,7 @@ def remove_snapshot(root: Path) -> None:
         if candidate.exists() and not candidate.is_symlink():
             candidate.chmod(0o700)
         if not callable(function):
-            raise RuntimeError("cannot remove the immutable pull-request snapshot")
+            raise TypeError("cannot remove the immutable pull-request snapshot")
         function(path)
 
     shutil.rmtree(resolved, onexc=make_removable)

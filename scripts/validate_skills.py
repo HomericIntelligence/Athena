@@ -14,8 +14,8 @@ sys.dont_write_bytecode = True
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts.semver import SEMVER_PATTERN  # noqa: E402
-from skills._cli import argument_parser  # noqa: E402
+from scripts.semver import SEMVER_PATTERN
+from skills._cli import argument_parser
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 

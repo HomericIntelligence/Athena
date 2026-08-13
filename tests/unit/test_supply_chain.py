@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from contextlib import redirect_stderr
-from datetime import date, timedelta
 import io
 import json
-from pathlib import Path
 import subprocess
 import tarfile
 import tempfile
 import unittest
+from contextlib import redirect_stderr
+from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 import yaml
@@ -22,7 +22,6 @@ from scripts.policies.vulnerabilities import (
     load_exceptions,
     load_report,
 )
-
 
 RAW_SPDX = {
     "spdxVersion": "SPDX-2.3",
@@ -521,8 +520,8 @@ class VulnerabilityPolicyTests(unittest.TestCase):
             "reason": "fixture",
             "owner": "security",
             "issue": "https://github.com/HomericIntelligence/Athena/issues/1",
-            "approved": date.today().isoformat(),
-            "expires": (date.today() + timedelta(days=1)).isoformat(),
+            "approved": datetime.now(UTC).date().isoformat(),
+            "expires": (datetime.now(UTC).date() + timedelta(days=1)).isoformat(),
         }
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -588,7 +587,9 @@ class VulnerabilityPolicyTests(unittest.TestCase):
                 with self.subTest(issue_result=issue_result.returncode):
 
                     def grype_then_failed_issue(
-                        command: list[str], **kwargs: object
+                        command: list[str],
+                        issue_result: subprocess.CompletedProcess[str] = issue_result,
+                        **kwargs: object,
                     ) -> subprocess.CompletedProcess[str]:
                         del kwargs
                         if command[0] == "grype":

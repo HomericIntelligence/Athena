@@ -16,10 +16,11 @@ from skills._cli import argument_parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    raw_arguments = list(sys.argv[1:] if argv is None else argv)
     parser = argument_parser(description=__doc__)
     parser.add_argument("automation_checkout", type=Path)
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
-    parsed = parser.parse_args(argv)
+    parsed = parser.parse_args(raw_arguments)
     command = [
         "uv",
         "run",
@@ -27,7 +28,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         str(parsed.automation_checkout),
         "--locked",
         "hephaestus-tidy",
-        *parsed.arguments,
+        *raw_arguments[1:],
     ]
     try:
         os.execvp(command[0], command)
@@ -35,6 +36,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         missing = error.filename or command[0]
         print(f"required command unavailable: {missing}", file=sys.stderr)
         return 127
+    raise RuntimeError("os.execvp returned unexpectedly")
 
 
 if __name__ == "__main__":

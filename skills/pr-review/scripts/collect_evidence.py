@@ -3,33 +3,35 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from hashlib import sha256
-from pathlib import Path
 import json
 import subprocess
 import sys
 import threading
 import time
-from typing import Any, IO, Sequence
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from hashlib import sha256
+from pathlib import Path
+from typing import IO, Any
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from pr_identity import (
-    COMMIT_OID,
-    pull_request_number,
-    require_canonical_pull_request_url,
-    require_commit_oid,
-    require_github_repository,
-    repository_from_pr_url,
-    validate_pr_identifier,
-)
 from materialize_snapshot import (
     MaterializedSnapshot,
     materialize_snapshot,
     remove_snapshot,
 )
+from pr_identity import (
+    COMMIT_OID,
+    pull_request_number,
+    repository_from_pr_url,
+    require_canonical_pull_request_url,
+    require_commit_oid,
+    require_github_repository,
+    validate_pr_identifier,
+)
+
 from skills._cli import (
     argument_parser,
     git_read_arguments,
@@ -38,7 +40,6 @@ from skills._cli import (
     require_unambiguous_git_merge_base,
     run_command,
 )
-
 
 # Keep this query below GitHub's GraphQL complexity budget. Strict callers bind
 # changed paths to local immutable Git objects; legacy callers retain the REST
@@ -230,7 +231,7 @@ class ReviewScope:
 class LinkedRequirements:
     """Canonical content binding for every linked issue used as requirements."""
 
-    items: tuple["LinkedRequirement", ...]
+    items: tuple[LinkedRequirement, ...]
     sha256: str
 
     def as_json(self) -> dict[str, object]:
@@ -334,11 +335,11 @@ def immutable_identity(
     if base_oid is None and head_oid is None and not require_immutable_identity:
         return None
     if not isinstance(base_oid, str) or not isinstance(head_oid, str):
-        raise RuntimeError("GitHub returned incomplete immutable pull-request identity")
+        raise TypeError("GitHub returned incomplete immutable pull-request identity")
     number = metadata.get("number")
     url = metadata.get("url")
     if not isinstance(number, int) or not isinstance(url, str):
-        raise RuntimeError("GitHub returned incomplete pull-request identity")
+        raise TypeError("GitHub returned incomplete pull-request identity")
     return ImmutableIdentity(
         repository=repository,
         number=number,
@@ -453,7 +454,7 @@ def review_scope(metadata: dict[str, Any]) -> ReviewScope:
     """Bind mutable issue/scope fields so they cannot drift during review."""
     closing_issues = metadata.get("closingIssuesReferences")
     if not isinstance(closing_issues, list):
-        raise RuntimeError("GitHub returned incomplete review-scope fields")
+        raise TypeError("GitHub returned incomplete review-scope fields")
     try:
         canonical_issues = sorted(
             json.dumps(
@@ -494,7 +495,7 @@ def review_scope(metadata: dict[str, Any]) -> ReviewScope:
 def linked_issue_reference(issue: object) -> tuple[str, str, int, str]:
     """Return one validated canonical linked-issue identity."""
     if not isinstance(issue, dict):
-        raise RuntimeError("GitHub returned an invalid linked issue reference")
+        raise TypeError("GitHub returned an invalid linked issue reference")
     issue_id = issue.get("id")
     repository_data = issue.get("repository")
     number = issue.get("number")
@@ -829,7 +830,7 @@ def paginated_issue_comments(
                 "GitHub returned invalid linked issue comment pages"
             ) from error
         if not isinstance(page_comments, list):
-            raise RuntimeError("GitHub returned invalid linked issue comment pages")
+            raise TypeError("GitHub returned invalid linked issue comment pages")
         if not all(isinstance(comment, dict) for comment in page_comments):
             raise RuntimeError("GitHub returned an invalid linked issue comment")
         if page > MAX_LINKED_ISSUE_COMMENT_PAGES:
@@ -885,7 +886,7 @@ def linked_issue_metadata(
     except json.JSONDecodeError as error:
         raise RuntimeError("GitHub returned an invalid linked issue") from error
     if not isinstance(issue_data, dict):
-        raise RuntimeError("GitHub returned an invalid linked issue")
+        raise TypeError("GitHub returned an invalid linked issue")
     return issue_data
 
 
@@ -895,7 +896,7 @@ def linked_requirements(
     """Bind every linked issue's requirement content and complete comment history."""
     references = metadata.get("closingIssuesReferences")
     if not isinstance(references, list):
-        raise RuntimeError("GitHub returned incomplete linked issue references")
+        raise TypeError("GitHub returned incomplete linked issue references")
     identities = sorted(linked_issue_reference(issue) for issue in references)
     if len(identities) != len(set(identities)):
         raise RuntimeError("GitHub returned duplicate linked issue references")
@@ -1034,7 +1035,7 @@ def git_bytes(*arguments: str, cwd: Path | None = None) -> bytes:
         raise RuntimeError(message or f"git {' '.join(arguments)} failed")
     stdout = result.stdout
     if not isinstance(stdout, bytes):
-        raise RuntimeError("git returned non-byte output for immutable path evidence")
+        raise TypeError("git returned non-byte output for immutable path evidence")
     return stdout
 
 
@@ -1106,7 +1107,7 @@ def strict_changed_paths(
         return immutable_changed_paths(base_oid, head_oid), None
     base_ref = metadata.get("baseRefName")
     if not isinstance(base_ref, str):
-        raise RuntimeError("GitHub returned an invalid pull-request base ref")
+        raise TypeError("GitHub returned an invalid pull-request base ref")
     snapshot = materialize_snapshot(
         repository=target.repository,
         number=target.number,
@@ -1253,7 +1254,7 @@ def pr_metadata(
     command.extend(("--json", FIELDS))
     metadata = json.loads(gh(*command))
     if not isinstance(metadata, dict):
-        raise RuntimeError("GitHub returned an invalid pull-request object")
+        raise TypeError("GitHub returned an invalid pull-request object")
     return metadata
 
 
@@ -1313,11 +1314,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise RuntimeError(
                     "requested pull request does not match the expected target number"
                 )
-            if pull_request.startswith("https://"):
-                if pull_request != target.url:
-                    raise RuntimeError(
-                        "requested pull request does not match the expected target URL"
-                    )
+            if pull_request.startswith("https://") and pull_request != target.url:
+                raise RuntimeError(
+                    "requested pull request does not match the expected target URL"
+                )
         metadata = pr_metadata(pull_request, target)
         metadata_problem = metadata_error(
             metadata, require_immutable_identity=require_immutable_identity
@@ -1337,7 +1337,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             or not isinstance(number, int)
             or not isinstance(url, str)
         ):
-            raise RuntimeError("GitHub returned incomplete repository or PR identity")
+            raise TypeError("GitHub returned incomplete repository or PR identity")
         pull_repository = repository_from_pr_url(url, number)
         if pull_repository.casefold() != repository.casefold():
             raise RuntimeError(
@@ -1447,7 +1447,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except LinkedRequirementsCoverageGap as error:
         structured_error("linked issue requirements coverage gap", str(error))
         return 1
-    except (RuntimeError, json.JSONDecodeError) as error:
+    except (RuntimeError, TypeError, json.JSONDecodeError) as error:
         print(error, file=sys.stderr)
         return 1
     evidence: dict[str, object] = {
