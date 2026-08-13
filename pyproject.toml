@@ -7,14 +7,14 @@ dependencies = []
 
 [dependency-groups]
 dev = [
-    "check-jsonschema>=0.33,<1",
-    "coverage>=7.10,<8",
+    "check-jsonschema>=0.38.0,<1",
+    "coverage>=7.15.4,<8",
     "mypy>=1.17,<3",
-    "pre-commit>=3.0,<5",
+    "pre-commit>=4.6.1,<5",
     "pytest>=9.0.3,<10",
     "pymarkdownlnt>=0.9.39,<1",
     "pyyaml>=6.0,<7",
-    "ruff>=0.12,<1",
+    "ruff>=0.16.2,<1",
     "types-pyyaml>=6.0,<7",
     "yamllint>=1.35,<2",
 ]
