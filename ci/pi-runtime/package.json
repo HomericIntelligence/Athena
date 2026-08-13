@@ -7,6 +7,6 @@
     "node": ">=22.19.0"
   },
   "dependencies": {
-    "pi-subagents": "0.40.0"
+    "pi-subagents": "0.43.0"
   }
 }
