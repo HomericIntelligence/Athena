@@ -807,7 +807,7 @@ class WorkflowContractTests(unittest.TestCase):
             {
                 "package-ecosystem": "npm",
                 "directory": "/ci/pi-runtime",
-                "schedule": {"interval": "weekly"},
+                "schedule": {"interval": "monthly"},
             },
             dependabot["updates"],
         )
