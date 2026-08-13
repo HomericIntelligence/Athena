@@ -217,6 +217,50 @@ class ScriptConventionTests(unittest.TestCase):
                     self.assertNotIn("Traceback", result.stderr)
 
 
+class RetrievableSkillSelectorTests(unittest.TestCase):
+    def test_lists_only_flat_retrievable_main_skills(self) -> None:
+        script = ROOT / "skills/advise/scripts/list_retrievable_skills.py"
+        self.assertTrue(script.is_file(), f"missing executable selector: {script}")
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            knowledge_root = Path(temporary_directory)
+            skills = knowledge_root / "skills"
+            skills.mkdir()
+            (skills / "alpha.md").write_text("main\n", encoding="utf-8")
+            (skills / "alpha.notes.md").write_text("notes\n", encoding="utf-8")
+            (skills / "alpha.notes-v2.md").write_text("notes v2\n", encoding="utf-8")
+            (skills / "alpha.history").write_text("history\n", encoding="utf-8")
+            (skills / "alpha.history.md").write_text(
+                "history markdown\n", encoding="utf-8"
+            )
+            (skills / "beta.md").write_text("main\n", encoding="utf-8")
+            nested = skills / "nested"
+            nested.mkdir()
+            (nested / "gamma.md").write_text("nested\n", encoding="utf-8")
+
+            result = run_script(
+                "skills/advise/scripts/list_retrievable_skills.py",
+                str(knowledge_root),
+                cwd=knowledge_root,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("skills/alpha.md\nskills/beta.md\n", result.stdout)
+
+    def test_rejects_checkout_without_a_skills_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            knowledge_root = Path(temporary_directory)
+            result = run_script(
+                "skills/advise/scripts/list_retrievable_skills.py",
+                str(knowledge_root),
+                cwd=knowledge_root,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("knowledge skills directory is unavailable", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
+
 class FakeGitHubCliFixtureTests(unittest.TestCase):
     def run_fake_gh(
         self,
