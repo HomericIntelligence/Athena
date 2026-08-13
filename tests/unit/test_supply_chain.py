@@ -808,6 +808,7 @@ class WorkflowContractTests(unittest.TestCase):
                 "package-ecosystem": "npm",
                 "directory": "/ci/pi-runtime",
                 "schedule": {"interval": "monthly"},
+                "cooldown": {"default-days": 7},
                 "open-pull-requests-limit": 5,
                 "labels": ["dependencies", "npm"],
                 "commit-message": {"prefix": "chore(deps)"},
