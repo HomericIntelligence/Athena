@@ -576,7 +576,16 @@ class SnapshotMaterializationTests(unittest.TestCase):
         root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
         self.addCleanup(self.snapshot.remove_snapshot, root)
         maximum_bytes = 64 * 1024 * 1024
-        source = self.snapshot._create_quota_volume(root, maximum_bytes)
+        try:
+            source = self.snapshot._create_quota_volume(root, maximum_bytes)
+        except RuntimeError as error:
+            if str(error) != (
+                "host cannot enforce the immutable pull-request snapshot size limit"
+            ):
+                raise
+            self.skipTest(str(error))
+        if source is None:
+            self.skipTest("macOS sparse-image quota is unavailable")
         self.assertLessEqual(shutil.disk_usage(source).total, maximum_bytes)
         for name in ("one", "two"):
             result = subprocess.run(
@@ -1085,7 +1094,7 @@ class LinuxBoundedSnapshotBehaviorTests(unittest.TestCase):
         )
 
     def test_bounded_materialize_main_emits_the_verified_record(self) -> None:
-        root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
+        root = Path(tempfile.mkdtemp(prefix="athena-pr-review-")).resolve()
         self.addCleanup(shutil.rmtree, root, ignore_errors=True)
         output = io.StringIO()
 
