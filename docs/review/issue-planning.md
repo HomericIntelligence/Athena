@@ -42,11 +42,13 @@ A canonical plan contains:
 5. applicable error, boundary, security, migration, rollout, and rollback considerations; and
 6. unresolved decisions, assumptions, and dependencies.
 
-Run `advise` before drafting; its required knowledge sync must finish first. Include only current
-requirements: no speculative features, unrelated refactors, or generic framework layers without a
-demonstrated consumer. For a new module, abstraction, public interface, dependency, configuration path,
-or state owner, identify that consumer and why reuse, deletion, consolidation, or a direct local change
-is not the simpler behaviorally complete option.
+Run `advise` before drafting. In planning mode, it may use the existing checkout as best effort
+without completing upstream synchronization; report its revision and trust/freshness limits, or its
+explicit no-guidance result, and continue planning. Include only current requirements: no speculative
+features, unrelated refactors, or generic framework layers without a demonstrated consumer. For a
+new module, abstraction, public interface, dependency, configuration path, or state owner, identify
+that consumer and why reuse, deletion, consolidation, or a direct local change is not the simpler
+behaviorally complete option.
 
 ## Issue review
 

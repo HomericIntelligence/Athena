@@ -1,6 +1,6 @@
 ---
 name: learn
-description: Preserve a verified, non-duplicate Mnemosyne lesson through an isolated-worktree pull request when requested; otherwise report without mutation. Fails closed if ~/.agent_brain/knowledge cannot be prepared.
+description: Preserve a verified, non-duplicate Mnemosyne lesson through an isolated-worktree pull request when requested; otherwise report without mutation. A usable knowledge checkout is required before discovery or writing; read-only discovery may use its current contents without upstream synchronization, while new-PR delivery requires a fresh synchronized default-branch base.
 argument-hint: <lesson or session summary>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 ---
@@ -14,14 +14,30 @@ First decide whether a durable delta exists; write a requested result through a 
 
 Prepare Mnemosyne at `$HOME/.agent_brain/knowledge` under the canonical
 [`dependency-resolution` contract](../../docs/dependency-resolution.md). Report the resolved
-repository, commit SHA, and trust basis. Any resolution, authentication, checkout, update, or
-revalidation failure is blocking.
+repository, commit SHA, and trust basis. A usable knowledge checkout is required before discovery
+or writing. Normal preparation may create it under the dependency-resolution contract. Any checkout
+or inspection failure blocks `learn`; upstream resolution, authentication, update, and revalidation
+may be deferred during read-only discovery but are required at the delivery boundary.
+
+**Read-only discovery:** require the existing checkout, but do not require upstream resolution,
+fetch, fast-forward, or automatic-fork revalidation. Bind discovery to its current `HEAD`, report
+its repository, revision, origin/trust status, and freshness or verification limitation, and use the
+checked-out content as best effort. If no usable checkout exists or inspection fails, report
+`blocked` and stop; do not substitute another repository or continue into duplicate analysis.
+
+Before creating a new PR, complete the normal dependency-resolution update and revalidation against
+the canonical default branch. Bind the delivery worktree to that exact fresh SHA. Planning and
+read-only discovery may use a stale checkout; PR delivery may not.
 
 ## Decide before writing
 
 This phase is read-only.
 
-1. Run `advise` with the proposed lesson.
+The steps below require the existing checkout described above. In read-only discovery, do not derive
+a durable write disposition or continue after the required checkout is unavailable.
+
+1. Run `advise` with the proposed lesson, using its planning-mode best-effort behavior for this
+   read-only discovery phase.
 2. Define retrieval intent as the trigger/context, desired outcome, constraints, and failure mode;
    never use title, issue number, or session wording as identity.
 3. Search flat `skills/*.md` (not optional notes), group semantic matches by intent, and inspect each
@@ -112,7 +128,9 @@ this fallback to reconstruct an Existing-PR worktree.
 
 ## Deliver a requested change
 
-1. Never modify the shared checkout. For a new PR, derive `slug` and `name` from lowercase ASCII
+1. Never modify the shared checkout. Before creating a new-PR worktree, complete the deferred
+   dependency-resolution update and bind it to the exact current default-branch SHA. Then derive
+   `slug` and `name` from lowercase ASCII
    letters, digits, and single hyphens using `[a-z0-9][a-z0-9-]*`; reject empty, control, `/`, `..`,
    and leading `-` values. Add a collision-resistant suffix when needed. Create `skill/<slug>` at
    `$HOME/.agent_brain/worktrees/knowledge-<slug>` from the resolved default-branch SHA; resolve the
