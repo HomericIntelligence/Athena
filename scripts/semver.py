@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from typing import Final
 
-
 SEMVER_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^(0|[1-9]\d*)\."
     r"(0|[1-9]\d*)\."

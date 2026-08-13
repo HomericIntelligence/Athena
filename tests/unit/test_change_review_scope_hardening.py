@@ -6,15 +6,14 @@ import importlib.util
 import io
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import tracemalloc
-from typing import Any, cast
 import unittest
+from pathlib import Path
+from typing import Any, cast
 from unittest.mock import patch
-
 
 ROOT = Path(__file__).resolve().parents[2]
 RESOLVER = ROOT / "skills/change-review/scripts/resolve_scope.py"
@@ -511,9 +510,11 @@ class ChangeReviewScopeHardeningTests(unittest.TestCase):
                         return cast(int, original_open(path, flags, mode))
                     return cast(int, original_open(path, flags, mode, dir_fd=dir_fd))
 
-                with patch.object(module.os, "open", side_effect=guarded_open):
-                    with self.assertRaisesRegex(RuntimeError, "not a regular file"):
-                        module.read_regular_file_without_following(repository, "race")
+                with (
+                    patch.object(module.os, "open", side_effect=guarded_open),
+                    self.assertRaisesRegex(RuntimeError, "not a regular file"),
+                ):
+                    module.read_regular_file_without_following(repository, "race")
         finally:
             sys.modules.pop(module_name, None)
 

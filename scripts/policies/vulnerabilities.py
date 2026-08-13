@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import date
 import json
-from pathlib import Path
 import re
+from datetime import date
+from pathlib import Path
 from typing import Any, Final
 
 import yaml
-
 
 BLOCKING_SEVERITIES: Final = frozenset({"Critical", "High"})
 MAX_EXCEPTION_DAYS: Final = {"Critical": 7, "High": 30}

@@ -10,9 +10,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from collections.abc import Callable
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / "scripts" / "validate_skills.py"

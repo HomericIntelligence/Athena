@@ -2,21 +2,20 @@
 
 from __future__ import annotations
 
-from contextlib import redirect_stderr, redirect_stdout
 import importlib.util
 import io
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
 from unittest.mock import patch
 
 from skills._cli import argument_parser, git_read_arguments, git_read_environment
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -35,6 +34,7 @@ def run_script(
     *arguments: str,
     cwd: Path,
     env: dict[str, str] | None = None,
+    input_text: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     command = [str(ROOT / relative_path), *arguments]
     process_env = env.copy() if env is not None else os.environ.copy()
@@ -57,6 +57,7 @@ def run_script(
         capture_output=True,
         text=True,
         check=False,
+        input=input_text,
     )
 
 
@@ -102,8 +103,8 @@ class ScriptConventionTests(unittest.TestCase):
         ):
             environment = git_read_environment()
 
-        for key in hostile_environment:
-            self.assertNotEqual(hostile_environment[key], environment.get(key))
+        for key, value in hostile_environment.items():
+            self.assertNotEqual(value, environment.get(key))
         self.assertEqual(os.devnull, environment["GIT_GRAFT_FILE"])
         self.assertEqual("1", environment["GIT_NO_REPLACE_OBJECTS"])
         self.assertEqual("1", environment["GIT_NO_LAZY_FETCH"])
@@ -190,11 +191,10 @@ class ScriptConventionTests(unittest.TestCase):
                 ("pattern",),
                 "git",
             ),
-            ("skills/tidy/scripts/audit_worktrees.py", (), "git"),
             (
-                "skills/tidy/scripts/remove_worktree.py",
-                ("/tmp/worktree", "--expected-head", "head"),
-                "git",
+                "skills/tidy/scripts/run_tidy.py",
+                ("/tmp/automation",),
+                "uv",
             ),
         )
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1971,152 +1971,69 @@ class WorktreeScriptTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("invalid branch", result.stderr)
 
-    def test_remove_worktree_rejects_dirty_worktree(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            repository = Path(temporary_directory) / "repo"
-            initialize_repository(repository)
-            worktree = Path(temporary_directory) / "feature"
-            git(repository, "worktree", "add", "-q", "-b", "feature", str(worktree))
-            expected_head = git(worktree, "rev-parse", "HEAD")
-            (worktree / "dirty.txt").write_text("dirty\n", encoding="utf-8")
-            result = run_script(
-                "skills/tidy/scripts/remove_worktree.py",
-                str(worktree),
-                "--expected-head",
-                expected_head,
-                cwd=repository,
-            )
 
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("not clean", result.stderr)
+class TidyDelegationTests(unittest.TestCase):
+    def test_tidy_delegate_preserves_process_contract(self) -> None:
+        delegate = ROOT / "skills/tidy/scripts/run_tidy.py"
+        self.assertTrue(delegate.is_file(), "the thin tidy delegate must exist")
 
-    def test_remove_worktree_requires_audited_head(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            repository = Path(temporary_directory) / "repo"
-            initialize_repository(repository)
-            worktree = Path(temporary_directory) / "feature"
-            git(repository, "worktree", "add", "-q", "-b", "feature", str(worktree))
-
-            result = run_script(
-                "skills/tidy/scripts/remove_worktree.py",
-                str(worktree),
-                cwd=repository,
-            )
-
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("expected-head", result.stderr)
-
-    def test_remove_worktree_rejects_unregistered_path(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            repository = Path(temporary_directory) / "repo"
-            initialize_repository(repository)
-            unregistered = Path(temporary_directory) / "unregistered"
-            unregistered.mkdir()
-            result = run_script(
-                "skills/tidy/scripts/remove_worktree.py",
-                str(unregistered),
-                "--expected-head",
-                git(repository, "rev-parse", "HEAD"),
-                cwd=repository,
-            )
-
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("not a registered worktree", result.stderr)
-
-    def test_remove_worktree_rejects_changed_head(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            repository = Path(temporary_directory) / "repo"
-            initialize_repository(repository)
-            worktree = Path(temporary_directory) / "feature"
-            git(repository, "worktree", "add", "-q", "-b", "feature", str(worktree))
-            audited_head = git(worktree, "rev-parse", "HEAD")
-            (worktree / "tracked.txt").write_text("changed\n", encoding="utf-8")
-            git(worktree, "commit", "-qam", "test: move head")
-            result = run_script(
-                "skills/tidy/scripts/remove_worktree.py",
-                str(worktree),
-                "--expected-head",
-                audited_head,
-                cwd=repository,
-            )
-
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("HEAD changed", result.stderr)
-
-    def test_remove_worktree_does_not_prune_unrelated_registration(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            repository = root / "repo"
-            initialize_repository(repository)
-            approved = root / "approved"
-            stale = root / "stale"
-            git(repository, "worktree", "add", "-q", "-b", "approved", str(approved))
-            git(repository, "worktree", "add", "-q", "-b", "stale", str(stale))
-            shutil.rmtree(stale)
-            result = run_script(
-                "skills/tidy/scripts/remove_worktree.py",
-                str(approved),
-                "--expected-head",
-                git(approved, "rev-parse", "HEAD"),
-                cwd=repository,
+            automation_checkout = root / "trusted automation"
+            automation_checkout.mkdir()
+            target_repository = root / "target repository"
+            target_repository.mkdir()
+            bin_directory = root / "bin"
+            bin_directory.mkdir()
+            fake_uv = bin_directory / "uv"
+            fake_uv.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json\n"
+                "import os\n"
+                "import sys\n"
+                "stdin = sys.stdin.read()\n"
+                "print(json.dumps("
+                "{'argv': sys.argv[1:], 'cwd': os.getcwd(), 'stdin': stdin}"
+                "))\n"
+                "print('delegated stderr', file=sys.stderr)\n"
+                "raise SystemExit(37)\n",
+                encoding="utf-8",
             )
-            registrations = git(repository, "worktree", "list", "--porcelain")
+            fake_uv.chmod(0o755)
+            environment = os.environ.copy()
+            environment["PATH"] = f"{bin_directory}{os.pathsep}{environment['PATH']}"
 
-        self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn(str(stale), registrations)
-
-    def test_remove_worktree_removes_clean_worktree_at_expected_head(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            repository = Path(temporary_directory) / "repo"
-            initialize_repository(repository)
-            worktree = Path(temporary_directory) / "feature"
-            git(repository, "worktree", "add", "-q", "-b", "feature", str(worktree))
-            expected_head = git(worktree, "rev-parse", "HEAD")
             result = run_script(
-                "skills/tidy/scripts/remove_worktree.py",
-                str(worktree),
-                "--expected-head",
-                expected_head,
-                cwd=repository,
-            )
-
-        self.assertEqual(0, result.returncode, result.stderr)
-        self.assertFalse(worktree.exists())
-
-    def test_audit_worktrees_emits_computable_status(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            repository = Path(temporary_directory) / "repo"
-            initialize_repository(repository)
-            result = run_script(
-                "skills/tidy/scripts/audit_worktrees.py", cwd=repository
+                "skills/tidy/scripts/run_tidy.py",
+                str(automation_checkout),
+                "--",
+                "--dry-run",
+                "value with spaces",
+                "$(touch should-not-run)",
+                cwd=target_repository,
+                env=environment,
+                input_text="interactive sentinel\n",
             )
 
-        self.assertEqual(0, result.returncode, result.stderr)
-        records = json.loads(result.stdout)
-        self.assertEqual(1, len(records))
-        self.assertEqual(str(repository.resolve()), records[0]["path"])
-        self.assertTrue(records[0]["clean"])
-
-    def test_audit_worktrees_reports_missing_registered_path(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            root = Path(temporary_directory)
-            repository = root / "repo"
-            initialize_repository(repository)
-            stale = root / "stale"
-            git(repository, "worktree", "add", "-q", "-b", "stale", str(stale))
-            shutil.rmtree(stale)
-            result = run_script(
-                "skills/tidy/scripts/audit_worktrees.py", cwd=repository
-            )
-
-        self.assertEqual(0, result.returncode, result.stderr)
-        records = json.loads(result.stdout)
-        stale_record = next(
-            record for record in records if record["path"] == str(stale.resolve())
+        self.assertEqual(37, result.returncode)
+        self.assertEqual("delegated stderr", result.stderr.strip())
+        invocation = json.loads(result.stdout)
+        self.assertEqual(str(target_repository.resolve()), invocation["cwd"])
+        self.assertEqual("interactive sentinel\n", invocation["stdin"])
+        self.assertEqual(
+            [
+                "run",
+                "--project",
+                str(automation_checkout),
+                "--locked",
+                "hephaestus-tidy",
+                "--",
+                "--dry-run",
+                "value with spaces",
+                "$(touch should-not-run)",
+            ],
+            invocation["argv"],
         )
-        self.assertFalse(stale_record["exists"])
-        self.assertFalse(stale_record["clean"])
-        self.assertIn("prunable", stale_record)
 
 
 class DebuggingScriptTests(unittest.TestCase):

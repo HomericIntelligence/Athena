@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from scripts import coverage_policy
@@ -20,7 +20,7 @@ class CoveragePolicyTests(unittest.TestCase):
         ):
             with (
                 self.subTest(report=report),
-                self.assertRaisesRegex(ValueError, message),
+                self.assertRaisesRegex(TypeError, message),
             ):
                 coverage_policy.coverage_failures(report, 80.0)
 

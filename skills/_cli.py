@@ -5,10 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import subprocess
-from typing import Any, Sequence
-
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
@@ -20,7 +20,8 @@ def run_command(
     if not arguments:
         raise RuntimeError("required command is empty")
     try:
-        return subprocess.run(arguments, **kwargs)
+        check = kwargs.pop("check", False)
+        return subprocess.run(arguments, check=check, **kwargs)
     except FileNotFoundError as error:
         command = error.filename or arguments[0]
         raise RuntimeError(f"required command unavailable: {command}") from error
@@ -114,7 +115,7 @@ def plugin_version() -> str:
     document = json.loads(manifest.read_text(encoding="utf-8"))
     version = document.get("version") if isinstance(document, dict) else None
     if not isinstance(version, str):
-        raise RuntimeError(f"plugin manifest has no string version: {manifest}")
+        raise TypeError(f"plugin manifest has no string version: {manifest}")
     return version
 
 
@@ -131,7 +132,7 @@ class _PluginVersionAction(argparse.Action):
         del namespace, values, option_string
         try:
             version = plugin_version()
-        except (OSError, json.JSONDecodeError, RuntimeError) as error:
+        except (OSError, TypeError, json.JSONDecodeError) as error:
             parser.exit(
                 1, f"{parser.prog}: error: cannot read plugin version: {error}\n"
             )

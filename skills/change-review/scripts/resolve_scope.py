@@ -3,17 +3,19 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from hashlib import sha256
 import hashlib
 import json
 import os
-from pathlib import Path
 import stat
 import subprocess
 import sys
 import tempfile
-from typing import Callable, Iterable, Protocol, Sequence, cast
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
+from hashlib import sha256
+from operator import index
+from pathlib import Path
+from typing import Protocol, cast
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
@@ -24,7 +26,6 @@ from skills._cli import (
     git_read_environment,
     run_command,
 )
-
 
 READ_CHUNK_SIZE = 1024 * 1024
 ERROR_OUTPUT_LIMIT = 16 * 1024
@@ -55,7 +56,7 @@ def git_text(*arguments: str, repository_root: Path | None = None) -> str:
     output = git_bytes(*arguments, repository_root=repository_root).decode(
         "utf-8", errors="surrogateescape"
     )
-    return output[:-1] if output.endswith("\n") else output
+    return output.removesuffix("\n")
 
 
 def path_list(document: bytes) -> list[str]:
@@ -817,11 +818,15 @@ def read_regular_file_snapshot_without_following(
     object_format: str | None = None,
 ) -> FileSnapshot:
     """Fingerprint a regular file without following links or blocking on a FIFO."""
-    nonblocking_flag = getattr(os, "O_NONBLOCK", None)
-    if not isinstance(nonblocking_flag, int):
+    nonblocking_value = getattr(os, "O_NONBLOCK", None)
+    try:
+        if nonblocking_value is None:
+            raise TypeError
+        nonblocking_flag = index(nonblocking_value)
+    except TypeError as error:
         raise RuntimeError(
             "host cannot inspect repository files without nonblocking open support"
-        )
+        ) from error
     parent_descriptor, filename = nofollow_parent_descriptor(
         repository_root, relative_path
     )

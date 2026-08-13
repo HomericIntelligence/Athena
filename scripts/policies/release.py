@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
 import json
-from pathlib import Path
 import re
-
+from hashlib import sha256
+from pathlib import Path
 
 SEMVER_TAG = re.compile(r"^v([0-9]+\.[0-9]+\.[0-9]+)$")
 
@@ -61,7 +60,7 @@ def _verify_spdx(path: Path, *, expected_name: str, version: str) -> None:
     except (OSError, json.JSONDecodeError) as error:
         raise ValueError(f"cannot parse SPDX document {path.name}: {error}") from error
     if not isinstance(document, dict):
-        raise ValueError(f"SPDX document {path.name} must be an object")
+        raise TypeError(f"SPDX document {path.name} must be an object")
     if document.get("spdxVersion") != "SPDX-2.3":
         raise ValueError(f"SPDX document {path.name} must use SPDX-2.3")
     if document.get("name") != expected_name:
@@ -71,7 +70,7 @@ def _verify_spdx(path: Path, *, expected_name: str, version: str) -> None:
         raise ValueError(f"SPDX document {path.name} has an invalid namespace")
     packages = document.get("packages")
     if not isinstance(packages, list):
-        raise ValueError(f"SPDX document {path.name} has no packages list")
+        raise TypeError(f"SPDX document {path.name} has no packages list")
     expected_package = (
         "athena-plugin" if expected_name.startswith("athena-plugin-") else expected_name
     )

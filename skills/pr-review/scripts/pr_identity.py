@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from urllib.parse import urlparse
 
-
 PR_URL = re.compile(r"https://github\.com/[^/\s]+/[^/\s]+/pull/[1-9][0-9]*")
 COMMIT_OID = re.compile(r"[0-9a-f]{40}\Z")
 GITHUB_REPOSITORY = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+\Z")

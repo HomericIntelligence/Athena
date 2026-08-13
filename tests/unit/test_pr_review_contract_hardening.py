@@ -2,23 +2,22 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-from hashlib import sha256
 import importlib.util
 import io
 import json
 import os
-from pathlib import Path
 import shutil
 import stat
 import subprocess
 import sys
 import tempfile
+import unittest
+from collections.abc import Callable, Sequence
+from hashlib import sha256
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-import unittest
 from unittest.mock import patch
-
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "skills" / "pr-review" / "scripts" / "collect_evidence.py"
@@ -272,9 +271,11 @@ def linux_bounded_quota_available() -> bool:
             "--",
             "sh",
             "-c",
-            "mkdir -p /tmp/athena-bounded-quota-probe && "
-            "mount -t tmpfs -o size=64k tmpfs /tmp/athena-bounded-quota-probe && "
-            "umount /tmp/athena-bounded-quota-probe",
+            (
+                "mkdir -p /tmp/athena-bounded-quota-probe && "
+                "mount -t tmpfs -o size=64k tmpfs /tmp/athena-bounded-quota-probe && "
+                "umount /tmp/athena-bounded-quota-probe"
+            ),
         ],
         capture_output=True,
         text=True,
@@ -622,7 +623,11 @@ class SnapshotMaterializationTests(unittest.TestCase):
                 root = Path(directory) / "snapshot"
                 root.mkdir()
 
-                def git(*arguments: str, **_: object) -> str:
+                def git(
+                    *arguments: str,
+                    scenario: str = scenario,
+                    **_: object,
+                ) -> str:
                     if arguments[0] == "init":
                         Path(arguments[-1]).mkdir()
                     if "fetch" in arguments and scenario == "timeout":
@@ -1027,7 +1032,6 @@ class SnapshotMaterializationTests(unittest.TestCase):
 
             def unavailable_volume(*_: object) -> None:
                 quota_consulted.append(True)
-                return None
 
             with (
                 patch.object(
@@ -1283,11 +1287,11 @@ class LinuxBoundedSnapshotBehaviorTests(unittest.TestCase):
 
     def test_require_base_ref_rejects_invalid_branch_names(self) -> None:
         for invalid in ("", "-leading-dash", "contains..two-dots"):
-            with self.subTest(base_ref=invalid):
-                with self.assertRaisesRegex(
-                    RuntimeError, "invalid pull-request base ref"
-                ):
-                    self.snapshot._require_base_ref(invalid)
+            with (
+                self.subTest(base_ref=invalid),
+                self.assertRaisesRegex(RuntimeError, "invalid pull-request base ref"),
+            ):
+                self.snapshot._require_base_ref(invalid)
 
     def test_require_base_ref_rejects_a_branch_git_cannot_check(self) -> None:
         with (
@@ -1790,7 +1794,7 @@ def is_linked_issue_comments_request():
 def is_canonical_linked_issue_comments_request():
     endpoint = (
         r"repos/owner/requirements/issues/[1-9][0-9]*/comments"
-        r"\?per_page=100&page=[1-9][0-9]*"
+        r"\\?per_page=100&page=[1-9][0-9]*"
     )
     return (
         len(arguments) == 6
@@ -2174,19 +2178,19 @@ class BoundedLinkedCommentReaderTests(unittest.TestCase):
 
     def test_rejects_malformed_linked_comment_pages(self) -> None:
         cases = (
-            (b"not json", "invalid linked issue comment pages"),
-            (b'{"id": 1}', "invalid linked issue comment pages"),
-            (b"[1]", "invalid linked issue comment"),
+            (b"not json", RuntimeError, "invalid linked issue comment pages"),
+            (b'{"id": 1}', TypeError, "invalid linked issue comment pages"),
+            (b"[1]", RuntimeError, "invalid linked issue comment"),
         )
-        for response, message in cases:
-            with self.subTest(response=response):
-                with (
-                    patch.object(
-                        self.collector, "bounded_gh_output", return_value=response
-                    ),
-                    self.assertRaisesRegex(RuntimeError, message),
-                ):
-                    self.collector.paginated_issue_comments("owner/requirements", 10)
+        for response, error_type, message in cases:
+            with (
+                self.subTest(response=response),
+                patch.object(
+                    self.collector, "bounded_gh_output", return_value=response
+                ),
+                self.assertRaisesRegex(error_type, message),
+            ):
+                self.collector.paginated_issue_comments("owner/requirements", 10)
 
     def test_fails_closed_before_reading_when_comment_bytes_are_exhausted(self) -> None:
         with (

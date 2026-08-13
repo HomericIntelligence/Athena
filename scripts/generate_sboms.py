@@ -3,17 +3,18 @@
 
 from __future__ import annotations
 
-from collections import Counter
-from datetime import datetime, timezone
-from hashlib import sha1, sha256
 import json
 import os
-from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
 import tarfile
-from typing import Any, Final, Sequence
+from collections import Counter
+from collections.abc import Sequence
+from datetime import UTC, datetime
+from hashlib import sha1, sha256
+from pathlib import Path, PurePosixPath
+from typing import Any, Final
 
 import yaml
 
@@ -21,9 +22,8 @@ sys.dont_write_bytecode = True
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts.package_plugin import read_plugin_version  # noqa: E402
-from skills._cli import argument_parser  # noqa: E402
-
+from scripts.package_plugin import read_plugin_version
+from skills._cli import argument_parser
 
 SPDX_VERSION: Final = "SPDX-2.3"
 REPOSITORY: Final = "https://github.com/HomericIntelligence/Athena"
@@ -128,7 +128,7 @@ def _base_document(
     )
     stable_creators.append("Tool: Athena SBOM generator")
     creation["creators"] = stable_creators
-    creation["created"] = datetime.fromtimestamp(epoch, timezone.utc).strftime(
+    creation["created"] = datetime.fromtimestamp(epoch, UTC).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
     document["creationInfo"] = creation
@@ -355,7 +355,7 @@ def build_spdx(
         all_packages, key=lambda package: str(package.get("SPDXID", ""))
     )
     document["documentDescribes"] = [root["SPDXID"]]
-    root_relationships = list(
+    root_relationships = [
         {
             "spdxElementId": root["SPDXID"],
             "relationshipType": "DEPENDS_ON",
@@ -363,7 +363,7 @@ def build_spdx(
         }
         for package in [*packages, *additions]
         if isinstance(package, dict) and isinstance(package.get("SPDXID"), str)
-    )
+    ]
     document["relationships"] = sorted(
         [*preserved_relationships, *root_relationships],
         key=lambda relation: json.dumps(relation, sort_keys=True),

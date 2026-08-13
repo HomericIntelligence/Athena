@@ -5,30 +5,29 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 sys.dont_write_bytecode = True
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts.policies.pull_request import (  # noqa: E402
-    evaluate_pull_request as evaluate_pull_request,
-    flatten_commit_pages as flatten_commit_pages,
+from scripts.policies.pull_request import evaluate_pull_request, flatten_commit_pages
+from scripts.policies.release import evaluate_release, verify_release_assets
+from scripts.policies.required_jobs import failed_required_jobs
+from scripts.policies.suppressions import find_suppressions
+from skills._cli import argument_parser
+
+__all__ = (
+    "evaluate_pull_request",
+    "evaluate_release",
+    "failed_required_jobs",
+    "find_suppressions",
+    "flatten_commit_pages",
+    "verify_release_assets",
 )
-from scripts.policies.release import (  # noqa: E402
-    evaluate_release as evaluate_release,
-    verify_release_assets as verify_release_assets,
-)
-from scripts.policies.required_jobs import (  # noqa: E402
-    failed_required_jobs as failed_required_jobs,
-)
-from scripts.policies.suppressions import (  # noqa: E402
-    find_suppressions as find_suppressions,
-)
-from skills._cli import argument_parser  # noqa: E402
 
 
 def _run_json(command: list[str]) -> Any:
@@ -153,7 +152,8 @@ def _release_command(repo_root: Path) -> int:
     if (
         not errors
         and subprocess.run(
-            ["git", "merge-base", "--is-ancestor", tag_commit, "origin/main"]
+            ["git", "merge-base", "--is-ancestor", tag_commit, "origin/main"],
+            check=False,
         ).returncode
         != 0
     ):

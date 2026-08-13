@@ -2,29 +2,28 @@
 
 from __future__ import annotations
 
-from contextlib import redirect_stderr, redirect_stdout
-from hashlib import sha256
 import io
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import tarfile
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from hashlib import sha256
+from pathlib import Path
 from unittest.mock import patch
 
 from scripts.package_plugin import (
     ARCHIVE_ROOTS,
-    PackageError,
     REQUIRED_MEMBERS,
+    PackageError,
     build_package,
     inspect_archive,
     main,
     read_plugin_version,
 )
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -454,9 +453,11 @@ if (
             create_repository(root)
             output = io.StringIO()
 
-            with patch("scripts.package_plugin._validate_repository") as validate:
-                with redirect_stdout(output):
-                    result = main(["--root", str(root)])
+            with (
+                patch("scripts.package_plugin._validate_repository") as validate,
+                redirect_stdout(output),
+            ):
+                result = main(["--root", str(root)])
 
             self.assertEqual(0, result)
             validate.assert_called_once_with(root.resolve())
@@ -467,12 +468,14 @@ if (
             root = Path(temporary_directory)
             errors = io.StringIO()
 
-            with patch(
-                "scripts.package_plugin._validate_repository",
-                side_effect=PackageError("repository validation failed"),
+            with (
+                patch(
+                    "scripts.package_plugin._validate_repository",
+                    side_effect=PackageError("repository validation failed"),
+                ),
+                redirect_stderr(errors),
             ):
-                with redirect_stderr(errors):
-                    result = main(["--root", str(root)])
+                result = main(["--root", str(root)])
 
             self.assertEqual(1, result)
             self.assertIn("repository validation failed", errors.getvalue())
