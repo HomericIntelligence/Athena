@@ -17,7 +17,8 @@ immutable commits with readable version comments and have minimum permissions an
   generated-Python, misplaced-Python, and credential-like members, ignores Python cache directories,
   permits tested helpers in skill-local script directories plus the shared `skills/_cli.py` factory,
   emits a SHA-256 checksum, and generates checksummed plugin and Linux build-environment SPDX 2.3
-  SBOMs plus native Syft inventories for the build environment and the locked, isolated Pi runtime.
+  SBOMs plus native Syft inventories for the build environment and the locked, isolated coding-harness
+  runtime.
 - `security/dependency-scan`: scans both internal inventories with a locked Grype version and current,
   hash-validated database; blocks fixable Critical and High findings unless covered by a narrow,
   owned, linked, unexpired exception whose Athena issue is still open; and retains the full JSON

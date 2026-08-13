@@ -1,13 +1,13 @@
 # Athena documentation
 
 **Why:** Athena ships one portable skill corpus, so its architecture, dependency, and governance
-contracts must be easy to find without duplicating them in every host integration.
+contracts must be easy to find without duplicating them for each coding harness.
 
 ## Architecture
 
 - [`adr/0001-plugin-distro-scope-policy.md`](adr/0001-plugin-distro-scope-policy.md): the accepted
   plugin-only distribution boundary.
-- [`host-compatibility.md`](host-compatibility.md): Claude Code, Codex, and Pi capability mapping.
+- [`host-compatibility.md`](host-compatibility.md): coding-harness capability mapping.
 - [`dependency-resolution.md`](dependency-resolution.md): mandatory Mnemosyne and Hephaestus owner
   and checkout resolution.
 

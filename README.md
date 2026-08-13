@@ -5,12 +5,12 @@
 [![Latest release](https://img.shields.io/github/v/release/HomericIntelligence/Athena)](https://github.com/HomericIntelligence/Athena/releases)
 [![License: BSD-3-Clause](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
 
-Portable, architecture-first repository-review, development, and orchestration skills for
-**Claude Code**, **Codex**, and **Pi**. They give every harness the same trusted, evidence-based
-workflow without requiring a host-specific runtime.
+Portable, architecture-first repository-review, development, and orchestration skills for coding
+harnesses. They give every harness the same trusted, evidence-based workflow without requiring a
+host-specific runtime.
 
-Athena is distributed only as an AI-harness plugin. It does not publish a Python wheel, source
-distribution, or runtime library.
+Athena is distributed only as a coding-harness skill and plugin package. It does not publish a
+Python wheel, source distribution, or runtime library.
 
 ## Required repositories
 
@@ -37,83 +37,31 @@ package or third-party runtime library.
 
 ## Install
 
-Install the section for your harness, then restart it so the skill catalog reloads.
+Install Athena through your coding harness's documented skill or plugin mechanism using the
+[Git-backed Athena source](https://github.com/HomericIntelligence/Athena). Prefer an immutable
+commit or supported release tag, then restart or reload the harness so its skill catalog recognizes
+Athena.
 
-### Claude Code
+Invoke skills through the harness's native skill-invocation mechanism; for example, ask the harness
+to use the `repo-review` skill. Update or remove Athena by managing the configured Git-backed source
+through that same mechanism.
 
-```bash
-claude plugin marketplace add https://github.com/HomericIntelligence/Athena
-claude plugin install athena@Athena
-```
+Some workflows optionally need delegation or explicitly scoped web access. When those capabilities
+are unavailable, Athena uses sequential work where supported or reports the capability gap. Install
+any required third-party extensions through the harness's own package mechanism and review their
+source before installing them.
 
-Invoke `/athena:repo-review`. Update or remove:
-
-```bash
-claude plugin marketplace update Athena
-claude plugin uninstall athena@Athena
-```
-
-### Codex
-
-```bash
-codex plugin marketplace add https://github.com/HomericIntelligence/Athena --ref main
-codex plugin add athena@athena
-codex plugin list --marketplace athena
-```
-
-Invoke `$repo-review` or ask Codex to use Athena's repo-review skill. Update or remove:
-
-```bash
-codex plugin marketplace upgrade athena
-codex plugin remove athena@athena
-codex plugin marketplace remove athena
-```
-
-### Pi
-
-Athena requires Pi `0.83.0`. The first Athena release with the native Pi
-manifest will be `v0.4.0`; until that signed tag exists, install an immutable
-commit. Do not use `v0.3.0`: it predates native Pi packaging.
-
-```bash
-pi install git:github.com/HomericIntelligence/Athena@<immutable-commit-or-supported-tag>
-```
-
-Pi discovers Athena's canonical `skills/` corpus as `/skill:<name>` commands;
-for example, invoke `/skill:repo-review`. Update only Athena's configured
-source; it reconciles the configured immutable ref rather than advancing it.
-To change versions, install the new immutable ref explicitly; remove the
-configured source when it is no longer needed:
-
-```bash
-pi install git:github.com/HomericIntelligence/Athena@<next-immutable-ref>
-pi update git:github.com/HomericIntelligence/Athena@<configured-ref>
-pi remove git:github.com/HomericIntelligence/Athena@<configured-ref>
-```
-
-Athena does not bundle third-party Pi packages. Review their source before
-installing them. `pi-subagents` is optional because Athena falls back to
-sequential work when delegation is unavailable; it is required by deployments
-that need the `Agent`/delegation capability. `pi-web-access` is required only
-for workflows that need explicitly scoped web evidence.
-
-```bash
-pi install npm:pi-subagents@0.37.2
-pi install npm:pi-web-access@0.15.0
-```
-
-Mnemosyne and Hephaestus remain Athena's repository dependencies under the
-contract above. They are not copied into, installed by, or represented as Pi
-packages.
+Mnemosyne and Hephaestus remain Athena's repository dependencies under the contract above. They are
+not copied into or represented as coding-harness packages.
 
 ## Release archives
 
-Claude Code and Codex install Athena from the Git-backed marketplace sources above. Each GitHub
-release also provides a checksummed portable archive for offline distribution and provenance; it is
-not a Python package and does not replace marketplace installation. The archive contains only
-harness-consumed skills, host metadata, the native Pi package manifest, runtime documentation,
-assets, and notices. It excludes tests, repository scripts, development lockfiles, task-runner
-files, CI configuration, and generated development output.
+Coding harnesses install Athena from the Git-backed skill or plugin source above. Each GitHub release
+also provides a checksummed portable archive for offline distribution and provenance; it is not a
+Python package and does not replace source-based installation. The archive contains only
+harness-consumed skills, host metadata, runtime documentation, assets, and notices. It excludes tests,
+repository scripts, development lockfiles, task-runner files, CI configuration, and generated
+development output.
 
 ## Skills
 
@@ -146,9 +94,6 @@ with a SHA-256 checksum. It never builds Python distribution artifacts.
 
 ```text
 skills/                  canonical skills and their tested local helpers
-.claude-plugin/          Claude Code marketplace and plugin metadata
-.codex-plugin/           Codex plugin metadata
-.agents/plugins/         Codex marketplace metadata
 scripts/                 typed validation, CI-policy, and archive tooling
 tests/unit/              executable-script behavior tests
 docs/                    local policies and dependency contracts
