@@ -67,11 +67,19 @@ def flatten_commit_pages(pages: object) -> list[dict[str, Any]]:
 
 
 def evaluate_pull_request(
-    *, body: str, author: str, commits: list[dict[str, Any]]
+    *,
+    body: str,
+    author: str,
+    commits: list[dict[str, Any]],
+    require_issue_link: bool = False,
 ) -> list[str]:
     """Return all pull-request policy violations."""
     errors: list[str] = []
-    if author != "dependabot[bot]" and ISSUE_LINK.search(body) is None:
+    if (
+        author != "dependabot[bot]"
+        and require_issue_link
+        and ISSUE_LINK.search(body) is None
+    ):
         errors.append("PR body must contain a standalone 'Closes #N' line")
     for node in commits:
         commit = node.get("commit", {})

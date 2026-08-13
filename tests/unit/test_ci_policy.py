@@ -224,6 +224,7 @@ class PullRequestPolicyTests(unittest.TestCase):
         errors = ci_policy.evaluate_pull_request(
             body="No issue link",
             author="contributor",
+            require_issue_link=True,
             commits=[
                 {
                     "commit": {
@@ -248,7 +249,16 @@ class PullRequestPolicyTests(unittest.TestCase):
         self.assertEqual(
             [],
             ci_policy.evaluate_pull_request(
-                body="Closes #1\n", author="contributor", commits=[commit]
+                body="", author="contributor", commits=[commit]
+            ),
+        )
+        self.assertEqual(
+            [],
+            ci_policy.evaluate_pull_request(
+                body="Closes #1\n",
+                author="contributor",
+                require_issue_link=True,
+                commits=[commit],
             ),
         )
         self.assertEqual(
@@ -482,7 +492,10 @@ class CommandTests(unittest.TestCase):
             patch.dict(os.environ, environment, clear=False),
             patch(
                 "scripts.ci_policy._run_json",
-                side_effect=[{"body": "Closes #1\n"}, pages],
+                side_effect=[
+                    {"body": "Closes #1\n", "closingIssuesReferences": [{"number": 1}]},
+                    pages,
+                ],
             ) as run_json,
         ):
             self.assertEqual(0, ci_policy.main(["pr-policy"]))
@@ -515,7 +528,13 @@ class CommandTests(unittest.TestCase):
         ]
         with (
             patch.dict(os.environ, environment, clear=False),
-            patch("scripts.ci_policy._run_json", side_effect=[{"body": ""}, pages]),
+            patch(
+                "scripts.ci_policy._run_json",
+                side_effect=[
+                    {"body": "", "closingIssuesReferences": [{"number": 1}]},
+                    pages,
+                ],
+            ),
             self.assertRaisesRegex(SystemExit, "Closes #N"),
         ):
             ci_policy.main(["pr-policy"])

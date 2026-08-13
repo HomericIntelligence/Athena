@@ -43,8 +43,20 @@ def _pr_policy_command() -> int:
     name = os.environ["REPO_NAME"]
     author = os.environ["PR_AUTHOR"]
     pr = _run_json(
-        ["gh", "pr", "view", pr_number, "--repo", repository, "--json", "body"]
+        [
+            "gh",
+            "pr",
+            "view",
+            pr_number,
+            "--repo",
+            repository,
+            "--json",
+            "body,closingIssuesReferences",
+        ]
     )
+    closing_issues = pr.get("closingIssuesReferences")
+    if not isinstance(closing_issues, list):
+        raise TypeError("pull request closingIssuesReferences is malformed")
     query = """query($owner:String!,$name:String!,$pr:Int!,$endCursor:String) {
       repository(owner:$owner,name:$name) { pullRequest(number:$pr) {
         commits(first:100,after:$endCursor) {
@@ -74,6 +86,7 @@ def _pr_policy_command() -> int:
         body=str(pr.get("body") or ""),
         author=author,
         commits=flatten_commit_pages(pages),
+        require_issue_link=bool(closing_issues),
     )
     if errors:
         raise SystemExit("\n".join(errors))

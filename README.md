@@ -38,8 +38,9 @@ package or third-party runtime library.
 ## Install
 
 Install Athena through your coding harness's documented skill or plugin mechanism using the
-Git-backed source above. Prefer an immutable commit or supported release tag, then restart or
-reload the harness so its skill catalog recognizes Athena.
+[Git-backed Athena source](https://github.com/HomericIntelligence/Athena). Prefer an immutable
+commit or supported release tag, then restart or reload the harness so its skill catalog recognizes
+Athena.
 
 Invoke skills through the harness's native skill-invocation mechanism; for example, ask the harness
 to use the `repo-review` skill. Update or remove Athena by managing the configured Git-backed source
