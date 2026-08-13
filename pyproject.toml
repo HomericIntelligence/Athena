@@ -15,7 +15,7 @@ dev = [
     "pymarkdownlnt>=0.9.39,<1",
     "pyyaml>=6.0,<7",
     "ruff>=0.16.2,<1",
-    "types-pyyaml>=6.0,<7",
+    "types-pyyaml>=6.0.12.20260724,<7",
     "yamllint>=1.35,<2",
 ]
 
