@@ -19,8 +19,8 @@ or writing. Normal preparation may create it under the dependency-resolution con
 or inspection failure blocks `learn`; upstream resolution, authentication, update, and revalidation
 may be deferred during read-only discovery but are required at the delivery boundary.
 
-**Planning mode:** require the existing checkout, but do not require upstream resolution, fetch,
-fast-forward, or automatic-fork revalidation. Bind read-only discovery to its current `HEAD`, report
+**Read-only discovery:** require the existing checkout, but do not require upstream resolution,
+fetch, fast-forward, or automatic-fork revalidation. Bind discovery to its current `HEAD`, report
 its repository, revision, origin/trust status, and freshness or verification limitation, and use the
 checked-out content as best effort. If no usable checkout exists or inspection fails, report
 `blocked` and stop; do not substitute another repository or continue into duplicate analysis.
@@ -33,11 +33,11 @@ read-only discovery may use a stale checkout; PR delivery may not.
 
 This phase is read-only.
 
-The steps below require the existing checkout described above. In planning-mode read-only use, do
-not derive a durable write disposition or continue after the required checkout is unavailable.
+The steps below require the existing checkout described above. In read-only discovery, do not derive
+a durable write disposition or continue after the required checkout is unavailable.
 
-1. Run `advise` with the proposed lesson, using its planning-mode best-effort behavior when this
-   skill is invoked during planning.
+1. Run `advise` with the proposed lesson, using its planning-mode best-effort behavior for this
+   read-only discovery phase.
 2. Define retrieval intent as the trigger/context, desired outcome, constraints, and failure mode;
    never use title, issue number, or session wording as identity.
 3. Search flat `skills/*.md` (not optional notes), group semantic matches by intent, and inspect each
