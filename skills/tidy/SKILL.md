@@ -1,116 +1,70 @@
 ---
 name: tidy
-description: Audit and clean up Git worktrees first, then safely tidy branches using required Hephaestus automation. Uses Athena's canonical dependency-resolution contract and fails if ~/.agent_brain/automation cannot be prepared. Filesystem worktree removal always needs separate per-path approval.
-argument-hint: "<optional: --dry-run | --no-swarm | --trunk BRANCH | --max-concurrent N>"
-allowed-tools: [Bash, Read, Agent]
+description: Delegate repository branch and worktree cleanup to the dependency-locked Hephaestus tidy command. Use for tidy, cleanup, or rebase requests; fail closed when the trusted automation checkout or required execution capability cannot be prepared.
+argument-hint: "<optional: hephaestus-tidy arguments>"
+allowed-tools: [Bash, Read]
 ---
 
-# Tidy worktrees and branches
+# Tidy through Hephaestus
 
-Use this when the user asks to inspect or rebase local branches onto the repository's default trunk,
-or to clean up the repository's worktrees. The skill always runs in two phases: a worktree audit and
-cleanup first, then the branch tidy. A user request to "tidy" or "clean up" permits constructive
-Git, GitHub CLI, and Hephaestus work within the audited scope. It never permits discarding files or
-removing a worktree without the required filesystem-destructive approval.
+Use this when the user asks to tidy, clean up, or rebase a repository's local branches or
+worktrees. Athena prepares the trusted automation dependency and delegates the complete operation;
+`hephaestus-tidy` owns discovery, preservation rules, prompts, rebases, removal safeguards, output,
+and the final exit status.
 
-## Phase 1: worktree audit and cleanup
+## Inputs
 
-The audit is read-only: inventory and classify state, then request approval only for each
-filesystem-removal candidate.
+Keep the target repository as the current working directory. Treat every argument supplied to this
+skill as a `hephaestus-tidy` argument and forward it unchanged. When the user wants a preview,
+forward `--dry-run`; do not reinterpret it or add it implicitly.
 
-1. Confirm the repository root and remote identity.
-2. Keep the target repository as the current working directory. Resolve `scripts/audit_worktrees.py`
-   against this installed skill directory and invoke that absolute helper path. Retain its JSON
-   inventory containing every registered path, branch, lock reason, detached state, status, recent
-   commits, and HEAD.
-3. Quote each path when presenting the inventory and preserve the machine-readable evidence.
-4. Determine remote/PR state with read-only Git and `gh` queries. Do not assume `origin/main`;
-   discover the remote default branch.
-5. Classify each worktree:
+## Workflow
 
-   | State | Meaning | Default action |
-   | --- | --- | --- |
-   | `KEEP` | Open work, open PR, detached state, or ambiguity | Report only |
-   | `DIRTY` | Modified or untracked files | Report exact paths only |
-   | `UNPUBLISHED` | Commits are not safely represented remotely | Report only |
-   | `REMOVABLE_CANDIDATE` | Clean and independently proven represented on the default branch | Offer removal approval |
+1. Prepare Hephaestus at `$HOME/.agent_brain/automation` under the canonical
+   [`dependency-resolution` contract](../../docs/dependency-resolution.md). Report the resolved
+   repository, commit SHA, and trust basis. Resolution, authentication, checkout, update,
+   cleanliness, identity, revision-binding, or automatic-fork revalidation failure is blocking.
+2. Keep the target repository as the current working directory. Resolve `scripts/run_tidy.py`
+   against this installed skill directory and invoke that absolute helper path with the resolved
+   automation checkout as its first internal operand, followed by every user argument in its
+   original order and form.
+3. The helper replaces itself with this dependency-locked command vector:
 
-Patch-ID, tree comparison, and PR state are supporting signals. A squash merge can invalidate
-patch-ID assumptions, so no single signal proves removability.
+   ```text
+   uv run --project <resolved-automation-checkout> --locked hephaestus-tidy <user-arguments>
+   ```
 
-### Filesystem-removal approval gate
+4. Leave stdin, stdout, and stderr attached. Do not capture, pipe, summarize in place of, answer,
+   retry, or otherwise mediate the command. The user answers any interactive prompt emitted by
+   Hephaestus.
 
-After presenting the complete audit, offer removal approval separately for each candidate with the
-exact worktree, branch, files, commits, remote, and command that would be affected. Proceed to
-Phase 2 after the candidate decisions; declined removals leave the affected worktrees in place.
+Athena performs no worktree audit, candidate classification, removal, prompt, branch rebase, or
+cleanup safety decision of its own. It never substitutes a `hephaestus-tidy` executable found on
+`PATH` for the dependency-locked command.
 
-#### Salvage and commit
+## Dependency and capability failures
 
-Before staging or committing:
+Authenticated `gh`, Git, and network access are required by dependency preparation. Python 3 and
+`uv` are required to start the locked command. On any missing capability or nonzero command result,
+return the failure unchanged and stop. Do not fall back to a stale checkout, a similarly named
+repository, an ambient executable, or a second cleanup implementation.
 
-- Inspect every candidate diff and untracked file; never infer safety from filename alone.
-- Exclude generated artifacts and credentials. Run the repository's secret scanner when available;
-  if no scanner is available, report that gap and inspect the exact staged diff before committing.
-- Reject `.env*`, private keys, tokens, credential stores, personal data, and symlinks escaping the
-  worktree.
-- Stage only reviewed, in-scope explicit paths, never `git add -A` or `git add .`.
-- Show `git diff --cached` before committing.
+## Failed approaches
 
-Create a cryptographically signed, DCO-attested Conventional Commit using the repository's required
-identity and hooks. If signing or hooks fail, stop; never fall back to an unsigned commit or
-`--no-verify`.
-
-#### Push or pull request
-
-After salvage evidence, show the exact remote, branch, commits, and PR base. Push only the named
-feature branch with the repository's guarded update policy. Create a PR when it is in the requested
-delivery scope, follow repository policy, and never enable auto-merge unless the requested command
-or workflow explicitly selects it.
-
-#### Worktree removal
-
-Require explicit approval for each `REMOVABLE_CANDIDATE`. Immediately before removal, run
-the absolute `scripts/remove_worktree.py` helper resolved against this installed skill directory,
-while retaining the target repository as the current working directory, with
-`PATH --expected-head AUDITED_HEAD`. It rechecks registration, current location, cleanliness, and
-HEAD before removing only that approved worktree. It does not prune unrelated registrations. If
-any check changed, return to audit.
-
-Never use `--force`. A locked worktree must be re-audited; unlocking it also requires explicit
-approval. Never remove the user's current worktree or a worktree created by another active process.
-
-## Phase 2: branch tidy
-
-1. Confirm the repository and default branch. Stop if the working tree has uncommitted changes that
-   would be affected.
-2. Prepare Hephaestus at `$HOME/.agent_brain/automation` under the canonical
-   [`dependency-resolution` contract](../../docs/dependency-resolution.md). Do not restate or
-   override that contract here. Report repository, SHA, and trust basis; any preparation or
-   revalidation failure is blocking.
-3. Run `hephaestus-tidy` from the resolved checkout's locked environment and forward arguments
-   exactly; `--dry-run` is the safe preview. Never use an unrelated executable found on `PATH`.
-4. The user answers any interactive deletion prompt. Athena never answers it automatically.
-5. For failed rebases, use one isolated worktree per branch. Delegate independent branches when the
-   host supports subagents; otherwise process them sequentially.
-6. Resolve conflicts semantically, run branch-relevant tests, and use only `--force-with-lease`
-   plus `--force-if-includes` when the repository workflow requires a guarded update.
-7. Report rebased, already-subsumed, and still-failing branches separately.
-
-## Invariants
-
-- Never delete local or remote branches.
-- Never remove a worktree with `--force` or without per-path filesystem-removal approval.
-- Never touch a pre-existing worktree beyond the audited scope and its separately approved removal.
-- Never discard, reset, stash-drop, force-push, or bulk-delete worktree directories.
-- Never commit or publish a file merely because an agent believes it is related.
-- Never combine removal approvals or treat silence as consent.
-- Never run `git reset --hard`, discard changes, or use an unguarded cleanup command.
-- Preserve blocked worktrees in place and report the safest next command.
+- Auditing and removing worktrees in Athena duplicated Hephaestus policy and produced a second set
+  of destructive-action prompts.
+- Invoking an ambient `hephaestus-tidy` could bypass the resolved repository and its lockfile.
+- Parsing, normalizing, or reconstructing user arguments changed the delegated CLI contract.
+- Capturing or piping the process could alter interactive behavior, output, signals, or exit status.
 
 ## Output
 
-First return one row per worktree with path, branch/HEAD, cleanliness, remote/PR evidence,
-classification, and action taken. Before a removal approval, a worktree action is `none (audit only)`;
-for an approved filesystem removal, record the exact command, resulting SHA, and verification
-result. Then report the branch-tidy results: rebased, already-subsumed, and still-failing branches
-separately.
+Before execution, report the resolved Hephaestus repository, commit SHA, and trust basis. After
+that, preserve the delegated command's output and terminal result without adding Athena-specific
+worktree classifications or cleanup conclusions.
+
+## Attribution
+
+The cleanup implementation and safeguards are owned by
+[`HomericIntelligence/Hephaestus`](https://github.com/HomericIntelligence/Hephaestus). Athena owns
+only dependency preparation and the tested transport adapter.

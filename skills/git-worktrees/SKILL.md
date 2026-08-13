@@ -75,11 +75,14 @@ No `.gitignore` verification needed — outside the project entirely.
 
 ## Cleanup
 
-When work is done, invoke `tidy` for branch inspection and rebasing. Use its guarded audit and
-removal flow for worktrees; do not improvise deletion commands.
+When work is done, invoke `tidy` for branch and worktree cleanup. It prepares the trusted
+Hephaestus dependency and delegates directly to `hephaestus-tidy`, whose interactive workflow owns
+discovery, preservation rules, deletion prompts, rebases, and cleanup safeguards. Do not duplicate
+that policy or improvise deletion commands in this skill.
 
 Preserve the worktree by default. Delivery, merge, abandonment, or a general cleanup request does
-not authorize removal; `tidy` must re-audit it and obtain per-path filesystem-removal approval.
+not itself authorize this skill to remove it; route any cleanup through `tidy` and leave the
+decision to the Hephaestus workflow and the user's answers to its prompts.
 
 ## Quick Reference
 
@@ -100,7 +103,7 @@ not authorize removal; `tidy` must re-audit it and obtain per-path filesystem-re
 
 **Pairs with:**
 
-- Invoke `tidy` for worktree audit and removal (its first phase) and branch inspection.
+- Invoke `tidy` for dependency-locked delegation to Hephaestus branch and worktree cleanup.
 - Verify with fresh runnable evidence per the evidence-integrity policy before finishing and
   cleaning up.
 
