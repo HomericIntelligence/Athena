@@ -807,7 +807,20 @@ class WorkflowContractTests(unittest.TestCase):
             {
                 "package-ecosystem": "npm",
                 "directory": "/ci/pi-runtime",
-                "schedule": {"interval": "weekly"},
+                "schedule": {"interval": "monthly"},
+                "open-pull-requests-limit": 5,
+                "labels": ["dependencies", "npm"],
+                "commit-message": {"prefix": "chore(deps)"},
+                "groups": {
+                    "minor-patch": {
+                        "patterns": ["*"],
+                        "update-types": ["minor", "patch"],
+                    },
+                    "major": {
+                        "patterns": ["*"],
+                        "update-types": ["major"],
+                    },
+                },
             },
             dependabot["updates"],
         )
