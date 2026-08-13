@@ -797,7 +797,7 @@ class WorkflowContractTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual({"pi-subagents": "0.40.0"}, manifest["dependencies"])
+        self.assertEqual({"pi-subagents": "0.43.0"}, manifest["dependencies"])
         self.assertEqual(3, lock["lockfileVersion"])
         for package in manifest["dependencies"]:
             resolved = lock["packages"][f"node_modules/{package}"]
