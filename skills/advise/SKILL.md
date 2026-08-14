@@ -28,8 +28,15 @@ trusted.
 
 ## Retrieve
 
-- Search only flat `skills/*.md`; exclude `*.notes.md`; search names, descriptions, categories, tags,
-  triggers, failed attempts, and results; and use Git and PR history as provenance.
+- Resolve this installed skill's directory and run its
+  `scripts/list_retrievable_skills.py <knowledge-root>` helper by absolute path. Treat only the
+  returned flat main-skill paths as retrieval candidates; the helper excludes notes, history, and
+  nested artifacts through the same executable contract used by `learn`. Do not replace a failed
+  helper with an ad hoc glob: outside planning mode, report the capability failure and stop; in
+  planning mode, report `no applicable durable guidance` and the limitation.
+- Search the returned files' names, descriptions, categories, tags, triggers, failed attempts, and
+  results; use notes only after selecting a main skill that links them, and use Git and PR history
+  as provenance.
 - Rank by intended outcome, constraints, and failure mode before title or wording. Read at most five
   selected entries completely, preferring newer and better-verified guidance.
 - For each result, state its version, verification, concrete relevance, non-relevance boundary,

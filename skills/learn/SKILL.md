@@ -1,14 +1,15 @@
 ---
 name: learn
-description: Preserve a verified, non-duplicate Mnemosyne lesson through an isolated-worktree pull request when requested; otherwise report without mutation. A usable knowledge checkout is required before discovery or writing; read-only discovery may use its current contents without upstream synchronization, while new-PR delivery requires a fresh synchronized default-branch base.
+description: Preserve a verified, non-duplicate Mnemosyne lesson as a bounded generalized skill, with prior versions in .history and supporting evidence in .notes.md, through an isolated-worktree pull request when requested; otherwise report without mutation. A usable knowledge checkout is required before discovery or writing; read-only discovery may use its current contents without upstream synchronization, while new-PR delivery requires a fresh synchronized default-branch base.
 argument-hint: <lesson or session summary>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 ---
 
 # Learn
 
-Why: one general, canonical rule is more discoverable and safer than many session-specific copies.
-First decide whether a durable delta exists; write a requested result through a reviewable PR.
+Why: one concise, general rule is more discoverable and safer than many session-specific copies.
+First decide whether a durable delta exists; then partition it into retrievable guidance, history, and
+supporting notes before writing through a reviewable PR.
 
 ## Prepare the knowledge repository
 
@@ -40,8 +41,11 @@ a durable write disposition or continue after the required checkout is unavailab
    read-only discovery phase.
 2. Define retrieval intent as the trigger/context, desired outcome, constraints, and failure mode;
    never use title, issue number, or session wording as identity.
-3. Search flat `skills/*.md` (not optional notes), group semantic matches by intent, and inspect each
-   candidate and its Git history for provenance and prior consolidation.
+3. Resolve the installed `advise/scripts/list_retrievable_skills.py` helper and run it by absolute
+   path against the knowledge checkout. Group only its returned main-skill paths by intent; then
+   inspect each selected candidate, its `.history`, its relevant `.notes.md`, and Git history for
+   provenance and prior consolidation. A missing or failed selector is blocking because an ad hoc
+   glob could silently change the retrieval boundary.
 4. Inspect every open PR in the resolved Mnemosyne repository: enumerate its changed flat
    `skills/*.md` artifacts and derive intent from their changed content. A title or path only finds a
    candidate; it is never sufficient duplicate evidence.
@@ -49,9 +53,9 @@ a durable write disposition or continue after the required checkout is unavailab
 
    | Disposition | Use when | Action |
    | --- | --- | --- |
-   | `amend` | One canonical entry has a material verified delta. | Update that entry only. |
-   | `consolidate` | Two or more current entries share intent. | Select one canonical entry, merge non-superseded rules, and retire duplicates in the same PR. |
-   | `create` | Intent is materially distinct. | Add one precisely named entry. |
+   | `amend` | One canonical entry has a material verified delta. | Update that canonical artifact set only. |
+   | `consolidate` | Two or more current entries share intent. | Select one canonical artifact set, merge non-superseded rules, and retire duplicates in the same PR. |
+   | `create` | Intent is materially distinct. | Add one precisely named artifact set. |
    | `reject` | No durable, verified delta exists. | Report `no learnable change`; leave Mnemosyne unchanged. |
    | `blocked` | Provenance is uncertain, more than one open PR targets the selected canonical entry, the selected PR is not safely writable, or retirement is unsafe. | Leave Mnemosyne unchanged and request direction. |
 
@@ -60,16 +64,41 @@ the selected canonical entry, it is the delivery target: enter Existing-PR mode 
 verified delta there. Never create a competing PR. Stop rather than guessing when multiple open PRs
 target that entry. Do not report `learn` complete after `reject` or `blocked`.
 
-Generalize the smallest reusable decision rule. Keep task-specific facts only when another agent
-needs them to execute or verify that rule. Preserve history in Git, not duplicate active entries.
 Repository audits belong in `repo-review`; PR audits belong in `pr-review`; review depth is a mode.
+
+## Keep retrieval bounded
+
+Treat each lesson as three different information classes. Do not use the main skill as an append-only
+record.
+
+| Artifact | Contains | Excludes |
+| --- | --- | --- |
+| `skills/<name>.md` | Current generalized triggers, decision rules, workflow, failures, parameters, and zero to three concise examples that materially change a decision | Prior versions, changelog narrative, session chronology, transcripts, and repeated project cases |
+| `skills/<name>.history` | Superseded main-skill versions plus append-only version, change, and provenance records | Active instructions that exist only here |
+| `skills/<name>.notes.md` | Privacy-cleared source detail, long examples, commands, measurements, verification reports, and other supporting evidence worth retaining | Rules required for the skill to work |
+
+For every amendment, rewrite the main entry around the smallest reusable delta instead of appending
+the session. Merge overlapping rules, remove superseded guidance, and retain at most three examples;
+each example must cover a materially different decision branch and be shorter than the rule it
+illustrates. A repository name, issue narrative, transcript, or another instance of an established
+pattern is evidence, not a new main-skill example.
+
+Before replacing a main entry, archive its complete prior retrievable content in `.history` unless
+that version is already present. Append the new version and provenance record there. Put detailed
+evidence that remains useful for the current rule in `.notes.md`. Never move prohibited sensitive
+content merely to preserve it.
+
+Keep only a schema-required current version identifier in main-file frontmatter. Put all prior
+versions, change summaries, provenance, and other version-control narrative in `.history`. Obey the
+resolved repository's main-skill size budget; for Mnemosyne, a new or changed retrievable main file
+must not exceed 30,000 bytes. Notes and history must remain outside normal retrieval.
 
 ## Privacy and proprietary-information gate
 
 Treat the session, its repositories, and all discovery output as sensitive source material. A
 durable lesson must capture only the general pattern, decision rule, and safely shareable evidence;
-it must never store any of the following in a skill, its filename, frontmatter, examples, commit,
-or PR description:
+it must never store any of the following in a main skill, notes, history, filename, frontmatter,
+example, commit, or PR description:
 
 - PII or identifiers that can identify a person, account, customer, or organization;
 - product, project, customer, vendor, or organization names and other non-public identifiers;
@@ -137,32 +166,37 @@ this fallback to reconstruct an Existing-PR worktree.
    path first, require it directly below `$HOME/.agent_brain/worktrees`, and reject symlinked parents
    or destinations. This is the new-PR path for `create` and `consolidate`, not Existing-PR mode.
 2. Before editing, resolve a closed, disposition-specific write allowlist of exact repository-relative
-   paths:
+   paths. Include only companions required by the artifact partition:
 
    | Disposition | Allowed paths |
    | --- | --- |
-   | `amend` | The resolved canonical entry only. |
-   | `create` | One new `skills/<name>.md` entry only. |
-   | `consolidate` | The canonical entry, each named duplicate to retire, and each verified active consumer that must migrate. |
+   | `amend` | The canonical `.md`, its `.history`, and its `.notes.md` when supporting detail exists. |
+   | `create` | One new `.md`, its initial `.history`, and `.notes.md` only when supporting detail exists. |
+   | `consolidate` | The canonical three artifacts, each named duplicate to retire, and each verified active consumer that must migrate. |
 
-   A template- or schema-required companion is allowed only when named in this list. Optional
-   `.notes.md` evidence needs a current consumer. Do not discover new write paths while editing.
+   Name every companion and retirement explicitly. Do not discover new write paths while editing.
 3. For `create`, read the resolved Mnemosyne template, schema, and validation rules before drafting.
    Use every required frontmatter field, including `name`, `description`, `category`, `date`, and
-   `version`, plus the required section structure. Include searchable intent, verification,
-   generalized use and workflow, relevant failed approaches, parameters, and evidence; omit unused
-   session transcript detail.
-4. Apply the selected disposition inside its allowlist. Amend only the canonical entry. During
-   consolidation, migrate verified active consumers before retiring every named duplicate.
+   the current `version`, plus the required section structure. Keep searchable intent, generalized
+   use and workflow, relevant failed approaches, and parameters in the main entry. Create the initial
+   version/provenance record in `.history`; route useful supporting detail to `.notes.md`.
+4. Apply the selected disposition inside its allowlist. For `amend` or `consolidate`, archive each
+   superseded canonical version before rewriting the main entry. Apart from that required historical
+   snapshot, partition rather than copy: current rules, history records, and notes evidence each have
+   one owner. During consolidation, migrate verified active consumers before retiring every named
+   duplicate.
 5. Before committing, review every proposed artifact and delivery text against the privacy and
    proprietary-information gate. Remove or generalize sensitive specifics; use a faithful public
    equivalent only when one exists. If safe generalization is not possible, reject the lesson.
 6. Run Mnemosyne's relevant complete validation. Verify exactly one active entry remains for the
-   intent and no duplicate intent or stale consolidated name was introduced.
+   intent; its main file is within the configured size budget; notes and history are excluded from
+   normal retrieval; and no duplicate intent, embedded version history, or stale consolidated name
+   was introduced.
 7. Sign and DCO-attest the commit. For a new PR, push the feature branch and open a PR against the
    resolved default branch. For Existing-PR mode, push only to the already bound source ref and do
    not open another PR. Never auto-merge.
-8. Report the disposition, bound or new PR URL, any retired entries, and exact validation evidence.
+8. Report the disposition, bound or new PR URL, main-file byte size, archived version, companion
+   files, any retired entries, and exact validation evidence.
 
 A write disposition succeeds only with its PR URL. If validation, push, or PR creation fails, preserve
 the isolated worktree and report the blocker; never fall back to Athena, a default branch, or another
