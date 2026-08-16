@@ -1,5 +1,6 @@
 ---
 name: repo-review
+license: BSD-3-Clause
 description: Perform an architecture-first, full-inventory repository review with adaptive surface and language checks. Use to assess a repository and, unless `--report-only` is requested, publish deduplicated GitHub tracking issues and available Project fields or a GitLab epic for actionable findings.
 argument-hint: "[quick|default] [--report-only]"
 allowed-tools: [Read, Bash, Grep, Glob, Agent]

@@ -1,5 +1,6 @@
 ---
 name: issue-review
+license: BSD-3-Clause
 description: Review a GitHub or GitLab issue and its current plan-issue artifact for architecture alignment, scope, risks, and behavior-first verification. Use before implementation; `--report-only` is read-only.
 argument-hint: "[--report-only] ISSUE_NUMBER_OR_URL"
 allowed-tools: [Read, Bash, Grep, Glob, Agent, WebFetch]

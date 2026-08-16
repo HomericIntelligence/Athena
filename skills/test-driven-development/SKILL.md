@@ -1,5 +1,6 @@
 ---
 name: test-driven-development
+license: BSD-3-Clause
 description: Use when implementing any feature or bugfix, before writing implementation code — enforces RED-GREEN-REFACTOR cycle
 argument-hint: <feature or bugfix description>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]

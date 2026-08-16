@@ -1,5 +1,6 @@
 ---
 name: myrmidon-swarm
+license: BSD-3-Clause
 description: Coordinate complex work through dependency-aware subagents in isolated worktrees, with a sequential fallback. Requires the Mnemosyne knowledge backend through advise and fails closed when it cannot be prepared.
 argument-hint: <task description>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]

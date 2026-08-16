@@ -1,5 +1,6 @@
 ---
 name: pr-review
+license: BSD-3-Clause
 description: Perform an architecture-first, adaptive GitHub pull-request or GitLab merge-request review. Bind the exact open artifact and immutable source, review only applicable surfaces, and deliver findings through the configured forge. Use `--report-only` to suppress publication; `--ci-free` and `--prevalidated` require their evidence boundaries; `--enable-auto-merge-on-go` is a separate GitHub opt-in after an exact GO.
 argument-hint: "[--report-only] [--enable-auto-merge-on-go] [REVIEW_NUMBER_OR_URL] | [--ci-free] [--report-only] [REVIEW_NUMBER_OR_URL] | [--prevalidated] [REVIEW_NUMBER_OR_URL]"
 allowed-tools: [Read, Bash, Grep, Glob, Agent, WebFetch]

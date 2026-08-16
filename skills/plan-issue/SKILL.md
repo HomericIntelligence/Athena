@@ -1,5 +1,6 @@
 ---
 name: plan-issue
+license: BSD-3-Clause
 description: Draft or publish one canonical implementation plan for a GitHub or GitLab issue after architecture and knowledge review. Use when an issue needs an executable, behavior-first plan; `--draft` is read-only.
 argument-hint: "[--draft] ISSUE_NUMBER_OR_URL"
 allowed-tools: [Read, Bash, Grep, Glob, Agent]

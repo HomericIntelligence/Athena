@@ -1,5 +1,6 @@
 ---
 name: git-worktrees
+license: BSD-3-Clause
 description: Use when starting feature work that needs isolation from current workspace — creates isolated git worktrees with safety verification
 argument-hint: <branch-name or feature description>
 allowed-tools: [Bash, Read]
