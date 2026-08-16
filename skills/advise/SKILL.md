@@ -1,5 +1,6 @@
 ---
 name: advise
+license: BSD-3-Clause
 description: Retrieve trusted Mnemosyne guidance before unfamiliar planning or implementation. In planning mode, use the checked-out knowledge tree as a best effort without requiring upstream synchronization; report its revision and any trust or freshness limits.
 argument-hint: <task description>
 allowed-tools: [Read, Bash, Grep, Glob]

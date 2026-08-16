@@ -1,5 +1,6 @@
 ---
 name: change-review
+license: BSD-3-Clause
 description: Review only the working-tree, staged, or explicit-range changes for architecture alignment, behavior, language practices, and evidence. Use before committing or opening a PR; it never edits source or posts forge comments.
 argument-hint: "[--worktree | --staged | --range BASE..HEAD] [PATH ...]"
 allowed-tools: [Read, Bash, Grep, Glob, Agent]

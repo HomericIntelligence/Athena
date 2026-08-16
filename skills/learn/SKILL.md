@@ -1,5 +1,6 @@
 ---
 name: learn
+license: BSD-3-Clause
 description: Preserve a verified, non-duplicate Mnemosyne lesson as a bounded generalized skill, with prior versions in .history and supporting evidence in .notes.md, through an isolated-worktree pull request when requested; otherwise report without mutation. A usable knowledge checkout is required before discovery or writing; read-only discovery may use its current contents without upstream synchronization, while new-PR delivery requires a fresh synchronized default-branch base.
 argument-hint: <lesson or session summary>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]

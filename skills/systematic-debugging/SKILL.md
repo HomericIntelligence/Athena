@@ -1,5 +1,6 @@
 ---
 name: systematic-debugging
+license: BSD-3-Clause
 description: Investigate root cause before fixing bugs or unexpected behavior. Requires the Mnemosyne knowledge backend through advise and fails closed when it cannot be prepared.
 argument-hint: <description of the bug or failure>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]

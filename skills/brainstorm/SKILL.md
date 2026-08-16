@@ -1,5 +1,6 @@
 ---
 name: brainstorm
+license: BSD-3-Clause
 description: Use before complex creative work to explore intent and requirements. Requires the Mnemosyne knowledge backend through advise and fails closed when it cannot be prepared.
 argument-hint: <idea or feature description>
 allowed-tools: [Read, Write, Bash, Grep, Glob, Agent]

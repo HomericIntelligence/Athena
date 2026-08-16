@@ -1,5 +1,6 @@
 ---
 name: tidy
+license: BSD-3-Clause
 description: Delegate repository branch and worktree cleanup to the dependency-locked Hephaestus tidy command. Use for tidy, cleanup, or rebase requests; fail closed when the trusted automation checkout or required execution capability cannot be prepared.
 argument-hint: "<optional: hephaestus-tidy arguments>"
 allowed-tools: [Bash, Read]
