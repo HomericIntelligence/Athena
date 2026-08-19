@@ -47,6 +47,12 @@ capability or ownership gap.
    issue-planning contract. Preserve foreign content and return the draft on
    ambiguity rather than overwriting it.
 
+When the issue body carries a valid finalized-planning marker, treat its sealed
+provenance and generated plan text as implementation-facing context, not new
+requirements. An unchanged finalized epoch needs no new plan. A later material
+issue-body edit starts a fresh requirements state and must be planned from that
+edit under the issue-planning contract.
+
 For a material architecture decision, include or cite a
 [design record](../../docs/review/design-docs.md) that leads with why, then its
 block diagram and high-level design before clear component details. Do not

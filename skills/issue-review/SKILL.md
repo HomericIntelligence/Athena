@@ -48,6 +48,11 @@ Prioritize architecture violations, missing requirements, unsafe scope,
 unresolved dependencies, untestable outcomes, invalid references,
 non-deterministic tests, empty selections, and unsupported claims.
 
+When reviewing after a finalized epoch, do not reinterpret generated plan text
+or sealed provenance as new requirements. Review only a later material issue
+change and its current canonical plan; an unchanged finalized epoch is not a
+new review target.
+
 Immediately before a requested publication, re-resolve the canonical planning
 identity. On drift, foreign or multiple markers, verified absence changes, or
 missing safe forge capability, withhold the comment and return the review as

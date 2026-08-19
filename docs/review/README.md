@@ -10,7 +10,7 @@ the delivery channel appropriate to its scope.
 flowchart LR
     Request["Review request"] --> Scope{"Scope"}
     Scope --> Change["change-review"]
-    Scope --> Issue["plan-issue / issue-review"]
+    Scope --> Issue["plan-issue / issue-review / finalize-plan"]
     Scope --> Pull["pr-review"]
     Scope --> Repository["repo-review"]
 
@@ -34,7 +34,7 @@ flowchart LR
 | [Shared contract](common.md) | Architecture gate, evidence, principles, findings, and delivery boundaries. | Every review. |
 | [Language routing](language-routing.md) | Applicable language and toolchain profile. | The changed or inventoried surface contains code or build tooling. |
 | [Behavior-first testing](behavior-first-testing.md) | Functional-test quality and false-confidence rules. | Tests, validation, or a plan are in scope. |
-| [Issue planning](issue-planning.md) | Canonical plan identity and plan/review artifacts. | Planning or reviewing an issue. |
+| [Issue planning](issue-planning.md) | Canonical plan identity, review, and finalized-epoch artifacts. | Planning, reviewing, or finalizing an issue. |
 | [Repository scorecard](repository-scorecard.md) | Full-inventory repository criteria and scoring. | Reviewing a repository. |
 | [Design-document structure](design-docs.md) | A clear order for architecture and design decisions. | Writing a new mutable design document. |
 
