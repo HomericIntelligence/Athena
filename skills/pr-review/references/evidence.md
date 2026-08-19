@@ -192,11 +192,15 @@ Use both immutable lenses through the absolute installed helper:
 - **Current-target impact:** inspect `base..head` for stale-branch reverts and
   deletions.
 
-Never substitute one lens for the other. In the default profile, a behind branch
-requires rebase and fresh CI before a merge-ready claim. Detect already-landed
-or zombie work from current-base content, not ancestry alone on squash-merge
-repositories. An incomplete history or non-unique merge base is a coverage
-failure, never a reason to select an arbitrary lens.
+Never substitute one lens for the other. Report a behind branch as source-history
+context; it does not by itself prevent a source-review GO. The current-target
+lens must still surface stale-branch reversions, already-landed work, and
+semantic incompatibilities as review findings. The implementation or
+merge-admission workflow must rebase when needed and obtain fresh exact-head CI
+before making a merge-ready claim. Detect already-landed or zombie work from
+current-base content, not ancestry alone on squash-merge repositories. An
+incomplete history or non-unique merge base is a coverage failure, never a
+reason to select an arbitrary lens.
 
 ## CI-free source-review profile
 
