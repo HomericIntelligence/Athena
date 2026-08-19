@@ -19,17 +19,18 @@ Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 
 ## Scope and delivery
 
-`--draft` is read-only. Without it, this skill may make at most one mutation:
-replace the resolved issue body. It must not update the title, comments, labels,
+`--draft` is read-only. Without it, this skill may replace the resolved issue
+body once and, only after exact body readback, delete the two sealed,
+actor-owned plan and review comments. It must not update the title, labels,
 assignment, milestone, project fields, state, branches, pull requests, or
-repository files. The canonical plan and review comments remain immutable
-provenance.
+repository files. The finalized body retains the required provenance after
+those intermediate comments are removed.
 
 Use the forge's native issue-body mechanism. If the host cannot authenticate the
-actor, enumerate comments, read the issue body, compare identities, or make and
-read back one exact body update, return a ready-to-publish draft and identify the
-capability gap. Never create, adopt, edit, or replace plan or review comments to
-make finalization possible.
+actor, enumerate and delete exact comments, read the issue body, compare
+identities, or make and read back one exact body update, return a
+ready-to-publish draft and identify the capability gap. Never create, adopt,
+edit, or replace plan or review comments to make finalization possible.
 
 ## Finalized planning epoch
 
@@ -85,16 +86,22 @@ verify later readback without recursion.
    and verify the exact body, marker, `R/P/V`, and `F`. A timeout, indeterminate
    response, or mismatched readback is an unknown outcome: do not retry or make
    another mutation.
+8. After successful body readback, re-read each sealed comment by its exact ID,
+   actor, marker, and digest, then delete the plan comment and review comment.
+   Delete no foreign, replacement, or drifted comment. A failed, timed-out, or
+   indeterminate deletion is a partial-cleanup unknown outcome: do not retry,
+   compensate, or remove the finalized body; report the surviving identities.
 
 ## Re-finalization and restart
 
-If the live body exactly verifies its finalized marker and sealed identities,
-re-running for that epoch returns a documented no-change result. If the marker
-is absent, malformed, foreign, or its canonical `F` does not match, the epoch is
-not valid evidence. A later material human edit is a new requirements state and
-must pass a fresh `plan-issue` plus `issue-review` cycle before another
-finalization. Do not treat generated plan text or provenance fields as newly
-authored requirements.
+If the live body exactly verifies its finalized marker and both sealed comments
+are absent, re-running for that epoch returns a documented no-change result. A
+surviving sealed comment is partial cleanup, not authorization to retry a prior
+deletion. If the marker is absent, malformed, foreign, or its canonical `F` does
+not match, the epoch is not valid evidence. A later material human edit is a new
+requirements state and must pass a fresh `plan-issue` plus `issue-review` cycle
+before another finalization. Do not treat generated plan text or provenance
+fields as newly authored requirements.
 
 ## Behavior-first verification
 
@@ -102,11 +109,12 @@ Use controlled issue, comment, actor, and forge fixtures to demonstrate:
 
 - one clean GO plan/review epoch preserves requirements and operational details;
 - `--draft` returns the body without a forge mutation;
-- publish performs one body update only and verifies its exact readback;
+- publish performs one body update, verifies its exact readback, then deletes
+  only the two sealed actor-owned comments;
 - an unchanged sealed epoch is idempotent; and
 - every absent, foreign, duplicate, mismatched, stale, NO-GO, required-finding,
-  drift, unsupported-write, timeout, or readback-mismatch case fails before a
-  second write.
+  drift, unsupported-write, timeout, readback-mismatch, or deletion-uncertainty
+  case fails before an unsafe mutation or retry.
 
 Assert identities, ordering classes, preservation, mutation count and scope, and
 failure-before-write behavior. Do not freeze editorial wording, headings,
@@ -115,6 +123,7 @@ paragraph counts, or an example issue body.
 ## Result
 
 Return the issue and actor identities; `R/P/V/F`; GO decision and finding
-summary; requirement-preservation map; draft, no-change, published, stale, or
-unknown-outcome status; body-update receipt and readback evidence when present;
-and every unresolved capability or residual risk.
+summary; requirement-preservation map; draft, no-change, published, stale,
+partial-cleanup, or unknown-outcome status; body-update receipt, readback
+evidence, deleted-comment receipts when present; and every unresolved capability
+or residual risk.

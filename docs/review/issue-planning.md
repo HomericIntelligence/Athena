@@ -10,7 +10,7 @@ scopes implementation, merge, or forge mutation beyond its explicitly requested 
 | --- | --- | --- |
 | Canonical plan | One authenticated actor-owned `<!-- athena:plan-issue -->` comment. | `plan-issue` may create or update it when requested. |
 | Plan review | One authenticated actor-owned `<!-- athena:issue-review -->` comment. | `issue-review` may publish it when requested and without `--report-only`. |
-| Finalized epoch | One sealed `R/P/V` identity in the issue body. | `finalize-plan` may replace that body once after exact revalidation. |
+| Finalized epoch | One sealed `R/P/V` identity in the issue body. | `finalize-plan` may replace that body once, then remove its two sealed comments after exact readback. |
 | Missing or ambiguous plan | A coverage gap or identity conflict, never a favorable plan. | Withhold the write and return the prepared artifact. |
 
 ## Canonical plan identity
@@ -93,18 +93,23 @@ The finalized issue body leads with why and original requirements; then, when us
 system-shape diagram; architecture and implementation; operations including validation, rollout,
 rollback, dependencies, residual risks, and out-of-scope decisions; and provenance. It preserves
 requirements and accepted plan details without inventing scope or converting a review suggestion into
-a requirement. Plan and review comments remain immutable provenance rather than reader-facing
-transcripts.
+a requirement. After verified publication, the plan and review comments are intermediate artifacts and
+are removed; the finalized body retains their sealed provenance.
 
 The body carries exactly one machine-readable marker:
 `<!-- athena:finalize-plan R=<R> P=<P> V=<V> F=<F> -->`. `F` is computed from a
 canonical body representation whose marker `F` value is the literal `<F>` placeholder, preventing
 self-reference. Directly before publication, re-resolve every source identity, actor, marker, and GO
-binding. A publish performs one issue-body update only, followed by exact readback verification. Drift
-prevents the write; timeout, indeterminate response, or mismatched readback is an unknown outcome and
-never authorizes retry.
+binding. A publish performs one issue-body update, followed by exact readback verification. Only then
+may it delete the exact actor-owned plan and review comments recorded in `P` and `V`; re-read each
+comment's ID, actor, marker, and digest before deletion. Drift prevents that deletion. A timeout,
+indeterminate response, or mismatched body readback is an unknown outcome and never authorizes retry;
+a deletion uncertainty leaves the finalized body in place and reports partial cleanup without retry or
+compensation.
 
-An intact marker whose `F` and source identities verify makes re-finalization idempotent: report
-no-change rather than duplicate content. A later material human edit invalidates that epoch and starts
-a new requirements state, which must complete `plan-issue` and `issue-review` again. `plan-issue` and
-`issue-review` must not treat generated plan text or sealed provenance as a new requirement.
+An intact marker whose `F` and source identities verify, with both sealed comments absent, makes
+re-finalization idempotent: report no-change rather than duplicate content. A surviving sealed comment
+is partial cleanup, not permission to repeat a deletion. A later material human edit invalidates that
+epoch and starts a new requirements state, which must complete `plan-issue` and `issue-review` again.
+`plan-issue` and `issue-review` must not treat generated plan text or sealed provenance as a new
+requirement.
