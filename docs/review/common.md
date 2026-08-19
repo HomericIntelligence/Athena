@@ -3,9 +3,9 @@
 **Why:** A passing test or small diff cannot compensate for an architectural violation. This contract
 keeps every Athena review architecture-first, evidence-bound, and delivered through the right channel.
 
-This is the canonical contract for `change-review`, `issue-review`, `plan-issue`, `pr-review`, and
-`repo-review`. A scope-specific skill may add requirements, but must not duplicate or weaken it. See
-the [review framework overview](README.md) for the component map.
+This is the canonical contract for `change-review`, `issue-review`, `plan-issue`, `finalize-plan`,
+`pr-review`, and `repo-review`. A scope-specific skill may add requirements, but must not duplicate
+or weaken it. See the [review framework overview](README.md) for the component map.
 
 ## Review order
 
@@ -148,6 +148,7 @@ Filesystem-destructive commands and discarding changes remain explicit user-appr
 | --- | --- |
 | Change review | Write no repository or forge state. Use local read-only annotations when supported, otherwise console `path:line`; never insert review notes into source. |
 | Issue planning and issue review | The documented issue-comment action is the delivery boundary. `--draft` and `--report-only` are read-only. |
+| Issue-plan finalization | `--draft` is read-only. A verified finalized planning epoch may replace the resolved issue body once, then after exact readback delete only its sealed actor-owned plan and review comments. It never mutates other forge state; uncertain deletion is not retried. |
 | PR review | Publish one logical comment-only review batch when findings remain: GitHub uses exactly one atomic `COMMENT` review with every anchorable finding in its `comments` array; GitLab uses supported atomic drafts/batches or a revalidated ordered discussion sequence. Do not split GitHub findings into separate reviews or posts, retry an indeterminate post, or post a clean review. Auto-merge requires the explicit `--enable-auto-merge-on-go` action plus an exact strict GO and fresh artifact, head, required-check, merge-policy, and provider revalidation; never enable it for conditional GO, NO-GO, `--report-only`, CI-free, or prevalidated review. The prevalidated profile never posts or runs commands. |
 | Repository review | Create a deduplicated tracking hierarchy and work items when findings remain. On GitHub, use a writable configured Project and existing unambiguous fields when available; `--report-only` is read-only. |
 

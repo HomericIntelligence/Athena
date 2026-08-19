@@ -30,8 +30,8 @@ contracts must be easy to find without duplicating them for each coding harness.
   and false-confidence rules.
 - [`review/repository-scorecard.md`](review/repository-scorecard.md): repository-review inventory
   and scoring sections.
-- [`review/issue-planning.md`](review/issue-planning.md): canonical issue-plan and issue-review
-  artifacts.
+- [`review/issue-planning.md`](review/issue-planning.md): canonical issue-plan, issue-review, and
+  finalized-planning-epoch artifacts.
 - [`review/design-docs.md`](review/design-docs.md): concise, why-first structure for new design
   documents.
 
