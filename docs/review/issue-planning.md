@@ -15,10 +15,24 @@ scopes implementation, merge, or forge mutation beyond its explicitly requested 
 ## Canonical plan identity
 
 Before planning, reviewing, or publishing, enumerate every current issue comment. Accept the plan
-marker only when it occurs exactly once in one comment authored by the authenticated actor. A foreign
-marker, multiple occurrences (including repeated markers in one comment), or unverifiable author is
-an ownership conflict: do not create a second marker, adopt or overwrite foreign content, or publish
-from ambiguity. Preserve issue bodies and comments from other authors and request human direction.
+marker only when it occurs exactly once in one comment authored by the authenticated actor. Apply
+the semantic-marker rule below to both the plan and review markers before any count, ownership,
+absence, digest, drift, creation, update, or publication decision. A foreign marker, multiple
+occurrences (including repeated markers in one comment), or unverifiable author is an ownership
+conflict: do not create a second marker, adopt or overwrite foreign content, or publish from
+ambiguity. Preserve issue bodies and comments from other authors and request human direction.
+
+### Semantic-marker rule
+
+A marker is an artifact identity only when its exact HTML comment is the complete top-level Markdown
+line in a comment: `<!-- athena:plan-issue -->` for a plan or
+`<!-- athena:issue-review -->` for a review. The line may end in LF or CRLF; do not trim surrounding
+prose or Markdown syntax to manufacture a match. Marker text is not an artifact when it appears in
+prose, inline code, a blockquote, a list item, or fenced or indented code. Two qualifying lines in
+one comment remain a repeated-marker conflict, and qualifying lines in different comments remain a
+multiple-comment conflict. Apply this same rule wherever either artifact identity is resolved or
+published; do not let an ignored textual reference change absence, ownership, content digest, or
+pre-write drift comparisons.
 
 If the marker is absent, `plan-issue` may create one after its scope and identity checks.
 `issue-review` records verified absence as a coverage gap; it must not invent a plan or normalize a
