@@ -23,20 +23,14 @@ path. GitLab may report a verdict, but this skill never enables its auto-merge.
 
 | Verdict | Required conditions |
 | --- | --- |
-| **GO** | Default profile; A (93–100); architecture aligned or evidenced intentional change; zero `required` findings; complete applicable source, scope, requirements, language, and validation coverage; host-selected local checks passing on the reviewed head; and an OPEN, non-draft, conflict-free artifact with no existing or planned required unresolved discussion. Report `behind_count` as source-history context, but it does not change the source-review verdict. A GO states that the reviewed changes pass review; it does not claim that the current head is immediately mergeable. A GO eligible for auto-merge also needs an authenticated reviewer distinct from the PR author; no approval, bypass, or policy change is implied. |
-| **CONDITIONAL GO** | Architecture passes, no `required` source finding is open, and score is at least B, but a remediable source-review condition remains: for example incomplete source, scope, requirement, language, or validation coverage, a local validation gap, or CI-free's deliberately limited evidence. State every condition; do not enable auto-merge. A behind branch, required-check or deployment state, and other merge-admission conditions do not by themselves downgrade an otherwise qualifying source review. |
-| **NO-GO** | Score below B; any `required` finding; material or unexplained architecture violation; failed required local validation; conflict; or invalid/stale/drifted identity, scope, requirement, path, or current-head binding. Do not enable auto-merge. Required CI and other merge-admission gates still control merging and auto-merge, not this source-review verdict. |
+| **GO** | Default profile; A (93–100); architecture aligned or evidenced intentional change; zero `required` findings; complete applicable source, scope, requirements, language, and validation coverage; host-selected local checks passing on the reviewed head; and exact-head provider evidence that all effective required pre-admission checks, rulesets, reviews, conversations, deployments, and integration policy gates are satisfied. For GitHub check runs, require strict evidence with `check_evidence.status: head_bound`; a coverage gap or unbound rollup cannot satisfy this condition. The PR is OPEN, non-draft, conflict-free, and has no existing or planned required unresolved discussion. A GO is a review outcome, not a claim that the current head is immediately mergeable. A GO eligible for auto-merge also needs an authenticated reviewer distinct from the PR author; no approval, bypass, or policy change is implied. |
+| **CONDITIONAL GO** | Architecture passes, no `required` source finding is open, and score is at least B, but a remediable condition remains: for example incomplete or unbound required-gate evidence, pending review/deployment/conversation gate, draft, provider gap, target-policy-required optional thread, or CI-free's deliberate lack of CI evidence. State every condition; do not enable auto-merge. |
+| **NO-GO** | Score below B; any `required` finding; material or unexplained architecture violation; failed, cancelled, stale, skipped, or mismatched required gate; conflict; or invalid/stale/drifted identity, scope, requirement, path, or current-head binding. Do not enable auto-merge. |
 
 `--report-only` may report GO but records `auto_merge: withheld (read-only)`.
 Without `--enable-auto-merge-on-go`, a GO records `auto_merge: withheld (not
 requested)`. CONDITIONAL GO, NO-GO, CI-free, prevalidated, and GitLab records
 `auto_merge: not-eligible` with the blocker.
-
-Target-branch synchronization and merge admission are separate from the review
-verdict. After GO, the implementation or merge-admission workflow remains
-responsible for rebasing when needed and for validating the exact current head,
-required checks, rulesets, reviews, conversations, deployments, branch
-protection, and queue policy before it merges or enables auto-merge.
 
 ## Guarded GitHub auto-merge
 
