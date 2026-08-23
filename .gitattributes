@@ -35,3 +35,12 @@
 *.gz              binary
 *.zip             binary
 *.tar             binary
+
+# Secrets / credentials — treat as binary if they ever sneak in (see
+# .gitignore): no text normalization, no content in diffs or patches.
+# Note: this covers only the file patterns below, not every secret path
+# (e.g. a secrets/ directory) that .gitignore excludes.
+.env              binary
+.env.*            binary
+*.pem             binary
+*.key             binary
