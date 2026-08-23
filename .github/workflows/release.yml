@@ -72,6 +72,6 @@ jobs:
       - name: Stage opencode npm package
         run: python scripts/package_opencode.py --output dist/opencode-npm
       - name: Publish npm package
-        run: npm publish dist/opencode-npm --access public --provenance
+        run: npm publish ./dist/opencode-npm --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
