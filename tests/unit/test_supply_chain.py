@@ -727,9 +727,7 @@ class WorkflowContractTests(unittest.TestCase):
         )
         self.assertEqual({"branches": ["main"]}, workflow["on"]["pull_request"])
         self.assertEqual({"branches": ["main"]}, workflow["on"]["push"])
-        self.assertEqual(
-            {"types": ["checks_requested"]}, workflow["on"]["merge_group"]
-        )
+        self.assertEqual({"types": ["checks_requested"]}, workflow["on"]["merge_group"])
         self.assertEqual([{"cron": "17 9 * * 2"}], workflow["on"]["schedule"])
 
     def test_merge_queue_smoke_workflow_owns_the_merge_group_event(self) -> None:
