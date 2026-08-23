@@ -29,6 +29,7 @@ ARCHIVE_ROOTS: Final[tuple[str, ...]] = (
     "CLAUDE.md",
     "LICENSE",
     "NOTICE",
+    "npm",
     "package.json",
     "README.md",
     "SECURITY.md",
@@ -58,6 +59,8 @@ REQUIRED_MEMBERS: Final[frozenset[str]] = frozenset(
         "docs/review/behavior-first-testing.md",
         "docs/review/issue-planning.md",
         "docs/review/repository-scorecard.md",
+        "npm/opencode-athena/package.json",
+        "npm/opencode-athena/plugin.js",
         "package.json",
     }
 )

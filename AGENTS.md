@@ -6,13 +6,14 @@ files point here rather than duplicate it.
 ## Purpose and scope
 
 Athena is a self-contained, host-neutral distribution of workflow skills for Claude Code, Codex,
-and Pi. The product is the top-level `skills/` corpus plus its host manifests and documentation. It
-does not publish a Python package.
+opencode, and Pi. The product is the top-level `skills/` corpus plus its host manifests and
+documentation. It does not publish a Python package.
 
 Athena owns:
 
 - `skills/`: canonical portable skill sources.
-- `.claude-plugin/`, `.codex-plugin/`, and `.agents/plugins/`: host metadata.
+- `.claude-plugin/`, `.codex-plugin/`, `.agents/plugins/`, and `npm/opencode-athena/`: host
+  metadata.
 - `scripts/`: typed repository validation, CI-policy, and packaging tools; not a distributable
   runtime library.
 - `tests/unit/`: behavior tests for executable repository and skill-local scripts.
@@ -30,7 +31,8 @@ this repository-agent contract.
 - Use the host default model when tier selection is unavailable.
 - Run independent work sequentially when the host cannot delegate.
 - Treat invocation syntax as an example: Claude uses `/athena:<skill>`, Codex uses `$<skill>` or
-  natural language, and Pi uses `/skill:<skill>`.
+  natural language, opencode uses natural language or its native skill invocation, and Pi uses
+  `/skill:<skill>`.
 - Read `AGENTS.md` for repository guidance. `CLAUDE.md` is only a pointer.
 - Frontmatter tool names describe required capabilities; every skill documents a safe failure or
   fallback when a host lacks one.

@@ -138,13 +138,60 @@ class DistributionTests(unittest.TestCase):
         document["version"] = "9.9.9"
         package.write_text(json.dumps(document), encoding="utf-8")
 
-        self.assert_invalid("version", "Pi, Claude, and Codex manifest versions differ")
+        self.assert_invalid(
+            "version",
+            "Pi, Claude, Codex, and OpenCode manifest versions differ",
+        )
+
+    def test_opencode_package_must_be_named_for_the_plugin(self) -> None:
+        manifest = self.fixture / "npm" / "opencode-athena" / "package.json"
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+        document["name"] = "wrong"
+        manifest.write_text(json.dumps(document), encoding="utf-8")
+
+        self.assert_invalid("opencode", "package must be named 'opencode-athena'")
+
+    def test_opencode_package_must_expose_the_plugin_entry(self) -> None:
+        manifest = self.fixture / "npm" / "opencode-athena" / "package.json"
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+        document["main"] = "wrong.js"
+        manifest.write_text(json.dumps(document), encoding="utf-8")
+
+        self.assert_invalid("opencode", "entry point must be 'plugin.js'")
+
+    def test_opencode_package_must_declare_the_plugin_keyword(self) -> None:
+        manifest = self.fixture / "npm" / "opencode-athena" / "package.json"
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+        document["keywords"] = ["opencode"]
+        manifest.write_text(json.dumps(document), encoding="utf-8")
+
+        self.assert_invalid("opencode", "'opencode-plugin' keyword")
+
+    def test_opencode_package_must_publish_the_skill_corpus(self) -> None:
+        manifest = self.fixture / "npm" / "opencode-athena" / "package.json"
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+        document["files"] = ["plugin.js"]
+        manifest.write_text(json.dumps(document), encoding="utf-8")
+
+        self.assert_invalid("opencode", "publish at least the plugin entry and skills")
+
+    def test_opencode_manifest_version_must_match_the_host_manifests(self) -> None:
+        manifest = self.fixture / "npm" / "opencode-athena" / "package.json"
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+        document["version"] = "9.9.9"
+        manifest.write_text(json.dumps(document), encoding="utf-8")
+
+        self.assert_invalid(
+            "version",
+            "Pi, Claude, Codex, and OpenCode manifest versions differ",
+        )
 
     def test_manifests_accept_full_semver(self) -> None:
         version = "2.0.0-rc.1+build.5"
         for relative in (
             ".claude-plugin/plugin.json",
             ".codex-plugin/plugin.json",
+            "npm/opencode-athena/package.json",
         ):
             path = self.fixture / relative
             document = json.loads(path.read_text(encoding="utf-8"))
@@ -201,6 +248,12 @@ class DistributionTests(unittest.TestCase):
             ),
             (
                 ".codex-plugin/plugin.json",
+                lambda value: value.update({"version": "v1"}),
+                "version",
+                "valid SemVer",
+            ),
+            (
+                "npm/opencode-athena/package.json",
                 lambda value: value.update({"version": "v1"}),
                 "version",
                 "valid SemVer",

@@ -776,6 +776,19 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(
             "athena-plugin", release["jobs"]["release"]["steps"][1]["with"]["name"]
         )
+        npm_job = release["jobs"]["publish-npm"]
+        self.assertIn("required", npm_job["needs"])
+        self.assertEqual("write", npm_job["permissions"]["id-token"])
+        publish_step = next(
+            step
+            for step in npm_job["steps"]
+            if step.get("name") == "Publish npm package"
+        )
+        self.assertIn("--provenance", publish_step["run"])
+        self.assertEqual(
+            "${{ secrets.NPM_TOKEN }}",
+            publish_step["env"]["NODE_AUTH_TOKEN"],
+        )
 
     def test_pi_runtime_is_locked_updated_and_scanned_before_ci_executes_it(
         self,
