@@ -285,7 +285,7 @@ if (
             archive_path, _ = build_package(root)
 
             with tarfile.open(archive_path, mode="r:gz") as archive:
-                entry = archive.extractfile("npm/opencode-athena/plugin.js")
+                entry = archive.extractfile("npm/athena-opencode/plugin.js")
                 assert entry is not None
                 self.assertIn("fixture for", entry.read().decode("utf-8"))
 

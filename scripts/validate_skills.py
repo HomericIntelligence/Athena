@@ -19,7 +19,12 @@ from skills._cli import argument_parser
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-ALLOWED_ECOSYSTEM_REPOSITORIES = {"Athena", "Hephaestus", "Mnemosyne"}
+ALLOWED_ECOSYSTEM_REPOSITORIES = {
+    "Athena",
+    "Hephaestus",
+    "Mnemosyne",
+    "athena-opencode",
+}
 ECOSYSTEM_REPOSITORY = re.compile(
     r"\bHomericIntelligence/([A-Za-z0-9_.-]+)\b", re.IGNORECASE
 )
@@ -43,8 +48,8 @@ APPROVED_MERGE_QUEUE_PARAMETERS: dict[str, object] = {
 }
 PI_PACKAGE_NAME = "@homericintelligence/athena"
 PI_SKILL_ROOT = ["./skills"]
-OPENCODE_PACKAGE_NAME = "opencode-athena"
-OPENCODE_MANIFEST_PATH = "npm/opencode-athena/package.json"
+OPENCODE_PACKAGE_NAME = "@homericintelligence/athena-opencode"
+OPENCODE_MANIFEST_PATH = "npm/athena-opencode/package.json"
 
 
 class ValidationError(NamedTuple):

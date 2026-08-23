@@ -19,7 +19,7 @@ from scripts.package_plugin import PackageError, forbidden_name
 from scripts.semver import SEMVER_PATTERN
 from skills._cli import argument_parser
 
-PLUGIN_DIRECTORY: Final[PurePosixPath] = PurePosixPath("npm") / "opencode-athena"
+PLUGIN_DIRECTORY: Final[PurePosixPath] = PurePosixPath("npm") / "athena-opencode"
 PLUGIN_FILES: Final[tuple[PurePosixPath, ...]] = (
     PLUGIN_DIRECTORY / "package.json",
     PLUGIN_DIRECTORY / "plugin.js",

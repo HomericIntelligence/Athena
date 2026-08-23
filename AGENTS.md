@@ -12,7 +12,7 @@ documentation. It does not publish a Python package.
 Athena owns:
 
 - `skills/`: canonical portable skill sources.
-- `.claude-plugin/`, `.codex-plugin/`, `.agents/plugins/`, and `npm/opencode-athena/`: host
+- `.claude-plugin/`, `.codex-plugin/`, `.agents/plugins/`, and `npm/athena-opencode/`: host
   metadata.
 - `scripts/`: typed repository validation, CI-policy, and packaging tools; not a distributable
   runtime library.

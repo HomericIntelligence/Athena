@@ -1,4 +1,4 @@
-# opencode-athena
+# athena-opencode
 
 [Athena](https://github.com/HomericIntelligence/Athena) workflow skills packaged as an
 [opencode](https://opencode.ai) plugin. Installing this plugin places the full canonical skill
@@ -12,7 +12,7 @@ Add the package to the `plugin` array of your opencode configuration
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-athena"]
+  "plugin": ["@homericintelligence/athena-opencode"]
 }
 ```
 
@@ -37,7 +37,7 @@ fallbacks.
 
 ## Uninstall
 
-Remove `"opencode-athena"` from the `plugin` array, restart opencode, and delete
+Remove `"@homericintelligence/athena-opencode"` from the `plugin` array, restart opencode, and delete
 `opencode/skills/athena/` from your configuration directory if you want the files gone immediately.
 
 ## License

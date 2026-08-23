@@ -605,7 +605,7 @@ class CommandTests(unittest.TestCase):
             (root / "package.json").write_text(
                 '{"version": "1.2.3"}\n', encoding="utf-8"
             )
-            npm = root / "npm" / "opencode-athena"
+            npm = root / "npm" / "athena-opencode"
             npm.mkdir(parents=True)
             (npm / "package.json").write_text(
                 '{"version": "1.2.3"}\n', encoding="utf-8"
@@ -635,7 +635,7 @@ class CommandTests(unittest.TestCase):
             (root / "package.json").write_text(
                 '{"version": "1.2.3"}\n', encoding="utf-8"
             )
-            npm = root / "npm" / "opencode-athena"
+            npm = root / "npm" / "athena-opencode"
             npm.mkdir(parents=True)
             (npm / "package.json").write_text(
                 '{"version": "1.2.3"}\n', encoding="utf-8"
@@ -678,7 +678,7 @@ class CommandTests(unittest.TestCase):
             (root / "package.json").write_text(
                 '{"version": "1.2.3"}\n', encoding="utf-8"
             )
-            npm = root / "npm" / "opencode-athena"
+            npm = root / "npm" / "athena-opencode"
             npm.mkdir(parents=True)
             (npm / "package.json").write_text(
                 '{"version": "1.2.3"}\n', encoding="utf-8"

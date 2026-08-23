@@ -120,7 +120,7 @@ def _manifest_versions(repo_root: Path) -> dict[str, str]:
         "claude": repo_root / ".claude-plugin" / "plugin.json",
         "codex": repo_root / ".codex-plugin" / "plugin.json",
         "pi": repo_root / "package.json",
-        "opencode": repo_root / "npm" / "opencode-athena" / "package.json",
+        "opencode": repo_root / "npm" / "athena-opencode" / "package.json",
     }
     return {
         name: str(json.loads(path.read_text(encoding="utf-8"))["version"])

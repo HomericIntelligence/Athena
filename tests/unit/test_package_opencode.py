@@ -50,7 +50,7 @@ class PackageOpenCodeTests(unittest.TestCase):
         staged = self.stage()
 
         manifest = json.loads((staged / "package.json").read_text(encoding="utf-8"))
-        self.assertEqual("opencode-athena", manifest["name"])
+        self.assertEqual("@homericintelligence/athena-opencode", manifest["name"])
         self.assertTrue((staged / "plugin.js").is_file())
         self.assertTrue((staged / "README.md").is_file())
         self.assertTrue((staged / "LICENSE").is_file())
@@ -70,7 +70,7 @@ class PackageOpenCodeTests(unittest.TestCase):
         )
 
     def test_version_mismatch_fails_closed(self) -> None:
-        manifest = self.fixture / "npm" / "opencode-athena" / "package.json"
+        manifest = self.fixture / "npm" / "athena-opencode" / "package.json"
         document = json.loads(manifest.read_text(encoding="utf-8"))
         document["version"] = "9.9.9"
         manifest.write_text(json.dumps(document), encoding="utf-8")
@@ -82,7 +82,7 @@ class PackageOpenCodeTests(unittest.TestCase):
     def test_symlinked_source_fails_closed(self) -> None:
         external = self.fixture.parent / "external-plugin.js"
         external.write_text("export default () => ({});\n", encoding="utf-8")
-        entry = self.fixture / "npm" / "opencode-athena" / "plugin.js"
+        entry = self.fixture / "npm" / "athena-opencode" / "plugin.js"
         entry.unlink()
         entry.symlink_to(external)
 
@@ -117,7 +117,7 @@ class PackageOpenCodeTests(unittest.TestCase):
                 ".git", ".venv", "dist", "build", "__pycache__", "*.pyc"
             ),
         )
-        manifest = broken / "npm" / "opencode-athena" / "package.json"
+        manifest = broken / "npm" / "athena-opencode" / "package.json"
         document = json.loads(manifest.read_text(encoding="utf-8"))
         document["version"] = "not-semver"
         manifest.write_text(json.dumps(document), encoding="utf-8")

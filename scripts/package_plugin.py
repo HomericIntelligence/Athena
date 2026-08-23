@@ -59,8 +59,8 @@ REQUIRED_MEMBERS: Final[frozenset[str]] = frozenset(
         "docs/review/behavior-first-testing.md",
         "docs/review/issue-planning.md",
         "docs/review/repository-scorecard.md",
-        "npm/opencode-athena/package.json",
-        "npm/opencode-athena/plugin.js",
+        "npm/athena-opencode/package.json",
+        "npm/athena-opencode/plugin.js",
         "package.json",
     }
 )

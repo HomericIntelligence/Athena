@@ -39,7 +39,7 @@ async function athenaPlugin() {
   try {
     syncSkills();
   } catch (error) {
-    console.warn(`[opencode-athena] skill installation failed: ${error}`);
+    console.warn(`[athena-opencode] skill installation failed: ${error}`);
   }
   return {};
 }
