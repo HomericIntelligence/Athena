@@ -432,9 +432,7 @@ class DistributionTests(unittest.TestCase):
         status_checks["parameters"]["strict_required_status_checks_policy"] = True
         path.write_text(json.dumps(document), encoding="utf-8")
 
-        self.assert_invalid(
-            "ruleset", "must not require up-to-date branches"
-        )
+        self.assert_invalid("ruleset", "must not require up-to-date branches")
 
         status_checks["parameters"]["strict_required_status_checks_policy"] = False
         status_checks["parameters"]["required_status_checks"] = []
