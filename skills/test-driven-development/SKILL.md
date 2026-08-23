@@ -1,7 +1,7 @@
 ---
 name: test-driven-development
 license: BSD-3-Clause
-description: Use when implementing any feature or bugfix, before writing implementation code — enforces RED-GREEN-REFACTOR cycle
+description: Use when implementing any feature or bugfix, before writing implementation code — enforces RED-GREEN-REFACTOR cycle. Refuses to write production code without a verified failing test; a test that errors instead of failing for the expected missing behavior blocks GREEN until fixed.
 argument-hint: <feature or bugfix description>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
 ---
@@ -69,6 +69,14 @@ mocks where the product requires them; non-empty focused test selection; and
 fresh passing relevant tests, type checks, and lint. Follow the evidence policy
 before claiming success. Use `learn` for a durable testing lesson; its own
 scope and delivery rules determine whether it publishes a PR.
+
+## Failed approaches
+
+- Writing production code before RED, or keeping in-scope implementation written ahead of the test.
+- Accepting an erroring test as RED instead of fixing the setup and re-running until it fails for
+  the expected missing behavior.
+- Weakening a test to reach GREEN instead of fixing the code.
+- Adding speculative features or unrelated refactors beyond what a demonstrated test need requires.
 
 ---
 

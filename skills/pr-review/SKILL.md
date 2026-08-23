@@ -112,3 +112,11 @@ decision; routed and N/A sections; findings in severity order with independent
 dispositions; score and terminal verdict; commands and coverage gaps; delivery
 or auto-merge state; then brief strengths. The prevalidated profile uses only
 its structured-audit override.
+
+## Failed approaches
+
+- Reviewing commits beyond the bound PR diff, or guessing a target when branch discovery is empty or
+  ambiguous.
+- Approving a verdict without runnable evidence, or awarding score credit across a coverage gap.
+- Duplicating one finding across several score sections, or treating a sampled dimension as covered.
+- Rebasing, pushing, merging, or resolving threads outside the requested task scope.

@@ -85,6 +85,15 @@ worktree.
 - Never claim a subagent ran or a check passed without evidence.
 - Prefer the smallest number of agents that creates real parallel value.
 
+## Failed approaches
+
+- Letting specialists write outside their owned worktrees or file sets, or reusing another agent's
+  worktree.
+- Merging, removing, or disposing worktrees without the disposition contract and the user's cleanup
+  authority.
+- Reporting swarm status without per-specialist outcomes, evidence, and worktree disposition.
+- Expanding a subagent's assignment past its bounded prompt instead of stopping on overlap.
+
 ## Status format
 
 Report each work item with its tier, dependency wave, worktree, owned paths, execution mode

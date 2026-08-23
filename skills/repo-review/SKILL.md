@@ -109,6 +109,14 @@ preserving unrelated fields and recording returned URLs or IDs. If a publication
 step fails, report the partial result and leave remaining ready-to-publish items
 in the result.
 
+## Failed approaches
+
+- Publishing tracker issues in `--report-only` mode, or merging, labeling, closing, or pushing under
+  any mode.
+- Grading sections from prose, intent, filenames, or badges instead of observed inventory evidence.
+- Re-filing duplicates already tracked instead of linking the open issue that covers remediation.
+- Silently sampling files or withholding a binding failure instead of reporting the coverage gap.
+
 ## Result
 
 Report architecture first, then the revision and inventory coverage,

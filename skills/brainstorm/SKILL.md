@@ -14,9 +14,11 @@ Start by understanding the current project context, then ask questions one at a 
 
 **DESIGN CHECKPOINT:** Present a scaled design before complex implementation. It is a shared understanding checkpoint, not a permission gate; pause only for unresolved requirements or a filesystem-destructive action.
 
-## Anti-Pattern: "This Is Too Simple To Need A Design"
+## Failed approaches
 
 Every feature goes through this process. "Simple" projects are where unexamined assumptions cause the most wasted work. The design can be short (a few sentences), and should make assumptions and constraints visible before implementation.
+
+- Skipping `advise` retrieval before design proposes what already exists or was already debugged.
 
 ## Checklist
 

@@ -63,6 +63,14 @@ command passed or create a prose-string test to make the plan look verifiable.
 Immediately before publication, re-resolve the canonical identity and withhold
 the update if the requirements, marker, comment, or plan content drifted.
 
+## Failed approaches
+
+- Planning from the issue title alone or inferring requirements from a similar issue.
+- Embedding unverified assumptions instead of verifying paths, symbols, and commands against
+  current repository evidence and citing `file:line`.
+- Starting implementation during planning, or expanding delivery past the canonical-plan comment.
+- Claiming an unrun validation command passed, or overwriting foreign plan content on ambiguity.
+
 ## Result
 
 Return the issue, architecture decision, Mnemosyne revision or no-guidance status and relevant

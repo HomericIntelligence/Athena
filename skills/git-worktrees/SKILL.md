@@ -1,7 +1,7 @@
 ---
 name: git-worktrees
 license: BSD-3-Clause
-description: Use when starting feature work that needs isolation from current workspace — creates isolated git worktrees with safety verification
+description: Use when starting feature work that needs isolation from current workspace — creates isolated git worktrees with safety verification. Fails closed, reporting and stopping without creating or deleting anything when the target directory is not ignored or a clean base commit cannot be verified.
 argument-hint: <branch-name or feature description>
 allowed-tools: [Bash, Read]
 ---
@@ -94,7 +94,7 @@ decision to the Hephaestus workflow and the user's answers to its prompts.
 | Directory not ignored | Add to `.gitignore` + commit first |
 | Tests fail at baseline | Report failures + ask before proceeding |
 
-## Common Mistakes
+## Failed approaches
 
 - **Skipping ignore verification** for project-local worktrees → contents get tracked
 - **Proceeding with failing baseline** → can't distinguish new bugs from pre-existing

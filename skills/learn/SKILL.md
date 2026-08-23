@@ -206,3 +206,12 @@ explicitly rejected. Cleanup is separate: remove only worktrees created by this 
 user authority, only after confirming no uncommitted or unintegrated state remains. Otherwise report
 each worktree's path, owner, revision, cleanliness, and integration state and leave it intact. Never
 delete branches, discard changes, force removal, or touch a pre-existing worktree.
+
+## Failed approaches
+
+- Writing from an unsynchronized checkout when delivery requires a fresh synchronized
+  default-branch base.
+- Bypassing the privacy and proprietary-information gate, or inventing a public analogue when safe
+  generalization is impossible.
+- Consolidating prior versions into the main entry instead of archiving them in `.history`.
+- Creating a competing PR when an open PR already targets the selected canonical entry.

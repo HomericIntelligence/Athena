@@ -1,7 +1,7 @@
 ---
 name: change-review
 license: BSD-3-Clause
-description: Review only the working-tree, staged, or explicit-range changes for architecture alignment, behavior, language practices, and evidence. Use before committing or opening a PR; it never edits source or posts forge comments.
+description: Review only the working-tree, staged, or explicit-range changes for architecture alignment, behavior, language practices, and evidence. Use before committing or opening a PR; it never edits source or posts forge comments. An ambiguous, unresolvable, or out-of-scope change set blocks the review with a reported reason instead of being silently widened.
 argument-hint: "[--worktree | --staged | --range BASE..HEAD] [PATH ...]"
 allowed-tools: [Read, Bash, Grep, Glob, Agent]
 ---
@@ -66,3 +66,12 @@ Return in the console or host-native read-only annotation surface:
 Use native source annotations only for changed locations when the host supports
 them. Otherwise use `path:line` in the console; never simulate annotations by
 editing source.
+
+## Failed approaches
+
+- Reviewing uncommitted work as if it were committed, or inventing a head commit to bind a range.
+- Widening scope past the requested range, paths, or selected diff instead of reporting the
+  boundary.
+- Editing source, staging files, posting forge comments, or simulating native annotations to deliver
+  findings.
+- Sampling an unsafe-to-cover scope instead of reporting the coverage gap and narrowing the paths.
