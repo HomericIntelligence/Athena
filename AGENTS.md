@@ -128,4 +128,4 @@ an invalid hard-dependency override, or any proposal to weaken a security or evi
 | `just static` | Run lint, format, and strict type checks over every executable script. |
 | `just markdownlint` | Validate public documentation and shipped skill Markdown. |
 | `just package` | Build and inspect the portable plugin archive. |
-| `just all` | Run the complete local required-check equivalent. |
+| `just all` | Run the local check suite: validate, test, static, markdownlint, workflow-check, and package. SBOM generation and the dependency scan are required-CI-only gates (`just sbom` / `just sca` need CI-pinned Syft/Grype; see `docs/policies/required-checks.md`). |
