@@ -19,7 +19,12 @@ from skills._cli import argument_parser
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-ALLOWED_ECOSYSTEM_REPOSITORIES = {"Athena", "Hephaestus", "Mnemosyne"}
+ALLOWED_ECOSYSTEM_REPOSITORIES = {
+    "Athena",
+    "Hephaestus",
+    "Mnemosyne",
+    "athena-opencode",
+}
 ECOSYSTEM_REPOSITORY = re.compile(
     r"\bHomericIntelligence/([A-Za-z0-9_.-]+)\b", re.IGNORECASE
 )
@@ -43,6 +48,8 @@ APPROVED_MERGE_QUEUE_PARAMETERS: dict[str, object] = {
 }
 PI_PACKAGE_NAME = "@homericintelligence/athena"
 PI_SKILL_ROOT = ["./skills"]
+OPENCODE_PACKAGE_NAME = "@homericintelligence/athena-opencode"
+OPENCODE_MANIFEST_PATH = "npm/athena-opencode/package.json"
 
 
 class ValidationError(NamedTuple):
@@ -242,6 +249,47 @@ def _validate_pi(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
         errors.append(
             ValidationError(
                 "pi", "package must load ['./skills'] and no other Pi resources"
+            )
+        )
+    return errors
+
+
+def _validate_opencode(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
+    """Validate the opencode npm plugin manifest."""
+    manifest, errors = _read_json(
+        repo_root / OPENCODE_MANIFEST_PATH, "opencode", repo_root
+    )
+    if manifest is None:
+        return errors
+    if manifest.get("name") != OPENCODE_PACKAGE_NAME:
+        errors.append(
+            ValidationError(
+                "opencode", f"package must be named '{OPENCODE_PACKAGE_NAME}'"
+            )
+        )
+    version = manifest.get("version")
+    if not isinstance(version, str) or SEMVER_PATTERN.fullmatch(version) is None:
+        errors.append(
+            ValidationError("version", "OpenCode plugin version must be valid SemVer")
+        )
+    if manifest.get("main") != "plugin.js":
+        errors.append(
+            ValidationError("opencode", "package entry point must be 'plugin.js'")
+        )
+    keywords = manifest.get("keywords")
+    if not isinstance(keywords, list) or "opencode-plugin" not in keywords:
+        errors.append(
+            ValidationError(
+                "opencode", "package must declare the 'opencode-plugin' keyword"
+            )
+        )
+    files = manifest.get("files")
+    required_files = {"plugin.js", "skills"}
+    if not isinstance(files, list) or not required_files.issubset(files):
+        errors.append(
+            ValidationError(
+                "opencode",
+                "package must publish at least the plugin entry and skills corpus",
             )
         )
     return errors
@@ -518,9 +566,12 @@ def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationErro
             ValidationError("ruleset", "required status-check policy is missing"),
         ]
     parameters = status_checks["parameters"]
-    if parameters.get("strict_required_status_checks_policy") is not True:
+    if parameters.get("strict_required_status_checks_policy") is not False:
         errors.append(
-            ValidationError("ruleset", "must require checks current with main")
+            ValidationError(
+                "ruleset",
+                "must not require up-to-date branches; the merge queue manages freshness",
+            )
         )
     checks = parameters.get("required_status_checks")
     if not isinstance(checks, list) or not any(
@@ -528,6 +579,22 @@ def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationErro
         for check in checks
     ):
         errors.append(ValidationError("ruleset", "must require required-checks-gate"))
+    pull_request = next(
+        (
+            rule
+            for rule in rules
+            if isinstance(rule, dict) and rule.get("type") == "pull_request"
+        ),
+        None,
+    )
+    if not isinstance(pull_request, dict) or not isinstance(
+        pull_request.get("parameters"), dict
+    ):
+        errors.append(ValidationError("ruleset", "pull-request policy is missing"))
+    elif pull_request["parameters"].get("allowed_merge_methods") != ["squash"]:
+        errors.append(
+            ValidationError("ruleset", "pull requests must merge by squash only")
+        )
     merge_queues = [
         rule
         for rule in rules
@@ -553,6 +620,7 @@ def validate_repository(repo_root: Path) -> list[ValidationError]:
         *_validate_claude(repo_root),
         *_validate_codex(repo_root),
         *_validate_pi(repo_root),
+        *_validate_opencode(repo_root),
         *_validate_layout_and_policy(repo_root),
         *_validate_cli_conventions(repo_root),
         *_validate_repo_review_scorecard(repo_root),
@@ -565,14 +633,18 @@ def validate_repository(repo_root: Path) -> list[ValidationError]:
         repo_root / ".codex-plugin" / "plugin.json", "version", repo_root
     )
     pi, _ = _read_json(repo_root / "package.json", "version", repo_root)
-    if (
-        claude is not None
-        and codex is not None
-        and pi is not None
-        and len({claude.get("version"), codex.get("version"), pi.get("version")}) != 1
-    ):
+    opencode, _ = _read_json(repo_root / OPENCODE_MANIFEST_PATH, "version", repo_root)
+    versions = [
+        manifest.get("version")
+        for manifest in (claude, codex, pi, opencode)
+        if manifest is not None
+    ]
+    if len(versions) == 4 and len(set(versions)) != 1:
         errors.append(
-            ValidationError("version", "Pi, Claude, and Codex manifest versions differ")
+            ValidationError(
+                "version",
+                "Pi, Claude, Codex, and OpenCode manifest versions differ",
+            )
         )
     return errors
 

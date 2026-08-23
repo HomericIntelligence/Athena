@@ -605,10 +605,23 @@ class CommandTests(unittest.TestCase):
             (root / "package.json").write_text(
                 '{"version": "1.2.3"}\n', encoding="utf-8"
             )
+            npm = root / "npm" / "athena-opencode"
+            npm.mkdir(parents=True)
+            (npm / "package.json").write_text(
+                '{"version": "1.2.3"}\n', encoding="utf-8"
+            )
 
             versions = ci_policy._manifest_versions(root)
 
-        self.assertEqual({"claude": "1.2.3", "codex": "1.2.3", "pi": "1.2.3"}, versions)
+        self.assertEqual(
+            {
+                "claude": "1.2.3",
+                "codex": "1.2.3",
+                "pi": "1.2.3",
+                "opencode": "1.2.3",
+            },
+            versions,
+        )
 
     def test_release_command_validates_github_and_git_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -620,6 +633,11 @@ class CommandTests(unittest.TestCase):
                     '{"version": "1.2.3"}\n', encoding="utf-8"
                 )
             (root / "package.json").write_text(
+                '{"version": "1.2.3"}\n', encoding="utf-8"
+            )
+            npm = root / "npm" / "athena-opencode"
+            npm.mkdir(parents=True)
+            (npm / "package.json").write_text(
                 '{"version": "1.2.3"}\n', encoding="utf-8"
             )
             environment = {
@@ -658,6 +676,11 @@ class CommandTests(unittest.TestCase):
                     '{"version": "1.2.3"}\n', encoding="utf-8"
                 )
             (root / "package.json").write_text(
+                '{"version": "1.2.3"}\n', encoding="utf-8"
+            )
+            npm = root / "npm" / "athena-opencode"
+            npm.mkdir(parents=True)
+            (npm / "package.json").write_text(
                 '{"version": "1.2.3"}\n', encoding="utf-8"
             )
             environment = {

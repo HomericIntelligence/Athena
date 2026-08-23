@@ -42,9 +42,24 @@ Install Athena through your coding harness's documented skill or plugin mechanis
 commit or supported release tag, then restart or reload the harness so its skill catalog recognizes
 Athena.
 
+opencode installs Athena as the scoped npm plugin `@homericintelligence/athena-opencode`. Add it to the `plugin` array of your
+`opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["@homericintelligence/athena-opencode"]
+}
+```
+
+Then quit and restart opencode. On startup, the plugin installs the canonical skill corpus under
+`$XDG_CONFIG_HOME/opencode/skills/athena/` (`~/.config/opencode/skills/athena/` by default), where
+opencode discovers it natively. The plugin only writes inside that `athena/` namespace; see
+[`npm/athena-opencode/README.md`](npm/athena-opencode/README.md) for details and uninstall steps.
+
 Invoke skills through the harness's native skill-invocation mechanism; for example, ask the harness
 to use the `repo-review` skill. Update or remove Athena by managing the configured Git-backed source
-through that same mechanism.
+or npm plugin through that same mechanism.
 
 Some workflows optionally need delegation or explicitly scoped web access. When those capabilities
 are unavailable, Athena uses sequential work where supported or reports the capability gap. Install
