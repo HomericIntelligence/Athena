@@ -429,16 +429,29 @@ class DistributionTests(unittest.TestCase):
             for rule in document["rules"]
             if rule["type"] == "required_status_checks"
         )
-        status_checks["parameters"]["strict_required_status_checks_policy"] = False
+        status_checks["parameters"]["strict_required_status_checks_policy"] = True
         path.write_text(json.dumps(document), encoding="utf-8")
 
-        self.assert_invalid("ruleset", "must require checks current with main")
+        self.assert_invalid(
+            "ruleset", "must not require up-to-date branches"
+        )
 
-        status_checks["parameters"]["strict_required_status_checks_policy"] = True
+        status_checks["parameters"]["strict_required_status_checks_policy"] = False
         status_checks["parameters"]["required_status_checks"] = []
         path.write_text(json.dumps(document), encoding="utf-8")
 
         self.assert_invalid("ruleset", "must require required-checks-gate")
+
+    def test_ruleset_requires_squash_only_pull_request_merges(self) -> None:
+        path = self.fixture / ".github" / "rulesets" / "homeric-main-baseline.json"
+        document = json.loads(path.read_text(encoding="utf-8"))
+        pull_request = next(
+            rule for rule in document["rules"] if rule["type"] == "pull_request"
+        )
+        pull_request["parameters"]["allowed_merge_methods"] = ["merge", "squash"]
+        path.write_text(json.dumps(document), encoding="utf-8")
+
+        self.assert_invalid("ruleset", "merge by squash only")
 
     def test_ruleset_requires_the_approved_staged_merge_queue_policy(self) -> None:
         path = self.fixture / ".github" / "rulesets" / "homeric-main-baseline.json"

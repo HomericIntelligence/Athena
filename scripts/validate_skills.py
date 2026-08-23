@@ -566,9 +566,12 @@ def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationErro
             ValidationError("ruleset", "required status-check policy is missing"),
         ]
     parameters = status_checks["parameters"]
-    if parameters.get("strict_required_status_checks_policy") is not True:
+    if parameters.get("strict_required_status_checks_policy") is not False:
         errors.append(
-            ValidationError("ruleset", "must require checks current with main")
+            ValidationError(
+                "ruleset",
+                "must not require up-to-date branches; the merge queue manages freshness",
+            )
         )
     checks = parameters.get("required_status_checks")
     if not isinstance(checks, list) or not any(
@@ -576,6 +579,22 @@ def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationErro
         for check in checks
     ):
         errors.append(ValidationError("ruleset", "must require required-checks-gate"))
+    pull_request = next(
+        (
+            rule
+            for rule in rules
+            if isinstance(rule, dict) and rule.get("type") == "pull_request"
+        ),
+        None,
+    )
+    if not isinstance(pull_request, dict) or not isinstance(
+        pull_request.get("parameters"), dict
+    ):
+        errors.append(ValidationError("ruleset", "pull-request policy is missing"))
+    elif pull_request["parameters"].get("allowed_merge_methods") != ["squash"]:
+        errors.append(
+            ValidationError("ruleset", "pull requests must merge by squash only")
+        )
     merge_queues = [
         rule
         for rule in rules
