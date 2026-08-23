@@ -1,6 +1,6 @@
 {
   "name": "athena",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Agent-host plugins and skills imported by Claude Code / Codex / opencode / Pi.",
   "author": {
     "name": "HomericIntelligence",
