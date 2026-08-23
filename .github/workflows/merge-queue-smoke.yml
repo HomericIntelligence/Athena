@@ -1,11 +1,10 @@
 name: Merge Queue Smoke
 
 # Fast merge-queue gate. The full required matrix (_required.yml) runs on
-# every pull_request and on push to main, exactly as before; merge_group
-# re-validation is this single fast job, so a queued merge occupies one
-# runner slot for < 5 min instead of re-running the whole matrix. The
-# `merge-queue-smoke` context this job produces is the single required
-# status check for the merge queue after the ruleset flip.
+# every pull_request, on push to main, and on merge_group so the ruleset's
+# required-checks-gate context is reported on each queued head; this smoke
+# workflow re-validates workflow syntax and task entry points in < 5 min
+# as an additional fast signal for the queue.
 
 "on":
   merge_group:
