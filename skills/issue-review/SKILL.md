@@ -59,6 +59,16 @@ missing safe forge capability, withhold the comment and return the review as
 stale. Otherwise publish exactly one actor-owned structured comment, including
 a clean result or verified absent-plan coverage gap.
 
+## Failed approaches
+
+- Reviewing issues or plans outside the requested scope set, or treating historical plans as the
+  artifact under review.
+- Editing the issue, labels, or assignment instead of reporting findings through the review
+  comment.
+- Inventing acceptance criteria the reporter did not state, or accepting acknowledged-but-unresolved
+  prior findings as resolved.
+- Republishing after drift instead of withholding the comment as stale.
+
 ## Result
 
 Return issue and plan identities, architecture decision first, requirement

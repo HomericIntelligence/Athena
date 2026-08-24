@@ -54,6 +54,16 @@ consolidated. Route repository audits to `repo-review`, PR audits to `pr-review`
 depth by mode. Recommend `learn` only for a verified new trigger, corrected command or parameter,
 failure mode, or workflow.
 
+## Failed approaches
+
+- Substituting a different repository or checkout for the resolved `owner/Mnemosyne` knowledge
+  tree.
+- Treating local checkout content as current or trusted without reporting its revision and
+  freshness limits.
+- Continuing retrieval after a failed helper as if knowledge were available instead of returning
+  `no applicable durable guidance` with the limitation.
+- Replacing a failed selector helper with an ad hoc glob, silently changing the retrieval boundary.
+
 ## Output
 
 Return the resolved `owner/Mnemosyne` revision, the bound local checkout `HEAD`, or an explicit

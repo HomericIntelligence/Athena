@@ -155,7 +155,7 @@ You MUST complete each phase before proceeding to the next.
 
 **ALL of these mean: STOP. Return to Phase 1.**
 
-## Common Rationalizations
+## Failed approaches
 
 | Excuse | Reality |
 | -------- | --------- |

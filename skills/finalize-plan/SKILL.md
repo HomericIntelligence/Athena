@@ -120,6 +120,16 @@ Assert identities, ordering classes, preservation, mutation count and scope, and
 failure-before-write behavior. Do not freeze editorial wording, headings,
 paragraph counts, or an example issue body.
 
+## Failed approaches
+
+- Re-finalizing an epoch without a fresh request or a new requirements state.
+- Treating generated plan text or sealed provenance fields as newly authored, executable
+  requirements.
+- Bypassing behavior-first verification for wording checks, or inventing files, commands, or
+  validation evidence during synthesis.
+- Retrying after a timeout, readback mismatch, or indeterminate deletion instead of reporting the
+  unknown outcome.
+
 ## Result
 
 Return the issue and actor identities; `R/P/V/F`; GO decision and finding
