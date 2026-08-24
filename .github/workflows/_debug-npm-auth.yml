@@ -1,0 +1,19 @@
+name: Debug NPM Auth
+on:
+  workflow_dispatch:
+jobs:
+  whoami:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Check token identity and grants
+        run: |
+          echo "token length: ${#NODE_AUTH_TOKEN}"
+          npm whoami || true
+          npm profile get --json 2>&1 | head -c 400 || true
+          npm access list packages --json 2>&1 | head -c 400 || true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
