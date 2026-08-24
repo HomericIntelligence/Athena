@@ -30,16 +30,20 @@
   tooling for branch and worktree cleanup.
 - Preserve unrelated worktree changes. Stop when safe isolation is not possible.
 - Never bypass a failing validation, security, review, or policy gate.
-- Apply these development principles as decision rules:
-  - **KISS:** choose the smallest design that satisfies the demonstrated requirement.
-  - **YAGNI:** do not add speculative features, abstraction, compatibility, or process artifacts.
-  - **TDD:** drive executable behavior changes with a failing behavior test, minimal implementation,
-    and refactoring only after green.
-  - **DRY:** keep one authoritative implementation or fact; link to it instead of duplicating it.
-  - **SOLID and modularity:** keep responsibilities focused, dependencies directed through narrow
-    interfaces, and components independently replaceable where the product needs that flexibility.
-  - **Principle of least astonishment:** preserve intuitive interfaces, explicit failures, and
-    behavior consistent with repository precedent.
+- Apply the canonical [engineering principles](../principles/README.md) as decision rules, selecting
+  only those relevant to the change. For routine Athena development, bind scope and design choices to
+  [P001](../principles/README.md#p001), [P002](../principles/README.md#p002), and
+  [P010](../principles/README.md#p010); keep authority and state ownership singular under
+  [P003](../principles/README.md#p003) and [P078](../principles/README.md#p078); follow the established
+  architecture and contracts under [P004](../principles/README.md#p004),
+  [P005](../principles/README.md#p005), [P006](../principles/README.md#p006),
+  [P015](../principles/README.md#p015), and [P019](../principles/README.md#p019); and verify changed
+  behavior under [P022](../principles/README.md#p022), [P026](../principles/README.md#p026),
+  [P064](../principles/README.md#p064), [P065](../principles/README.md#p065), and
+  [P091](../principles/README.md#p091).
+- Repository, security, evidence, user, and system contracts take precedence over a general
+  principle. A principle never grants authority, expands requested scope, or weakens a stricter
+  safety or validation rule.
 
 ## Durable-artifact and test policy
 

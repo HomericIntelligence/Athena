@@ -13,11 +13,38 @@ worktrees. Athena prepares the trusted automation dependency and delegates the c
 `hephaestus-tidy` owns discovery, preservation rules, prompts, rebases, removal safeguards, output,
 and the final exit status.
 
+## Engineering principles
+
+Use the [canonical engineering-principles catalog](../../docs/principles/README.md) through these
+workflow-specific rules:
+
+- [P010 — Scope Fidelity](../../docs/principles/README.md#p010): delegate only the requested tidy,
+  cleanup, or rebase operation and do not add a second Athena cleanup policy.
+- [P031 — Propagate Rather Than Swallow](../../docs/principles/README.md#p031): preserve the delegated
+  command's output, signals, and nonzero result instead of masking or retrying a failure.
+- [P035 — Fail Secure / Fail Closed](../../docs/principles/README.md#p035): stop when dependency
+  identity, revision binding, checkout cleanliness, or a required capability cannot be established.
+- [P050 — Least Privilege](../../docs/principles/README.md#p050): use only the resolved dependency,
+  target repository, capabilities, and arguments required by this invocation.
+- [P058 — Bounded Agent Authority](../../docs/principles/README.md#p058): forwarding arguments does
+  not widen the user's requested scope, destinations, credentials, or mutation authority.
+- [P061 — Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061): bind
+  the dependency, target, authority, and exact command vector before starting delegated execution.
+- [P062 — Human Approval for Irreversible or High-Risk Actions](../../docs/principles/README.md#p062):
+  preserve existing authorization for scoped constructive work without redundant prompts, while
+  leaving destructive or otherwise ungranted irreversible actions behind action-bound approval.
+- [P083 — Irreversible Actions Last](../../docs/principles/README.md#p083): finish dependency and
+  command validation before handing control to an operation that may cross a point of no return.
+
 ## Inputs
 
 Keep the target repository as the current working directory. Treat every argument supplied to this
 skill as a `hephaestus-tidy` argument and forward it unchanged. When the user wants a preview,
 forward `--dry-run`; do not reinterpret it or add it implicitly.
+
+Treat arguments as opaque, untrusted CLI data under
+[P053 — Validate at Trust Boundaries](../../docs/principles/README.md#p053). Preserve their argument
+boundaries; Hephaestus's parser is the nearest responsible validation boundary.
 
 ## Workflow
 
@@ -42,6 +69,10 @@ forward `--dry-run`; do not reinterpret it or add it implicitly.
 Athena performs no worktree audit, candidate classification, removal, prompt, branch rebase, or
 cleanup safety decision of its own. It never substitutes a `hephaestus-tidy` executable found on
 `PATH` for the dependency-locked command.
+
+Delegation neither withdraws already granted authority for scoped constructive actions nor creates
+new authority. Keep Hephaestus's prompts attached, and never use delegation to bypass action-bound
+approval for destructive or otherwise ungranted irreversible operations.
 
 ## Dependency and capability failures
 

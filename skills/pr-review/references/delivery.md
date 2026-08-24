@@ -14,6 +14,27 @@ or automating a later artifact.
                 [optional separate auto-merge opt-in after GO]
 ```
 
+## Engineering principle routes
+
+- [P037 Idempotency Before Retry](../../../docs/principles/README.md#p037) and
+  [P044 Atomicity Where Possible](../../../docs/principles/README.md#p044) require one bound,
+  atomic comment batch where the forge supports it and prohibit blind retry after a failed or
+  indeterminate write.
+- [P050 Least Privilege](../../../docs/principles/README.md#p050),
+  [P051 Complete Mediation](../../../docs/principles/README.md#p051),
+  [P052 Separation of Duties](../../../docs/principles/README.md#p052), and
+  [P058 Bounded Agent Authority](../../../docs/principles/README.md#p058) keep review, publication,
+  approval, and merge capabilities distinct and limited to the selected profile and requested task.
+- [P061 Separate Decision from High-Impact Execution](../../../docs/principles/README.md#p061),
+  [P062 Human Approval for Irreversible or High-Risk Actions](../../../docs/principles/README.md#p062),
+  and [P083 Irreversible Actions Last](../../../docs/principles/README.md#p083) require a fresh
+  authority and identity check immediately before a requested write or guarded auto-merge opt-in;
+  existing specific authorization is honored without a redundant approval prompt.
+- [P065 Verify Before Claiming Completion](../../../docs/principles/README.md#p065) and
+  [P068 No Validation Bypass](../../../docs/principles/README.md#p068) prohibit a favorable verdict,
+  successful-publication claim, or automation state based on stale, incomplete, bypassed, or
+  unverified evidence.
+
 ## Decision
 
 For default and CI-free normal reports, calculate findings and score before

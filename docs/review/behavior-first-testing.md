@@ -4,6 +4,14 @@
 wording, implementation layout, or incidental timing. This contract applies to planning,
 implementation, change review, PR review, and repository review.
 
+This contract applies the catalog's testing rules:
+[P022](../principles/README.md#p022), [P023](../principles/README.md#p023),
+[P024](../principles/README.md#p024), [P025](../principles/README.md#p025),
+[P026](../principles/README.md#p026), [P027](../principles/README.md#p027),
+[P028](../principles/README.md#p028), and [P091](../principles/README.md#p091).
+Activate only those relevant to the behavior and risk under review; P091 governs behavior-changing
+TDD, while the other entries remain independently applicable verification rules.
+
 ## What a good test proves
 
 A good test proves an observable product contract: a result, state transition, public error contract,

@@ -4,6 +4,21 @@
 driving implementation. The issue remains the requirements source; a plan proposes work but never
 scopes implementation, merge, or forge mutation beyond its explicitly requested comment.
 
+## Principle routing
+
+For plan scope and architecture, apply [P001](../principles/README.md#p001),
+[P002](../principles/README.md#p002), [P008](../principles/README.md#p008),
+[P010](../principles/README.md#p010), [P012](../principles/README.md#p012),
+[P015](../principles/README.md#p015), [P063](../principles/README.md#p063),
+[P064](../principles/README.md#p064), and [P074](../principles/README.md#p074). For artifact identity,
+publication, and cleanup, apply [P019](../principles/README.md#p019),
+[P033](../principles/README.md#p033), [P044](../principles/README.md#p044),
+[P059](../principles/README.md#p059), [P061](../principles/README.md#p061),
+[P062](../principles/README.md#p062), [P065](../principles/README.md#p065),
+[P066](../principles/README.md#p066), and [P083](../principles/README.md#p083). Plan review additionally
+uses [P069](../principles/README.md#p069), [P071](../principles/README.md#p071), and
+[P072](../principles/README.md#p072) for proportionate independence and evidence-based disposition.
+
 ## At a glance
 
 | Artifact | Owner and purpose | Write boundary |

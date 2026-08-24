@@ -12,9 +12,33 @@ allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 
 Random fixes waste time and create new bugs. Quick patches mask underlying issues.
 
-**Core principle:** ALWAYS find root cause before attempting fixes. Symptom fixes are failure.
+## Working rules
+
+Always find the root cause before attempting fixes. Symptom fixes are failure.
 
 **Violating the letter of this process is violating the spirit of debugging.**
+
+## Engineering principles
+
+Use Athena's [canonical engineering-principles catalog](../../docs/principles/README.md) as the
+definition source. Apply these principles to this workflow:
+
+- [P012 — Evidence Before Modification](../../docs/principles/README.md#p012): inspect symptoms,
+  changes, contracts, and repository guidance before choosing a repair.
+- [P015 — Architecture Conformance](../../docs/principles/README.md#p015): compare the failure path
+  with established boundaries before changing the architecture.
+- [P022 — Test Behavior, Not Implementation](../../docs/principles/README.md#p022): reproduce and
+  protect the observable contract rather than a private arrangement.
+- [P029 — Generalize Error Policy; Preserve Specific Cause](../../docs/principles/README.md#p029):
+  retain the original cause while applying stable boundary-level error behavior.
+- [P031 — Propagate Rather Than Swallow](../../docs/principles/README.md#p031): preserve failures when
+  the current layer cannot recover completely.
+- [P047 — Observability Is Part of Correctness](../../docs/principles/README.md#p047): gather the
+  minimum correlated, structured, non-sensitive evidence needed to locate the fault.
+- [P065 — Verify Before Claiming Completion](../../docs/principles/README.md#p065): rerun the original
+  reproduction and applicable repository checks before reporting resolution.
+- [P072 — Technical Evidence Over Preference](../../docs/principles/README.md#p072): accept or reject
+  hypotheses using observed evidence rather than intuition.
 
 ## Before Starting
 
@@ -56,29 +80,30 @@ You MUST complete each phase before proceeding to the next.
 
 **BEFORE attempting ANY fix:**
 
-1. **Read Error Messages Carefully**
+1. **Read error messages carefully:** capture the complete failure output.
    - Don't skip past errors or warnings
    - They often contain the exact solution
    - Read stack traces completely
    - Note line numbers, file paths, error codes
 
-2. **Reproduce Consistently**
+2. **Reproduce consistently:** record the exact conditions and steps.
    - Can you trigger it reliably?
    - What are the exact steps?
    - Does it happen every time?
    - If not reproducible → gather more data, don't guess
 
-3. **Check Recent Changes**
+3. **Check recent changes:** compare the failing state with recent repository history.
    - What changed that could cause this?
    - `git diff`, recent commits
    - New dependencies, config changes
    - Environmental differences
 
-4. **Gather Evidence in Multi-Component Systems**
+4. **Gather evidence in multi-component systems:** isolate the failing boundary.
 
    **WHEN system has multiple components:**
 
-   **BEFORE proposing fixes, add diagnostic instrumentation:**
+   **BEFORE proposing fixes, add only the non-sensitive diagnostic instrumentation required by
+   [P047 — Observability Is Part of Correctness](../../docs/principles/README.md#p047):**
 
    ```text
    For EACH component boundary:
@@ -92,7 +117,7 @@ You MUST complete each phase before proceeding to the next.
    THEN investigate that specific component
    ```
 
-5. **Trace Data Flow**
+5. **Trace data flow:** follow the bad value back to its source.
 
    When error is deep in call stack:
    - Where does the bad value originate?
@@ -123,25 +148,45 @@ You MUST complete each phase before proceeding to the next.
 
 **Fix the root cause, not the symptom:**
 
-1. **Create failing test case** using the `test-driven-development` skill — it must exist before fixing
+1. **Create a regression test** using the `test-driven-development` skill. Follow
+   [P026 — Regression Before Repair](../../docs/principles/README.md#p026), assert observable behavior
+   under [P022](../../docs/principles/README.md#p022), and cover the relevant failure path under
+   [P028](../../docs/principles/README.md#p028).
 2. **Implement single fix** addressing the root cause
-3. **Verify fix**: Test passes? No other tests broken? Issue actually resolved?
+3. **Verify the fix** under [P065](../../docs/principles/README.md#p065): rerun the reproduction and
+   relevant suite, preserve determinism and isolation under
+   [P027](../../docs/principles/README.md#p027), and do not weaken tests or bypass validation under
+   [P067](../../docs/principles/README.md#p067) and
+   [P068](../../docs/principles/README.md#p068).
+
+   When the repair changes failure behavior, choose the responsible boundary deliberately:
+   generalize policy while preserving cause under [P029](../../docs/principles/README.md#p029), handle
+   at the [nearest responsible boundary](../../docs/principles/README.md#p030),
+   [propagate unrecovered failures](../../docs/principles/README.md#p031), and
+   [handle once without losing causality](../../docs/principles/README.md#p032). Preserve valid state
+   under [P033](../../docs/principles/README.md#p033), then choose
+   [fail-fast](../../docs/principles/README.md#p034),
+   [fail-closed](../../docs/principles/README.md#p035), or
+   [graceful degradation](../../docs/principles/README.md#p036) according to the failed capability's
+   correctness and security criticality.
 
 4. **If fix doesn't work:**
    - STOP
    - Count: How many fixes have you tried?
    - If < 3: Return to Phase 1 with new information
-   - **If ≥ 3: STOP and question the architecture**
+   - **If ≥ 3:** STOP and trigger an architecture review
 
-5. **If 3+ fixes failed — Question Architecture:**
+5. **If 3+ fixes failed — Review Architecture:**
 
-   Pattern indicating architectural problem:
+   Repeated failed fixes can indicate a mistaken model, a missed dependency, or an architectural
+   problem. They trigger reassessment; they do not prove the architecture is wrong. Review:
    - Each fix reveals new shared state/coupling/problem elsewhere
    - Fixes require massive refactoring to implement
    - Each fix creates new symptoms elsewhere
 
-   STOP and discuss with user before attempting more fixes.
-   This is not a failed hypothesis — this is a wrong architecture.
+   STOP and discuss the accumulated evidence with the user before another repair attempt. Revisit
+   Phase 1 when the evidence points to a bad hypothesis; propose an architectural change only when
+   the evidence supports it.
 
 ## Red Flags — STOP and Follow Process
 
@@ -163,7 +208,7 @@ You MUST complete each phase before proceeding to the next.
 | "Emergency, no time for process" | Systematic debugging is FASTER than guess-and-check. |
 | "Just try this first, then investigate" | First fix sets the pattern. Do it right from the start. |
 | "Multiple fixes at once saves time" | Can't isolate what worked. Causes new bugs. |
-| "One more fix attempt" (after 2+ failures) | 3+ failures = architectural problem. Don't fix again. |
+| "One more fix attempt" (after 2+ failures) | Three failed fixes trigger architecture review; they do not justify another guess. |
 
 ## Repository command discovery
 
@@ -180,7 +225,8 @@ tool, retaining their complete output as evidence.
 
 ## After Resolution
 
-Verify with fresh runnable evidence per the evidence-integrity policy before claiming the bug is
+Verify with fresh runnable evidence per the
+[evidence-integrity policy](../../docs/policies/evidence-integrity.md) before claiming the bug is
 fixed; rerun the failing reproduction and the repository-defined checks.
 
 Offer to invoke `learn` when the session produced durable debugging knowledge. An indirect Learn
