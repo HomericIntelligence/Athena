@@ -72,7 +72,7 @@ not a request to reconstruct evidence.
   "changed_paths": {"sha256": "lowercase 64-hex SHA-256", "count": 1},
   "review_contract": {
     "sha256": "lowercase 64-hex SHA-256",
-    "content": "host-owned snapshot-bound architecture, pull/merge-request-specific, testing, and applicable language review material"
+    "content": "self-contained host-owned review material, including the catalog identity and revision, activated canonical PNNN IDs, and full text of every activated principle"
   },
   "validation": {
     "plan_id": "host-owned fixed validation-plan identifier",
@@ -103,6 +103,15 @@ not a request to reconstruct evidence.
 }
 ```
 
+Keep `schema_version` at 4. `review_contract.content` is self-contained because the restricted
+reviewer cannot follow repository links. It must carry the canonical principles catalog source and
+path, the immutable repository revision and catalog content digest, and an ordered activated set.
+Each activated entry includes its canonical `PNNN` ID and name plus the complete text of its catalog
+entry and linked detail page. It also carries the snapshot-bound architecture,
+pull/merge-request-specific, testing, and applicable language/surface review material. The existing
+`review_contract.sha256` binds that complete serialized content; a link, ID-only list, truncated
+principle, or mismatched catalog revision is a coverage failure.
+
 Only schema version 4 is valid; versions 1–3 lack canonical forge/artifact and
 open-state binding. Require `review_artifact.state` to equal `OPEN`. Accept only
 `github`/`pull_request` and `gitlab`/`merge_request` pairs, and bind forge,
@@ -123,7 +132,7 @@ or continue from bytes that cannot be bound to the reviewed snapshot.
 | Snapshot | Verify archive digest and normalized tree, including applicable modes and symlink targets, materialize `tree_oid` for `head_oid`. |
 | Changed paths and lenses | Verify each declared range and digest, the NUL-safe manifest, and both lens byte streams against their SHA-256 values. |
 | Validation | The host selects fixed `plan_id`, full command set, and each argv from changed-path policy. Every command passes with exit zero; a scoped N/A has a recorded rationale and no command. Bind command output hashes and isolation backend, network denial, environment, and toolchain digests. |
-| Review contract | Bind `review_contract.content` to its digest and include architecture, PR/MR issue and source-history duties, behavior-first testing, and only applicable language/surface guidance. Represent every unavailable required item as an attested gap or fixed scoped N/A. |
+| Review contract | Bind the complete `review_contract.content` to its digest. Verify the immutable catalog identity, revision, and digest; each activated canonical ID, name, and full principle text; architecture and PR/MR issue/source-history duties; behavior-first testing; and only applicable language/surface guidance. Represent every unavailable required item as an attested gap or fixed scoped N/A. |
 | Raw output | Before dispatch, index every rendered nonce-fenced block. For each attested block, require exactly one rendered block and one validation command with the same command ID; require the rendered header nonce to equal `raw_output.nonce`; and recompute the exact raw stdout and stderr hashes to match both records. Reject missing, extra, duplicate, swapped, truncated, or mismatched blocks as a coverage failure; never render unverified diagnostics. |
 
 ## Restricted reviewer boundary
@@ -141,8 +150,10 @@ The host must enforce, not merely instruct, these boundaries:
 
 When the structured audit contains a finding, encode both its severity and its
 independent `required`, `suggestion`, `nit`, or `FYI` disposition. A missing
-disposition is a coverage failure. The resulting audit never authorizes labels,
-checks, comments, thread resolution, or a merge.
+disposition is a coverage failure. If an activated engineering principle genuinely governs the
+finding, cite its exact `PNNN Name` in the caller-defined governing-evidence field. Cite an
+independent repository contract directly without forcing an unrelated principle citation. The
+resulting audit never authorizes labels, checks, comments, thread resolution, or a merge.
 
 The host renders raw stdout, stderr, test names, and diagnostics only after
 this verification, in separately nonce-fenced untrusted blocks carrying the

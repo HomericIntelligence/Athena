@@ -16,6 +16,26 @@ Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 [language routing](../../docs/review/language-routing.md), and
 [behavior-first testing](../../docs/review/behavior-first-testing.md).
 
+## Engineering principles
+
+Apply the canonical [engineering-principles catalog](../../docs/principles/README.md) through these
+review decisions:
+
+- [P010 Scope Fidelity](../../docs/principles/README.md#p010) keeps the current issue and canonical
+  plan as the complete review target, while
+  [P066 Preserve Existing Work](../../docs/principles/README.md#p066) prevents the review from
+  rewriting foreign or historical artifacts.
+- [P012 Evidence Before Modification](../../docs/principles/README.md#p012),
+  [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063), and
+  [P072 Technical Evidence Over Preference](../../docs/principles/README.md#p072) require every gap
+  to be grounded in current requirements, repository evidence, and an affected contract.
+- [P015 Architecture Conformance](../../docs/principles/README.md#p015) makes unexplained boundary
+  violations blocking;
+  [P071 Consistency Over Personal Preference](../../docs/principles/README.md#p071) preserves
+  repository conventions unless contrary technical evidence exists; and
+  [P008 Understand Before Subtracting](../../docs/principles/README.md#p008) requires evidence about
+  consumers and purpose before approving deletion or consolidation.
+
 ## Scope and delivery
 
 The issue is the requirements source; review only its current canonical plan.
@@ -32,17 +52,26 @@ implementation, commit, push, pull request, merge, or issue closure.
 
 1. Read the issue, linked work, canonical plan, repository guidance, ADRs,
    relevant code, tests, and public contracts.
-2. Decide architecture first: aligned, intentional and justified change, or an
-   unexplained violation. A material violation blocks a positive assessment.
-3. Map every acceptance criterion to a concrete plan step, affected boundary,
-   and behavior-first validation step. For a material architecture change,
+2. Decide architecture first under
+   [P015 Architecture Conformance](../../docs/principles/README.md#p015): aligned, intentional and
+   justified change, or an unexplained violation. A material violation blocks a positive assessment.
+3. Map every acceptance criterion under
+   [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063) to a concrete plan
+   step, affected boundary, and behavior-first validation step. For a material architecture change,
    verify that the plan includes or cites a
    [design record](../../docs/review/design-docs.md).
 4. Verify cited paths, symbols, commands, dependencies, assumptions, risks,
-   migration, and rollback claims against current repository evidence.
+   migration, and rollback claims against current repository evidence as required by
+   [P012 Evidence Before Modification](../../docs/principles/README.md#p012).
 5. Apply only activated language and change-surface checks, recording N/A
-   sections and reasons. Confirm that relevant prior findings are resolved,
-   rather than merely acknowledged.
+   sections and reasons. Activate
+   [P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001) for added
+   complexity, [P022 Test Behavior, Not Implementation](../../docs/principles/README.md#p022) for
+   testable behavior,
+   [P029 Generalize Error Policy; Preserve Specific Cause](../../docs/principles/README.md#p029) for
+   error paths, and [P048 Secure by Design](../../docs/principles/README.md#p048) for security or new
+   trust boundaries. Confirm that relevant prior findings are resolved, rather than merely
+   acknowledged.
 
 Prioritize architecture violations, missing requirements, unsafe scope,
 unresolved dependencies, untestable outcomes, invalid references,

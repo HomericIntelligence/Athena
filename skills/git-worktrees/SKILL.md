@@ -12,10 +12,33 @@ allowed-tools: [Bash, Read]
 
 Git worktrees create isolated workspaces sharing the same repository, allowing work on multiple branches simultaneously without switching.
 
-**Core principle:** Systematic directory selection + safety verification = reliable isolation.
+**Working rule:** Systematic directory selection plus safety verification produces reliable
+isolation.
 
 **When NOT to use this skill manually:** The `myrmidon-swarm` skill owns worktree creation for its
 background subagents. Use this skill for manual development work, not to duplicate swarm setup.
+
+## Engineering principles
+
+Use the [canonical engineering-principles catalog](../../docs/principles/README.md) through these
+workflow-specific rules:
+
+- [P010 — Scope Fidelity](../../docs/principles/README.md#p010): create only the requested isolated
+  branch and worktree; leave cleanup and unrelated repository changes to their owning workflows.
+- [P012 — Evidence Before Modification](../../docs/principles/README.md#p012): inspect repository
+  guidance, the selected base revision, directory state, ignore rules, and baseline checks first.
+- [P021 — Evolutionary and Reversible Design](../../docs/principles/README.md#p021): isolate feature
+  work at an exact base so it can be reviewed, integrated, preserved, or abandoned independently.
+- [P033 — State-Safe Failure Semantics](../../docs/principles/README.md#p033): fail before creation
+  when validation fails and preserve any created worktree when later setup or tests fail.
+- [P053 — Validate at Trust Boundaries](../../docs/principles/README.md#p053): pass branch, base, path,
+  and path-root values through the tested helper's validation rather than composing raw Git commands.
+- [P058 — Bounded Agent Authority](../../docs/principles/README.md#p058): bind creation to the named
+  branch, exact start SHA, validated destination, and requested feature scope.
+- [P065 — Verify Before Claiming Completion](../../docs/principles/README.md#p065): report the actual
+  path and start SHA and run the repository-defined clean-baseline checks before declaring readiness.
+- [P083 — Irreversible Actions Last](../../docs/principles/README.md#p083): complete dry-run and safety
+  validation before creating the branch and worktree, and delegate later removal to `tidy`.
 
 ## Directory Selection
 
@@ -48,9 +71,13 @@ project-local directory is not ignored.
 
 **If NOT ignored:**
 
-1. Add `.worktrees/` to `.gitignore`
-2. Commit the change
-3. Then proceed with worktree creation
+1. Do not silently edit or commit `.gitignore`, and do not create the project-local worktree.
+2. Prefer a safe temporary destination by passing both
+   `--path <temporary-root>/<project>-<branch>` and `--path-root <temporary-root>` to the helper;
+   derive `<temporary-root>` from the host and report the fallback path.
+3. If repository guidance requires the project-local directory, report the unmet ignore-policy
+   prerequisite and stop. Change `.gitignore` only as a separately authorized, scoped change; after
+   that change is validated and committed, rerun worktree preparation.
 
 **Why critical:** Prevents accidentally committing worktree contents to repository.
 
@@ -66,7 +93,9 @@ No `.gitignore` verification needed — outside the project entirely.
    `BRANCH_NAME --start-point BASE_SHA --dry-run`. For a contract requiring a distinct branch and
    path, also pass exact `--path` and `--path-root` values.
 3. Create it with the same arguments without `--dry-run`, optionally supplying the documented
-   repository preference through `--directory`. Never replace the recorded SHA with ambient HEAD.
+   repository preference through `--directory`. When an unignored local directory requires the
+   temporary fallback, pass the same exact `--path` and `--path-root` to both calls. Never replace
+   the recorded SHA with ambient HEAD.
 4. Change to the returned path and run the repository-defined bootstrap when one exists.
 5. Verify a clean baseline with the repository-defined tests and report the path, start SHA, and result.
 
@@ -91,7 +120,7 @@ decision to the Hephaestus workflow and the user's answers to its prompts.
 | ----------- | -------- |
 | `.worktrees/` exists + ignored | Use it |
 | Neither exists | Use the host temporary directory with `<project>-<branch>` |
-| Directory not ignored | Add to `.gitignore` + commit first |
+| Directory not ignored | Use and report an explicit temporary path, or stop on a repository-mandated local path |
 | Tests fail at baseline | Report failures + ask before proceeding |
 
 ## Failed approaches

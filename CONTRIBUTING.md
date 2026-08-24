@@ -29,9 +29,11 @@ with a SHA-256 checksum. It never builds Python distribution artifacts.
 3. Edit `skills/<name>/SKILL.md`; do not create host-specific copies or marketplace entries.
 4. Put target-repository-specific examples in `references/`, keeping the executable workflow
    portable.
-5. Run `just all`.
-6. Commit with a signed, DCO-attested Conventional Commit.
-7. Open a PR. Include `Closes #N` on its own line when a tracking issue exists.
+5. Apply the [`AGENTS.md` principle-routing rule](AGENTS.md#authoring-a-skill) against the canonical
+   [`engineering principles catalog`](docs/principles/README.md).
+6. Run `just all`.
+7. Commit with a signed, DCO-attested Conventional Commit.
+8. Open a PR. Include `Closes #N` on its own line when a tracking issue exists.
 
 Do not enable auto-merge or merge without explicit maintainer authority.
 

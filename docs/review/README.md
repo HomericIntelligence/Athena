@@ -2,7 +2,9 @@
 
 **Why:** Athena reviews must catch architecture and behavior regressions before lower-level checks
 create false confidence. The shared framework keeps that standard consistent while each skill uses
-the delivery channel appropriate to its scope.
+the delivery channel appropriate to its scope. It applies the canonical
+[engineering principles](../principles/README.md) through review-specific profiles instead of
+redefining them.
 
 ## System at a glance
 
@@ -31,7 +33,7 @@ flowchart LR
 
 | Component | Owns | Read when |
 | --- | --- | --- |
-| [Shared contract](common.md) | Architecture gate, evidence, principles, findings, and delivery boundaries. | Every review. |
+| [Shared contract](common.md) | Architecture gate, evidence, canonical-principle application profiles, findings, and delivery boundaries. | Every review. |
 | [Language routing](language-routing.md) | Applicable language and toolchain profile. | The changed or inventoried surface contains code or build tooling. |
 | [Behavior-first testing](behavior-first-testing.md) | Functional-test quality and false-confidence rules. | Tests, validation, or a plan are in scope. |
 | [Issue planning](issue-planning.md) | Canonical plan identity, review, and finalized-epoch artifacts. | Planning, reviewing, or finalizing an issue. |

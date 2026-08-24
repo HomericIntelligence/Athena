@@ -17,9 +17,32 @@ Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 [language routing](../../docs/review/language-routing.md), and
 [behavior-first testing](../../docs/review/behavior-first-testing.md).
 
+## Engineering principles
+
+Apply the canonical [engineering-principles catalog](../../docs/principles/README.md) through these
+finalization decisions:
+
+- [P010 Scope Fidelity](../../docs/principles/README.md#p010),
+  [P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061), and
+  [P062 Human Approval for Irreversible or High-Risk Actions](../../docs/principles/README.md#p062)
+  constrain writes to the exact verified epoch and the authority already granted by this skill's
+  delivery contract; P062 does not introduce a redundant approval for that authorized write.
+- [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063) requires a lossless
+  source-to-final-body mapping, while
+  [P065 Verify Before Claiming Completion](../../docs/principles/README.md#p065) requires exact
+  readback evidence before the body replacement is reported as successful.
+- [P044 Atomicity Where Possible](../../docs/principles/README.md#p044) keeps the body replacement to
+  one logical update;
+  [P083 Irreversible Actions Last](../../docs/principles/README.md#p083) delays comment deletion until
+  that update is verified; and
+  [P031 Propagate Rather Than Swallow](../../docs/principles/README.md#p031) preserves partial or
+  unknown outcomes instead of hiding or blindly retrying them.
+
 ## Scope and delivery
 
-`--draft` is read-only. Without it, this skill may replace the resolved issue
+`--draft` is read-only. Without it, after the immediate authority and target revalidation required by
+[P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061), this skill
+may replace the resolved issue
 body once and, only after exact body readback, delete the two sealed,
 actor-owned plan and review comments. It must not update the title, labels,
 assignment, milestone, project fields, state, branches, pull requests, or
@@ -64,7 +87,10 @@ verify later readback without recursion.
    Compute `R`, `P`, and `V`, then verify the review's embedded bindings and
    clean GO result. Any ownership, multiplicity, binding, disposition, or
    required-finding failure returns no write.
-3. Build a compact, lossless synthesis. Lead with **Why** (the preserved
+3. Build a compact, lossless synthesis. Apply
+   [P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001) only
+   within the sealed content: simplify presentation without dropping requirements or reinterpreting
+   the approved architecture. Lead with **Why** (the preserved
    original problem, outcome, and non-negotiable requirements), then include a
    compact system-shape diagram only when it makes at least three relationships,
    boundaries, or state transitions materially clearer. Follow with architecture
@@ -79,18 +105,31 @@ verify later readback without recursion.
 5. Add the finalized marker and compute `F` over its non-self-referential
    canonical representation. In `--draft`, return the complete body, `R/P/V/F`,
    source links, and all withheld-write reasons without invoking a forge write.
-6. Immediately before publication, resolve the issue, actor, every comment and
+6. Immediately before publication, revalidate authority under
+   [P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061), then
+   resolve the issue, actor, every comment and
    marker, `R/P/V`, review disposition, and target body again. If any input
    drifted, return the ready-to-publish body as stale; do not write.
-7. Publish exactly one issue-body replacement. Read the issue back immediately
-   and verify the exact body, marker, `R/P/V`, and `F`. A timeout, indeterminate
+7. Publish exactly one issue-body replacement under
+   [P044 Atomicity Where Possible](../../docs/principles/README.md#p044). Read the issue back
+   immediately and verify the exact body, marker, `R/P/V`, and `F` under
+   [P065 Verify Before Claiming Completion](../../docs/principles/README.md#p065). A timeout,
+   indeterminate
    response, or mismatched readback is an unknown outcome: do not retry or make
    another mutation.
-8. After successful body readback, re-read each sealed comment by its exact ID,
+8. Under [P083 Irreversible Actions Last](../../docs/principles/README.md#p083), only after successful
+   body readback, re-read each sealed comment by its exact ID,
    actor, marker, and digest, then delete the plan comment and review comment.
    Delete no foreign, replacement, or drifted comment. A failed, timed-out, or
    indeterminate deletion is a partial-cleanup unknown outcome: do not retry,
    compensate, or remove the finalized body; report the surviving identities.
+
+When the finalized material contains architecture, test, error, or security decisions, preserve the
+already-reviewed applications of [P015 Architecture Conformance](../../docs/principles/README.md#p015),
+[P022 Test Behavior, Not Implementation](../../docs/principles/README.md#p022),
+[P029 Generalize Error Policy; Preserve Specific Cause](../../docs/principles/README.md#p029), and
+[P048 Secure by Design](../../docs/principles/README.md#p048); finalization does not reopen those
+decisions or invent new ones.
 
 ## Re-finalization and restart
 

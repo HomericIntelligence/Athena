@@ -16,6 +16,24 @@ Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 [language routing](../../docs/review/language-routing.md), and
 [behavior-first testing](../../docs/review/behavior-first-testing.md).
 
+## Engineering principles
+
+Apply the canonical [engineering-principles catalog](../../docs/principles/README.md) through these
+planning decisions:
+
+- [P010 Scope Fidelity](../../docs/principles/README.md#p010) and
+  [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063) map every plan step to
+  the exact issue requirements and exclude unrelated work.
+- [P012 Evidence Before Modification](../../docs/principles/README.md#p012) and
+  [P015 Architecture Conformance](../../docs/principles/README.md#p015) require repository evidence
+  and established boundaries to shape the plan before files or abstractions are proposed.
+- [P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001),
+  [P002 YAGNI — You Ain't Gonna Need It](../../docs/principles/README.md#p002), and
+  [P074 Prefer Existing Mechanisms](../../docs/principles/README.md#p074) select the smallest current,
+  architecture-aligned solution using an appropriate existing mechanism where possible.
+- [P008 Understand Before Subtracting](../../docs/principles/README.md#p008) requires verified purpose,
+  consumers, and contracts before a plan removes or consolidates an existing mechanism.
+
 ## Scope and delivery
 
 `--draft` is read-only. A requested plan without it may publish only the
@@ -36,16 +54,31 @@ capability or ownership gap.
    needs. In planning mode, use its existing-checkout best-effort result without requiring upstream
    synchronization; report its revision and trust/freshness limits, or its explicit no-guidance
    result, and continue issue planning.
-3. Establish architecture before proposing files or abstractions: repository
-   guidance, ADRs, boundaries, dependency direction, and public interfaces.
-4. Verify current code, tests, commands, dependencies, paths, and symbols.
+3. Establish architecture under
+   [P015 Architecture Conformance](../../docs/principles/README.md#p015) before proposing files or
+   abstractions: repository guidance, ADRs, boundaries, dependency direction, and public interfaces.
+4. Under [P012 Evidence Before Modification](../../docs/principles/README.md#p012), verify current
+   code, tests, commands, dependencies, paths, and symbols.
    Treat the issue and earlier plan as leads, not ground truth.
-5. Map each current acceptance criterion to a minimal architecture-respecting
-   change and behavior-first validation. Exclude speculative abstractions and
-   unrelated cleanup.
+5. Map each current acceptance criterion to a minimal architecture-respecting change and
+   behavior-first validation under
+   [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063). Apply
+   [P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001) and
+   [P002 YAGNI — You Ain't Gonna Need It](../../docs/principles/README.md#p002) when comparing
+   solution size, and prefer an
+   applicable existing mechanism under
+   [P074 Prefer Existing Mechanisms](../../docs/principles/README.md#p074). Exclude speculative
+   abstractions and unrelated cleanup. Before deleting or consolidating a mechanism, apply
+   [P008 Understand Before Subtracting](../../docs/principles/README.md#p008).
 6. Follow the canonical-plan content, ownership, and identity rules in the
    issue-planning contract. Preserve foreign content and return the draft on
    ambiguity rather than overwriting it.
+
+Activate other shared profiles only when the planned surface requires them:
+[P022 Test Behavior, Not Implementation](../../docs/principles/README.md#p022) for changed behavior,
+[P029 Generalize Error Policy; Preserve Specific Cause](../../docs/principles/README.md#p029) for
+error contracts, and [P048 Secure by Design](../../docs/principles/README.md#p048) for security or new
+trust boundaries.
 
 When the issue body carries a valid finalized-planning marker, treat its sealed
 provenance and generated plan text as implementation-facing context, not new

@@ -15,6 +15,25 @@ Use the shared [review contract](../../docs/review/common.md),
 [language routing](../../docs/review/language-routing.md), and
 [behavior-first testing](../../docs/review/behavior-first-testing.md).
 
+## Engineering principles
+
+Apply the canonical [engineering-principles catalog](../../docs/principles/README.md) through these
+review decisions:
+
+- [P010 Scope Fidelity](../../docs/principles/README.md#p010) and
+  [P066 Preserve Existing Work](../../docs/principles/README.md#p066) bind the review to the selected
+  bytes without substituting another scope or disturbing unrelated work.
+- [P012 Evidence Before Modification](../../docs/principles/README.md#p012),
+  [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063), and
+  [P072 Technical Evidence Over Preference](../../docs/principles/README.md#p072) require each
+  finding to connect inspected evidence to a requirement, contract, or demonstrated risk rather than
+  reviewer taste.
+- [P014 Preserve Unrequested Behavior](../../docs/principles/README.md#p014) and
+  [P022 Test Behavior, Not Implementation](../../docs/principles/README.md#p022) make observable
+  behavior the review target, while
+  [P065 Verify Before Claiming Completion](../../docs/principles/README.md#p065) keeps validation and
+  coverage claims bounded by evidence actually obtained.
+
 This skill is read-only. It never edits source, stages files, creates Git
 state, posts forge content, opens issues, or writes review notes into source.
 
@@ -49,6 +68,14 @@ Follow the shared review flow: establish architecture first, classify only
 applicable surfaces and language profiles, inspect changed behavior and tests,
 then de-duplicate severity-ranked evidence. Record each skipped check as N/A
 with its reason.
+
+Activate the shared profiles only when the selected change contains the relevant surface: use
+[P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001) for added complexity,
+[P015 Architecture Conformance](../../docs/principles/README.md#p015) for boundary or dependency
+changes, [P022 Test Behavior, Not Implementation](../../docs/principles/README.md#p022) for testable
+behavior, [P029 Generalize Error Policy; Preserve Specific Cause](../../docs/principles/README.md#p029)
+for error-path changes, and [P048 Secure by Design](../../docs/principles/README.md#p048) for security
+or trust-boundary changes.
 
 For a material architecture change, require a stated design decision, ADR, or
 [design record](../../docs/review/design-docs.md). Missing architecture evidence
