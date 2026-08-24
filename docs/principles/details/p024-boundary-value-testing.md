@@ -10,7 +10,7 @@ above a threshold as well as zero, one, empty, full, minimum, maximum, overflow,
 
 ## Provenance
 
-**Classification:** established testing technique.
+**Classification:** established principle.
 
 Boundary value analysis is long-standing in software-testing literature and certification
 syllabi. Its precise first use is not reliably attributable to one author, so Athena makes no

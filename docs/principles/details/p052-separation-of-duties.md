@@ -10,9 +10,10 @@ must be meaningful in identity, authority, and control path.
 
 ## Provenance
 
-**Classification:** established governance and security-control principle. It has long-standing
-organizational roots and was formalized in computer-security integrity models such as Clark-Wilson.
-No claim is made that one paper originated the broader organizational practice.
+**Classification:** established principle.
+
+It has long-standing organizational roots and was formalized in computer-security integrity models
+such as Clark-Wilson. No claim is made that one paper originated the broader organizational practice.
 
 ## Decision rule
 

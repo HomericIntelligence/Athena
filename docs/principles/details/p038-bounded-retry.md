@@ -11,7 +11,7 @@ load.
 
 ## Provenance
 
-**Classification:** Established distributed-systems practice
+**Classification:** established principle.
 
 Finite retry and randomized backoff evolved across networking and production systems. No single
 origin is asserted for Athena's combined rule.

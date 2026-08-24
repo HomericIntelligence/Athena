@@ -10,7 +10,7 @@ the reason for a change discoverable without requiring a heavyweight matrix for 
 
 ## Provenance
 
-**Classification:** established practice with an Athena adaptation.
+**Classification:** established principle.
 
 Requirements traceability developed across systems and software engineering rather than from one
 verified inventor. Formal standards often require bidirectional links among requirements, design,

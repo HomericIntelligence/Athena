@@ -10,7 +10,7 @@ may choose among approaches only after relevant evidence shows them to be materi
 
 ## Provenance
 
-**Classification:** practitioner rule.
+**Classification:** practitioner heuristic.
 
 Evidence-based decision making has broad scientific and engineering roots rather than one software
 origin. Google's code-review guidance states the rule directly for review disagreements; Athena

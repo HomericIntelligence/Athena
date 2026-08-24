@@ -10,7 +10,7 @@ integration check, type rule, static analysis, build check, or another risk-appr
 
 ## Provenance
 
-**Classification:** established practice with an Athena adaptation.
+**Classification:** established principle.
 
 Bidirectional requirements-to-test traceability is established in systems and safety engineering;
 no single inventor is claimed. Athena broadens "test" to appropriate executable verification while

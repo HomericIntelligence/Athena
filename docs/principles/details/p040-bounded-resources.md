@@ -10,7 +10,7 @@ iterations, token use, and tool invocations. Reaching the bound must produce con
 
 ## Provenance
 
-**Classification:** Established reliability and security principle
+**Classification:** established principle.
 
 Resource bounding is foundational across operating systems, queueing, and secure design. No single
 origin for this language-neutral rule is asserted.
@@ -76,7 +76,7 @@ more work.
 
 ### Current guidance
 
-- [MITRE CWE-770, Allocation of Resources Without Limits or Throttling](https://cwe.mitre.org/data/definitions/770.html)
+- [CWE List 4.20, CWE-770: Allocation of Resources Without Limits or Throttling](https://cwe.mitre.org/data/definitions/770.html)
   — current weakness definition, consequences, and mitigations for unbounded allocation.
 - [Google SRE, Addressing Cascading Failures](https://sre.google/sre-book/addressing-cascading-failures/)
   — production guidance on queue, memory, thread, CPU, and file-descriptor exhaustion.

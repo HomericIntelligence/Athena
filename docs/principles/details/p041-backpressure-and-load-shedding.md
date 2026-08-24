@@ -11,7 +11,7 @@ and resource use from turning overload into collapse.
 
 ## Provenance
 
-**Classification:** Established reliability practice
+**Classification:** established principle.
 
 Backpressure has established meanings in flow-control and streaming systems; load shedding has
 established use in overload control. Athena combines the complementary tools but does not treat

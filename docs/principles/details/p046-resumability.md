@@ -10,9 +10,11 @@ distinguish work that committed, work that did not commit, and work whose outcom
 
 ## Provenance
 
-**Classification:** established reliability practice. No single origin is claimed. Checkpoint and
-restart techniques predate modern workflow engines; later systems generalized them from process
-state to durable application milestones and operation resources.
+**Classification:** established principle.
+
+No single origin is claimed. Checkpoint and restart techniques predate modern workflow engines;
+later systems generalized them from process state to durable application milestones and operation
+resources.
 
 ## Decision rule
 

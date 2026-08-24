@@ -14,7 +14,7 @@ detail.
 
 ## Provenance
 
-**Classification:** Established error-handling principle
+**Classification:** established principle.
 
 Structured exception handling has a long published history, but this exact phrase has no single
 verified origin. Athena uses it as a language-neutral decision rule.

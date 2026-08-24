@@ -12,7 +12,7 @@ This is a postcondition for failure, not a promise that all work can always be r
 
 ## Provenance
 
-**Classification:** Established safety goal expressed as an Athena synthesis
+**Classification:** Athena synthesis.
 
 Exception-safety guarantees and transaction theory provide established forms of this idea. The
 broader language-neutral formulation has no single verified origin.
@@ -95,7 +95,7 @@ to compensate informally.
 
 ### Further reading
 
-- [PostgreSQL transaction tutorial](https://www.postgresql.org/docs/current/tutorial-transactions.html)
+- [PostgreSQL 18 transaction tutorial](https://www.postgresql.org/docs/18/tutorial-transactions.html)
   — a concrete explanation of all-or-nothing transaction behavior and rollback.
 
 [Back to the engineering principles catalog](../README.md#p033)

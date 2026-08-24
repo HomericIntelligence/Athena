@@ -11,7 +11,7 @@ must not silently become permission.
 
 ## Provenance
 
-**Classification:** Established security design principle
+**Classification:** established principle.
 
 Saltzer and Schroeder documented “fail-safe defaults” in 1975. “Fail closed” and “fail secure” are
 later common formulations and can mean different things in safety engineering.

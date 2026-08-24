@@ -10,7 +10,7 @@ incremental improvement over both gradual degradation and demands for unattainab
 
 ## Provenance
 
-**Classification:** practitioner rule.
+**Classification:** practitioner heuristic.
 
 The exact formulation is closely aligned with Google's published code-review standard. Related
 "leave it better" heuristics are widespread, but no exclusive historical origin is asserted.

@@ -10,7 +10,7 @@ documented contract. The system must not present missing required work as a succ
 
 ## Provenance
 
-**Classification:** Established reliability principle
+**Classification:** established principle.
 
 The concept developed across fault-tolerant and distributed systems; no single origin for this
 exact software rule is reliably established.

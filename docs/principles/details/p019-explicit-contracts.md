@@ -10,7 +10,7 @@ ownership, mutability, side effects, concurrency expectations, and failure behav
 
 ## Provenance
 
-**Classification:** Athena synthesis with established foundations.
+**Classification:** Athena synthesis.
 
 Bertrand Meyer's Design by Contract is a related formal foundation, not an exact alias: it
 formalized preconditions, postconditions, and invariants. This principle deliberately extends that

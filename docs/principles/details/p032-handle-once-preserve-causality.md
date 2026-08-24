@@ -11,7 +11,7 @@ diagnose the original failure.
 
 ## Provenance
 
-**Classification:** Established practitioner rule
+**Classification:** practitioner heuristic.
 
 Exception chaining is standardized in several languages. The combined “handle once” rule is a
 cross-language engineering synthesis rather than a uniquely attributable maxim.
@@ -85,7 +85,7 @@ several unrelated agent failures.
 
 ### Current guidance
 
-- [OpenTelemetry semantic conventions for exceptions in logs](https://opentelemetry.io/docs/specs/semconv/exceptions/exceptions-logs/)
+- [OpenTelemetry Semantic Conventions 1.44.0: exceptions in logs](https://opentelemetry.io/docs/specs/semconv/exceptions/exceptions-logs/)
   — current conventions for correlated exception records, stack traces, and avoiding duplicate
   representations in instrumentation.
 - [C++ Core Guidelines E.17 and E.18](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#e17-dont-try-to-catch-every-exception-in-every-function)

@@ -11,11 +11,11 @@ governance.
 
 ## Provenance
 
-**Classification:** practitioner architectural technique.
+**Classification:** practitioner heuristic.
 
-The broad label has no single verified origin. Ford, Parsons, and Kua popularized architectural
-fitness functions as part of evolutionary architecture; many earlier tools enforced dependency
-and conformance rules.
+This practitioner architectural technique has no single verified origin. Ford, Parsons, and Kua
+popularized architectural fitness functions as part of evolutionary architecture; many earlier
+tools enforced dependency and conformance rules.
 
 ## Decision rule
 

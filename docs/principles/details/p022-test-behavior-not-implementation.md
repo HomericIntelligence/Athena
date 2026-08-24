@@ -10,7 +10,7 @@ behavior-preserving refactor should normally leave behavioral tests unchanged.
 
 ## Provenance
 
-**Classification:** practitioner testing heuristic.
+**Classification:** practitioner heuristic.
 
 Consumer/provider contract testing is a related but distinct technique, not an alias for this
 broader heuristic. Black-box testing predates modern unit-testing frameworks, while the specific

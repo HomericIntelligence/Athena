@@ -10,7 +10,7 @@ change and evidence rather than merely endorsing the author's conclusion.
 
 ## Provenance
 
-**Classification:** established practice.
+**Classification:** established principle.
 
 Independent software inspection has a documented lineage in Michael Fagan's 1970s work at IBM.
 Modern code review and secure-development guidance apply independent, domain-qualified scrutiny

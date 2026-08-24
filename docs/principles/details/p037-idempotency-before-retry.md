@@ -11,7 +11,7 @@ attempt made no state change.
 
 ## Provenance
 
-**Classification:** Established distributed-systems principle
+**Classification:** established principle.
 
 Idempotence originates in mathematics and has long been used in protocol design. Athena makes its
 ordering relative to retry explicit; no single source is claimed for that phrase.

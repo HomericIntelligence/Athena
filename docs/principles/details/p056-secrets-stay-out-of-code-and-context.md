@@ -11,9 +11,11 @@ security event even when the secret was not visibly abused.
 
 ## Provenance
 
-**Classification:** established security practice with an Athena extension to agent context. Secret
-isolation and credential management have diffuse histories; no single origin is asserted for this
-combined code, telemetry, artifact, and AI-context rule.
+**Classification:** Athena synthesis.
+
+This synthesis extends established security practice to agent context. Secret isolation and
+credential management have diffuse histories; no single origin is asserted for this combined code,
+telemetry, artifact, and AI-context rule.
 
 ## Decision rule
 

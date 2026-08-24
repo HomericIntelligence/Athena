@@ -10,7 +10,7 @@ they cannot decide the correct outcome.
 
 ## Provenance
 
-**Classification:** practitioner error-handling heuristic.
+**Classification:** practitioner heuristic.
 
 Exception systems formalized stack-based handler selection, and language communities developed
 similar catch-or-propagate advice. This exact "nearest responsible boundary" formulation has no

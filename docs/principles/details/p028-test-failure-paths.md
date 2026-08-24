@@ -10,7 +10,7 @@ and resource-exhaustion conditions in addition to successful outcomes.
 
 ## Provenance
 
-**Classification:** established testing practice.
+**Classification:** established principle.
 
 Negative and robustness testing have many roots in reliability, security, and protocol testing.
 No single origin supports the full modern set of failure conditions in this principle.

@@ -2,36 +2,39 @@
 
 ## Definition
 
-When several state changes form one logical operation and can share a trustworthy transaction or
-atomic publication boundary, make them visible as one indivisible result. Observers see either the
-complete committed operation or the prior state, never an intermediate subset.
+When several state changes form one logical operation and can share a trustworthy transaction
+boundary, make their success or failure all-or-none: either every change commits or none does. If
+concurrent observers must not see intermediate state, separately choose an isolation level or atomic
+publication mechanism that provides that visibility guarantee.
 
 **Aliases:** all-or-nothing update, transactional commit, failure atomicity
 
 ## Provenance
 
-**Classification:** Established transaction principle
+**Classification:** established principle.
 
 Atomic transactions predate the ACID acronym. Härder and Reuter's 1983 paper is the primary source
 commonly associated with the ACID terminology, not the origin of every form of atomic update.
 
 ## Decision rule
 
-If partial visibility would violate an invariant and one supported atomic boundary can cover all
-effects, use that boundary before designing custom rollback or compensation.
+If partial completion would violate an invariant and one supported transaction boundary can cover all
+effects, use it before designing custom rollback or compensation. Specify suitable isolation or atomic
+publication separately when partial visibility would violate an invariant.
 
 ## How to apply
 
 - Identify the logical operation, affected state, invariants, and observers.
-- Use the datastore, filesystem, message broker, or platform's documented transaction and atomic
-  publication primitives.
+- Use the datastore, filesystem, message broker, or platform's documented transaction primitives for
+  all-or-none commit.
+- Select an isolation level or atomic publication primitive that meets the required visibility contract.
 - Keep the transaction no broader or longer than required; avoid network calls and user waits while
   holding transactional resources.
 - Validate prerequisites before the transaction and defer irreversible external effects until after
   reversible preparation.
 - Treat commit acknowledgement loss as an unknown outcome that may require status lookup.
-- Test failure before commit, during commit, after commit acknowledgement loss, and under concurrent
-  observation.
+- Test failure before commit, during commit, after commit acknowledgement loss, and under the intended
+  concurrent-observation and isolation conditions.
 
 ## Boundaries and tensions
 
@@ -49,9 +52,9 @@ validity; those guarantees must be specified separately.
 
 ### Positive application
 
-A database transaction inserts an order and its line items, updates the inventory reservation, and
-commits only after every invariant passes. Concurrent readers see either all of the new state or
-none of it.
+A database transaction inserts an order and its line items and updates the inventory reservation, so
+all changes commit or roll back together. Readers that require a stable multi-object view use an
+isolation level that provides it.
 
 ### Misuse or counterexample
 
@@ -80,7 +83,7 @@ external publication step.
 
 ### Current guidance
 
-- [PostgreSQL, Transactions](https://www.postgresql.org/docs/current/tutorial-transactions.html)
+- [PostgreSQL 18, Transactions](https://www.postgresql.org/docs/18/tutorial-transactions.html)
   — current database documentation illustrating complete-or-not-at-all updates, visibility, commit,
   and rollback.
 

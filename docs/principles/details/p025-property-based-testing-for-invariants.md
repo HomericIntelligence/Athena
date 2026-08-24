@@ -10,7 +10,7 @@ algorithms, transformations, protocols, and state machines.
 
 ## Provenance
 
-**Classification:** established testing technique.
+**Classification:** established principle.
 
 Random testing and specification-based generation are older, but Claessen and Hughes's QuickCheck
 paper (2000) established the modern library pattern of generators, properties, and shrinking.

@@ -10,7 +10,7 @@ coupling concerns interdependence across a boundary.
 
 ## Provenance
 
-**Classification:** established design principle.
+**Classification:** established principle.
 
 Stevens, Myers, and Constantine formalized coupling and cohesion in structured design in the
 1970s. The compact maxim used here is later practitioner language rather than a quotation

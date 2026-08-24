@@ -8,13 +8,12 @@ process.
 
 ## Provenance
 
-**Classification:** Athena synthesis supported by empirical research and established simplicity
-heuristics.
+**Classification:** Athena synthesis.
 
-The wording is Athena's. Behavioral research published by Adams and colleagues found that people
-systematically overlook beneficial subtractive changes, which supports making subtraction an
-explicit design prompt. The research does not prove that subtraction is always the correct
-engineering choice.
+The wording is Athena's, supported by empirical research and established simplicity heuristics.
+Behavioral research published by Adams and colleagues found that people systematically overlook
+beneficial subtractive changes, which supports making subtraction an explicit design prompt. The
+research does not prove that subtraction is always the correct engineering choice.
 
 ## Decision rule
 

@@ -10,7 +10,7 @@ examples used to exercise it.
 
 ## Provenance
 
-**Classification:** established testing technique.
+**Classification:** established principle.
 
 Data-driven testing appeared in multiple early frameworks and language communities. The
 slash-combined name reflects two common forms and has no single verified origin.

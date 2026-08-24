@@ -9,7 +9,7 @@ contracts. They are design lenses, not a requirement to introduce classes or int
 
 ## Provenance
 
-**Classification:** established principle family.
+**Classification:** established principle.
 
 Robert C. Martin assembled and published the five principles around 2000; the memorable SOLID
 acronym is commonly credited to Michael Feathers. Open/Closed originated with Bertrand Meyer, and

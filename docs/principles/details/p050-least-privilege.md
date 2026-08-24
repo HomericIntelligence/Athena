@@ -10,8 +10,10 @@ credentials, files, network destinations, APIs, commands, data fields, and execu
 
 ## Provenance
 
-**Classification:** established security principle. Saltzer and Schroeder's 1975 formulation is a
-canonical primary source, although related need-to-know and capability ideas appeared earlier.
+**Classification:** established principle.
+
+Saltzer and Schroeder's 1975 formulation is a canonical primary source, although related need-to-know
+and capability ideas appeared earlier.
 
 ## Decision rule
 

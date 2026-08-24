@@ -10,7 +10,7 @@ properties—nothing invalid happens—with liveness properties—required progr
 
 ## Provenance
 
-**Classification:** Athena synthesis grounded in established theory.
+**Classification:** Athena synthesis.
 
 Athena's operational wording is not a named theorem. Leslie Lamport's 1977 work established the
 modern distinction between safety and liveness properties for concurrent programs. Reliability
@@ -62,7 +62,7 @@ blocked, or failed status with evidence instead of remaining indefinitely active
 
 ### Origin/history
 
-- [Proving the Correctness of Multiprocess Programs](https://www.microsoft.com/en-us/research/publication/proving-the-correctness-of-multiprocess-programs/)
+- [Proving the Correctness of Multiprocess Programs](https://doi.org/10.1109/TSE.1977.229904)
   is Lamport's 1977 primary work introducing safety and liveness as distinct correctness concerns.
 
 ### Current guidance

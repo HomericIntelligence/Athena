@@ -10,7 +10,7 @@ concurrency, and shared services. Tests should be independent of execution order
 
 ## Provenance
 
-**Classification:** established modern testing principle.
+**Classification:** established principle.
 
 Determinism and test isolation have long histories, while "hermetic" became common in large
 build-and-test systems. No single origin for the combined formulation is established.

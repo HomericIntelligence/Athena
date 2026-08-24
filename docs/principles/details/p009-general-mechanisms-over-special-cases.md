@@ -8,7 +8,7 @@ general mechanism captures a real invariant; it is not speculative extensibility
 
 ## Provenance
 
-**Classification:** established practitioner heuristic.
+**Classification:** practitioner heuristic.
 
 The idea appears throughout mathematics, language design, and software engineering rather than
 having one verified origin. PEP 20 provides a prominent software formulation: special cases should

@@ -11,9 +11,10 @@ output, and retrieved documents.
 
 ## Provenance
 
-**Classification:** established secure-engineering practice. Input validation and trust-boundary
-analysis developed across many systems and vulnerability classes; no single origin is asserted for
-this combined formulation.
+**Classification:** established principle.
+
+Input validation and trust-boundary analysis developed across many systems and vulnerability classes;
+no single origin is asserted for this combined formulation.
 
 ## Decision rule
 

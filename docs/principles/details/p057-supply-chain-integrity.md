@@ -10,9 +10,11 @@ the build, where it came from, how it was transformed, and whether it changed un
 
 ## Provenance
 
-**Classification:** established security discipline. Thompson's compiler-backdoor lecture is an early
-primary demonstration that source review alone cannot establish trust in delivered software. Modern
-frameworks add provenance, protected builds, dependency controls, and attestations.
+**Classification:** established principle.
+
+Thompson's compiler-backdoor lecture is an early primary demonstration that source review alone
+cannot establish trust in delivered software. Modern frameworks add provenance, protected builds,
+dependency controls, and attestations.
 
 ## Decision rule
 

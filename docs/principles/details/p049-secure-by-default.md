@@ -10,9 +10,11 @@ Weakening that protection requires a deliberate, visible choice.
 
 ## Provenance
 
-**Classification:** established security-design principle. Its historical roots include fail-safe
-defaults; the broader product-level formulation is now explicit in CISA's Secure by Default
-guidance. These related formulations should not be treated as identical.
+**Classification:** established principle.
+
+Its historical roots include fail-safe defaults; the broader product-level formulation is now
+explicit in CISA's Secure by Default guidance. These related formulations should not be treated as
+identical.
 
 ## Decision rule
 

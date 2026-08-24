@@ -10,7 +10,7 @@ admits a limited probe in a half-open state, closing only when recovery criteria
 
 ## Provenance
 
-**Classification:** Established distributed-systems pattern
+**Classification:** established principle.
 
 Michael Nygard popularized the software pattern in *Release It!*; the electrical circuit-breaker
 metaphor and related failure controls are older.

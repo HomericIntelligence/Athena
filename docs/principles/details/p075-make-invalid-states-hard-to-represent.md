@@ -10,7 +10,7 @@ Core logic should receive values whose important structural invariants already h
 
 ## Provenance
 
-**Classification:** practitioner heuristic grounded in type-driven design.
+**Classification:** practitioner heuristic.
 
 The aphorism has diffuse provenance across typed functional programming and domain modeling; this
 page does not assign it to a single author. Algebraic data types, abstract data types, design by

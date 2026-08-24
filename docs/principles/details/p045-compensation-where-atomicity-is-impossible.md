@@ -11,7 +11,7 @@ compensating steps idempotent and resumable, and identify effects that cannot be
 
 ## Provenance
 
-**Classification:** Established distributed-transaction pattern
+**Classification:** established principle.
 
 Garcia-Molina and Salem introduced sagas for long-lived transactions in 1987. Compensation also
 appears in broader workflow practice; not every compensating workflow is a formal saga.

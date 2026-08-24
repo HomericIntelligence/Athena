@@ -10,9 +10,11 @@ that evidence to detect failure, distinguish partial success, and restore servic
 
 ## Provenance
 
-**Classification:** Athena synthesis grounded in established observability practice. Distributed
-tracing and production monitoring have long histories, but the exact statement that observability
-is part of correctness is a normative engineering rule rather than a uniquely attributable maxim.
+**Classification:** Athena synthesis.
+
+This synthesis is grounded in established observability practice. Distributed tracing and production
+monitoring have long histories, but the exact statement that observability is part of correctness is
+a normative engineering rule rather than a uniquely attributable maxim.
 
 ## Decision rule
 

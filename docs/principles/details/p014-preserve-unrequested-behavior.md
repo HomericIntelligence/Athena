@@ -8,11 +8,11 @@ unless the accepted requirement explicitly changes them.
 
 ## Provenance
 
-**Classification:** Athena synthesis grounded in compatibility practice.
+**Classification:** Athena synthesis.
 
-The exact wording is Athena's. Backward-compatibility policies, semantic versioning, and regression
-testing provide established foundations, but no single source defines the full principle for every
-kind of software change.
+The exact wording is Athena's and is grounded in compatibility practice. Backward-compatibility
+policies, semantic versioning, and regression testing provide established foundations, but no single
+source defines the full principle for every kind of software change.
 
 ## Decision rule
 

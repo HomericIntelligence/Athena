@@ -10,9 +10,10 @@ needs. Its output returns as untrusted input for validation, not as an instructi
 
 ## Provenance
 
-**Classification:** Athena synthesis. It adapts established confinement, least-privilege, and secure
-delegation ideas to modern multi-agent workflows. No claim is made that the exact rule originated in
-the historical confinement literature.
+**Classification:** Athena synthesis.
+
+It adapts established confinement, least-privilege, and secure delegation ideas to modern multi-agent
+workflows. No claim is made that the exact rule originated in the historical confinement literature.
 
 ## Decision rule
 

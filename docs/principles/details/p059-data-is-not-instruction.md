@@ -11,9 +11,11 @@ explicitly designates that source as governing instruction.
 
 ## Provenance
 
-**Classification:** Athena synthesis grounded in contemporary AI-security research. The rule combines
-the trusted-instruction hierarchy used by agent hosts with evidence from indirect prompt injection;
-it is not attributed to a single historical maxim.
+**Classification:** Athena synthesis.
+
+This synthesis is grounded in contemporary AI-security research. The rule combines the
+trusted-instruction hierarchy used by agent hosts with evidence from indirect prompt injection; it is
+not attributed to a single historical maxim.
 
 ## Decision rule
 

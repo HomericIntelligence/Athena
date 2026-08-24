@@ -11,7 +11,7 @@ timeout, and failure.
 
 ## Provenance
 
-**Classification:** Established reliability practice
+**Classification:** established principle.
 
 Timeouts and deadlines are longstanding concurrency and distributed-systems mechanisms. This broad
 formulation has no single verified origin.

@@ -8,7 +8,7 @@ reasonably predict from the surrounding system and stated contract.
 
 ## Provenance
 
-**Classification:** established practitioner heuristic.
+**Classification:** practitioner heuristic.
 
 The phrase has circulated through programming-language and interface design for decades, but no
 single origin is reliably established. POLA is also contextual: what surprises one audience may be

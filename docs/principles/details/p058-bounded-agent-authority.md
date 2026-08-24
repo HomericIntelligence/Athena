@@ -10,9 +10,11 @@ the trusted task and governing policy; confidence, retrieved text, or model outp
 
 ## Provenance
 
-**Classification:** Athena synthesis. It applies established least-privilege and confinement ideas to
-tool-using AI agents and adds explicit bounds on autonomy, context, iteration, and resource use. No
-single historical source is claimed for the combined formulation.
+**Classification:** Athena synthesis.
+
+It applies established least-privilege and confinement ideas to tool-using AI agents and adds explicit
+bounds on autonomy, context, iteration, and resource use. No single historical source is claimed for
+the combined formulation.
 
 ## Decision rule
 
@@ -70,7 +72,7 @@ needed for its partition. A specialist reports a missing permission rather than 
 
 ### Current guidance
 
-- [OWASP LLM08: Excessive Agency](https://genai.owasp.org/llmrisk2023-24/llm08-excessive-agency/)
+- [OWASP LLM06:2025 Excessive Agency](https://genai.owasp.org/llmrisk/llm062025-excessive-agency/)
   identifies excessive functionality, permissions, and autonomy as root causes of damaging agent action.
 - [OWASP AI Agent Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/AI_Agent_Security_Cheat_Sheet.html)
   recommends least-privilege tools, sandboxes, action controls, and bounded resource use.

@@ -9,10 +9,11 @@ convenience.
 
 ## Provenance
 
-**Classification:** established architectural practice expressed as an Athena decision rule.
+**Classification:** established principle.
 
-Architecture conformance draws on modularity, architecture evaluation, and automated dependency
-checking. Athena claims no single author for the phrase or this exact formulation.
+Architecture conformance is an established architectural practice drawing on modularity,
+architecture evaluation, and automated dependency checking. Athena expresses it here as a decision
+rule and claims no single author for the phrase or this exact formulation.
 
 ## Decision rule
 

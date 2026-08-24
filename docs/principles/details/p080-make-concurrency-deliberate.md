@@ -11,7 +11,7 @@ parts of the design, not implementation afterthoughts.
 
 ## Provenance
 
-**Classification:** established principle family.
+**Classification:** established principle.
 
 No single source coined this wording. It reflects decades of work on processes, synchronization,
 message passing, structured concurrency, and language memory models. These traditions consistently

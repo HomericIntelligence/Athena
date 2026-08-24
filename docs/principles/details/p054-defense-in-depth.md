@@ -10,9 +10,10 @@ cover different failure modes rather than repeat one assumption.
 
 ## Provenance
 
-**Classification:** established security strategy. The phrase has older military usage and diffuse
-computing history; no single software origin is asserted. NIST and related standards now provide
-formal information-security definitions.
+**Classification:** established principle.
+
+The phrase has older military usage and diffuse computing history; no single software origin is
+asserted. NIST and related standards now provide formal information-security definitions.
 
 ## Decision rule
 

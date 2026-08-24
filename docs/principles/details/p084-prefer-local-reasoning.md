@@ -10,7 +10,7 @@ ambient configuration, implicit control flow, or unrelated subsystems.
 
 ## Provenance
 
-**Classification:** established principle family.
+**Classification:** established principle.
 
 The exact phrase has no single verified origin. It draws from modularity, information hiding,
 structured programming, and the Law of Demeter, all of which reduce the amount of nonlocal

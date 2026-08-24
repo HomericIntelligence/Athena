@@ -11,7 +11,7 @@ artifacts.
 
 ## Provenance
 
-**Classification:** established principle family.
+**Classification:** established principle.
 
 The general rule has no single origin. It is embodied by structured programming, C++ Resource
 Acquisition Is Initialization (RAII), ownership types, scope-bound cleanup, and structured

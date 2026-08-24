@@ -10,9 +10,10 @@ execution capabilities are designed against plausible threats rather than harden
 
 ## Provenance
 
-**Classification:** established security-engineering principle. Security design principles have
-deep roots, while the modern *Secure by Design* formulation has been consolidated in software
-lifecycle guidance from standards bodies and public security agencies.
+**Classification:** established principle.
+
+Security design principles have deep roots, while the modern *Secure by Design* formulation has
+been consolidated in software lifecycle guidance from standards bodies and public security agencies.
 
 ## Decision rule
 

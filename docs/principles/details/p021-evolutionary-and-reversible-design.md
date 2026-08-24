@@ -10,10 +10,11 @@ changes over committing the system to one large rewrite.
 
 ## Provenance
 
-**Classification:** Athena synthesis with established practitioner roots.
+**Classification:** Athena synthesis.
 
-Evolutionary design, continuous delivery, expand-and-contract migrations, and rollback practice
-developed across several communities. No single source defines this exact combined principle.
+This synthesis has established practitioner roots in evolutionary design, continuous delivery,
+expand-and-contract migrations, and rollback practice across several communities. No single source
+defines this exact combined principle.
 
 ## Decision rule
 

@@ -11,7 +11,7 @@ resources.
 
 ## Provenance
 
-**Classification:** practitioner pattern.
+**Classification:** practitioner heuristic.
 
 There is no verified single origin. Cooperative cancellation developed across operating systems,
 concurrent programming, and distributed request APIs. Modern structured-concurrency and context

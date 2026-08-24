@@ -10,9 +10,10 @@ reachable capability is another place an attacker may influence the system or ex
 
 ## Provenance
 
-**Classification:** established security practice. Attack-surface analysis developed across security
-engineering; Manadhata and Wing provided an influential formal metric. The broader practice has no
-single uncontested origin.
+**Classification:** established principle.
+
+Attack-surface analysis developed across security engineering; Manadhata and Wing provided an
+influential formal metric. The broader practice has no single uncontested origin.
 
 ## Decision rule
 

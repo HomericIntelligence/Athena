@@ -10,7 +10,7 @@ callers to rely on without erasing the specific event that failed.
 
 ## Provenance
 
-**Classification:** Athena synthesis with established foundations.
+**Classification:** Athena synthesis.
 
 Exception chaining, causal errors, and protocol-level problem taxonomies are established
 separately. No historical source is known to define this exact combined rule.

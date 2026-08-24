@@ -11,7 +11,7 @@ Red–Green–Refactor.
 
 ## Provenance
 
-**Classification:** established practice and Athena-retained methodology.
+**Classification:** established principle.
 
 Kent Beck developed the modern TDD practice in the context of Extreme Programming in the late 1990s
 and documented it in *Test-Driven Development: By Example* in 2002–2003. Athena retains TDD as a

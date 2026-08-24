@@ -6,14 +6,15 @@ When practical, reproduce a reported defect with a failing automated test before
 implementation. Confirm that the test fails for the reported reason, passes after the repair, and
 remains in the suite to detect recurrence.
 
-**Aliases:** bug-reproduction test; failing regression test; characterization before fix.
+**Aliases:** bug-reproduction test; failing regression test.
 
 ## Provenance
 
-**Classification:** established practitioner technique.
+**Classification:** practitioner heuristic.
 
-Regression testing is older than automated unit-test frameworks, and test-first bug repair appears
-throughout TDD and maintenance practice. This exact formulation has no uniquely verified origin.
+Regression testing is older than automated unit-test frameworks, and test-first bug repair is an
+established technique throughout TDD and maintenance practice. This exact formulation has no
+uniquely verified origin.
 
 ## Decision rule
 
@@ -34,7 +35,9 @@ a test that demonstrably fails against the unfixed revision.
 and unavailable dependencies may require immediate safe mitigation or a model-based reproduction.
 Do not write a test that merely duplicates the buggy implementation or pin an accidental symptom.
 A passing test added after the fix is weaker evidence because its pre-fix sensitivity was not
-observed.
+observed. A regression-before-repair test is observed RED on the unfixed revision and GREEN after
+the repair. A characterization test instead begins GREEN to pin existing behavior before
+behavior-preserving refactoring; it is related but is not an alias for regression-before-repair.
 
 ## Examples
 

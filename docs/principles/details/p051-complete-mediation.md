@@ -10,9 +10,10 @@ request does not permanently establish authority for later operations.
 
 ## Provenance
 
-**Classification:** established security principle. Saltzer and Schroeder named Complete Mediation
-as one of their secure-system design principles and traced the suggestion to earlier work by Roger
-Needham.
+**Classification:** established principle.
+
+Saltzer and Schroeder named Complete Mediation as one of their secure-system design principles and
+traced the suggestion to earlier work by Roger Needham.
 
 ## Decision rule
 

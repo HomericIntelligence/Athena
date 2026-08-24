@@ -11,7 +11,7 @@ gain and preserved correctness.
 
 ## Provenance
 
-**Classification:** established performance-engineering practice.
+**Classification:** established principle.
 
 Donald Knuth's 1974 discussion popularized caution about premature optimization, but neither the
 general discipline nor Athena's exact wording belongs to one author. Modern profiling and

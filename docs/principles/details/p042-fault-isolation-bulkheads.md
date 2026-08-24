@@ -10,7 +10,7 @@ Isolation turns a system-wide failure into a bounded local failure.
 
 ## Provenance
 
-**Classification:** Established reliability pattern
+**Classification:** established principle.
 
 The name is a nautical analogy. Michael Nygard's *Release It!* popularized the bulkhead pattern in
 modern software; the underlying practice of fault isolation is older.

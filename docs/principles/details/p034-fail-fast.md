@@ -10,7 +10,7 @@ can travel farther and produce corruption, misleading output, or a harder-to-dia
 
 ## Provenance
 
-**Classification:** Established practitioner principle
+**Classification:** practitioner heuristic.
 
 Jim Shore's 2004 IEEE Software article is an influential primary exposition, not proof that the
 phrase or idea originated there.
