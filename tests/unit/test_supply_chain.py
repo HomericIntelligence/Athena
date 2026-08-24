@@ -786,10 +786,7 @@ class WorkflowContractTests(unittest.TestCase):
             if step.get("name") == "Publish npm package"
         )
         self.assertIn("--provenance", publish_step["run"])
-        self.assertEqual(
-            "${{ secrets.NPM_TOKEN }}",
-            publish_step["env"]["NODE_AUTH_TOKEN"],
-        )
+        self.assertNotIn("env", publish_step)
 
     def test_pi_runtime_is_locked_updated_and_scanned_before_ci_executes_it(
         self,
