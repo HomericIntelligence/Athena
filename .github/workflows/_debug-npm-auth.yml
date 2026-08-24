@@ -1,6 +1,8 @@
 name: Debug NPM Auth
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - chore/npm-auth-debug
 jobs:
   whoami:
     runs-on: ubuntu-24.04
