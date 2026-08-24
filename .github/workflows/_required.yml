@@ -206,14 +206,24 @@ jobs:
             node scripts/verify_pi_package.mjs "$package_root" "$rpc_output"
           }
 
-          pi_source="git:github.com/${PI_SOURCE_REPOSITORY}@${PI_SOURCE_REF}"
+          if [ "$GITHUB_EVENT_NAME" = "merge_group" ]; then
+            pi_source="$GITHUB_WORKSPACE"
+            source_package_root="$GITHUB_WORKSPACE"
+            source_listing="$GITHUB_WORKSPACE"
+          else
+            pi_source="git:github.com/${PI_SOURCE_REPOSITORY}@${PI_SOURCE_REF}"
+            source_package_root=""
+            source_listing="github.com/${PI_SOURCE_REPOSITORY}"
+          fi
           PI_CODING_AGENT_DIR="$PI_SOURCE_AGENT_DIRECTORY" \
             pi install "$pi_source" --no-approve
           PI_CODING_AGENT_DIR="$PI_SOURCE_AGENT_DIRECTORY" \
-            pi list | grep -F -- "github.com/${PI_SOURCE_REPOSITORY}"
-          git_package_root="$(node scripts/find_pi_package_root.mjs \
-            "$PI_SOURCE_AGENT_DIRECTORY/git")"
-          verify_pi_skills "$git_package_root" "$PI_SOURCE_AGENT_DIRECTORY"
+            pi list | grep -F -- "$source_listing"
+          if [ -z "$source_package_root" ]; then
+            source_package_root="$(node scripts/find_pi_package_root.mjs \
+              "$PI_SOURCE_AGENT_DIRECTORY/git")"
+          fi
+          verify_pi_skills "$source_package_root" "$PI_SOURCE_AGENT_DIRECTORY"
 
           archive="$(find dist -maxdepth 1 -type f -name 'athena-plugin-*.tar.gz' -print -quit)"
           test -n "$archive"
