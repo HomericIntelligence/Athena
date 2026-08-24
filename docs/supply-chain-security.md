@@ -9,8 +9,11 @@ Athena publishes two checksummed SPDX 2.3 software bills of materials with each 
   authoritative `ubuntu-24.04`/`linux-64` build environment, uv, and the immutable GitHub Actions
   used by the package job.
 
-The pinned coding-agent runtime lockfiles capture the exact CLI and delegation-package dependencies.
-The package job scans those dependency contracts after validating the coding-harness package and
+The locked coding-agent runtime comes from the official released `@earendil-works/pi-coding-agent`
+npm artifact, pinned with an integrity hash in `ci/pi-runtime/package-lock.json` and scanned from
+its shipped `npm-shrinkwrap.json`. This replaces the temporary source-commit build pin retired by
+[Issue #63](https://github.com/HomericIntelligence/Athena/issues/63). The package job scans both
+dependency contracts after validating the coding-harness package and
 retains the native inventories for Grype. It does not scan example lockfiles or build-time compiler
 binaries, which are outside the installed runtime surface. These are CI evidence rather than release
 assets, and Athena never bundles those third-party packages. [Issue #74](https://github.com/HomericIntelligence/Athena/issues/74)
