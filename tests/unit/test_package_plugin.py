@@ -298,6 +298,18 @@ if (
         with tarfile.open(archive_path, mode="r:gz") as archive:
             self.assertIsNotNone(archive.getmember("skills/finalize-plan/SKILL.md"))
 
+    def test_source_archive_requires_the_principles_catalog(self) -> None:
+        """Every packaged harness receives the shared principles authority."""
+        member = "docs/principles/README.md"
+        self.assertIn(member, REQUIRED_MEMBERS)
+
+        archive_path, checksum_path = build_package(ROOT)
+        self.addCleanup(archive_path.unlink, missing_ok=True)
+        self.addCleanup(checksum_path.unlink, missing_ok=True)
+
+        with tarfile.open(archive_path, mode="r:gz") as archive:
+            self.assertIsNotNone(archive.getmember(member))
+
     def test_source_python_cache_directories_are_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)

@@ -19,6 +19,12 @@ contracts must be easy to find without duplicating them for each coding harness.
 - [`policies/required-checks.md`](policies/required-checks.md): merge-gate and release contexts.
 - [`supply-chain-security.md`](supply-chain-security.md): SBOM scope, SCA gate, and exceptions.
 
+## Engineering principles
+
+- [`principles/README.md`](principles/README.md): the stable P001-P091 catalog and links to the
+  evidence-backed definition, application guidance, examples, tensions, and sources for each
+  principle.
+
 ## Review framework
 
 - [`review/README.md`](review/README.md): why the review system exists, its high-level flow, and
