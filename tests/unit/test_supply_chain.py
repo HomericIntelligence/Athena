@@ -809,7 +809,13 @@ class WorkflowContractTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual({"pi-subagents": "0.43.0"}, manifest["dependencies"])
+        self.assertEqual(
+            {
+                "pi-subagents": "0.43.0",
+                "@earendil-works/pi-coding-agent": "0.84.0",
+            },
+            manifest["dependencies"],
+        )
         self.assertEqual(3, lock["lockfileVersion"])
         for package in manifest["dependencies"]:
             resolved = lock["packages"][f"node_modules/{package}"]
@@ -857,27 +863,20 @@ class WorkflowContractTests(unittest.TestCase):
             if step.get("name")
             == "Verify native Pi package source, archive, and delegation surface"
         )
-        self.assertEqual(
-            "2f550d827d468a00d91626ab54118f5802387a46",
-            pi_step["env"]["PI_RUNTIME_REF"],
-        )
-        self.assertIn(
-            'git -C "$PI_RUNTIME_SOURCE_ROOT" fetch --depth=1', pi_step["run"]
-        )
-        self.assertIn("npm run hydrate:model-data --prefix", pi_step["run"])
-        self.assertIn("npm run build:offline --prefix", pi_step["run"])
-        self.assertLess(
-            pi_step["run"].index("npm run hydrate:model-data --prefix"),
-            pi_step["run"].index("npm run build:offline --prefix"),
-        )
+        self.assertNotIn("PI_RUNTIME_REF", pi_step["env"])
+        self.assertNotIn("earendil-works/pi.git", pi_step["run"])
+        self.assertNotIn("hydrate:model-data", pi_step["run"])
+        self.assertNotIn("build:offline", pi_step["run"])
         self.assertIn("pi() {", pi_step["run"])
-        self.assertIn("packages/coding-agent/dist/cli.js", pi_step["run"])
-        self.assertIn('git -C "$PI_RUNTIME_SOURCE_ROOT" rev-parse HEAD', pi_step["run"])
+        self.assertIn(
+            "node_modules/@earendil-works/pi-coding-agent/dist/cli.js",
+            pi_step["run"],
+        )
         self.assertIn('npm ci --prefix "$PI_RUNTIME_ROOT"', pi_step["run"])
         self.assertIn("--ignore-scripts --engine-strict", pi_step["run"])
         self.assertIn("find_pi_package_root.mjs", pi_step["run"])
         self.assertIn(
-            '"$PI_RUNTIME_SOURCE_ROOT/packages/coding-agent/npm-shrinkwrap.json"',
+            '"$PI_RUNTIME_ROOT/node_modules/@earendil-works/pi-coding-agent/npm-shrinkwrap.json"',
             pi_step["run"],
         )
         self.assertIn('scan "$PI_RUNTIME_ROOT" -o json', pi_step["run"])

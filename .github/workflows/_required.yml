@@ -174,8 +174,6 @@ jobs:
           GIT_TERMINAL_PROMPT: "0"
           PI_RUNTIME_LOCK_ROOT: ${{ github.workspace }}/ci/pi-runtime
           PI_RUNTIME_ROOT: ${{ runner.temp }}/athena-pi-runtime
-          PI_RUNTIME_SOURCE_ROOT: ${{ runner.temp }}/athena-pi-runtime-source
-          PI_RUNTIME_REF: 2f550d827d468a00d91626ab54118f5802387a46
           PI_SOURCE_REPOSITORY: >-
             ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           PI_SOURCE_REF: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -185,23 +183,14 @@ jobs:
           npm_config_cache: ${{ runner.temp }}/athena-pi-npm-cache
         run: |
           mkdir -p "$PI_RUNTIME_ROOT"
-          git init "$PI_RUNTIME_SOURCE_ROOT"
-          git -C "$PI_RUNTIME_SOURCE_ROOT" remote add origin \
-            https://github.com/earendil-works/pi.git
-          git -C "$PI_RUNTIME_SOURCE_ROOT" fetch --depth=1 origin "$PI_RUNTIME_REF"
-          git -C "$PI_RUNTIME_SOURCE_ROOT" checkout --detach FETCH_HEAD
           cp "$PI_RUNTIME_LOCK_ROOT/package.json" \
             "$PI_RUNTIME_LOCK_ROOT/package-lock.json" "$PI_RUNTIME_ROOT/"
           npm ci --prefix "$PI_RUNTIME_ROOT" --ignore-scripts --engine-strict
-          test "$(git -C "$PI_RUNTIME_SOURCE_ROOT" rev-parse HEAD)" = "$PI_RUNTIME_REF"
-          npm ci --prefix "$PI_RUNTIME_SOURCE_ROOT" --ignore-scripts --engine-strict
-          npm run hydrate:model-data --prefix "$PI_RUNTIME_SOURCE_ROOT"
-          npm run build:offline --prefix "$PI_RUNTIME_SOURCE_ROOT"
           pi() {
-            node "$PI_RUNTIME_SOURCE_ROOT/packages/coding-agent/dist/cli.js" "$@"
+            node "$PI_RUNTIME_ROOT/node_modules/@earendil-works/pi-coding-agent/dist/cli.js" "$@"
           }
           pi_version="$(node -p 'require(process.argv[1]).version' \
-            "$PI_RUNTIME_SOURCE_ROOT/packages/coding-agent/package.json")"
+            "$PI_RUNTIME_ROOT/node_modules/@earendil-works/pi-coding-agent/package.json")"
           test "$(pi --version)" = "$pi_version"
           pi_subagents_version="$(node -p 'require(process.argv[1]).version' \
             "$PI_RUNTIME_ROOT/node_modules/pi-subagents/package.json")"
@@ -267,7 +256,7 @@ jobs:
           }
           NODE
           "${{ steps.syft.outputs.cmd }}" scan \
-            "$PI_RUNTIME_SOURCE_ROOT/packages/coding-agent/npm-shrinkwrap.json" -o json \
+            "$PI_RUNTIME_ROOT/node_modules/@earendil-works/pi-coding-agent/npm-shrinkwrap.json" -o json \
             > dist-internal/syft-pi-source.json
           "${{ steps.syft.outputs.cmd }}" scan "$PI_RUNTIME_ROOT" -o json \
             > dist-internal/syft-pi-subagents.json
