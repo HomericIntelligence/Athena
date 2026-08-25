@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply the branch-coverage limit to each executable Athena Python script."""
+"""Apply the minimum branch-coverage requirement to each executable Athena Python script."""
 
 from __future__ import annotations
 

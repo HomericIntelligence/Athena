@@ -7,7 +7,7 @@
 # Use one of these commands:
 #   ./scripts/run_ci_local.sh              # Run all CI checks.
 #   ./scripts/run_ci_local.sh validate     # Validate the plugin distribution.
-#   ./scripts/run_ci_local.sh test         # Run contract tests with the coverage limit.
+#   ./scripts/run_ci_local.sh test         # Run contract tests with the minimum coverage requirement.
 #   ./scripts/run_ci_local.sh static       # Run lint, format, and type checks.
 #   ./scripts/run_ci_local.sh markdownlint # Lint the documentation.
 #   ./scripts/run_ci_local.sh workflow     # Validate workflow syntax and schemas.

@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "Athena",
     "shortDescription": "Athena provides Codex skills for reviews, agent coordination, and workflows.",
-    "longDescription": "Athena provides Codex skills for repository analysis and strict pull-request reviews. Athena also provides Myrmidon coordination, test-driven development, systematic fault isolation, Git worktrees, and knowledge workflows. Athena uses ASD-STE100 Simplified Technical English for applicable directions and output.",
+    "longDescription": "Athena provides Codex skills for repository analysis and strict pull-request reviews. Athena also provides Myrmidon coordination, test-driven development, systematic fault isolation, Git worktrees, and knowledge workflows. All Athena English technical directions and output must follow ASD-STE100 Simplified Technical English.",
     "developerName": "HomericIntelligence",
     "category": "Productivity",
     "capabilities": [
@@ -29,7 +29,7 @@
       "Write"
     ],
     "websiteURL": "https://github.com/HomericIntelligence/Athena",
-    "defaultPrompt": "Use the applicable Athena skill for this task. Follow the Athena ASD-STE100 writing policy for all applicable prose.",
+    "defaultPrompt": "Use the applicable Athena skill for this task. Follow the Athena ASD-STE100 technical-English policy for all English technical prose.",
     "composerIcon": "./assets/icon.svg"
   }
 }
