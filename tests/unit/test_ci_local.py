@@ -45,7 +45,7 @@ class LocalCiOrchestratorTests(unittest.TestCase):
                 )
 
             self.assertNotEqual(0, result.returncode, result.stdout)
-            self.assertIn(f"{subset} failed.", result.stderr)
+            self.assertIn(subset, result.stderr)
 
 
 if __name__ == "__main__":

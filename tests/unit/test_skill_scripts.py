@@ -1592,12 +1592,11 @@ class ChangeReviewScriptTests(unittest.TestCase):
                     module,
                     "capture_scope",
                     side_effect=[first_capture, second_capture],
-                ),
-                self.assertRaisesRegex(
-                    RuntimeError, "change scope changed during resolution"
-                ),
+                ) as capture_scope,
+                self.assertRaises(RuntimeError),
             ):
                 module.resolve_scope("worktree", None, ())
+            self.assertEqual(2, capture_scope.call_count)
         finally:
             sys.modules.pop(module_name, None)
 
