@@ -136,7 +136,7 @@ def stage_package(repo_root: Path, output_directory: Path | None = None) -> Path
         _validate_source(source_path, relative_path)
         if not source_path.is_file():
             raise PackageError(
-                f"required package input must be a file: {relative_path}"
+                f"The required package input must be a file: '{relative_path}'."
             )
     for path in _skill_sources(repo_root):
         _validate_source(path, _relative(path, repo_root))
