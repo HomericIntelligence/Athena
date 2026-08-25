@@ -1,7 +1,7 @@
 ---
 name: learn
 license: BSD-3-Clause
-description: Preserve a verified Mnemosyne lesson without a duplicate. Store prior versions in `.history` and evidence in `.notes.md`. Discovery requires a usable checkout. Read-only work can use a stale checkout. A requested write requires an isolated-worktree pull request from a synchronized current default-branch base. Otherwise, report without changes.
+description: Preserve a verified Mnemosyne lesson without a duplicate. Store prior versions in `.history` and evidence in `.notes.md`. Discovery requires a usable checkout. Read-only work can use a stale checkout. A new pull request requires an isolated worktree from a synchronized current default-branch base. An existing pull request uses only its bound head. Otherwise, report without changes.
 argument-hint: <lesson or session summary>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 ---

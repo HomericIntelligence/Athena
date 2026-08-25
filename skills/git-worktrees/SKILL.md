@@ -1,7 +1,7 @@
 ---
 name: git-worktrees
 license: BSD-3-Clause
-description: Use for feature work that needs an isolated Git worktree. If Git does not ignore a project-local directory, report the problem and stop before creation. If the helper cannot verify a clean base commit, report the problem and stop before creation. Do not delete anything.
+description: Use for feature work that needs an isolated Git worktree. If Git does not ignore a project-local directory, use the verified temporary-directory fallback. If repository guidance requires the local directory, report the problem and stop before creation. If the helper cannot verify a clean base commit, report the problem and stop before creation. Do not delete anything.
 argument-hint: <branch-name or feature description>
 allowed-tools: [Bash, Read]
 ---
