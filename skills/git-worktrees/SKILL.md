@@ -140,7 +140,8 @@ workflow and the user's answers to its prompts control the removal decision.
 ## Failed approaches
 
 - Do not skip ignore verification for a project-local worktree. Git can track the worktree contents.
-- Do not continue if the baseline tests fail. You cannot separate new defects from existing defects.
+- If the baseline tests fail, do not continue unless the user explicitly tells you to continue. You
+  cannot separate new defects from existing defects.
 - When cleanup is authorized, use `tidy`. Do not leave stale worktrees.
 
 ## Related workflow
