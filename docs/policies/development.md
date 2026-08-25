@@ -3,7 +3,7 @@
 ## Technical English
 
 Apply the [ASD-STE100 technical-English policy](../technical-english.md) to all English technical
-prose that it governs. Do not remove or weaken a technical, safety, security, evidence, permission,
+prose in this document. Do not remove or weaken a technical, safety, security, evidence, permission,
 or failure requirement to make text shorter.
 
 ## Git

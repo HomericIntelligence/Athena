@@ -5,7 +5,8 @@ prose in this document.
 
 This policy is binding on each human and agent contribution to Athena.
 
-The governing rule is: **a truthful failure is acceptable; invented success is not.**
+The governing rule has two parts: **A truthful failure is acceptable. Invented success is not
+acceptable.**
 
 1. Do not create or change a log, metric, benchmark, test result, or release result to represent a
    run that did not occur.

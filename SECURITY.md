@@ -18,7 +18,7 @@ Send security reports privately to
 - the observed behavior; and
 - the disclosure status.
 
-We aim to acknowledge reports in five business days.
+We aim to acknowledge reports no later than five business days after receipt.
 
 ## Threat model
 
