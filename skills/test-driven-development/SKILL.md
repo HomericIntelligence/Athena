@@ -88,7 +88,7 @@ step 5. If the intended work changes the observable contract, return to RED.
    - If the test has an error, correct the test setup and run the test again.
    - Under [P027](../../docs/principles/README.md#p027), keep the test deterministic and isolated.
 
-3. **GREEN:** Write the simplest complete code that passes the behavior test.
+3. **GREEN:** Write the simplest behaviorally complete code that passes the behavior test.
 
    - Follow [P001 — KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001).
    - Prefer [P090 — Prefer Negative Code](../../docs/principles/README.md#p090) only if the candidate

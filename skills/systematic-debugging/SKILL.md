@@ -231,12 +231,12 @@ reproduction and the repository-defined checks.
 
 If the session produces durable debugging knowledge, offer to invoke `learn`. An indirect `learn`
 invocation is read-only and does not increase the requested scope. If the user requests durable
-learning, use the delivery boundary of `learn`. Useful lessons include:
+learning, use the delivery boundary of `learn`. Useful lessons include these items:
 
-- Root cause category and symptoms
-- What diagnostic steps revealed it
-- The fix pattern
-- Any architectural issues uncovered
+- the root-cause category and symptoms;
+- the diagnostic steps that revealed the cause;
+- the repair pattern; and
+- each architecture issue that the investigation found.
 
 This record prevents another agent from repeating the same debugging session.
 

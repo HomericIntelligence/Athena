@@ -120,9 +120,10 @@ Preserve each subagent worktree until one of these conditions applies:
 For each worktree, report its path, owner, branch or revision, cleanliness, and integration state.
 
 Cleanup is a filesystem-destructive operation. If the user grants cleanup authority, first check
-again for uncommitted or unintegrated state. Remove only worktrees that this invocation created. If
-the user does not grant cleanup authority, preserve the worktrees and report their exact status. Do
-not delete branches, discard changes, force removal, or change a pre-existing worktree.
+again for uncommitted or unintegrated state. Prove that no unique work remains. Then, remove only
+worktrees that this invocation created. If the user does not grant cleanup authority, preserve the
+worktrees and report their exact status. Do not delete branches, discard changes, force removal, or
+change a pre-existing worktree.
 
 ## Safety
 
