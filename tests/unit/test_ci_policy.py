@@ -564,7 +564,7 @@ class CommandTests(unittest.TestCase):
         }
         with (
             patch.dict(os.environ, environment, clear=False),
-            self.assertRaisesRegex(SystemExit, "not green"),
+            self.assertRaisesRegex(SystemExit, "Required jobs did not pass"),
         ):
             ci_policy.main(["required-jobs"])
 

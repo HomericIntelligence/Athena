@@ -748,8 +748,7 @@ class WorkflowContractTests(unittest.TestCase):
         build_run = next(
             step["run"]
             for step in jobs["package"]["steps"]
-            if step.get("name")
-            == "Build portable plugin archive and deterministic SBOMs"
+            if "scripts/generate_sboms.py" in step.get("run", "")
         )
         self.assertEqual(2, build_run.count("uv run python scripts/generate_sboms.py"))
         self.assertEqual(4, build_run.count("cmp dist/"))
@@ -845,8 +844,7 @@ class WorkflowContractTests(unittest.TestCase):
         pi_step = next(
             step
             for step in package_job["steps"]
-            if step.get("name")
-            == "Verify native Pi package source, archive, and delegation surface"
+            if "find_pi_package_root.mjs" in step.get("run", "")
         )
         self.assertNotIn("PI_RUNTIME_REF", pi_step["env"])
         self.assertNotIn("earendil-works/pi.git", pi_step["run"])
@@ -872,8 +870,7 @@ class WorkflowContractTests(unittest.TestCase):
         scan_step = next(
             step
             for step in scan_job["steps"]
-            if step.get("name")
-            == "Scan dependency inventories and enforce vulnerability policy"
+            if "scripts/scan_vulnerabilities.py" in step.get("run", "")
         )
         self.assertIn("syft-environment.json", scan_step["run"])
         self.assertIn("syft-pi-source.json", scan_step["run"])
