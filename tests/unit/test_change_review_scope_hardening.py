@@ -428,7 +428,7 @@ class ChangeReviewScopeHardeningTests(unittest.TestCase):
                         module, "capture_scope", side_effect=capture_then_move_head
                     ),
                     self.assertRaisesRegex(
-                        RuntimeError, "HEAD changed while resolving"
+                RuntimeError, "HEAD changed during resolution"
                     ),
                 ):
                     module.resolve_scope("worktree", None, ())
