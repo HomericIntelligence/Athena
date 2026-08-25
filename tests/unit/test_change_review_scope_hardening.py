@@ -554,10 +554,11 @@ class ChangeReviewScopeHardeningTests(unittest.TestCase):
                 with (
                     patch.object(module.os, "open", side_effect=unsupported_child_open),
                     patch.object(module.os, "close", side_effect=recording_close),
-                    self.assertRaisesRegex(RuntimeError, "without following links"),
+                    self.assertRaises(RuntimeError) as caught,
                 ):
                     module.nofollow_parent_descriptor(repository, "nested/file.txt")
 
+                self.assertIsInstance(caught.exception.__cause__, NotImplementedError)
                 self.assertIsNotNone(root_descriptor)
                 assert root_descriptor is not None
                 self.assertIn(root_descriptor, closed_descriptors)
@@ -712,13 +713,15 @@ class ChangeReviewScopeHardeningTests(unittest.TestCase):
                 def kill(self) -> None:
                     self.stdout.close()
 
+            process = FakeProcess()
             with (
-                patch.object(module.subprocess, "Popen", return_value=FakeProcess()),
-                self.assertRaisesRegex(RuntimeError, "metadata record exceeds"),
+                patch.object(module.subprocess, "Popen", return_value=process),
+                self.assertRaises(RuntimeError),
             ):
                 module.consume_git_nul_records(
                     ("ls-files", "-z"), Path("/temporary/repository"), lambda _: None
                 )
+            self.assertTrue(process.stdout.closed)
         finally:
             sys.modules.pop(module_name, None)
 

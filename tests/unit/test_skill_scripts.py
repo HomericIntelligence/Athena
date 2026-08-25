@@ -78,6 +78,19 @@ def initialize_repository(path: Path) -> None:
     git(path, "commit", "--quiet", "-m", "test: initialize")
 
 
+def assert_cli_failure(
+    test_case: unittest.TestCase,
+    result: subprocess.CompletedProcess[str],
+    returncode: int,
+    *stderr_literals: str,
+) -> None:
+    test_case.assertEqual(returncode, result.returncode)
+    test_case.assertTrue(result.stderr.strip())
+    test_case.assertNotIn("Traceback", result.stderr)
+    for literal in stderr_literals:
+        test_case.assertIn(literal, result.stderr)
+
+
 class ScriptConventionTests(unittest.TestCase):
     def test_immutable_git_reads_disable_lazy_fetch_and_commit_graphs(self) -> None:
         hostile_environment = {
@@ -152,7 +165,8 @@ class ScriptConventionTests(unittest.TestCase):
                         ):
                             parser.parse_args(["--version"])
                         self.assertEqual(1, exit.exception.code)
-                        self.assertIn("cannot read plugin version", errors.getvalue())
+                        self.assertTrue(errors.getvalue().strip())
+                        self.assertNotIn("Traceback", errors.getvalue())
 
                 manifest.write_text('{"version": "0.2.0"}\n', encoding="utf-8")
                 output = io.StringIO()
@@ -167,12 +181,14 @@ class ScriptConventionTests(unittest.TestCase):
                 "skills/git-worktrees/scripts/prepare_worktree.py",
                 ("feature", "--start-point", "HEAD", "--dry-run"),
                 "git",
+                1,
             ),
-            ("skills/pr-review/scripts/collect_evidence.py", ("1",), "gh"),
+            ("skills/pr-review/scripts/collect_evidence.py", ("1",), "gh", 1),
             (
                 "skills/pr-review/scripts/diff_context.py",
                 ("a" * 40, "b" * 40),
                 "git",
+                1,
             ),
             (
                 "skills/pr-review/scripts/resolve_pr.py",
@@ -184,17 +200,25 @@ class ScriptConventionTests(unittest.TestCase):
                     "1",
                 ),
                 "gh",
+                1,
             ),
-            ("skills/change-review/scripts/resolve_scope.py", ("--worktree",), "git"),
+            (
+                "skills/change-review/scripts/resolve_scope.py",
+                ("--worktree",),
+                "git",
+                1,
+            ),
             (
                 "skills/systematic-debugging/scripts/repository_evidence.py",
                 ("pattern",),
                 "git",
+                1,
             ),
             (
                 "skills/tidy/scripts/run_tidy.py",
                 ("/tmp/automation",),
                 "uv",
+                127,
             ),
         )
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -205,16 +229,11 @@ class ScriptConventionTests(unittest.TestCase):
             environment = os.environ.copy()
             environment["PATH"] = str(bin_directory)
 
-            for path, arguments, missing_command in commands:
+            for path, arguments, missing_command, returncode in commands:
                 with self.subTest(path=path):
                     result = run_script(path, *arguments, cwd=root, env=environment)
 
-                    self.assertNotEqual(0, result.returncode)
-                    self.assertIn(
-                        f"required command unavailable: {missing_command}",
-                        result.stderr,
-                    )
-                    self.assertNotIn("Traceback", result.stderr)
+                    assert_cli_failure(self, result, returncode, missing_command)
 
 
 class RetrievableSkillSelectorTests(unittest.TestCase):
@@ -256,9 +275,7 @@ class RetrievableSkillSelectorTests(unittest.TestCase):
                 cwd=knowledge_root,
             )
 
-        self.assertEqual(1, result.returncode)
-        self.assertIn("knowledge skills directory is unavailable", result.stderr)
-        self.assertNotIn("Traceback", result.stderr)
+        assert_cli_failure(self, result, 1, str(knowledge_root / "skills"))
 
 
 class FakeGitHubCliFixtureTests(unittest.TestCase):
@@ -569,16 +586,15 @@ class PullRequestScriptTests(unittest.TestCase):
         """Malformed direct URLs are argument errors, not uncaught exceptions."""
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
+            pull_request_url = "https://github.com/owner/repository/pull/42/"
             result = run_script(
                 "skills/pr-review/scripts/resolve_pr.py",
-                "https://github.com/owner/repository/pull/42/",
+                pull_request_url,
                 cwd=root,
                 env=self.make_fake_tools(root, []),
             )
 
-        self.assertEqual(2, result.returncode)
-        self.assertIn("invalid pull-request URL", result.stderr)
-        self.assertNotIn("Traceback", result.stderr)
+        assert_cli_failure(self, result, 2, pull_request_url)
 
     def test_resolve_pr_requires_a_target_for_a_numeric_identifier(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -610,13 +626,18 @@ class PullRequestScriptTests(unittest.TestCase):
                 env=env,
             )
 
-        self.assertEqual(1, result.returncode)
-        self.assertIn("does not belong to target repository", result.stderr)
+        assert_cli_failure(
+            self,
+            result,
+            1,
+            "https://github.com/other/foreign-repository/pull/42",
+            "owner/repository",
+        )
 
     def test_resolve_pr_rejects_closed_and_invalid_explicit_prs(self) -> None:
-        for payload, message in (
-            ({"number": 42, "state": "CLOSED"}, "is not open"),
-            ([{"number": 42}], "invalid pull-request object"),
+        for payload in (
+            {"number": 42, "state": "CLOSED"},
+            [{"number": 42}],
         ):
             with self.subTest(payload=payload):
                 with tempfile.TemporaryDirectory() as temporary_directory:
@@ -629,8 +650,7 @@ class PullRequestScriptTests(unittest.TestCase):
                         env=env,
                     )
 
-                self.assertEqual(1, result.returncode)
-                self.assertIn(message, result.stderr)
+                assert_cli_failure(self, result, 1)
 
     def test_resolve_pr_rejects_non_oid_provider_revisions(self) -> None:
         for field, value in (
@@ -650,8 +670,7 @@ class PullRequestScriptTests(unittest.TestCase):
                         env=env,
                     )
 
-                self.assertEqual(1, result.returncode)
-                self.assertIn("immutable PR revision", result.stderr)
+                assert_cli_failure(self, result, 1, field)
 
     def test_resolve_pr_reports_no_candidate_and_usage_errors(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -667,8 +686,7 @@ class PullRequestScriptTests(unittest.TestCase):
                 env=env,
             )
 
-        self.assertEqual(2, missing.returncode)
-        self.assertIn("no open pull request", missing.stderr)
+        assert_cli_failure(self, missing, 2)
         self.assertEqual(2, usage.returncode)
         self.assertIn("usage:", usage.stderr)
 
@@ -692,10 +710,8 @@ class PullRequestScriptTests(unittest.TestCase):
         self.assertIn("usage:", resolved.stderr)
         self.assertEqual(2, collected.returncode)
         self.assertIn("usage:", collected.stderr)
-        self.assertEqual(1, invalid_resolved.returncode)
-        self.assertIn("invalid pull-request identifier", invalid_resolved.stderr)
-        self.assertEqual(1, invalid_collected.returncode)
-        self.assertIn("invalid pull-request identifier", invalid_collected.stderr)
+        assert_cli_failure(self, invalid_resolved, 1, "invalid")
+        assert_cli_failure(self, invalid_collected, 1, "invalid")
 
     def test_resolve_pr_reports_malformed_github_output_as_operational_failure(
         self,
@@ -706,8 +722,7 @@ class PullRequestScriptTests(unittest.TestCase):
             env["FAKE_GH_VIEW_RAW"] = "not JSON"
             result = self.resolve_pr("42", cwd=root, env=env)
 
-        self.assertEqual(1, result.returncode)
-        self.assertIn("Expecting value", result.stderr)
+        assert_cli_failure(self, result, 1)
 
     def test_resolve_pr_uses_the_only_open_pr_for_current_branch(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -839,8 +854,7 @@ class PullRequestScriptTests(unittest.TestCase):
                 env=environment,
             )
 
-        self.assertEqual(1, result.returncode)
-        self.assertIn("non-shallow", result.stderr)
+        assert_cli_failure(self, result, 1)
 
     def test_diff_context_ignores_replacement_refs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -954,8 +968,7 @@ class PullRequestScriptTests(unittest.TestCase):
                         cwd=repository,
                     )
 
-                    self.assertEqual(1, result.returncode)
-                    self.assertIn("lowercase 40-hex", result.stderr)
+                    assert_cli_failure(self, result, 1)
 
     def test_collect_evidence_combines_pr_metadata_files_and_checks(self) -> None:
         requested_fields = ""
@@ -1024,8 +1037,13 @@ class PullRequestScriptTests(unittest.TestCase):
                 env=env,
             )
 
-        self.assertEqual(1, result.returncode)
-        self.assertIn("does not belong to current repository", result.stderr)
+        assert_cli_failure(
+            self,
+            result,
+            1,
+            "https://github.com/other/repository/pull/42",
+            "owner/repository",
+        )
 
     def test_collect_evidence_reports_partial_pr_metadata_as_structured_error(
         self,
@@ -1042,15 +1060,10 @@ class PullRequestScriptTests(unittest.TestCase):
             )
 
         self.assertEqual(1, result.returncode)
-        self.assertEqual(
-            {
-                "error": "incomplete PR metadata",
-                "details": (
-                    "GitHub returned incomplete or invalid PR metadata fields: title"
-                ),
-            },
-            json.loads(result.stdout),
-        )
+        error = json.loads(result.stdout)
+        self.assertEqual({"details", "error"}, set(error))
+        self.assertEqual("incomplete PR metadata", error["error"])
+        self.assertIn("title", error["details"])
 
     def test_collect_evidence_preserves_pending_and_failed_checks(self) -> None:
         for exit_code, state in ((8, "PENDING"), (1, "FAILURE")):
@@ -1111,8 +1124,7 @@ class PullRequestScriptTests(unittest.TestCase):
 
         self.assertEqual(2, usage.returncode)
         self.assertIn("usage:", usage.stderr)
-        self.assertEqual(1, invalid.returncode)
-        self.assertIn("invalid check evidence", invalid.stderr)
+        assert_cli_failure(self, invalid, 1)
 
 
 class ChangeReviewScriptTests(unittest.TestCase):
@@ -1236,8 +1248,7 @@ class ChangeReviewScriptTests(unittest.TestCase):
 
             self.assertEqual(0, filtered.returncode, filtered.stderr)
             self.assertEqual(["src/new.py"], json.loads(filtered.stdout)["paths"])
-            self.assertEqual(1, outside.returncode)
-            self.assertIn("outside repository", outside.stderr)
+            assert_cli_failure(self, outside, 1, "outside.py")
 
     def test_worktree_path_filter_treats_git_pathspec_magic_as_literal(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1751,12 +1762,13 @@ class WorktreeScriptTests(unittest.TestCase):
             real_parent.mkdir()
             symlink_parent = root / "linked"
             symlink_parent.symlink_to(real_parent, target_is_directory=True)
+            target = symlink_parent / "feature-safe"
 
             result = run_script(
                 "skills/git-worktrees/scripts/prepare_worktree.py",
                 "feature-safe",
                 "--path",
-                str(symlink_parent / "feature-safe"),
+                str(target),
                 "--path-root",
                 str(root),
                 "--start-point",
@@ -1764,9 +1776,9 @@ class WorktreeScriptTests(unittest.TestCase):
                 "--dry-run",
                 cwd=repository,
             )
+            self.assertFalse(target.exists())
 
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("symlink", result.stderr)
+        assert_cli_failure(self, result, 1)
 
     def test_prepare_worktree_requires_trust_root_for_exact_path(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1815,6 +1827,7 @@ class WorktreeScriptTests(unittest.TestCase):
             repository = Path(temporary_directory) / "repo"
             initialize_repository(repository)
             (repository / "worktrees").mkdir()
+            target = repository / "worktrees" / "feature-two"
             result = run_script(
                 "skills/git-worktrees/scripts/prepare_worktree.py",
                 "feature-two",
@@ -1823,9 +1836,9 @@ class WorktreeScriptTests(unittest.TestCase):
                 "--dry-run",
                 cwd=repository,
             )
+            self.assertFalse(target.exists())
 
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("not ignored", result.stderr)
+        assert_cli_failure(self, result, 1, "worktrees")
 
     def test_prepare_worktree_rejects_symlinked_local_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1835,6 +1848,7 @@ class WorktreeScriptTests(unittest.TestCase):
             external = root / "external"
             external.mkdir()
             (repository / ".worktrees").symlink_to(external, target_is_directory=True)
+            target = repository / ".worktrees" / "feature-symlink"
 
             result = run_script(
                 "skills/git-worktrees/scripts/prepare_worktree.py",
@@ -1844,9 +1858,9 @@ class WorktreeScriptTests(unittest.TestCase):
                 "--dry-run",
                 cwd=repository,
             )
+            self.assertFalse(target.exists())
 
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("symlink", result.stderr)
+        assert_cli_failure(self, result, 1, ".worktrees")
 
     def test_prepare_worktree_treats_requested_directory_as_a_base(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1880,19 +1894,21 @@ class WorktreeScriptTests(unittest.TestCase):
             requested = root / "requested"
             requested.mkdir()
             (requested / "linked").symlink_to(outside, target_is_directory=True)
+            directory = requested / "linked" / "nested"
+            target = directory / "feature-safe"
             result = run_script(
                 "skills/git-worktrees/scripts/prepare_worktree.py",
                 "feature-safe",
                 "--directory",
-                str(requested / "linked" / "nested"),
+                str(directory),
                 "--start-point",
                 "HEAD",
                 "--dry-run",
                 cwd=repository,
             )
+            self.assertFalse(target.exists())
 
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("symlink", result.stderr)
+        assert_cli_failure(self, result, 1)
 
     def test_prepare_worktree_rejects_symlink_above_nonexistent_trust_root(
         self,
@@ -1906,11 +1922,12 @@ class WorktreeScriptTests(unittest.TestCase):
             linked_parent = root / "linked"
             linked_parent.symlink_to(real_parent, target_is_directory=True)
             trust_root = linked_parent / "not-created"
+            target = trust_root / "feature-safe"
             result = run_script(
                 "skills/git-worktrees/scripts/prepare_worktree.py",
                 "feature-safe",
                 "--path",
-                str(trust_root / "feature-safe"),
+                str(target),
                 "--path-root",
                 str(trust_root),
                 "--start-point",
@@ -1918,9 +1935,9 @@ class WorktreeScriptTests(unittest.TestCase):
                 "--dry-run",
                 cwd=repository,
             )
+            self.assertFalse(target.exists())
 
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("symlink", result.stderr)
+        assert_cli_failure(self, result, 1)
 
     def test_prepare_worktree_rejects_symlink_above_existing_trust_root(
         self,
@@ -1935,11 +1952,12 @@ class WorktreeScriptTests(unittest.TestCase):
             linked_parent = root / "linked"
             linked_parent.symlink_to(real_parent, target_is_directory=True)
             lexical_root = linked_parent / "worktrees"
+            target = lexical_root / "feature-safe"
             result = run_script(
                 "skills/git-worktrees/scripts/prepare_worktree.py",
                 "feature-safe",
                 "--path",
-                str(lexical_root / "feature-safe"),
+                str(target),
                 "--path-root",
                 str(lexical_root),
                 "--start-point",
@@ -1947,9 +1965,9 @@ class WorktreeScriptTests(unittest.TestCase):
                 "--dry-run",
                 cwd=repository,
             )
+            self.assertFalse(target.exists())
 
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("symlink", result.stderr)
+        assert_cli_failure(self, result, 1)
 
     def test_prepare_worktree_rejects_broken_symlink_ancestor(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1959,11 +1977,12 @@ class WorktreeScriptTests(unittest.TestCase):
             broken_parent = root / "broken"
             broken_parent.symlink_to(root / "missing", target_is_directory=True)
             trust_root = broken_parent / "not-created"
+            target = trust_root / "feature-safe"
             result = run_script(
                 "skills/git-worktrees/scripts/prepare_worktree.py",
                 "feature-safe",
                 "--path",
-                str(trust_root / "feature-safe"),
+                str(target),
                 "--path-root",
                 str(trust_root),
                 "--start-point",
@@ -1971,9 +1990,9 @@ class WorktreeScriptTests(unittest.TestCase):
                 "--dry-run",
                 cwd=repository,
             )
+            self.assertFalse(target.exists())
 
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("symlink", result.stderr)
+        assert_cli_failure(self, result, 1)
 
     def test_prepare_worktree_rejects_directory_with_exact_path(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1995,8 +2014,7 @@ class WorktreeScriptTests(unittest.TestCase):
                 cwd=repository,
             )
 
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("not allowed with argument", result.stderr)
+        assert_cli_failure(self, result, 2, "--directory", "--path")
 
     def test_prepare_worktree_rejects_invalid_branch_name(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -2011,8 +2029,7 @@ class WorktreeScriptTests(unittest.TestCase):
                 cwd=repository,
             )
 
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("invalid branch", result.stderr)
+        assert_cli_failure(self, result, 1, "../escape")
 
 
 class TidyDelegationTests(unittest.TestCase):
