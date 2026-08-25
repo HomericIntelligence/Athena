@@ -41,12 +41,15 @@ Use these steps when you write or change technical prose:
 
 Do not change literal text only to make it conform to this policy. Literal text includes:
 
-- source code and generated code;
+- programming-language syntax and generated code;
 - commands, options, identifiers, paths, URLs, and API field names;
 - machine-readable markers, schemas, and data values;
 - legal text, licenses, and required notices;
 - attributed quotations; and
 - historical records that must preserve their original text.
+
+A message for a user or an agent is technical prose even when source code contains it. This rule
+applies to command help, error messages, status messages, prompts, and user-interface labels.
 
 Write the prose around literal text in accordance with ASD-STE100. Use code formatting or a
 quotation format to make the literal boundary clear.
