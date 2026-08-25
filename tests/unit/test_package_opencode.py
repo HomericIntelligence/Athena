@@ -91,6 +91,27 @@ class PackageOpenCodeTests(unittest.TestCase):
                     self.assertTrue(resolved.is_relative_to(skills_root))
                     self.assertTrue(resolved.is_file())
 
+    def test_source_and_staged_readme_policy_links_resolve_locally(self) -> None:
+        """The source and relocated package README can read the shipped policy."""
+        staged = self.stage()
+        locations = (
+            (
+                "source",
+                self.fixture / "npm" / "athena-opencode" / "README.md",
+                self.fixture.resolve(),
+            ),
+            ("staged", staged / "README.md", staged.resolve()),
+        )
+
+        for label, readme, package_root in locations:
+            targets = technical_english_targets(readme.read_text(encoding="utf-8"))
+            self.assertTrue(targets, f"{label} README has no policy link")
+            for target in targets:
+                with self.subTest(location=label, target=target):
+                    resolved = (readme.parent / target).resolve()
+                    self.assertTrue(resolved.is_relative_to(package_root))
+                    self.assertTrue(resolved.is_file())
+
     def test_missing_technical_english_policy_fails_staging(self) -> None:
         """Staging fails closed when the installed writing policy is unavailable."""
         (self.fixture / "skills" / "TECHNICAL_ENGLISH.md").unlink(missing_ok=True)

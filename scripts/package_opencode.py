@@ -20,10 +20,11 @@ from scripts.semver import SEMVER_PATTERN
 from skills._cli import argument_parser
 
 PLUGIN_DIRECTORY: Final[PurePosixPath] = PurePosixPath("npm") / "athena-opencode"
+PLUGIN_README: Final[PurePosixPath] = PLUGIN_DIRECTORY / "README.md"
 PLUGIN_FILES: Final[tuple[PurePosixPath, ...]] = (
     PLUGIN_DIRECTORY / "package.json",
     PLUGIN_DIRECTORY / "plugin.js",
-    PLUGIN_DIRECTORY / "README.md",
+    PLUGIN_README,
 )
 LEGAL_FILES: Final[tuple[PurePosixPath, ...]] = (
     PurePosixPath("LICENSE"),
@@ -33,6 +34,8 @@ SKILLS_ROOT: Final[PurePosixPath] = PurePosixPath("skills")
 REQUIRED_SKILL_FILES: Final[tuple[PurePosixPath, ...]] = (
     SKILLS_ROOT / "TECHNICAL_ENGLISH.md",
 )
+SOURCE_README_POLICY_TARGET: Final[str] = "../../skills/TECHNICAL_ENGLISH.md"
+STAGED_README_POLICY_TARGET: Final[str] = "skills/TECHNICAL_ENGLISH.md"
 VERSION_MANIFEST: Final[PurePosixPath] = PurePosixPath(".codex-plugin") / "plugin.json"
 DEFAULT_OUTPUT: Final[PurePosixPath] = PurePosixPath("dist") / "opencode-npm"
 GENERATED_SUFFIXES: Final[frozenset[str]] = frozenset({".pyc", ".pyo"})
@@ -79,6 +82,19 @@ def _skill_sources(repo_root: Path) -> Iterator[Path]:
         yield path
 
 
+def _copy_plugin_file(
+    source_path: Path, target: Path, relative_path: PurePosixPath
+) -> None:
+    """Copy a plugin file and adjust links for its staged location."""
+    if relative_path != PLUGIN_README:
+        shutil.copyfile(source_path, target)
+        return
+    readme = source_path.read_text(encoding="utf-8")
+    source_link = f"]({SOURCE_README_POLICY_TARGET})"
+    staged_link = f"]({STAGED_README_POLICY_TARGET})"
+    target.write_text(readme.replace(source_link, staged_link), encoding="utf-8")
+
+
 def stage_package(repo_root: Path, output_directory: Path | None = None) -> Path:
     """Validate inputs and copy the publishable npm package into the output directory."""
     repo_root = repo_root.resolve()
@@ -120,7 +136,7 @@ def stage_package(repo_root: Path, output_directory: Path | None = None) -> Path
     destination.mkdir(parents=True)
     for source_path, relative_path in sources:
         target = destination / relative_path.name
-        shutil.copyfile(source_path, target)
+        _copy_plugin_file(source_path, target, relative_path)
     for path in _skill_sources(repo_root):
         relative_path = _relative(path, repo_root)
         target = destination / relative_path.as_posix()
