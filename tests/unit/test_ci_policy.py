@@ -562,9 +562,11 @@ class CommandTests(unittest.TestCase):
             "EVENT_NAME": "pull_request",
             "RESULTS": json.dumps({"validate": {"result": "failure"}}),
         }
-        with patch.dict(os.environ, environment, clear=False):
-            with self.assertRaises(SystemExit) as raised:
-                ci_policy.main(["required-jobs"])
+        with (
+            patch.dict(os.environ, environment, clear=False),
+            self.assertRaises(SystemExit) as raised,
+        ):
+            ci_policy.main(["required-jobs"])
 
         failure = str(raised.exception)
         self.assertIn("validate", failure)
