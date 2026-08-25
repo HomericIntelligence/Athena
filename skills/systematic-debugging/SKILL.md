@@ -12,6 +12,9 @@ allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 
 Random fixes waste time and create new bugs. Quick patches mask underlying issues.
 
+Apply the [ASD-STE100 writing policy](../../docs/technical-english.md) to this skill and to all prose
+that it produces.
+
 ## Working rules
 
 Always find the root cause before attempting fixes. Symptom fixes are failure.

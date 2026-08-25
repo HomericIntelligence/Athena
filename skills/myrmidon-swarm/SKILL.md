@@ -11,6 +11,9 @@ allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 Use this for a task with several independently useful workstreams. Do not use it for work that one
 agent can complete more clearly.
 
+Apply the [ASD-STE100 writing policy](../../docs/technical-english.md) to this skill and to all prose
+that it produces.
+
 ## Engineering principles
 
 Use the [canonical engineering-principles catalog](../../docs/principles/README.md) through these

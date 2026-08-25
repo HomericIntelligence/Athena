@@ -13,6 +13,9 @@ worktrees. Athena prepares the trusted automation dependency and delegates the c
 `hephaestus-tidy` owns discovery, preservation rules, prompts, rebases, removal safeguards, output,
 and the final exit status.
 
+Apply the [ASD-STE100 writing policy](../../docs/technical-english.md) to this skill and to all prose
+that it produces.
+
 ## Engineering principles
 
 Use the [canonical engineering-principles catalog](../../docs/principles/README.md) through these

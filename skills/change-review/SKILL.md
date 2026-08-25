@@ -11,6 +11,9 @@ allowed-tools: [Read, Bash, Grep, Glob, Agent]
 Why: bind the exact local change before review so findings apply to the bytes
 that will be committed.
 
+Apply the [ASD-STE100 writing policy](../../docs/technical-english.md) to this skill and to all prose
+that it produces.
+
 Use the shared [review contract](../../docs/review/common.md),
 [language routing](../../docs/review/language-routing.md), and
 [behavior-first testing](../../docs/review/behavior-first-testing.md).

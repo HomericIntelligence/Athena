@@ -8,7 +8,10 @@ allowed-tools: [Read, Write, Bash, Grep, Glob, Agent]
 
 # Brainstorming Ideas Into Designs
 
-Help turn ideas into fully formed designs and specs through natural collaborative dialogue.
+Help the user turn an idea into a complete design through a natural, collaborative dialogue.
+
+Apply the [ASD-STE100 writing policy](../../docs/technical-english.md) to this skill and to all prose
+that it produces.
 
 Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design and proceed with the requested implementation unless a requirement remains unresolved.
 

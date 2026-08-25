@@ -11,6 +11,9 @@ allowed-tools: [Read, Bash, Grep, Glob]
 Why: an approved plan should be the readable implementation entry point without
 turning review history, suggestions, or a generated body into new requirements.
 
+Apply the [ASD-STE100 writing policy](../../docs/technical-english.md) to this skill and to all prose
+that it produces.
+
 Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 [review contract](../../docs/review/common.md),
 [design-document structure](../../docs/review/design-docs.md),

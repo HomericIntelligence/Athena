@@ -11,6 +11,9 @@ allowed-tools: [Read, Bash, Grep, Glob, Agent, WebFetch]
 Why: find architecture, scope, and verification gaps while changing the plan is
 still cheaper than changing code.
 
+Apply the [ASD-STE100 writing policy](../../docs/technical-english.md) to this skill and to all prose
+that it produces.
+
 Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 [review contract](../../docs/review/common.md),
 [language routing](../../docs/review/language-routing.md), and

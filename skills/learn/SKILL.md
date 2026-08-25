@@ -12,6 +12,9 @@ Why: one concise, general rule is more discoverable and safer than many session-
 First decide whether a durable delta exists; then partition it into retrievable guidance, history, and
 supporting notes before writing through a reviewable PR.
 
+Apply the [ASD-STE100 writing policy](../../docs/technical-english.md) to this skill and to all prose
+that it produces.
+
 ## Engineering principles
 
 Use the [canonical engineering-principles catalog](../../docs/principles/README.md) through these

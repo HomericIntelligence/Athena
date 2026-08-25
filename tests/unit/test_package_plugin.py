@@ -310,6 +310,18 @@ if (
         with tarfile.open(archive_path, mode="r:gz") as archive:
             self.assertIsNotNone(archive.getmember(member))
 
+    def test_source_archive_requires_the_technical_english_policy(self) -> None:
+        """Every packaged harness receives the shared writing policy."""
+        member = "docs/technical-english.md"
+        self.assertIn(member, REQUIRED_MEMBERS)
+
+        archive_path, checksum_path = build_package(ROOT)
+        self.addCleanup(archive_path.unlink, missing_ok=True)
+        self.addCleanup(checksum_path.unlink, missing_ok=True)
+
+        with tarfile.open(archive_path, mode="r:gz") as archive:
+            self.assertIsNotNone(archive.getmember(member))
+
     def test_source_python_cache_directories_are_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)

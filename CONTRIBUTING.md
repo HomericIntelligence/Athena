@@ -1,14 +1,16 @@
 # Contributing to Athena
 
-Athena is a plugin-only distribution. Contributions change canonical skills, host manifests,
-documentation, policies, validation scripts, or release automation—not a Python package.
+Athena is a plugin-only distribution. Contributions can change canonical skills, host manifests,
+documentation, policies, validation scripts, or release automation. They do not change a Python
+package.
 
-Read [`AGENTS.md`](AGENTS.md) and the local [`development policy`](docs/policies/development.md)
-before changing the repository.
+Before you change the repository, read [`AGENTS.md`](AGENTS.md), the
+[`development policy`](docs/policies/development.md), and the
+[ASD-STE100 writing policy](docs/technical-english.md).
 
 ## Environment setup
 
-Prerequisites are Git, uv, Just, and Python 3.13 for repository validation only.
+Install Git, uv, Just, and Python 3.13. Athena uses these tools only for repository validation.
 
 ```bash
 git clone https://github.com/HomericIntelligence/Athena
@@ -17,10 +19,10 @@ just bootstrap
 just all
 ```
 
-`just all` validates skills and manifests, runs executable unit tests, enforces at least 80% branch
-coverage for every repository and skill-local executable script, runs Ruff and strict mypy over the
-same tooling, lints public documentation and workflows, and builds a deterministic plugin archive
-with a SHA-256 checksum. It never builds Python distribution artifacts.
+`just all` validates skills and manifests. It runs executable unit tests and requires at least 80%
+branch coverage for each executable repository script and skill-local script. It runs Ruff and strict
+mypy on the same tools. It lints public documentation and workflows. It also builds a deterministic
+plugin archive with a SHA-256 checksum. It does not build Python distribution artifacts.
 
 ## Add or change a skill
 
@@ -31,17 +33,18 @@ with a SHA-256 checksum. It never builds Python distribution artifacts.
    portable.
 5. Apply the [`AGENTS.md` principle-routing rule](AGENTS.md#authoring-a-skill) against the canonical
    [`engineering principles catalog`](docs/principles/README.md).
-6. Run `just all`.
-7. Commit with a signed, DCO-attested Conventional Commit.
-8. Open a PR. Include `Closes #N` on its own line when a tracking issue exists.
+6. Apply the [ASD-STE100 writing policy](docs/technical-english.md) to all applicable prose.
+7. Run `just all`.
+8. Commit with a signed, DCO-attested Conventional Commit.
+9. Open a PR. Include `Closes #N` on its own line when a tracking issue exists.
 
 Do not enable auto-merge or merge without explicit maintainer authority.
 
 ## Required dependency changes
 
-Mnemosyne and Hephaestus are Athena's only hard repository dependencies. Changes to their owner
-resolution, fork verification, checkout paths, or failure behavior modify a trust boundary and
-require focused maintainer review and validator coverage.
+Mnemosyne and Hephaestus are Athena's only required repositories. A change to owner resolution,
+fork verification, checkout paths, or failure behavior changes a trust boundary. This change
+requires focused maintainer review and validator coverage.
 
 ## Release process
 

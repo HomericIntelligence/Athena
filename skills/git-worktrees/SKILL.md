@@ -6,11 +6,15 @@ argument-hint: <branch-name or feature description>
 allowed-tools: [Bash, Read]
 ---
 
-# Using Git Worktrees
+# Use Git worktrees
 
 ## Overview
 
-Git worktrees create isolated workspaces sharing the same repository, allowing work on multiple branches simultaneously without switching.
+Git worktrees create isolated workspaces that share one repository. They let you work on multiple
+branches without switching the active branch.
+
+Apply the [ASD-STE100 writing policy](../../docs/technical-english.md) to this skill and to all prose
+that it produces.
 
 **Working rule:** Systematic directory selection plus safety verification produces reliable
 isolation.

@@ -5,16 +5,25 @@
 [![Latest release](https://img.shields.io/github/v/release/HomericIntelligence/Athena)](https://github.com/HomericIntelligence/Athena/releases)
 [![License: BSD-3-Clause](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
 
-Portable, architecture-first repository-review, development, and orchestration skills for coding
-harnesses. They give every harness the same trusted, evidence-based workflow without requiring a
-host-specific runtime.
+Athena supplies portable, architecture-first skills for repository review, development, and
+orchestration. It gives each coding harness the same trusted, evidence-based workflow. It does not
+require a host-specific runtime.
 
-Athena is distributed only as a coding-harness skill and plugin package. It does not publish a
-Python wheel, source distribution, or runtime library.
+Athena is available only as a coding-harness skill and plugin package. It does not publish a Python
+wheel, a source distribution, or a runtime library.
+
+## Technical English
+
+Athena always uses
+[ASD-STE100 Simplified Technical English](docs/technical-english.md)
+for applicable English technical prose. This rule applies to the skill source and to prose that a
+skill produces. The engineering principles catalog and exact literal text are outside this rule.
+
+The official ASD-STE100 standard is the complete authority. Athena checks do not certify compliance.
 
 ## Required repositories
 
-Athena has two hard dependencies:
+Athena has two required repositories:
 
 | Purpose | Default | Owner override | Checkout |
 | --- | --- | --- | --- |
@@ -22,18 +31,19 @@ Athena has two hard dependencies:
 | Automation | `HomericIntelligence/Hephaestus` | `HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER` | `$HOME/.agent_brain/automation` |
 
 Athena resolves a trusted, current dependency checkout under the
-[`dependency-resolution` contract](docs/dependency-resolution.md); invalid overrides, trust or
-authentication failures, checkout mismatches, and update failures are fatal. The knowledge backend
-is mandatory. For a verified, non-duplicate lesson with direct write authority, `learn` uses an
-isolated worktree and pull request; otherwise it reports without mutation.
+[`dependency-resolution` contract](docs/dependency-resolution.md). An invalid override, a trust or
+authentication failure, a checkout mismatch, or an update failure is fatal. The knowledge backend
+is mandatory. If `learn` has a verified, non-duplicate lesson and direct write authority, it uses an
+isolated worktree and a pull request. In all other conditions, it reports without a mutation.
 
-Script-backed skills require Git and Python 3.13 on the host. Dependency resolution and the
-GitHub pull-request helper route additionally require authenticated GitHub CLI (`gh`) access. GitHub
-issue and repository routes require the authenticated GitHub capability selected by their own skill.
-GitLab issue, merge-request, and epic routes instead require an authenticated GitLab capability
-supplied by the host; they must not fall back to GitHub CLI. Skills that do not select a forge route
-do not require a forge client. Athena ships scripts as plugin resources; it does not install a Python
-package or third-party runtime library.
+Script-backed skills require Git and Python 3.13 on the host. Dependency resolution and the GitHub
+pull-request route also require authenticated GitHub CLI (`gh`) access. GitHub issue and repository
+routes require the authenticated GitHub capability that their skill selects.
+
+GitLab issue, merge-request, and epic routes require an authenticated GitLab capability from the
+host. They must not fall back to GitHub CLI. A skill does not require a forge client when it does not
+select a forge route. Athena ships scripts as plugin resources. It does not install a Python package
+or a third-party runtime library.
 
 ## Install
 

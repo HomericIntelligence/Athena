@@ -11,6 +11,9 @@ allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
 Why: seeing a focused test fail proves it can detect the missing product
 behavior; seeing it pass proves the smallest implementation satisfies it.
 
+Apply the [ASD-STE100 writing policy](../../docs/technical-english.md) to this skill and to all prose
+that it produces.
+
 Use Athena's shared [behavior-first testing guidance](../../docs/review/behavior-first-testing.md)
 for good-test/bad-test criteria, determinism, and false-pass checks. Test
 observable product behavior and core contracts, not wording, documentation

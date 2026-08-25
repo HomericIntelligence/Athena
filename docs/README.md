@@ -1,7 +1,7 @@
 # Athena documentation
 
-**Why:** Athena ships one portable skill corpus, so its architecture, dependency, and governance
-contracts must be easy to find without duplicating them for each coding harness.
+**Why:** Athena ships one portable skill corpus. Readers must be able to find its architecture,
+dependency, writing, and governance contracts. Do not copy these contracts for each coding harness.
 
 ## Architecture
 
@@ -13,6 +13,8 @@ contracts must be easy to find without duplicating them for each coding harness.
 
 ## Policies
 
+- [`technical-english.md`](technical-english.md): the required ASD-STE100 writing policy for Athena
+  instructions and output prose.
 - [`policies/development.md`](policies/development.md): Git, PR, safety, and human-review rules.
 - [`policies/evidence-integrity.md`](policies/evidence-integrity.md): runnable evidence and truthful
   failure requirements.

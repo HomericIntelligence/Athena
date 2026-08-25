@@ -14,6 +14,9 @@ Protect the product from a correct-looking review of the wrong change. Bind the
 open artifact and immutable source first; architecture alignment then gates every
 lower-level review, score, comment, and merge-state decision.
 
+Apply the [ASD-STE100 writing policy](../../docs/technical-english.md) to this skill and to all prose
+that it produces.
+
 ```text
 [profile + delivery boundary] -> [exact artifact + source] -> [architecture gate]
                                                         |

@@ -10,6 +10,9 @@ allowed-tools: [Read, Bash, Grep, Glob]
 
 Why: decisions are only as reliable as the current, trusted knowledge behind them.
 
+Apply the [ASD-STE100 writing policy](../../docs/technical-english.md) to this skill and to all prose
+that it produces.
+
 ## Engineering principles
 
 Use the [canonical engineering-principles catalog](../../docs/principles/README.md) through these
