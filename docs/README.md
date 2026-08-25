@@ -1,7 +1,7 @@
 # Athena documentation
 
-**Why:** Athena ships one portable skill corpus. Readers must be able to find its architecture,
-dependency, writing, and governance contracts. Do not copy these contracts for each coding harness.
+Athena ships one portable skill corpus. Readers must be able to find its architecture, dependency,
+technical-English, and governance contracts. Do not copy these contracts for each coding harness.
 
 ## Architecture
 
@@ -13,13 +13,15 @@ dependency, writing, and governance contracts. Do not copy these contracts for e
 
 ## Policies
 
-- [`technical-english.md`](technical-english.md): the required ASD-STE100 writing policy for Athena
-  instructions and output prose.
-- [`policies/development.md`](policies/development.md): Git, PR, safety, and human-review rules.
+- [`technical-english.md`](technical-english.md): the required ASD-STE100 technical-English policy
+  for Athena instructions and output prose.
+- [`policies/development.md`](policies/development.md): Git, pull-request, safety, and human-review
+  rules.
 - [`policies/evidence-integrity.md`](policies/evidence-integrity.md): runnable evidence and truthful
   failure requirements.
 - [`policies/required-checks.md`](policies/required-checks.md): merge-gate and release contexts.
-- [`supply-chain-security.md`](supply-chain-security.md): SBOM scope, SCA gate, and exceptions.
+- [`supply-chain-security.md`](supply-chain-security.md): software bill of materials scope, software
+  composition analysis gate, and exceptions.
 
 ## Engineering principles
 

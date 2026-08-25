@@ -14,8 +14,8 @@ Athena owns:
 - `skills/`: the canonical portable skill sources.
 - `.claude-plugin/`, `.codex-plugin/`, `.agents/plugins/`, and `npm/athena-opencode/`: host
   metadata.
-- `scripts/`: typed repository validation, CI policy, and package tools. These tools are not a
-  distributable runtime library.
+- `scripts/`: typed repository validation, continuous integration (CI) policy, and package tools.
+  These tools are not a distributable runtime library.
 - `tests/unit/`: behavior tests for repository scripts and skill-local scripts.
 - `docs/`, `assets/`, and `.github/`: policy, documentation, media, ownership, and automation.
 
@@ -23,19 +23,21 @@ Athena owns:
 Put runtime repository requirements in the applicable skill descriptions and workflows. Do not put
 these requirements in this repository-agent contract.
 
-## Writing standard
+## Technical English
 
-Use the [ASD-STE100 writing policy](docs/technical-english.md) for all applicable English technical
-prose. This requirement applies to repository directions, skills, shared documents, and prose that a
-skill produces. It does not apply to `docs/principles/**` or to the literal-text exceptions in the
-policy.
+All Athena English technical prose must follow the
+[ASD-STE100 technical-English policy](docs/technical-english.md). This requirement applies to
+skills, agent directions, documents, user messages from skills, and user-interface text. Preserve
+literal text. Preserve all safety, security, evidence, permission, and failure requirements.
+
+The engineering principles in `docs/principles/**` do not have to follow this policy.
 
 Use the current official issue of ASD-STE100. Do not state that repository checks certify
-ASD-STE100 compliance.
+conformance to ASD-STE100.
 
 ## Multi-harness contract
 
-- Express capabilities. Do not require fixed vendor APIs.
+- Express capabilities. Do not require fixed vendor application programming interfaces (APIs).
 - Use the terms coordinator, specialist, executor, skill invocation, and subagent. Do not use
   branded model tiers.
 - Use the host default model when tier selection is unavailable.
@@ -49,19 +51,32 @@ ASD-STE100 compliance.
 
 ## Permitted actions
 
-Agents can read repository files and edit files in the user's requested scope. They can run
-deterministic validation and create the isolated branches or worktrees that the work needs. They can
-also do read-only GitHub inspection when it is relevant.
+Agents can do these actions:
+
+- Read repository files.
+- Edit files in the scope that the user requested.
+- Run deterministic validation.
+- Create the isolated branches or worktrees that the work needs.
+- Inspect GitHub without a write when this inspection is relevant.
 
 Always start feature work in an isolated Git worktree. Fetch `origin/main` before you make a change.
 Then, create the feature branch at that commit or rebase an existing feature branch onto it. Do not
 make feature edits in the primary checkout.
 
 Agents can do constructive Git, GitHub CLI, and Hephaestus operations in the requested scope. These
-operations include pushes, pull requests, publishing, releases, merges, deployments, and safe
-force-with-lease updates. They do not need an additional approval prompt. External-write scope and
-repository policy still apply. Filesystem-destructive commands and discarded changes require
-explicit authority.
+operations include:
+
+- pushes;
+- pull requests;
+- publications;
+- releases;
+- merges;
+- deployments; and
+- safe force-with-lease updates.
+
+These operations do not need an additional approval prompt. External-write scope and repository
+policy still apply. Filesystem-destructive commands require explicit authority. An agent also needs
+explicit authority to discard a change.
 
 ## Prohibited actions
 
@@ -72,7 +87,7 @@ explicit authority.
 - Never run `git reset --hard`.
 - Never discard changes without explicit authority. Use the guarded Hephaestus tidy workflow for
   branch and worktree cleanup rather than improvised removal commands.
-- Never edit an accepted ADR in place; write a superseding ADR.
+- Never edit an accepted architecture decision record (ADR) in place. Write a superseding ADR.
 - Never overwrite unrelated user changes or silently retarget an existing dependency checkout.
 
 ## Evidence and delivery
@@ -93,8 +108,8 @@ This section and the task entry points below apply to an Athena source checkout.
 archives intentionally omit repository-only development tools such as `scripts/`, `tests/`,
 `pyproject.toml`, `uv.lock`, and `justfile`.
 
-Create `skills/<name>/SKILL.md`. Put executable helpers in `skills/<name>/scripts/`. Reference these
-tested files from the skill. Do not put Bash or Python programs directly in Markdown.
+Create `skills/<name>/SKILL.md`. Put executable helpers in `skills/<name>/scripts/`. Reference each
+tested file from the skill. Do not put Bash or Python programs directly in Markdown.
 Each executable Python helper must construct its command-line interface with
 `skills._cli.argument_parser`. This rule also applies to repository tools. The factory keeps help,
 usage failures, and the plugin `--version` contract consistent. The repository validator rejects an
@@ -108,12 +123,23 @@ allowed-tools: []
 ---
 ```
 
-The body must define when to use the skill and its inputs. It must define a verified, host-neutral
-workflow. It must also define dependency failures, capability failures, failed approaches, an output
-contract, and attribution.
+The skill body must include these items:
+
+- the conditions that activate the skill;
+- the required inputs;
+- a verified, host-neutral workflow;
+- the dependency-failure and capability-failure behavior;
+- failed approaches;
+- an output contract; and
+- attribution.
+
+Follow the [ASD-STE100 technical-English policy](docs/technical-english.md) for all English technical
+prose in the skill.
 
 Use placeholders for paths and commands in a target repository. Put repository-specific case studies
-in a `references/` file and identify them as examples. Each skill must link the canonical
+in a `references/` file. Identify these case studies as examples.
+
+Each skill must link the canonical
 [`engineering principles catalog`](docs/principles/README.md). Identify only the stable `PNNN`
 principles that have a material effect on the workflow. Describe that effect. Do not copy the general
 principle definitions.
@@ -152,4 +178,8 @@ Stop and request human direction in these conditions:
 | `just static` | Run lint, format, and strict type checks over every executable script. |
 | `just markdownlint` | Validate public documentation and shipped skill Markdown. |
 | `just package` | Build and inspect the portable plugin archive. |
-| `just all` | Run the local check suite: validate, test, static, markdownlint, workflow-check, and package. SBOM generation and the dependency scan are required-CI-only gates (`just sbom` / `just sca` need CI-pinned Syft/Grype; see `docs/policies/required-checks.md`). |
+| `just all` | Run the local validation, test, static, Markdown, workflow, and package checks. |
+
+Software bill of materials (SBOM) generation and software composition analysis (SCA) are CI-only
+required gates. `just sbom` and `just sca` need CI-pinned Syft and Grype. See
+[`docs/policies/required-checks.md`](docs/policies/required-checks.md).

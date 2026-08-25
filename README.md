@@ -14,12 +14,13 @@ wheel, a source distribution, or a runtime library.
 
 ## Technical English
 
-Athena always uses
-[ASD-STE100 Simplified Technical English](docs/technical-english.md)
-for applicable English technical prose. This rule applies to the skill source and to prose that a
-skill produces. The engineering principles catalog and exact literal text are outside this rule.
+All Athena English technical prose must follow the
+[ASD-STE100 technical-English policy](docs/technical-english.md). This rule applies to skill sources
+and to prose that a skill produces. The engineering principles catalog and literal text do not have
+to follow this rule.
 
-The official ASD-STE100 standard is the complete authority. Athena checks do not certify compliance.
+The current official ASD-STE100 standard is the complete authority. Athena checks do not certify
+conformance to the standard.
 
 ## Required repositories
 
@@ -47,13 +48,13 @@ or a third-party runtime library.
 
 ## Install
 
-Install Athena through your coding harness's documented skill or plugin mechanism using the
+Use the documented skill or plugin mechanism of your coding harness to install Athena. Use the
 [Git-backed Athena source](https://github.com/HomericIntelligence/Athena). Prefer an immutable
-commit or supported release tag, then restart or reload the harness so its skill catalog recognizes
-Athena.
+commit or a supported release tag. Then, restart or reload the harness so that it can find the Athena
+skills.
 
-opencode installs Athena as the scoped npm plugin `@homericintelligence/athena-opencode`. Add it to the `plugin` array of your
-`opencode.json`:
+opencode installs Athena as the scoped npm plugin `@homericintelligence/athena-opencode`. Add this
+plugin to the `plugin` array of your `opencode.json`:
 
 ```json
 {
@@ -62,14 +63,15 @@ opencode installs Athena as the scoped npm plugin `@homericintelligence/athena-o
 }
 ```
 
-Then quit and restart opencode. On startup, the plugin installs the canonical skill corpus under
-`$XDG_CONFIG_HOME/opencode/skills/athena/` (`~/.config/opencode/skills/athena/` by default), where
-opencode discovers it natively. The plugin only writes inside that `athena/` namespace; see
-[`npm/athena-opencode/README.md`](npm/athena-opencode/README.md) for details and uninstall steps.
+Then, quit and restart opencode. At startup, the plugin installs the canonical skill corpus in
+`$XDG_CONFIG_HOME/opencode/skills/athena/`. The default path is
+`~/.config/opencode/skills/athena/`. opencode finds the skills in that location. The plugin writes
+only in its `athena/` namespace. See
+[`npm/athena-opencode/README.md`](npm/athena-opencode/README.md) for details and removal steps.
 
-Invoke skills through the harness's native skill-invocation mechanism; for example, ask the harness
-to use the `repo-review` skill. Update or remove Athena by managing the configured Git-backed source
-or npm plugin through that same mechanism.
+Invoke skills through the native skill mechanism of the harness. For example, ask the harness to use
+the `repo-review` skill. Use the same mechanism to update or remove the configured Git-backed source
+or npm plugin.
 
 Some workflows optionally need delegation or explicitly scoped web access. When those capabilities
 are unavailable, Athena uses sequential work where supported or reports the capability gap. Install
@@ -82,11 +84,25 @@ not copied into or represented as coding-harness packages.
 ## Release archives
 
 Coding harnesses install Athena from the Git-backed skill or plugin source above. Each GitHub release
-also provides a checksummed portable archive for offline distribution and provenance; it is not a
-Python package and does not replace source-based installation. The archive contains only
-harness-consumed skills, host metadata, runtime documentation, assets, and notices. It excludes tests,
-repository scripts, development lockfiles, task-runner files, CI configuration, and generated
-development output.
+also provides a checksummed portable archive for offline distribution and provenance. The archive is
+not a Python package. It does not replace an installation from source.
+
+The archive contains only these items:
+
+- skills that coding harnesses use;
+- host metadata;
+- runtime documentation;
+- assets; and
+- notices.
+
+The archive excludes these items:
+
+- tests;
+- repository scripts;
+- development lockfiles;
+- task-runner files;
+- continuous integration configuration; and
+- generated development output.
 
 ## Skills
 

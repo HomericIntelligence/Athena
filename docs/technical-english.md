@@ -1,25 +1,23 @@
-# ASD-STE100 writing policy
+# ASD-STE100 technical-English policy
 
-Athena uses
-[ASD-STE100 Simplified Technical English](https://www.asd-ste100.org/)
-for all new or changed English technical prose. This rule applies to skills, agent directions,
-public documents, user messages that a skill produces, and text in a user interface.
+All Athena English technical prose must follow
+[ASD-STE100 Simplified Technical English](https://www.asd-ste100.org/). This requirement applies to
+skills, agent directions, public documents, user messages that a skill produces, and text in a user
+interface.
 
-This rule does not apply to the engineering principles in `docs/principles/**`. It also does not
-apply to the literal text that this policy identifies.
+The engineering principles in `docs/principles/**` do not have to follow this policy. The literal
+text that this policy identifies also does not have to follow it.
 
 ## Authority
 
-Use the current official issue of ASD-STE100 as the authority. The current issue is Issue 9,
-dated 15 January 2025. The official standard contains 53 writing rules and a controlled dictionary.
-You can request a free copy from the
+Use the current official issue of ASD-STE100 as the authority. Request a copy from the
 [official download page](https://www.asd-ste100.org/STE_downloads.html).
 
-This policy does not copy the standard. It also does not replace the standard or accredited
+This repository policy does not copy or replace the standard. It does not replace approved
 training. Repository checks can find Markdown errors, broken package contracts, and some style
-risks. They do not certify ASD-STE100 compliance.
+risks. The checks do not certify conformance to ASD-STE100.
 
-## Required writing method
+## Required method
 
 Use these steps when you write or change technical prose:
 
@@ -50,8 +48,8 @@ Do not change literal text only to make it conform to this policy. Literal text 
 - attributed quotations; and
 - historical records that must preserve their original text.
 
-Write the prose around literal text in ASD-STE100. Use code formatting or a quotation format to make
-the literal boundary clear.
+Write the prose around literal text in accordance with ASD-STE100. Use code formatting or a
+quotation format to make the literal boundary clear.
 
 ## Conflict and verification
 
@@ -60,4 +58,5 @@ instructions take precedence. If simplified wording changes the required meaning
 and rewrite the sentence again. Ask for a technical review when you cannot remove the ambiguity.
 
 If you cannot use the current official standard, apply this policy and report the verification gap.
-Do not state that the text is ASD-STE100 compliant, certified, or verified.
+Do not state that the text conforms to ASD-STE100. Do not state that a person or tool certified or
+verified the text.

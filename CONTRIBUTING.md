@@ -4,9 +4,12 @@ Athena is a plugin-only distribution. Contributions can change canonical skills,
 documentation, policies, validation scripts, or release automation. They do not change a Python
 package.
 
-Before you change the repository, read [`AGENTS.md`](AGENTS.md), the
-[`development policy`](docs/policies/development.md), and the
-[ASD-STE100 writing policy](docs/technical-english.md).
+Before you change the repository:
+
+1. Read [`AGENTS.md`](AGENTS.md).
+2. Read the [`development policy`](docs/policies/development.md).
+3. Follow the [ASD-STE100 technical-English policy](docs/technical-english.md) for English technical
+   prose.
 
 ## Environment setup
 
@@ -19,24 +22,32 @@ just bootstrap
 just all
 ```
 
-`just all` validates skills and manifests. It runs executable unit tests and requires at least 80%
-branch coverage for each executable repository script and skill-local script. It runs Ruff and strict
-mypy on the same tools. It lints public documentation and workflows. It also builds a deterministic
-plugin archive with a SHA-256 checksum. It does not build Python distribution artifacts.
+`just all` does these checks:
+
+- It validates skills and manifests.
+- It runs executable unit tests.
+- It requires at least 80% branch coverage for each executable repository script and skill-local
+  script.
+- It runs Ruff and strict mypy on the same tools.
+- It lints public documents and workflows.
+- It builds a deterministic plugin archive with a SHA-256 checksum.
+
+It does not build Python distribution artifacts.
 
 ## Add or change a skill
 
 1. File or identify a tracking issue with example invocations and an output contract.
 2. Create a short-lived branch from `main`.
-3. Edit `skills/<name>/SKILL.md`; do not create host-specific copies or marketplace entries.
-4. Put target-repository-specific examples in `references/`, keeping the executable workflow
-   portable.
+3. Edit `skills/<name>/SKILL.md`. Do not create host-specific copies or marketplace entries.
+4. Put target-repository-specific examples in `references/`. Keep the executable workflow portable.
 5. Apply the [`AGENTS.md` principle-routing rule](AGENTS.md#authoring-a-skill) against the canonical
    [`engineering principles catalog`](docs/principles/README.md).
-6. Apply the [ASD-STE100 writing policy](docs/technical-english.md) to all applicable prose.
+6. Apply the [ASD-STE100 technical-English policy](docs/technical-english.md) to all English
+   technical prose.
 7. Run `just all`.
-8. Commit with a signed, DCO-attested Conventional Commit.
-9. Open a PR. Include `Closes #N` on its own line when a tracking issue exists.
+8. Commit with a signed Conventional Commit that includes a Developer Certificate of Origin (DCO)
+   attestation.
+9. Open a pull request. If a tracking issue exists, include `Closes #N` on its own line.
 
 Do not enable auto-merge or merge without explicit maintainer authority.
 
@@ -54,6 +65,12 @@ Python wheel or source distribution is produced.
 
 ## Rejection criteria
 
-Pull requests are rejected when they introduce duplicated skill trees, optionalize the knowledge
-backend, silently fall back from an invalid dependency override, fabricate evidence, bypass checks,
-weaken permissions, or reintroduce a Python distribution.
+Athena rejects a pull request that does one or more of these actions:
+
+- It introduces a duplicate skill tree.
+- It makes the knowledge backend optional.
+- It silently uses a fallback after an invalid dependency override.
+- It fabricates evidence.
+- It bypasses checks.
+- It weakens permissions.
+- It adds a Python distribution again.
