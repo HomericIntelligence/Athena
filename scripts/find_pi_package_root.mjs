@@ -44,7 +44,7 @@ visit(installRoot);
 
 if (candidates.length !== 1) {
   throw new Error(
-    `expected exactly one Pi package root below ${installRoot}, found ${JSON.stringify(candidates)}`,
+    `The scan expected one Pi package root below '${installRoot}'. The scan found these roots in a JSON array.\n${JSON.stringify(candidates)}`,
   );
 }
 

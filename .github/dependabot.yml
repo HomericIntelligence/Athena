@@ -1,7 +1,7 @@
-# Dependabot configuration — HomericIntelligence fleet baseline
-# Cadence: monthly. Grouping: minor+patch updates in one PR, major-version
-# bumps in their own PR for focused review. See the Dependabot options
-# reference for details.
+# Configure Dependabot with the HomericIntelligence fleet baseline.
+# Dependabot checks for updates each month.
+# For each package ecosystem, it puts minor and patch updates in one pull request.
+# It puts major updates in a different pull request for that ecosystem.
 
 version: 2
 updates:

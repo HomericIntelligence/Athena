@@ -1,4 +1,4 @@
-"""Silent-failure suppression policy."""
+"""This module defines the silent-failure suppression policy."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ def find_suppressions(files: dict[str, str]) -> list[str]:
     findings: list[str] = []
     for path, text in sorted(files.items()):
         for pattern, description in (
-            (SILENT_FAILURE, "silent `|| true` fallback"),
-            (CONTINUE_ON_ERROR, "continue-on-error enabled"),
+            (SILENT_FAILURE, "This line uses a silent `|| true` fallback."),
+            (CONTINUE_ON_ERROR, "This line enables 'continue-on-error'."),
         ):
             for match in pattern.finditer(text):
                 line = text.count("\n", 0, match.start()) + 1

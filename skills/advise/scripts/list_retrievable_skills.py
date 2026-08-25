@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""List the Mnemosyne main skill files that normal retrieval can use."""
+"""List the main Mnemosyne skill files that retrieval can use."""
 
 from __future__ import annotations
 
@@ -18,11 +18,11 @@ COMPANION_FILE = re.compile(
 
 
 def retrievable_skill_files(knowledge_root: Path) -> list[Path]:
-    """Return sorted flat main-skill files from a Mnemosyne checkout."""
+    """Return the top-level main skill files in sorted order."""
     skills_directory = knowledge_root / "skills"
     if not skills_directory.is_dir():
         raise RuntimeError(
-            f"knowledge skills directory is unavailable: {skills_directory}"
+            f"The knowledge skills directory is not available: '{skills_directory}'."
         )
     return sorted(
         path

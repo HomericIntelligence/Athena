@@ -19,17 +19,24 @@ from skills._cli import argument_parser
 def coverage_failures(report: object, minimum: float) -> list[str]:
     """Return deterministic per-file coverage failures from coverage.py JSON."""
     if not isinstance(report, dict) or not isinstance(report.get("files"), dict):
-        raise TypeError("coverage report has no file map")
+        raise TypeError("The coverage report does not contain a file map.")
     failures: list[str] = []
     for path, item in sorted(report["files"].items()):
         if not isinstance(path, str) or not isinstance(item, dict):
-            raise TypeError("coverage report contains an invalid file record")
+            raise TypeError(
+                "The coverage report contains a file record that is not valid."
+            )
         summary = item.get("summary")
         percent = summary.get("percent_covered") if isinstance(summary, dict) else None
         if not isinstance(percent, int | float):
-            raise TypeError(f"coverage report has no percentage for {path}")
+            raise TypeError(
+                f"The coverage report does not contain a percentage for '{path}'."
+            )
         if float(percent) < minimum:
-            failures.append(f"{path}: {float(percent):.2f}% < {minimum:.2f}%")
+            failures.append(
+                f"{path}: Coverage is {float(percent):.2f} percent. "
+                f"The minimum is {minimum:.2f} percent."
+            )
     return failures
 
 
@@ -58,7 +65,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         report: Any = json.loads(arguments.report.read_text(encoding="utf-8"))
         files = report.get("files") if isinstance(report, dict) else None
         if not isinstance(files, dict):
-            raise TypeError("coverage report has no file map")
+            raise TypeError("The coverage report does not contain a file map.")
         expected = (
             {
                 line
@@ -71,7 +78,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             else expected_scripts(arguments.root.resolve())
         )
         missing = sorted(expected.difference(files))
-        failures = [f"{path}: missing coverage" for path in missing]
+        failures = [
+            f"{path}: The coverage report does not contain coverage data."
+            for path in missing
+        ]
         failures.extend(coverage_failures(report, arguments.minimum))
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
         print(f"coverage policy error: {error}", file=sys.stderr)
@@ -79,7 +89,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if failures:
         print("\n".join(failures), file=sys.stderr)
         return 1
-    print(f"Every executable script meets {arguments.minimum:.2f}% coverage.")
+    print(
+        "Every executable script meets the "
+        f"{arguments.minimum:.2f} percent coverage requirement."
+    )
     return 0
 
 

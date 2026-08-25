@@ -1,4 +1,4 @@
-"""Aggregate required-job policy."""
+"""This module defines the aggregate required-job policy."""
 
 from __future__ import annotations
 

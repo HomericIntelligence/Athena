@@ -34,9 +34,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         os.execvp(command[0], command)
     except FileNotFoundError as error:
         missing = error.filename or command[0]
-        print(f"required command unavailable: {missing}", file=sys.stderr)
+        print(f"The required command is not available: '{missing}'.", file=sys.stderr)
         return 127
-    raise RuntimeError("os.execvp returned unexpectedly")
+    raise RuntimeError("The os.execvp call returned control unexpectedly.")
 
 
 if __name__ == "__main__":

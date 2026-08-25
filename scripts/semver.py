@@ -1,4 +1,4 @@
-"""Shared Semantic Version contract for Athena manifests and release artifacts."""
+"""This module defines the shared Semantic Version contract for Athena manifests and release artifacts."""
 
 from __future__ import annotations
 

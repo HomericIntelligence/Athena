@@ -18,7 +18,10 @@ EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 def run(*arguments: str, accepted_codes: tuple[int, ...] = (0,)) -> str:
     result = run_command(arguments, capture_output=True, text=True, check=False)
     if result.returncode not in accepted_codes:
-        raise RuntimeError(result.stderr.strip() or f"{' '.join(arguments)} failed")
+        raise RuntimeError(
+            result.stderr.strip()
+            or f"The command failed. Command: {' '.join(arguments)}"
+        )
     return result.stdout
 
 
@@ -33,9 +36,11 @@ def main() -> int:
                 "git", "rev-list", "--max-count=10", "HEAD"
             ).splitlines()
         except RuntimeError as error:
-            raise RuntimeError(f"cannot resolve HEAD: {error}") from error
+            raise RuntimeError(f"The tool cannot resolve HEAD: {error}") from error
         if not recent_revisions:
-            raise RuntimeError("cannot resolve HEAD: repository has no commits")
+            raise RuntimeError(
+                "The tool cannot resolve HEAD because the repository has no commits."
+            )
         recent_commits = run("git", "log", "--oneline", "-10")
         oldest_parent = run(
             "git",

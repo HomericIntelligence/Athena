@@ -13,7 +13,7 @@ indent_size = 4
 [*.{md,markdown}]
 indent_style = space
 indent_size = 4
-# Long lines are accepted in skill bodies (embedded agent prompts).
+# Preserve trailing whitespace in Markdown files.
 trim_trailing_whitespace = false
 
 [*.{yaml,yml,toml,json}]

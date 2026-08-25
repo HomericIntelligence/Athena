@@ -1,12 +1,13 @@
-# Containerfile for athena-ci — CI image for the Athena plugin distribution.
+# This Containerfile builds the athena-ci image for Athena plugin validation.
+# Continuous integration (CI) uses this image.
 #
-# This image provides:
-# - Python 3.13 environment (matches requires-python >=3.13,<3.14)
-# - uv with the locked project environment (dev group) pre-installed
-# - pre-commit hook environments baked in (largest speedup)
-# - Non-root user 'ci' for rootless Podman compatibility
+# This image contains Python 3.13. This version satisfies requires-python >=3.13,<3.14.
+# The image contains uv and the locked development environment.
+# The image contains the pre-commit hook environments.
+# The image uses the non-root user 'ci' for compatibility with rootless Podman.
 #
-# Toolchain: uv (Odysseus ADR-017). Pattern mirrors Scylla ci/Containerfile.
+# The toolchain uses uv as Architecture Decision Record (ADR) 017 specifies.
+# This Containerfile follows the pattern in the Scylla ci/Containerfile.
 #
 # Build the image with one of these commands:
 #   podman build -f ci/Containerfile -t athena-ci:local .
@@ -17,11 +18,13 @@
 #   podman run --rm -v .:/workspace:Z athena-ci:local uv run pre-commit run --all-files
 
 # ============================================================================
-# Stage 0: uv binary — installed from a pinned GitHub release so the checksum
-# is reproducible and the build resolves identically under both podman/buildah
-# and docker (no cross-registry COPY of a third-party image). The ghcr.io
-# astral-sh/uv image's version-tag scheme does not track uv CLI versions
-# (0.11.21 does not exist there), so we pin the release tarball instead.
+# Stage 0 installs the uv binary from a pinned GitHub release.
+# The checksum verifies the release archive.
+# Podman, Buildah, and Docker resolve the same release artifact.
+# This method does not copy a third-party image between registries.
+# The version tags for the ghcr.io astral-sh/uv image do not track uv command-line
+# interface versions. For example, version 0.11.21 is not available there.
+# Thus, this stage pins the release archive.
 # ============================================================================
 FROM python:3.13-slim@sha256:6771159cd4fa5d9bba1258caf0b82e6b73458c694d178ad97c5e925c2d0e1a91 AS uv
 
@@ -33,24 +36,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
     && rm /tmp/uv.tar.gz
 
 # ============================================================================
-# Stage 1: Builder — install uv and the locked project environment
+# Stage 1 installs uv and the locked project environment.
 # ============================================================================
 FROM python:3.13-slim@sha256:6771159cd4fa5d9bba1258caf0b82e6b73458c694d178ad97c5e925c2d0e1a91 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    # Build the project virtualenv in a fixed, copyable location.
+    # Build the project virtual environment in a fixed location that the build can copy.
     UV_PROJECT_ENVIRONMENT=/opt/athena-venv \
-    # Bytecode-compile on install for faster cold starts.
+    # Compile bytecode during installation to make cold starts faster.
     UV_COMPILE_BYTECODE=1 \
-    # Copy (not hardlink) from the cache so the venv is self-contained for the
-    # runtime-stage COPY --from=builder.
+    # Copy files from the cache. Do not use hard links.
+    # This action makes the virtual environment self-contained for COPY --from=builder.
     UV_LINK_MODE=copy \
     PATH="/opt/athena-venv/bin:$PATH"
 
-# Install build dependencies + git (required by pre-commit hooks)
-# apt-get upgrade picks up any security patches released after the base image was pinned
+# Install the build dependencies and Git. The pre-commit hooks require Git.
+# Install security updates that the pinned base image does not contain.
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     git \
     curl \
@@ -60,29 +63,32 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv (pinned release — keep the version and sha256 in sync with
-# astral-sh/setup-uv in .github/workflows/*.yml when bumping).
+# Install the pinned uv release.
+# When you update uv, update the release URL and SHA-256 checksum together.
+# Also update astral-sh/setup-uv in .github/workflows/*.yml to the same version.
 COPY --from=uv /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/
 
-# Layer 1: Dependency files — cache layer invalidated only when deps change.
+# Layer 1 copies the dependency files. Dependency changes invalidate this cache layer.
 WORKDIR /opt/athena-build
 COPY uv.lock pyproject.toml .pre-commit-config.yaml README.md ./
 
-# Layer 2: Install the locked dependency set (dev group) into the venv.
-# --no-install-project defers the project's own install (its full source tree is
-# not present in this layer) so this layer stays cached across source changes.
+# Layer 2 installs the locked development dependencies in the virtual environment.
+# The --no-install-project option defers installation of the project.
+# The full source tree is not present in this layer.
+# Thus, source changes do not invalidate this cache layer.
 RUN uv sync --locked --no-install-project
 
-# Layer 3: Install pre-commit hook environments.
-# Baking this in means 'pre-commit run --all-files' starts immediately,
-# without downloading hook repos or creating virtualenvs at CI time.
-# pre-commit install-hooks requires a git repo, so we init a temporary one.
+# Layer 3 installs the pre-commit hook environments.
+# This installation lets 'pre-commit run --all-files' start immediately.
+# The command does not have to download hook repositories or create virtual environments in CI.
+# The pre-commit install-hooks command requires a Git repository.
+# Thus, initialize a temporary repository.
 RUN git init . && \
     uv run pre-commit install-hooks && \
     rm -rf .git
 
 # ============================================================================
-# Stage 2: Runtime — minimal image without build tools
+# Stage 2 builds the minimal runtime image without build tools.
 # ============================================================================
 FROM python:3.13-slim@sha256:6771159cd4fa5d9bba1258caf0b82e6b73458c694d178ad97c5e925c2d0e1a91
 
@@ -98,34 +104,36 @@ ENV DEBIAN_FRONTEND=noninteractive \
     UV_LINK_MODE=copy \
     PATH="/opt/athena-venv/bin:$PATH"
 
-# Runtime-only system packages (no build tools)
-# apt-get upgrade picks up any security patches released after the base image was pinned
+# Install only the required runtime system packages. Do not install build tools.
+# Install security updates that the pinned base image does not contain.
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     git \
     curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the uv binaries and the pre-installed project virtualenv from builder.
+# Copy the uv binaries and the installed project virtual environment from the builder.
 COPY --from=uv /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/
 COPY --from=builder /opt/athena-venv /opt/athena-venv
 
-# Copy pre-commit hook cache from builder (baked-in hook envs)
+# Copy the installed pre-commit hook environments from the builder cache.
 COPY --from=builder /root/.cache/pre-commit /root/.cache/pre-commit
 
-# Create non-root user for rootless Podman compatibility
-# UID 1000 is the default first user on most Linux systems, matching typical
-# developer UIDs for smooth volume mount permissions without --userns=keep-id
+# Create a non-root user for compatibility with rootless Podman.
+# User identifier (UID) 1000 identifies the first user on most Linux systems.
+# This UID usually matches the developer UID and permits volume access without --userns=keep-id.
 RUN groupadd -r ci && useradd -r -g ci -u 1000 -m -s /bin/bash ci
 
-# Copy pre-commit cache to ci user's home (pre-commit uses $HOME/.cache)
+# Copy the pre-commit cache to the home directory of the ci user.
+# The pre-commit tool uses $HOME/.cache.
 RUN cp -r /root/.cache/pre-commit /home/ci/.cache/ 2>/dev/null || true && \
     chown -R ci:ci /home/ci/.cache
 
-# Working directory is the mounted repo root at runtime
+# Use the mounted repository root as the runtime working directory.
 WORKDIR /workspace
 
-# No ENTRYPOINT — commands are provided externally by CI or run_ci_local.sh
-# Example: podman run --rm -v .:/workspace:Z athena-ci:local uv run pytest
+# Do not set ENTRYPOINT. CI or run_ci_local.sh supplies the command.
+# For example, run this command:
+#   podman run --rm -v .:/workspace:Z athena-ci:local uv run pytest
 
 USER ci

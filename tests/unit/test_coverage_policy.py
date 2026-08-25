@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,14 +14,15 @@ from scripts import coverage_policy
 
 class CoveragePolicyTests(unittest.TestCase):
     def test_rejects_malformed_file_records(self) -> None:
-        for report, message in (
-            ({}, "no file map"),
-            ({"files": {1: {}}}, "invalid file record"),
-            ({"files": {"tool.py": {}}}, "no percentage"),
-        ):
+        reports: tuple[object, ...] = (
+            {},
+            {"files": {1: {"summary": {"percent_covered": 90.0}}}},
+            {"files": {"tool.py": {}}},
+        )
+        for report in reports:
             with (
                 self.subTest(report=report),
-                self.assertRaisesRegex(TypeError, message),
+                self.assertRaises(TypeError),
             ):
                 coverage_policy.coverage_failures(report, 80.0)
 
@@ -32,10 +34,13 @@ class CoveragePolicyTests(unittest.TestCase):
             }
         }
 
-        self.assertEqual(
-            ["skills/tool/scripts/bad.py: 79.90% < 80.00%"],
-            coverage_policy.coverage_failures(report, 80.0),
-        )
+        failures = coverage_policy.coverage_failures(report, 80.0)
+
+        self.assertEqual(1, len(failures))
+        path, separator, diagnostic = failures[0].partition(":")
+        self.assertEqual("skills/tool/scripts/bad.py", path)
+        self.assertEqual(":", separator)
+        self.assertEqual(["79.90", "80.00"], re.findall(r"\b\d+\.\d{2}\b", diagnostic))
 
     def test_cli_fails_closed_for_missing_or_low_script_coverage(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

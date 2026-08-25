@@ -1,1 +1,1 @@
-"""Executable repository tooling for Athena development and distribution."""
+"""This package contains executable tools for Athena development and distribution."""

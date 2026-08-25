@@ -26,7 +26,7 @@ export function syncSkills() {
   const target = installTarget();
   if (!existsSync(join(source, "_cli.py"))) {
     throw new Error(
-      `The plugin cannot find the Athena skills next to plugin.js: ${source}`,
+      `The plugin cannot find the Athena skills next to plugin.js: '${source}'.`,
     );
   }
   mkdirSync(dirname(target), { recursive: true });

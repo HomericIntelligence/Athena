@@ -53,7 +53,7 @@ OPENCODE_MANIFEST_PATH = "npm/athena-opencode/package.json"
 
 
 class ValidationError(NamedTuple):
-    """One actionable distribution failure."""
+    """This record describes one actionable distribution failure."""
 
     surface: str
     reason: str
@@ -67,13 +67,16 @@ def _read_json(
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         return None, [
             ValidationError(
-                surface, f"cannot read {path.relative_to(repo_root)}: {exc}"
+                surface,
+                f"The validator cannot read '{path.relative_to(repo_root)}'. "
+                f"The operation returned this diagnostic.\n{exc}",
             )
         ]
     if not isinstance(data, dict):
         return None, [
             ValidationError(
-                surface, f"{path.relative_to(repo_root)} must be a JSON object"
+                surface,
+                f"The file '{path.relative_to(repo_root)}' must be a JSON object.",
             )
         ]
     return data, []
@@ -94,12 +97,16 @@ def _validate_skills(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
     errors: list[ValidationError] = []
     skills_dir = repo_root / "skills"
     if not skills_dir.is_dir():
-        return [ValidationError("skills", "skills/ directory is missing")]
+        return [ValidationError("skills", "The skills/ directory is missing.")]
 
     seen: set[str] = set()
     skill_dirs = sorted(path for path in skills_dir.iterdir() if path.is_dir())
     if not skill_dirs:
-        return [ValidationError("skills", "skills/ contains no discoverable skills")]
+        return [
+            ValidationError(
+                "skills", "The skills/ directory does not contain any skills."
+            )
+        ]
 
     for directory in skill_dirs:
         if directory.name == "__pycache__":
@@ -107,7 +114,9 @@ def _validate_skills(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
         if directory.name.startswith("_"):
             errors.append(
                 ValidationError(
-                    "skills", f"private skill directory is forbidden: {directory.name}"
+                    "skills",
+                    f"The validator does not permit this private skill directory: "
+                    f"'{directory.name}'.",
                 )
             )
             continue
@@ -117,7 +126,9 @@ def _validate_skills(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
         except (OSError, UnicodeError) as exc:
             errors.append(
                 ValidationError(
-                    "skills", f"cannot read skills/{directory.name}/SKILL.md: {exc}"
+                    "skills",
+                    f"The validator cannot read 'skills/{directory.name}/SKILL.md'. "
+                    f"The operation returned this diagnostic.\n{exc}",
                 )
             )
             continue
@@ -126,11 +137,16 @@ def _validate_skills(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
             errors.append(
                 ValidationError(
                     "skills",
-                    f"directory '{directory.name}' does not match frontmatter name '{name}'",
+                    f"The directory '{directory.name}' does not match the frontmatter "
+                    f"name '{name}'.",
                 )
             )
         if name in seen:
-            errors.append(ValidationError("skills", f"duplicate skill name: {name}"))
+            errors.append(
+                ValidationError(
+                    "skills", f"The validator found a duplicate skill name: '{name}'."
+                )
+            )
         if name is not None:
             seen.add(name)
 
@@ -153,17 +169,22 @@ def _validate_claude(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
     ):
         return [
             *errors,
-            ValidationError("claude", "marketplace must expose exactly one plugin"),
+            ValidationError(
+                "claude", "The marketplace must expose exactly one plugin."
+            ),
         ]
     entry = plugins[0]
     if entry.get("name") != "athena" or entry.get("source") != "./":
         errors.append(
-            ValidationError("claude", "plugin must be named 'athena' with source './'")
+            ValidationError(
+                "claude", "The plugin must be named 'athena' with source './'."
+            )
         )
     if manifest.get("name") != "athena" or manifest.get("skills") != "./skills/":
         errors.append(
             ValidationError(
-                "claude", "root manifest must name 'athena' and load './skills/'"
+                "claude",
+                "The root manifest must name 'athena' and load './skills/'.",
             )
         )
     metadata = marketplace.get("metadata")
@@ -173,7 +194,7 @@ def _validate_claude(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
     if marketplace_version != manifest.get("version"):
         errors.append(
             ValidationError(
-                "version", "Claude marketplace and manifest versions differ"
+                "version", "The Claude marketplace and manifest versions differ."
             )
         )
     return errors
@@ -195,7 +216,7 @@ def _validate_codex(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
     ):
         return [
             *errors,
-            ValidationError("codex", "marketplace must expose exactly one plugin"),
+            ValidationError("codex", "The marketplace must expose exactly one plugin."),
         ]
     entry = plugins[0]
     if entry.get("name") != "athena" or entry.get("source") != {
@@ -204,19 +225,24 @@ def _validate_codex(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
     }:
         errors.append(
             ValidationError(
-                "codex", "plugin must be named 'athena' with local source './'"
+                "codex",
+                "The plugin must be named 'athena' with local source './'.",
             )
         )
     if manifest.get("name") != "athena" or manifest.get("skills") != "./skills/":
         errors.append(
             ValidationError(
-                "codex", "root manifest must name 'athena' and load './skills/'"
+                "codex",
+                "The root manifest must name 'athena' and load './skills/'.",
             )
         )
     version = manifest.get("version")
     if not isinstance(version, str) or SEMVER_PATTERN.fullmatch(version) is None:
         errors.append(
-            ValidationError("version", "Codex manifest version must be valid SemVer")
+            ValidationError(
+                "version",
+                "The Codex manifest version must be valid Semantic Versioning (SemVer).",
+            )
         )
     return errors
 
@@ -228,17 +254,20 @@ def _validate_pi(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
         return errors
     if manifest.get("name") != PI_PACKAGE_NAME:
         errors.append(
-            ValidationError("pi", f"package must be named '{PI_PACKAGE_NAME}'")
+            ValidationError("pi", f"The package must be named '{PI_PACKAGE_NAME}'.")
         )
     version = manifest.get("version")
     if not isinstance(version, str) or SEMVER_PATTERN.fullmatch(version) is None:
         errors.append(
-            ValidationError("version", "Pi package version must be valid SemVer")
+            ValidationError(
+                "version",
+                "The Pi package version must be valid Semantic Versioning (SemVer).",
+            )
         )
     keywords = manifest.get("keywords")
     if not isinstance(keywords, list) or "pi-package" not in keywords:
         errors.append(
-            ValidationError("pi", "package must declare the 'pi-package' keyword")
+            ValidationError("pi", "The package must declare the 'pi-package' keyword.")
         )
     pi = manifest.get("pi")
     if (
@@ -248,7 +277,8 @@ def _validate_pi(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
     ):
         errors.append(
             ValidationError(
-                "pi", "package must load ['./skills'] and no other Pi resources"
+                "pi",
+                "The package must load ['./skills'] and no other Pi resources.",
             )
         )
     return errors
@@ -264,23 +294,27 @@ def _validate_opencode(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
     if manifest.get("name") != OPENCODE_PACKAGE_NAME:
         errors.append(
             ValidationError(
-                "opencode", f"package must be named '{OPENCODE_PACKAGE_NAME}'"
+                "opencode", f"The package must be named '{OPENCODE_PACKAGE_NAME}'."
             )
         )
     version = manifest.get("version")
     if not isinstance(version, str) or SEMVER_PATTERN.fullmatch(version) is None:
         errors.append(
-            ValidationError("version", "OpenCode plugin version must be valid SemVer")
+            ValidationError(
+                "version",
+                "The opencode plugin version must be valid Semantic Versioning (SemVer).",
+            )
         )
     if manifest.get("main") != "plugin.js":
         errors.append(
-            ValidationError("opencode", "package entry point must be 'plugin.js'")
+            ValidationError("opencode", "The package entry point must be 'plugin.js'.")
         )
     keywords = manifest.get("keywords")
     if not isinstance(keywords, list) or "opencode-plugin" not in keywords:
         errors.append(
             ValidationError(
-                "opencode", "package must declare the 'opencode-plugin' keyword"
+                "opencode",
+                "The package must declare the 'opencode-plugin' keyword.",
             )
         )
     files = manifest.get("files")
@@ -289,7 +323,7 @@ def _validate_opencode(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
         errors.append(
             ValidationError(
                 "opencode",
-                "package must publish at least the plugin entry and skills corpus",
+                "The package must publish at least the plugin entry and skills corpus.",
             )
         )
     return errors
@@ -302,7 +336,7 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
         if (repo_root / relative).exists():
             errors.append(
                 ValidationError(
-                    "layout", f"obsolete distribution path exists: {relative}"
+                    "layout", f"An obsolete distribution path exists: '{relative}'."
                 )
             )
     required_paths = (
@@ -316,7 +350,9 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
     for relative in required_paths:
         if not (repo_root / relative).is_file():
             errors.append(
-                ValidationError("policy", f"required file is missing: {relative}")
+                ValidationError(
+                    "policy", f"The required file is missing: '{relative}'."
+                )
             )
 
     ignored_top_levels = {
@@ -355,7 +391,8 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
             errors.append(
                 ValidationError(
                     "self-contained",
-                    f"cannot inspect {relative_path}: {exc}",
+                    f"The validator cannot inspect '{relative_path}'. "
+                    f"The operation returned this diagnostic.\n{exc}",
                 )
             )
             continue
@@ -365,7 +402,8 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
                 errors.append(
                     ValidationError(
                         "self-contained",
-                        f"{relative_path} references forbidden repository '{match.group(0)}'",
+                        f"The file '{relative_path}' references a forbidden repository: "
+                        f"'{match.group(0)}'.",
                     )
                 )
         project_prefix = re.search(r"\bProject[A-Z][A-Za-z0-9_-]*\b", text)
@@ -373,7 +411,8 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
             errors.append(
                 ValidationError(
                     "self-contained",
-                    f"{relative_path} uses forbidden Project prefix '{project_prefix.group(0)}'",
+                    f"The file '{relative_path}' uses the forbidden Project prefix "
+                    f"'{project_prefix.group(0)}'.",
                 )
             )
     return errors
@@ -392,7 +431,9 @@ def _validate_cli_conventions(repo_root: Path = REPO_ROOT) -> list[ValidationErr
         except (OSError, UnicodeError) as exc:
             errors.append(
                 ValidationError(
-                    "cli", f"cannot read {path.relative_to(repo_root)}: {exc}"
+                    "cli",
+                    f"The validator cannot read '{path.relative_to(repo_root)}'. "
+                    f"The operation returned this diagnostic.\n{exc}",
                 )
             )
             continue
@@ -403,7 +444,9 @@ def _validate_cli_conventions(repo_root: Path = REPO_ROOT) -> list[ValidationErr
         except SyntaxError as exc:
             errors.append(
                 ValidationError(
-                    "cli", f"cannot parse {path.relative_to(repo_root)}: {exc}"
+                    "cli",
+                    f"The validator cannot parse '{path.relative_to(repo_root)}'. "
+                    f"The operation returned this diagnostic.\n{exc}",
                 )
             )
             continue
@@ -466,16 +509,17 @@ def _validate_cli_conventions(repo_root: Path = REPO_ROOT) -> list[ValidationErr
             errors.append(
                 ValidationError(
                     "cli",
-                    f"{path.relative_to(repo_root)} must not construct "
-                    "argparse.ArgumentParser directly",
+                    f"The script '{path.relative_to(repo_root)}' must not construct "
+                    "argparse.ArgumentParser directly.",
                 )
             )
         elif not factory_names or not parser_names or not parses_arguments:
             errors.append(
                 ValidationError(
                     "cli",
-                    f"{path.relative_to(repo_root)} must construct its argparse parser "
-                    "with argument_parser()",
+                    f"The script '{path.relative_to(repo_root)}' must construct its "
+                    "argparse parser "
+                    "with argument_parser().",
                 )
             )
     return errors
@@ -491,7 +535,13 @@ def _validate_repo_review_scorecard(
         criteria = criteria_path.read_text(encoding="utf-8")
         skill = skill_path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as error:
-        return [ValidationError("repo-review", f"cannot read scorecard: {error}")]
+        return [
+            ValidationError(
+                "repo-review",
+                "The validator cannot read the scorecard. "
+                f"The operation returned this diagnostic.\n{error}",
+            )
+        ]
     sections = [match.group("name") for match in REPO_REVIEW_SECTION.finditer(criteria)]
     expected_numbers = list(range(1, 16))
     numbers = [
@@ -501,12 +551,12 @@ def _validate_repo_review_scorecard(
         return [
             ValidationError(
                 "repo-review",
-                "criteria must define each of the 15 uniquely numbered sections",
+                "The criteria must define each of the 15 uniquely numbered sections.",
             )
         ]
     weight_line = re.search(r"^Weights: (?P<weights>.+)$", skill, re.MULTILINE)
     if weight_line is None:
-        return [ValidationError("repo-review", "scorecard weights are missing")]
+        return [ValidationError("repo-review", "The scorecard weights are missing.")]
     weights = [
         (match.group("name"), int(match.group("weight")))
         for match in REPO_REVIEW_WEIGHT.finditer(weight_line.group("weights"))
@@ -515,14 +565,16 @@ def _validate_repo_review_scorecard(
     if len(weights) != 15 or len({name for name, _ in weights}) != len(weights):
         errors.append(
             ValidationError(
-                "repo-review", "scorecard must assign one weight to each of 15 sections"
+                "repo-review",
+                "The scorecard must assign one weight to each of 15 sections.",
             )
         )
     for name, _ in weights:
         if name not in sections:
             errors.append(
                 ValidationError(
-                    "repo-review", f"weight has no matching criteria section: {name}"
+                    "repo-review",
+                    f"The weight has no matching criteria section: '{name}'.",
                 )
             )
     missing_sections = sorted(set(sections).difference(name for name, _ in weights))
@@ -530,11 +582,17 @@ def _validate_repo_review_scorecard(
         errors.append(
             ValidationError(
                 "repo-review",
-                f"criteria sections have no weight: {', '.join(missing_sections)}",
+                "The scorecard does not assign a weight to these criteria sections: "
+                + ", ".join(f"'{name}'" for name in missing_sections)
+                + ".",
             )
         )
     if sum(weight for _, weight in weights) != 100:
-        errors.append(ValidationError("repo-review", "weights must total 100%"))
+        errors.append(
+            ValidationError(
+                "repo-review", "The scorecard weights must total 100 percent."
+            )
+        )
     return errors
 
 
@@ -548,7 +606,7 @@ def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationErro
     if not isinstance(rules, list):
         return [
             *errors,
-            ValidationError("ruleset", "ruleset must contain a rules list"),
+            ValidationError("ruleset", "The ruleset must contain a rules list."),
         ]
     status_checks = next(
         (
@@ -563,14 +621,15 @@ def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationErro
     ):
         return [
             *errors,
-            ValidationError("ruleset", "required status-check policy is missing"),
+            ValidationError("ruleset", "The required status-check policy is missing."),
         ]
     parameters = status_checks["parameters"]
     if parameters.get("strict_required_status_checks_policy") is not False:
         errors.append(
             ValidationError(
                 "ruleset",
-                "must not require up-to-date branches; the merge queue manages freshness",
+                "The ruleset must not require up-to-date branches. The merge queue "
+                "manages freshness.",
             )
         )
     checks = parameters.get("required_status_checks")
@@ -578,7 +637,11 @@ def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationErro
         isinstance(check, dict) and check.get("context") == "required-checks-gate"
         for check in checks
     ):
-        errors.append(ValidationError("ruleset", "must require required-checks-gate"))
+        errors.append(
+            ValidationError(
+                "ruleset", "The ruleset must require 'required-checks-gate'."
+            )
+        )
     pull_request = next(
         (
             rule
@@ -590,10 +653,10 @@ def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationErro
     if not isinstance(pull_request, dict) or not isinstance(
         pull_request.get("parameters"), dict
     ):
-        errors.append(ValidationError("ruleset", "pull-request policy is missing"))
+        errors.append(ValidationError("ruleset", "The pull-request policy is missing."))
     elif pull_request["parameters"].get("allowed_merge_methods") != ["squash"]:
         errors.append(
-            ValidationError("ruleset", "pull requests must merge by squash only")
+            ValidationError("ruleset", "Pull requests must merge by squash only.")
         )
     merge_queues = [
         rule
@@ -601,19 +664,21 @@ def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationErro
         if isinstance(rule, dict) and rule.get("type") == "merge_queue"
     ]
     if not merge_queues:
-        errors.append(ValidationError("ruleset", "merge queue policy is missing"))
+        errors.append(ValidationError("ruleset", "The merge queue policy is missing."))
     elif (
         len(merge_queues) != 1
         or merge_queues[0].get("parameters") != APPROVED_MERGE_QUEUE_PARAMETERS
     ):
         errors.append(
-            ValidationError("ruleset", "merge queue policy does not match issue #28")
+            ValidationError(
+                "ruleset", "The merge queue policy does not match issue #28."
+            )
         )
     return errors
 
 
 def validate_repository(repo_root: Path) -> list[ValidationError]:
-    """Validate one repository's skills, manifests, layout, and policies."""
+    """Validate the skills, manifests, layout, and policies in one repository."""
     repo_root = repo_root.resolve()
     errors = [
         *_validate_skills(repo_root),
@@ -643,7 +708,7 @@ def validate_repository(repo_root: Path) -> list[ValidationError]:
         errors.append(
             ValidationError(
                 "version",
-                "Pi, Claude, Codex, and OpenCode manifest versions differ",
+                "The Pi, Claude, Codex, and opencode manifest versions differ.",
             )
         )
     return errors
@@ -668,12 +733,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     errors = validate_repository(args.root)
     if errors:
-        print("Athena skill validation failed:", file=sys.stderr)
+        print("The Athena skill validation failed:", file=sys.stderr)
         for error in errors:
             print(f"  - {error.surface}: {error.reason}", file=sys.stderr)
         return 2
     if not args.quiet:
-        print("Athena skill validation passed.")
+        print("The Athena skill validation passed.")
     return 0
 
 

@@ -1,31 +1,31 @@
-# Normalize text files to LF on commit and prevent mixed line endings.
-# CRLF is opted-in per file pattern below.
+# Normalize text files to line feed (LF) endings and prevent mixed line endings.
+# The file patterns below select carriage return and line feed (CRLF) endings when required.
 
-# Default for text files: LF.
+# Use line feed (LF) endings for text files by default.
 *                 text=auto eol=lf
 
-# Validation scripts and configuration.
+# Apply the text rule to Python scripts and configuration files.
 *.py              text eol=lf
 *.pyi             text eol=lf
 *.toml            text eol=lf
 *.cfg             text eol=lf
 *.ini             text eol=lf
 
-# YAML/JSON/Markdown.
+# Apply the text rule to YAML, JSON, and Markdown files.
 *.yml             text eol=lf
 *.yaml            text eol=lf
 *.json            text eol=lf
 *.md              text eol=lf
 
-# Shell scripts.
+# Apply the text rule to shell scripts.
 *.sh              text eol=lf
 
-# Windows batch scripts (legitimately CRLF).
+# Use CRLF endings for Windows command and PowerShell scripts.
 *.bat             text eol=crlf
 *.cmd             text eol=crlf
 *.ps1             text eol=crlf
 
-# Binary.
+# Treat these file formats as binary data.
 *.png             binary
 *.jpg             binary
 *.jpeg            binary
@@ -36,10 +36,10 @@
 *.zip             binary
 *.tar             binary
 
-# Secrets / credentials — treat as binary if they ever sneak in (see
-# .gitignore): no text normalization, no content in diffs or patches.
-# Note: this covers only the file patterns below, not every secret path
-# (e.g. a secrets/ directory) that .gitignore excludes.
+# Treat these secret and credential file patterns as binary data.
+# This rule prevents text normalization and content display in diffs or patches.
+# The rule applies only to the patterns below. The .gitignore file excludes other
+# secret paths, such as the secrets/ directory.
 .env              binary
 .env.*            binary
 *.pem             binary

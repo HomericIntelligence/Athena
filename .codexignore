@@ -1,10 +1,10 @@
-# Codex marketplace-scanner exclusions that are not already owned by .gitignore.
+# Exclude these Codex marketplace-scanner paths in addition to .gitignore.
 # Do not duplicate general repository ignores here.
 
-# Git internals
+# Exclude Git and GitHub metadata.
 .git/
 .github/
 
-# Athena internal iteration artefacts
+# Exclude Athena internal iteration artifacts.
 scripts/_local/
 tests/_local/

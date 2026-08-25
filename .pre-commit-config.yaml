@@ -16,32 +16,32 @@ repos:
   - repo: local
     hooks:
       - id: athena-validate-skills
-        name: validate Athena plugin distribution
+        name: Validate the Athena plugin distribution
         entry: uv run python scripts/validate_skills.py
         language: system
         pass_filenames: false
       - id: athena-markdownlint
-        name: lint Athena Markdown
+        name: Check Markdown in the Athena repository
         entry: uv run pymarkdown -d MD013,MD024,MD033,MD041,MD046 scan README.md AGENTS.md CLAUDE.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md docs skills
         language: system
         pass_filenames: false
       - id: athena-validator-tests
-        name: test Athena distribution validator
+        name: Run the Athena contract tests and coverage policy
         entry: uv run coverage erase && PYTHONDONTWRITEBYTECODE=1 ATHENA_COVERAGE=1 uv run coverage run --branch --parallel-mode --source=scripts,skills -m pytest -q && uv run coverage combine && uv run coverage json -o coverage.json && uv run python scripts/coverage_policy.py coverage.json --minimum 80
         language: system
         pass_filenames: false
       - id: athena-python-lint
-        name: lint Athena repository tooling
+        name: Check the Athena repository tools
         entry: uv run ruff check scripts tests skills
         language: system
         pass_filenames: false
       - id: athena-python-format
-        name: check Athena repository tooling formatting
+        name: Check the format of the Athena repository tools
         entry: uv run ruff format --check scripts tests skills
         language: system
         pass_filenames: false
       - id: athena-python-types
-        name: type-check Athena repository tooling
+        name: Check the types in the Athena repository tools
         entry: uv run mypy --strict --explicit-package-bases scripts tests skills
         language: system
         pass_filenames: false

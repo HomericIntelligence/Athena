@@ -23,7 +23,9 @@ const commandResponse = responses.find(
 );
 
 if (!commandResponse || !Array.isArray(commandResponse.data?.commands)) {
-  throw new Error("Pi RPC get_commands did not return a successful command inventory");
+  throw new Error(
+    "The get_commands response did not contain a successful Pi command inventory.",
+  );
 }
 
 const actualCommands = commandResponse.data.commands
@@ -38,14 +40,16 @@ const actualCommands = commandResponse.data.commands
 
 if (JSON.stringify(actualCommands) !== JSON.stringify(expectedCommands)) {
   throw new Error(
-    `Pi skill inventory mismatch: expected ${JSON.stringify(expectedCommands)}, got ${JSON.stringify(actualCommands)}`,
+    `The Pi skill inventory does not match. The expected command list follows.\n${JSON.stringify(expectedCommands)}\nThe actual command list follows.\n${JSON.stringify(actualCommands)}`,
   );
 }
 
 for (const required of ["skill:advise", "skill:learn", "skill:pr-review"]) {
   if (!actualCommands.includes(required)) {
-    throw new Error(`Pi skill inventory is missing ${required}`);
+    throw new Error(`The Pi skill inventory does not contain the required skill '${required}'.`);
   }
 }
 
-process.stdout.write(`Verified ${actualCommands.length} Pi package skills from ${packageRoot}\n`);
+process.stdout.write(
+  `The script verified ${actualCommands.length} Pi package skills from '${packageRoot}'.\n`,
+);

@@ -55,7 +55,9 @@ def _pr_policy_command() -> int:
     )
     closing_issues = pr.get("closingIssuesReferences")
     if not isinstance(closing_issues, list):
-        raise TypeError("pull request closingIssuesReferences is malformed")
+        raise TypeError(
+            "GitHub returned a closingIssuesReferences field that is not valid."
+        )
     query = """query($owner:String!,$name:String!,$pr:Int!,$endCursor:String) {
       repository(owner:$owner,name:$name) { pullRequest(number:$pr) {
         commits(first:100,after:$endCursor) {
@@ -97,23 +99,26 @@ def _required_jobs_command() -> int:
     event_name = os.environ.get("EVENT_NAME")
     results_text = os.environ.get("RESULTS")
     if event_name is None:
-        raise SystemExit("missing required environment variable: EVENT_NAME")
+        raise SystemExit("The required environment variable EVENT_NAME is missing.")
     if results_text is None:
-        raise SystemExit("missing required environment variable: RESULTS")
+        raise SystemExit("The required environment variable RESULTS is missing.")
     try:
         results = json.loads(results_text)
     except json.JSONDecodeError as error:
-        raise SystemExit(f"RESULTS must contain valid JSON: {error}") from error
+        raise SystemExit(
+            "The RESULTS value must contain valid JSON. "
+            f"The parser returned this diagnostic.\n{error}"
+        ) from error
     if not isinstance(results, dict):
-        raise SystemExit("RESULTS must be a JSON object")
+        raise SystemExit("The RESULTS value must be a JSON object.")
     failures = failed_required_jobs(event_name, results)
     if failures:
         raise SystemExit(
-            f"Required jobs did not pass: {json.dumps(failures, sort_keys=True)}"
+            "The required jobs did not pass.\n" + json.dumps(failures, sort_keys=True)
         )
     print(
-        "All required jobs passed. The pull-request policy was skipped only when "
-        "it did not apply."
+        "All required job results are acceptable. The workflow skips the "
+        "pull-request policy only when that policy does not apply."
     )
     return 0
 
@@ -161,10 +166,10 @@ def _release_command(repo_root: Path) -> int:
         ).returncode
         != 0
     ):
-        errors.append("release tag target must be reachable from protected main")
+        errors.append("The release tag target must be reachable from protected main.")
     if errors:
         raise SystemExit("\n".join(errors))
-    print(f"Release policy passed for {tag} at {tag_commit}")
+    print(f"The release policy passed for tag '{tag}' at commit '{tag_commit}'.")
     return 0
 
 
@@ -191,7 +196,7 @@ def _publish_release_command(directory: Path) -> int:
     asset_names = verify_release_assets(directory)
     release_notes = directory.parent / "docs" / "release-notes.md"
     if not release_notes.is_file():
-        raise ValueError(f"release notes are missing: {release_notes}")
+        raise ValueError(f"The release notes are missing: '{release_notes}'.")
     subprocess.run(
         [
             "gh",

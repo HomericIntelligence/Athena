@@ -73,33 +73,33 @@ ci-entrypoints:
     @just --evaluate > /dev/null
     @just --list > /dev/null
 
-# === Containerized CI (podman by default) ===
+# Container-based continuous integration (CI).
 
 # Build the continuous integration (CI) container image.
-# Try Podman first. If Podman is unavailable, use Docker.
+# Try Podman first. If the Podman command fails, use Docker.
 ci-build:
     podman build -f ci/Containerfile -t athena-ci:local . || docker build -f ci/Containerfile -t athena-ci:local .
 
-# Run CI plugin-distribution validation in container
+# Run CI plugin-distribution validation in the container.
 ci-validate:
     ./scripts/run_ci_local.sh validate
 
-# Run CI contract tests in container
+# Run CI contract tests in the container.
 ci-test:
     ./scripts/run_ci_local.sh test
 
-# Run CI static checks (ruff, format, mypy) in container
+# Run Ruff, the format check, and the mypy type check in the container.
 ci-static:
     ./scripts/run_ci_local.sh static
 
-# Run CI markdown lint in container
+# Check Markdown in public documents and skills in the container.
 ci-markdownlint:
     ./scripts/run_ci_local.sh markdownlint
 
-# Run CI workflow validation in container
+# Validate workflow syntax and schemas in the container.
 ci-workflow:
     ./scripts/run_ci_local.sh workflow
 
-# Run all CI checks in container
+# Run all supported local CI checks in the container.
 ci-all:
     ./scripts/run_ci_local.sh all

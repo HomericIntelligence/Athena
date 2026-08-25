@@ -1,4 +1,4 @@
-"""Vulnerability severity, fix-state, and exception policy."""
+"""This module defines the vulnerability severity, fix-state, and exception policy."""
 
 from __future__ import annotations
 
@@ -18,13 +18,15 @@ ATHENA_ISSUE_URL: Final = re.compile(
 
 
 class VulnerabilityPolicyError(ValueError):
-    """Raised for malformed evidence or exception policy."""
+    """This error identifies evidence or exception policy that is not valid."""
 
 
 def _required_string(mapping: dict[str, Any], key: str) -> str:
     value = mapping.get(key)
     if not isinstance(value, str) or not value.strip():
-        raise VulnerabilityPolicyError(f"exception {key} must be a non-empty string")
+        raise VulnerabilityPolicyError(
+            f"The exception field {key} must contain a nonempty string."
+        )
     return value
 
 
@@ -34,19 +36,20 @@ def load_exceptions(path: Path, *, today: date) -> list[dict[str, str]]:
         document = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as error:
         raise VulnerabilityPolicyError(
-            f"cannot read exception policy: {error}"
+            "The tool cannot read the exception policy. "
+            f"The operation returned this diagnostic.\n{error}"
         ) from error
     if not isinstance(document, dict) or set(document) != {"exceptions"}:
         raise VulnerabilityPolicyError(
-            "exception policy must contain only an exceptions list"
+            "The exception policy must contain only an exceptions list."
         )
     entries = document["exceptions"]
     if not isinstance(entries, list):
-        raise VulnerabilityPolicyError("exceptions must be a list")
+        raise VulnerabilityPolicyError("The exceptions field must be a list.")
     validated: list[dict[str, str]] = []
     for entry in entries:
         if not isinstance(entry, dict):
-            raise VulnerabilityPolicyError("each exception must be a mapping")
+            raise VulnerabilityPolicyError("Each exception must be a map.")
         required = {
             "vulnerability",
             "package",
@@ -60,39 +63,43 @@ def load_exceptions(path: Path, *, today: date) -> list[dict[str, str]]:
         }
         if set(entry) != required:
             raise VulnerabilityPolicyError(
-                "exception fields must be vulnerability, package, version, severity, "
-                "reason, owner, issue, approved, and expires"
+                "The exception fields must be vulnerability, package, version, severity, "
+                "reason, owner, issue, approved, and expires."
             )
         normalized = {key: _required_string(entry, key) for key in required}
         severity = normalized["severity"].title()
         if severity not in MAX_EXCEPTION_DAYS:
             raise VulnerabilityPolicyError(
-                "exceptions are allowed only for High or Critical"
+                "Use only High or Critical for the exception severity."
             )
         if ATHENA_ISSUE_URL.fullmatch(normalized["issue"]) is None:
             raise VulnerabilityPolicyError(
-                "exception issue must be an Athena GitHub issue URL"
+                "The exception issue must be an Athena GitHub issue URL."
             )
         try:
             approved = date.fromisoformat(normalized["approved"])
             expiry = date.fromisoformat(normalized["expires"])
         except ValueError as error:
             raise VulnerabilityPolicyError(
-                "exception approved and expires must be YYYY-MM-DD"
+                "The exception approved and expires fields must use 'YYYY-MM-DD'."
             ) from error
         if approved > today:
             raise VulnerabilityPolicyError(
-                f"exception approval date {approved.isoformat()} is in the future"
+                f"The exception approval date '{approved.isoformat()}' is in the future."
             )
         if expiry < today:
             raise VulnerabilityPolicyError(
-                f"exception {normalized['vulnerability']} expired on {expiry.isoformat()}"
+                f"The exception '{normalized['vulnerability']}' expired on "
+                f"'{expiry.isoformat()}'."
             )
         if expiry < approved:
-            raise VulnerabilityPolicyError("exception expires before its approval date")
+            raise VulnerabilityPolicyError(
+                "The exception expiration date is before its approval date."
+            )
         if (expiry - approved).days > MAX_EXCEPTION_DAYS[severity]:
             raise VulnerabilityPolicyError(
-                f"{severity} exception exceeds {MAX_EXCEPTION_DAYS[severity]} days"
+                f"The {severity} exception is longer than "
+                f"{MAX_EXCEPTION_DAYS[severity]} days."
             )
         normalized["severity"] = severity
         validated.append(normalized)
@@ -102,7 +109,9 @@ def load_exceptions(path: Path, *, today: date) -> list[dict[str, str]]:
 def _fix_versions(match: dict[str, Any]) -> list[str]:
     details = match.get("vulnerability")
     if not isinstance(details, dict):
-        raise VulnerabilityPolicyError("Grype match has no vulnerability object")
+        raise VulnerabilityPolicyError(
+            "The Grype match does not contain a vulnerability object."
+        )
     fix = details.get("fix")
     if not isinstance(fix, dict):
         return []
@@ -110,26 +119,28 @@ def _fix_versions(match: dict[str, Any]) -> list[str]:
     if not isinstance(versions, list) or not all(
         isinstance(item, str) for item in versions
     ):
-        raise VulnerabilityPolicyError("Grype fix versions must be a string list")
+        raise VulnerabilityPolicyError(
+            "The Grype fix versions must be a list of strings."
+        )
     return versions
 
 
 def evaluate_report(
     report: dict[str, Any], exceptions: list[dict[str, str]]
 ) -> list[str]:
-    """Return unexcepted fixable High/Critical findings."""
+    """Return fixable High and Critical findings that have no exception."""
     matches = report.get("matches")
     if not isinstance(matches, list):
-        raise VulnerabilityPolicyError("Grype report must contain a matches list")
+        raise VulnerabilityPolicyError("The Grype report must contain a matches list.")
     blocking: list[str] = []
     for match in matches:
         if not isinstance(match, dict):
-            raise VulnerabilityPolicyError("Grype match must be an object")
+            raise VulnerabilityPolicyError("The Grype match must be an object.")
         vulnerability = match.get("vulnerability")
         artifact = match.get("artifact")
         if not isinstance(vulnerability, dict) or not isinstance(artifact, dict):
             raise VulnerabilityPolicyError(
-                "Grype match is missing vulnerability or artifact"
+                "The Grype match is missing a vulnerability or an artifact."
             )
         identifier = vulnerability.get("id")
         severity_value = vulnerability.get("severity")
@@ -138,7 +149,7 @@ def evaluate_report(
         for value in (identifier, severity_value, name, version):
             if not isinstance(value, str) or not value:
                 raise VulnerabilityPolicyError(
-                    "Grype finding identity fields must be strings"
+                    "The Grype finding identity fields must be strings."
                 )
         assert isinstance(identifier, str)
         assert isinstance(severity_value, str)
@@ -155,7 +166,7 @@ def evaluate_report(
             for entry in exceptions
         )
         if not excepted:
-            blocking.append(f"{severity} {identifier} in {name}@{version} has a fix")
+            blocking.append(f"{severity} {identifier} in {name}@{version} has a fix.")
     return sorted(blocking)
 
 
@@ -163,7 +174,10 @@ def load_report(path: Path) -> dict[str, Any]:
     try:
         report = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
-        raise VulnerabilityPolicyError(f"cannot read Grype report: {error}") from error
+        raise VulnerabilityPolicyError(
+            "The tool cannot read the Grype report. "
+            f"The operation returned this diagnostic.\n{error}"
+        ) from error
     if not isinstance(report, dict):
-        raise VulnerabilityPolicyError("Grype report must be an object")
+        raise VulnerabilityPolicyError("The Grype report must be a JSON object.")
     return report

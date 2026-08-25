@@ -1,11 +1,12 @@
 #!/bin/bash
 # Run Athena continuous integration (CI) checks in a local container.
 #
-# This script runs the same checks as GitHub Actions. It uses the same CI image.
+# This script runs the local subset of the GitHub Actions checks.
+# It uses the same CI image for checks that run in a container.
 # Use rootless Podman where possible. You can also use Docker.
 #
 # Use one of these commands:
-#   ./scripts/run_ci_local.sh              # Run all CI checks.
+#   ./scripts/run_ci_local.sh              # Run all supported local CI checks.
 #   ./scripts/run_ci_local.sh validate     # Validate the plugin distribution.
 #   ./scripts/run_ci_local.sh test         # Run contract tests with the minimum coverage requirement.
 #   ./scripts/run_ci_local.sh static       # Run lint, format, and type checks.
@@ -23,19 +24,20 @@
 set -euo pipefail
 
 # ============================================================================
-# Configuration
+# Configure the script.
 # ============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SUBSET="${1:-all}"
 
-# CI image: built locally from ci/Containerfile.
-# (No GHCR fallback: Athena's validate_skills.py self-contained policy forbids
-# scripts from referencing other HomericIntelligence repositories.)
+# The script uses the local image from ci/Containerfile.
+# It does not use a GitHub Container Registry (GHCR) alternative.
+# The self-contained policy in validate_skills.py prohibits references to other
+# HomericIntelligence repositories.
 LOCAL_IMAGE="athena-ci:local"
 
-# Colors
+# These values set the output colors.
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -48,69 +50,71 @@ log_error() { echo -e "${RED}[CI]${NC} $*" >&2; }
 log_step()  { echo -e "\n${BLUE}==>${NC} $*"; }
 
 # ============================================================================
-# Container engine detection
+# Detect the container engine.
 # ============================================================================
 
 detect_engine() {
     if [ -n "${CONTAINER_ENGINE:-}" ]; then
         if ! command -v "${CONTAINER_ENGINE}" &> /dev/null; then
-            log_error "The command cannot find CONTAINER_ENGINE=${CONTAINER_ENGINE} in PATH."
+            log_error "The command cannot find 'CONTAINER_ENGINE=${CONTAINER_ENGINE}' in PATH."
             exit 1
         fi
-        log_info "Container engine from the environment: ${CONTAINER_ENGINE}"
+        log_info "The selected container engine is '${CONTAINER_ENGINE}'."
         return
     fi
 
     if command -v podman &> /dev/null; then
         CONTAINER_ENGINE="podman"
-        log_info "Rootless container engine: Podman"
+        log_info "The script selected Podman as the rootless container engine."
     elif command -v docker &> /dev/null; then
         CONTAINER_ENGINE="docker"
-        log_info "Container engine: Docker"
+        log_info "The script selected Docker as the container engine."
     else
         log_error "The command cannot find Podman or Docker. Install a container engine."
         log_error "Use Podman where possible."
-        log_error "  Podman: https://podman.io/getting-started/installation"
+        log_error "Install Podman from 'https://podman.io/getting-started/installation'."
         exit 1
     fi
     export CONTAINER_ENGINE
 }
 
 # ============================================================================
-# Image resolution
+# Resolve the image.
 # ============================================================================
 
 resolve_image() {
     if "${CONTAINER_ENGINE}" image exists "${LOCAL_IMAGE}" 2>/dev/null || \
        "${CONTAINER_ENGINE}" images -q "${LOCAL_IMAGE}" 2>/dev/null | grep -q .; then
         CI_IMAGE="${LOCAL_IMAGE}"
-        log_info "The command uses this local CI image: ${CI_IMAGE}"
+        log_info "The command uses this local CI image: '${CI_IMAGE}'."
     else
         log_error "The command cannot find the local image '${LOCAL_IMAGE}'."
-        log_error "Before you continue, build the image: just ci-build"
-        log_error "Alternative command: podman build -f ci/Containerfile -t ${LOCAL_IMAGE} ."
+        log_error "Before you continue, run this command:"
+        log_error "just ci-build"
+        log_error "Alternatively, run this command:"
+        log_error "podman build -f ci/Containerfile -t ${LOCAL_IMAGE} ."
         exit 1
     fi
     export CI_IMAGE
 }
 
 # ============================================================================
-# Run a command inside the CI container
+# Run a command in the CI container.
 # ============================================================================
-# Volume mounts:
-#   /workspace  — the full repo (rw, :Z for SELinux/Podman)
-# --userns=keep-id — Podman: map host UID into container (fixes mounted file ownership)
-# No effect on Docker (flag ignored or equivalent to default behavior)
+# The /workspace path contains the complete repository.
+# The `rw` and `:Z` settings give the container write access and set the SELinux label.
+# For Podman, --userns=keep-id maps the host user identifier (UID) into the container.
+# The script does not add this Podman-specific setting to Docker commands.
 
 run_in_container() {
     local cmd=("$@")
     local engine_flags=(--rm)
 
-    # Podman-specific flags for rootless execution.
-    # keep-id:uid=1000,gid=1000 runs the process as the image's non-root 'ci'
-    # user (uid 1000) while mapping it to the invoking host UID, so files
-    # written into the mounted workspace are owned by the host user — works
-    # both on dev hosts (uid 1000) and GitHub runners (uid 1001).
+    # Use Podman-specific options for rootless execution.
+    # keep-id:uid=1000,gid=1000 runs the process as the image user `ci`.
+    # The `ci` user has UID 1000. Podman maps this UID to the host UID.
+    # Thus, files in the mounted workspace belong to the host user.
+    # This mapping works on development hosts and GitHub runners.
     if [ "${CONTAINER_ENGINE}" = "podman" ]; then
         engine_flags+=(--userns=keep-id:uid=1000,gid=1000)
     fi
@@ -124,16 +128,16 @@ run_in_container() {
 }
 
 # ============================================================================
-# CI steps
+# Run the CI steps.
 # ============================================================================
 
 run_validate() {
-    log_step "Validate plugin distribution"
+    log_step "Validate the plugin distribution."
     run_in_container uv run python scripts/validate_skills.py
 }
 
 run_test() {
-    log_step "Contract tests with coverage threshold (>=80%)"
+    log_step "Run contract tests with the minimum 80 percent coverage requirement."
     run_in_container bash -c '\
         uv run coverage erase && \
         PYTHONDONTWRITEBYTECODE=1 ATHENA_COVERAGE=1 \
@@ -145,25 +149,25 @@ run_test() {
 }
 
 run_static() {
-    log_step "Static checks (ruff lint, format-check, mypy typecheck)"
+    log_step "Run Ruff, the format check, and the mypy type check."
     run_in_container uv run ruff check scripts tests skills &&
     run_in_container uv run ruff format --check scripts tests skills &&
     run_in_container uv run mypy --strict --explicit-package-bases scripts tests skills/_cli.py skills/*/scripts/*.py
 }
 
 run_markdownlint() {
-    log_step "Markdown lint (public docs and skills)"
+    log_step "Check Markdown in public documents and skills."
     run_in_container uv run pymarkdown -d MD013,MD024,MD033,MD041,MD046 scan README.md AGENTS.md CLAUDE.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md docs skills
 }
 
 run_workflow() {
-    log_step "Workflow syntax + schema validation"
+    log_step "Validate workflow syntax and schemas."
     run_in_container uv run yamllint .github/workflows &&
     run_in_container uv run check-jsonschema --builtin-schema vendor.github-workflows .github/workflows/*.yml
 }
 
 # ============================================================================
-# Main
+# Run the selected checks.
 # ============================================================================
 
 FAILED=()
@@ -173,15 +177,15 @@ run_step() {
     local fn="$2"
     if ! "${fn}"; then
         FAILED+=("${name}")
-        log_error "${name} failed."
+        log_error "The '${name}' check failed."
     fi
 }
 
 detect_engine
 resolve_image
 
-log_info "CI subset: ${SUBSET}"
-log_info "Project root: ${PROJECT_ROOT}"
+log_info "The CI subset is '${SUBSET}'."
+log_info "The project root is '${PROJECT_ROOT}'."
 
 case "${SUBSET}" in
     validate)
@@ -207,16 +211,17 @@ case "${SUBSET}" in
         run_step "workflow" run_workflow
         ;;
     *)
-        log_error "The subset is not valid: ${SUBSET}"
-        log_error "Use one of these values: all, validate, test, static, markdownlint, workflow"
+        log_error "The subset is not valid: '${SUBSET}'."
+        log_error "Use one of these values:"
+        log_error "all, validate, test, static, markdownlint, workflow"
         exit 1
         ;;
 esac
 
 echo ""
 if [ "${#FAILED[@]}" -eq 0 ]; then
-    log_info "All CI checks passed."
+    log_info "All selected local CI checks passed."
 else
-    log_error "These checks failed: ${FAILED[*]}"
+    log_error "These checks failed: '${FAILED[*]}'."
     exit 1
 fi

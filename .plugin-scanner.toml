@@ -1,33 +1,33 @@
-# Plugin scanner config — defines paths the HomericIntelligence marketplace
-# scanner should ignore when scanning the Athena working tree.
+# This configuration identifies paths that the HomericIntelligence marketplace
+# scanner must ignore in the Athena working tree.
 #
-# Mirrors a subset of `.gitignore` plus scanner-specific paths. The scanner
-# walks the repo to find plugin.json + marketplace.json; this file prevents
-# spurious hits in build artefacts and dependencies.
+# The configuration contains a subset of `.gitignore` and scanner-specific paths.
+# The scanner searches the repository for plugin.json and marketplace.json.
+# These exclusions prevent false results from build artifacts and dependencies.
 
 [scanner]
 ignore_paths = [
-  # Version control
+  # Ignore version-control data.
   ".git/",
 
-  # Build / dist
+  # Ignore build and distribution output.
   "dist/",
 
-  # Python caches
+  # Ignore Python caches.
   "__pycache__/",
   ".venv/",
 
-  # IDE / OS
+  # Ignore integrated development environment and operating-system files.
   ".idea/",
   ".vscode/",
   ".DS_Store",
 
-  # Secrets (defence in depth — none should ever be committed)
+  # Ignore secret files as an additional security control. Never commit secrets.
   ".env",
   ".env.*",
   "secrets/",
 
-  # Internal iteration artefacts
+  # Ignore internal iteration artifacts.
   "scripts/_local/",
   "tests/_local/",
 ]
