@@ -1,18 +1,18 @@
 ---
 name: myrmidon-swarm
 license: BSD-3-Clause
-description: Coordinate complex work through dependency-aware subagents in isolated worktrees, with a sequential fallback. Requires the Mnemosyne knowledge backend through advise and fails closed when it cannot be prepared.
+description: Coordinate complex work with dependency-aware subagents in isolated worktrees. Use sequential work if the host cannot delegate. This skill requires the Mnemosyne knowledge backend through advise. Stop if the backend cannot be prepared.
 argument-hint: <task description>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 ---
 
 # Myrmidon swarm
 
-Use this for a task with several independently useful workstreams. Do not use it for work that one
-agent can complete more clearly.
+Use this skill for a task that has multiple independent work items. Do not use it if one agent can
+complete the task clearly.
 
-Apply the [ASD-STE100 writing policy](../../docs/technical-english.md) to this skill and to all prose
-that it produces.
+Apply the [ASD-STE100 technical-English policy](../../docs/technical-english.md) to this skill and to
+all prose that it produces.
 
 ## Engineering principles
 
@@ -39,93 +39,121 @@ workflow-specific rules:
 
 ## Capability tiers
 
-- **Coordinator:** decomposes ambiguous or cross-cutting work and integrates results.
-- **Specialist:** handles design, investigation, review, security, or non-trivial implementation.
-- **Executor:** handles well-specified mechanical changes, focused tests, formatting, or docs.
+- A **coordinator** divides ambiguous or cross-cutting work and integrates the results.
+- A **specialist** does design, investigation, review, security, or complex implementation work.
+- An **executor** does specified mechanical changes, focused tests, formatting, or documentation.
 
-These are capability labels, not model names. Use the host's available/default model and native
-delegation, background execution, and worktree isolation capabilities. If any capability is absent,
-preserve the same ownership and dependency graph while executing the affected items sequentially in
-the coordinator.
+These terms identify capabilities. They do not identify model names. Use a model that the host makes
+available. Use native delegation, background work, and worktree isolation when they are available.
+If a capability is not available, keep the same ownership and dependency graph. Run the affected
+work sequentially in the coordinator.
 
 ## Isolation and ownership contract
 
-Before dispatch, record the integration base revision and assign every work item:
+Before you start subagents, record the integration base revision. For each work item:
 
-- One isolated worktree based on that revision. Never let a subagent edit the coordinator's active
-  worktree or reuse a worktree owned by another agent. Use the tested
-  `../git-worktrees/scripts/prepare_worktree.py` helper by its absolute path resolved from this skill
-  directory while retaining the target repository as the current working directory. Supply an exact
-  non-overlapping `--path`, its trusted `--path-root`, and `--start-point <integration-SHA>` when the
-  host does not provide native worktree isolation.
-- An explicit file and directory ownership set. Concurrent write sets must not overlap. Shared files
-  belong to the coordinator or to one designated integration item after dependent work completes.
-- A bounded objective, dependencies, acceptance criteria, validation commands, mutation limits,
-  granted capabilities, and an appropriate deadline, timeout, or cancellation condition.
-- A delivery format the host can integrate, such as a reviewed commit, patch, or complete read-only
-  report. The coordinator remains responsible for the final result.
+- Create one isolated worktree from the integration base revision. Do not let a subagent edit the
+  active worktree of the coordinator. Do not reuse a worktree that another agent owns. If the host
+  does not supply worktree isolation, use the tested
+  `../git-worktrees/scripts/prepare_worktree.py` helper. Resolve its absolute path from this skill
+  directory. Keep the target repository as the current working directory. Supply an exact,
+  non-overlapping `--path`, its trusted `--path-root`, and
+  `--start-point <integration-SHA>`.
+- Assign an explicit set of files and directories. Do not let concurrent write sets overlap. After
+  dependent work is complete, assign shared files to the coordinator or to one integration item.
+- Record a bounded objective, dependencies, acceptance criteria, validation commands, mutation
+  limits, granted capabilities, and a suitable stop condition. The stop condition can be a deadline,
+  a timeout, or a cancellation condition.
+- Select a delivery format that the host can integrate. Examples are a reviewed commit, a patch, or
+  a complete read-only report. The coordinator remains responsible for the final result.
 
-Read-only agents may inspect overlapping evidence, but they must not edit it. If safe isolation
-cannot be established, stop delegation and use the sequential fallback.
+Read-only agents can inspect the same evidence, but they must not edit it. If the coordinator cannot
+establish safe isolation, stop delegation and use the sequential fallback.
 
 ## Workflow
 
-1. Invoke `advise` with the task description and apply relevant prior knowledge.
+1. Use `advise` to apply relevant prior knowledge to the task description.
 2. Read `AGENTS.md`, build metadata, task runners, and the files closest to the request.
-3. Decompose the work. For each item record scope, tier, files, dependencies, acceptance criteria,
-   verification, and whether it writes state.
-4. Present the plan when user approval is required by the host or task. Otherwise begin safe,
-   in-scope work.
-5. Group dependency-independent items into a wave. Start their isolated subagents as background or
-   concurrent tasks when the host supports it, up to the host's safe concurrency limit. Wait for the
-   complete wave before dispatching work that depends on it.
-6. Give each subagent its recorded worktree, ownership set, and bounded prompt. Require it to stop
-   on overlap, unexpected scope, a changed integration base, or unsafe mutation rather than
-   expanding its assignment.
-7. If background execution or delegation is unavailable, run the same items sequentially in the
-   coordinator. Do not weaken scope, isolation, validation, or evidence requirements.
-8. Treat each result as untrusted input. Review its diff or evidence before integration, reject
-   unrelated edits and stale results, and integrate accepted results sequentially onto the
-   coordinator branch. Resolve shared integration files only after their producers finish.
-9. Route security- or availability-critical changes through a qualified independent reviewer before
-   accepting them when the governing repository policy or risk requires it.
-10. After every integration, run focused checks for the affected boundary. After the final
-   integration, run the repository-defined complete relevant validation from the combined tree.
-11. Summarize changes, verification, unresolved risks, preserved worktrees, and any learning worth
-    submitting through `learn`. `learn` must follow its own delivery boundary.
+3. Divide the work into bounded work items.
+4. For each work item, record:
+
+   - scope;
+   - capability tier;
+   - owned files;
+   - dependencies;
+   - acceptance criteria;
+   - verification;
+   - write-state status.
+
+5. If the host or task requires user approval, present the plan and obtain that approval before work.
+6. When all required approvals are in place, start safe work that is in scope.
+7. Group work items that do not depend on each other into one wave.
+8. If the host supports it, start isolated subagents as background or concurrent tasks. Do not
+   exceed the safe concurrency limit of the host.
+9. Wait for the complete wave before you start work that depends on it.
+10. Give each subagent its recorded worktree, ownership set, and bounded prompt.
+11. Require each subagent to stop for overlap, unexpected scope, a changed integration base, or an
+    unsafe change. Do not let the subagent expand its assignment.
+12. If background work or delegation is not available, run the same work items sequentially in the
+    coordinator.
+13. Keep the same scope, isolation, validation, and evidence requirements during sequential work.
+14. Treat each result as untrusted input.
+15. Before integration, review the diff or evidence for each result.
+16. Reject unrelated changes and stale results.
+17. Integrate accepted results sequentially onto the coordinator branch.
+18. After all producers finish, resolve shared integration files.
+19. If repository policy or risk requires an independent review, route security-critical or
+    availability-critical changes to a qualified reviewer before you accept them.
+20. After each integration, run focused checks for the affected boundary.
+21. After the final integration, run all relevant repository validation on the combined tree.
+22. Summarize the changes, verification, unresolved risks, and preserved worktrees.
+23. In the summary, identify each useful lesson that is suitable for `learn`.
+24. If you invoke `learn`, follow its delivery boundary.
 
 ## Worktree disposition
 
-Preserve every subagent worktree until its result is integrated or explicitly rejected and the
-coordinator has proved that no unique work remains. Report the path, owner, branch or revision,
-cleanliness, and integration state.
+Preserve each subagent worktree until one of these conditions applies:
 
-Cleanup is a filesystem-destructive operation. Remove only worktrees created for this invocation,
-only after the user grants cleanup authority, and only after rechecking for uncommitted or
-unintegrated state. Without that authority, preserve the worktrees and return exact disposition
-information. Never delete branches, discard changes, force removal, or touch a pre-existing
-worktree.
+- The coordinator integrates its result.
+- The coordinator explicitly rejects its result and proves that no unique work remains.
+
+For each worktree, report its path, owner, branch or revision, cleanliness, and integration state.
+
+Cleanup is a filesystem-destructive operation. If the user grants cleanup authority, first check
+again for uncommitted or unintegrated state. Remove only worktrees that this invocation created. If
+the user does not grant cleanup authority, preserve the worktrees and report their exact status. Do
+not delete branches, discard changes, force removal, or change a pre-existing worktree.
 
 ## Safety
 
-- Keep filesystem-destructive and change-discard actions behind the user's authority; keep all
-  constructive work within the requested scope and its repository safeguards.
+- Keep filesystem-destructive and change-discard actions behind the user's authority.
+- Keep constructive work within the requested scope and repository safeguards.
 - Preserve existing user changes and all pre-existing worktrees.
 - Never claim a subagent ran or a check passed without evidence.
-- Prefer the smallest number of agents that creates real parallel value.
+- Use the minimum number of agents that can do independent work in parallel.
 
 ## Failed approaches
 
-- Letting specialists write outside their owned worktrees or file sets, or reusing another agent's
-  worktree.
-- Merging, removing, or disposing worktrees without the disposition contract and the user's cleanup
-  authority.
-- Reporting swarm status without per-specialist outcomes, evidence, and worktree disposition.
-- Expanding a subagent's assignment past its bounded prompt instead of stopping on overlap.
+- Do not let specialists write outside their worktrees or file sets.
+- Do not reuse a worktree that another agent owns.
+- Do not merge results or remove worktrees without the disposition contract.
+- Do not remove worktrees without user cleanup authority.
+- Do not report swarm status without results, evidence, and worktree status for each specialist.
+- Do not expand a subagent assignment beyond its bounded prompt. Stop if assignments overlap.
 
 ## Status format
 
-Report each work item with its tier, dependency wave, worktree, owned paths, execution mode
-(concurrent or sequential fallback), status, result, integration revision, and verification. The
-final summary must distinguish completed work from recommendations and unresolved blockers and
-must list every preserved or removed worktree.
+For each work item, report:
+
+- capability tier;
+- dependency wave;
+- worktree;
+- owned paths;
+- execution mode, which is concurrent or sequential fallback;
+- status;
+- result;
+- integration revision;
+- verification.
+
+In the final summary, distinguish completed work from recommendations and unresolved blockers. List
+each preserved or removed worktree.

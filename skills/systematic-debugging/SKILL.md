@@ -1,25 +1,25 @@
 ---
 name: systematic-debugging
 license: BSD-3-Clause
-description: Investigate root cause before fixing bugs or unexpected behavior. Requires the Mnemosyne knowledge backend through advise and fails closed when it cannot be prepared.
+description: Investigate root cause before you repair a bug or unexpected behavior. This skill requires the Mnemosyne knowledge backend through advise. Stop if the backend cannot be prepared.
 argument-hint: <description of the bug or failure>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 ---
 
-# Systematic Debugging
+# Systematic debugging
 
 ## Overview
 
-Random fixes waste time and create new bugs. Quick patches mask underlying issues.
+A repair without evidence wastes time and can create a new bug. A repair of only the symptom can
+hide the root cause.
 
-Apply the [ASD-STE100 writing policy](../../docs/technical-english.md) to this skill and to all prose
-that it produces.
+Apply the [ASD-STE100 technical-English policy](../../docs/technical-english.md) to this skill and to
+all prose that it produces.
 
 ## Working rules
 
-Always find the root cause before attempting fixes. Symptom fixes are failure.
-
-**Violating the letter of this process is violating the spirit of debugging.**
+Find the root cause before you attempt a repair. Do not repair only the symptom. Follow each
+required step in this process.
 
 ## Engineering principles
 
@@ -43,205 +43,202 @@ definition source. Apply these principles to this workflow:
 - [P072 — Technical Evidence Over Preference](../../docs/principles/README.md#p072): accept or reject
   hypotheses using observed evidence rather than intuition.
 
-## Before Starting
+## Before you start
 
-Run `advise` with the error description. Failure to prepare the required knowledge backend is a
-blocking error, not permission to skip prior-knowledge search.
+Run `advise` with the error description. If you cannot prepare the required knowledge backend,
+stop. Do not skip the prior-knowledge search.
 
-## The Iron Law
+## Required sequence
 
-```text
-NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST
-```
+Complete phase 1 before you propose a repair.
 
-If you haven't completed Phase 1, you cannot propose fixes.
+## When to use
 
-## When to Use
+Use this skill for all technical issues, including:
 
-Use for ANY technical issue:
+- A test fails.
+- A bug occurs in production.
+- The product has unexpected behavior.
+- The product has a performance problem.
+- A build fails.
+- An integration fails.
 
-- Test failures
-- Bugs in production
-- Unexpected behavior
-- Performance problems
-- Build failures
-- Integration issues
+Use this skill especially in these conditions:
 
-**Use this ESPECIALLY when:**
+- You are under time pressure.
+- A repair appears obvious before an investigation.
+- You already attempted multiple repairs.
+- A previous repair did not work.
+- You do not fully understand the issue.
 
-- Under time pressure (emergencies make guessing tempting)
-- "Just one quick fix" seems obvious
-- You've already tried multiple fixes
-- Previous fix didn't work
-- You don't fully understand the issue
+## Workflow
 
-## The Four Phases
+Complete each phase before you continue to the next phase.
 
-You MUST complete each phase before proceeding to the next.
+### Phase 1: Root cause investigation
 
-### Phase 1: Root Cause Investigation
+Before you attempt a repair, complete these steps:
 
-**BEFORE attempting ANY fix:**
+1. Record these items from the complete failure output:
 
-1. **Read error messages carefully:** capture the complete failure output.
-   - Don't skip past errors or warnings
-   - They often contain the exact solution
-   - Read stack traces completely
-   - Note line numbers, file paths, error codes
+   - each error and warning;
+   - the complete stack trace;
+   - line numbers;
+   - file paths;
+   - error codes.
 
-2. **Reproduce consistently:** record the exact conditions and steps.
-   - Can you trigger it reliably?
-   - What are the exact steps?
-   - Does it happen every time?
-   - If not reproducible → gather more data, don't guess
+2. Do not skip an error or warning. An error message can identify the cause.
+3. Reproduce the failure consistently.
+4. Record the exact conditions, steps, and frequency of the failure.
+5. If you cannot reproduce the failure, collect more data. Do not guess the cause.
+6. Compare the failed state with recent repository history.
+7. Inspect these possible sources of the failure:
 
-3. **Check recent changes:** compare the failing state with recent repository history.
-   - What changed that could cause this?
-   - `git diff`, recent commits
-   - New dependencies, config changes
-   - Environmental differences
+   - `git diff`;
+   - recent commits;
+   - new dependencies;
+   - configuration changes;
+   - environment differences.
 
-4. **Gather evidence in multi-component systems:** isolate the failing boundary.
+8. If the system has multiple components, isolate the failed boundary.
+9. Before you propose a repair, add only the minimum non-sensitive diagnostic instrumentation that
+   [P047 — Observability Is Part of Correctness](../../docs/principles/README.md#p047) requires.
+10. At each component boundary:
 
-   **WHEN system has multiple components:**
+    - log the input data;
+    - log the output data;
+    - verify the transfer of environment and configuration data;
+    - examine the state at each layer.
 
-   **BEFORE proposing fixes, add only the non-sensitive diagnostic instrumentation required by
-   [P047 — Observability Is Part of Correctness](../../docs/principles/README.md#p047):**
+11. Run the instrumented reproduction one time to collect evidence.
+12. Use the evidence to identify the failed component.
+13. Investigate that component.
+14. If an incorrect value is deep in the call stack, trace the value back to its source.
+15. Identify where the incorrect value starts and which caller supplied it.
+16. Continue the trace until you find the source.
+17. Repair the source. Do not repair only the symptom.
 
-   ```text
-   For EACH component boundary:
-     - Log what data enters component
-     - Log what data exits component
-     - Verify environment/config propagation
-     - Check state at each layer
+### Phase 2: Pattern analysis
 
-   Run once to gather evidence showing WHERE it breaks
-   THEN analyze evidence to identify failing component
-   THEN investigate that specific component
-   ```
+Identify the pattern before you make a repair:
 
-5. **Trace data flow:** follow the bad value back to its source.
+1. Find correct examples of similar code in the same repository.
+2. Read each applicable reference implementation completely. Do not read only a sample.
+3. List each difference between the correct code and the code that fails.
+4. Identify all dependencies and all configuration and environment assumptions.
 
-   When error is deep in call stack:
-   - Where does the bad value originate?
-   - What called this with the bad value?
-   - Keep tracing up until you find the source
-   - Fix at source, not at symptom
+### Phase 3: Hypothesis and test
 
-### Phase 2: Pattern Analysis
+Use this method to test a hypothesis:
 
-**Find the pattern before fixing:**
-
-1. Find working examples of similar code in the same codebase
-2. Read reference implementations completely — don't skim
-3. List every difference between working and broken code
-4. Identify all dependencies, config, environment assumptions
-
-### Phase 3: Hypothesis and Testing
-
-**Scientific method:**
-
-1. **Form single hypothesis**: "I think X is the root cause because Y"
-2. **Test minimally**: Make the SMALLEST possible change to test the hypothesis
-3. **One variable at a time**: Don't fix multiple things at once
-4. **Verify before continuing**: If it worked → Phase 4. Didn't work → new hypothesis
-5. **When stuck**: Say "I don't understand X" — don't pretend to know
+1. State one hypothesis: `The root cause is X because Y.`
+2. Make the minimum possible change to test the hypothesis.
+3. Change only one variable in each test.
+4. If the result supports the hypothesis, continue to phase 4.
+5. If the result does not support the hypothesis, state a new hypothesis.
+6. If you do not understand X, state `I do not understand X.` Do not claim that you understand it.
 
 ### Phase 4: Implementation
 
-**Fix the root cause, not the symptom:**
+Repair the root cause. Do not repair only the symptom.
 
-1. **Create a regression test** using the `test-driven-development` skill. Follow
-   [P026 — Regression Before Repair](../../docs/principles/README.md#p026), assert observable behavior
-   under [P022](../../docs/principles/README.md#p022), and cover the relevant failure path under
-   [P028](../../docs/principles/README.md#p028).
-2. **Implement single fix** addressing the root cause
-3. **Verify the fix** under [P065](../../docs/principles/README.md#p065): rerun the reproduction and
-   relevant suite, preserve determinism and isolation under
-   [P027](../../docs/principles/README.md#p027), and do not weaken tests or bypass validation under
-   [P067](../../docs/principles/README.md#p067) and
-   [P068](../../docs/principles/README.md#p068).
+1. Use the `test-driven-development` skill to create a regression test.
+2. Under [P026 — Regression Before Repair](../../docs/principles/README.md#p026), create the test
+   before the repair.
+3. Under [P022](../../docs/principles/README.md#p022), make the test assert observable behavior.
+4. Under [P028](../../docs/principles/README.md#p028), make the test cover the applicable failure
+   path.
+5. Implement one repair that corrects the root cause.
+6. Under [P065](../../docs/principles/README.md#p065), rerun the reproduction and applicable test
+   suite.
+7. Under [P027](../../docs/principles/README.md#p027), keep the test deterministic and isolated.
+8. Under [P067](../../docs/principles/README.md#p067) and
+   [P068](../../docs/principles/README.md#p068), do not weaken tests or bypass validation.
 
-   When the repair changes failure behavior, choose the responsible boundary deliberately:
-   generalize policy while preserving cause under [P029](../../docs/principles/README.md#p029), handle
-   at the [nearest responsible boundary](../../docs/principles/README.md#p030),
-   [propagate unrecovered failures](../../docs/principles/README.md#p031), and
-   [handle once without losing causality](../../docs/principles/README.md#p032). Preserve valid state
-   under [P033](../../docs/principles/README.md#p033), then choose
-   [fail-fast](../../docs/principles/README.md#p034),
+If the repair changes failure behavior, complete these steps:
+
+1. Under [P029](../../docs/principles/README.md#p029), generalize the policy and preserve the cause.
+2. Handle the failure at the
+   [nearest responsible boundary](../../docs/principles/README.md#p030).
+3. [Propagate unrecovered failures](../../docs/principles/README.md#p031).
+4. [Handle the failure once without losing causality](../../docs/principles/README.md#p032).
+5. Under [P033](../../docs/principles/README.md#p033), preserve valid state.
+6. Select [fail-fast](../../docs/principles/README.md#p034),
    [fail-closed](../../docs/principles/README.md#p035), or
-   [graceful degradation](../../docs/principles/README.md#p036) according to the failed capability's
-   correctness and security criticality.
+   [graceful degradation](../../docs/principles/README.md#p036). Base this selection on the
+   correctness and security importance of the failed capability.
 
-4. **If fix doesn't work:**
-   - STOP
-   - Count: How many fixes have you tried?
-   - If < 3: Return to Phase 1 with new information
-   - **If ≥ 3:** STOP and trigger an architecture review
+If the repair does not correct the issue, stop and count the repair attempts. If fewer than three
+repairs failed, return to phase 1 with the new information. After three failed repairs, stop and
+start an architecture review.
 
-5. **If 3+ fixes failed — Review Architecture:**
+### After three failed repairs
 
-   Repeated failed fixes can indicate a mistaken model, a missed dependency, or an architectural
-   problem. They trigger reassessment; they do not prove the architecture is wrong. Review:
-   - Each fix reveals new shared state/coupling/problem elsewhere
-   - Fixes require massive refactoring to implement
-   - Each fix creates new symptoms elsewhere
+Repeated failed repairs can show an incorrect model, a missing dependency, or an architecture
+problem. They require a new assessment. They do not prove that the architecture is incorrect.
 
-   STOP and discuss the accumulated evidence with the user before another repair attempt. Revisit
-   Phase 1 when the evidence points to a bad hypothesis; propose an architectural change only when
-   the evidence supports it.
+Review the evidence for these conditions:
 
-## Red Flags — STOP and Follow Process
+- Each repair reveals new shared state, coupling, or a problem in another component.
+- A repair requires a large refactor.
+- Each repair creates a new symptom in another component.
 
-- "Quick fix for now, investigate later"
-- "Just try changing X and see if it works"
-- "Add multiple changes, run tests"
-- "It's probably X, let me fix that"
-- "I don't fully understand but this might work"
-- "One more fix attempt" (when already tried 2+)
-- Each fix reveals a new problem in a different place
+Before another repair attempt, discuss the collected evidence with the user. If the evidence shows
+an incorrect hypothesis, return to phase 1. Propose an architecture change only if the evidence
+supports it.
 
-**ALL of these mean: STOP. Return to Phase 1.**
+## Stop conditions
+
+Stop and return to phase 1 if one of these conditions applies:
+
+- You plan a temporary repair before an investigation.
+- You plan to change X only to see the result.
+- You plan to make multiple changes before a test.
+- You select a probable cause without evidence.
+- You do not understand the issue but plan a repair.
+- You plan another repair after two failed repairs.
+- Each repair reveals a new problem in a different component.
 
 ## Failed approaches
 
-| Excuse | Reality |
-| -------- | --------- |
-| "Issue is simple, don't need process" | Simple issues have root causes too. |
-| "Emergency, no time for process" | Systematic debugging is FASTER than guess-and-check. |
-| "Just try this first, then investigate" | First fix sets the pattern. Do it right from the start. |
-| "Multiple fixes at once saves time" | Can't isolate what worked. Causes new bugs. |
-| "One more fix attempt" (after 2+ failures) | Three failed fixes trigger architecture review; they do not justify another guess. |
+- Do not omit this process for a simple issue. A simple issue also has a root cause.
+- Do not omit this process during an emergency. Systematic debugging is faster than repairs without
+  evidence.
+- Do not attempt a repair before the investigation. The first repair can affect the next evidence.
+- Do not make multiple repairs at the same time. You cannot identify which repair changed the
+  result, and the repairs can cause new bugs.
+- After three failed repairs, do not make another repair from a guess. Start an architecture review.
 
 ## Repository command discovery
 
-Before running a check, discover the target repository's commands from `AGENTS.md`, task runners,
-manifests, lockfiles, and CI. Prefer the command used by required CI. If sources conflict or no safe
-command is discoverable, ask the user rather than substituting Athena's own tooling.
+Before you run a check, find the target repository commands in `AGENTS.md`, task runners, manifests,
+lockfiles, and continuous integration (CI) configuration. Prefer the command that required CI uses.
+If the sources conflict or you cannot find a safe command, ask the user. Do not use Athena commands
+as a substitute.
 
 Keep the target repository as the current working directory. Resolve
-`scripts/repository_evidence.py` against this installed skill directory and invoke that absolute
-helper path with `PATTERN --source-root SOURCE_ROOT` to collect the latest ten commits, a diff
-bounded to that revision window, and matching source locations as JSON. Run the
-discovered repository-focused test and type-check commands directly through the host execution
-tool, retaining their complete output as evidence.
+`scripts/repository_evidence.py` against this installed skill directory. Invoke that absolute helper
+path with `PATTERN --source-root SOURCE_ROOT`. The helper collects the latest ten commits, a diff
+bounded to that revision window, and matching source locations as JSON. Run the discovered
+repository-focused test and type-check commands through the host execution tool. Keep their complete
+output as evidence.
 
-## After Resolution
+## After resolution
 
-Verify with fresh runnable evidence per the
-[evidence-integrity policy](../../docs/policies/evidence-integrity.md) before claiming the bug is
-fixed; rerun the failing reproduction and the repository-defined checks.
+Before you state that the bug is fixed, verify the result with fresh runnable evidence under the
+[evidence-integrity policy](../../docs/policies/evidence-integrity.md). Rerun the original
+reproduction and the repository-defined checks.
 
-Offer to invoke `learn` when the session produced durable debugging knowledge. An indirect Learn
-invocation remains read-only and does not expand the requested scope; use Learn's delivery boundary
-when durable learning is requested. Useful lessons include:
+If the session produces durable debugging knowledge, offer to invoke `learn`. An indirect `learn`
+invocation is read-only and does not increase the requested scope. If the user requests durable
+learning, use the delivery boundary of `learn`. Useful lessons include:
 
 - Root cause category and symptoms
 - What diagnostic steps revealed it
 - The fix pattern
 - Any architectural issues uncovered
 
-This prevents the same debugging session from being repeated by another agent.
+This record prevents another agent from repeating the same debugging session.
 
 ---
 
