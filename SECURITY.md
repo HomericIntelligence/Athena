@@ -1,37 +1,52 @@
 # Security policy
 
-Athena distributes instruction-bearing AI-harness plugins. The latest tagged release and `main`
-receive security fixes.
+Apply the [ASD-STE100 technical-English policy](docs/technical-english.md) to all English technical
+prose in this document.
+
+Athena distributes plugins that contain instructions for artificial intelligence (AI) harnesses.
+Athena supplies security fixes for the latest tagged release and `main`.
 
 ## Reporting
 
-Privately email **[research@villmow.us](mailto:research@villmow.us)** with the affected revision,
-skill or manifest, reproduction, expected behavior, observed behavior, and disclosure status. We
-aim to acknowledge reports within five business days.
+Send security reports privately to
+**[research@villmow.us](mailto:research@villmow.us)**. Include this information:
+
+- the affected revision;
+- the affected skill or manifest;
+- the reproduction steps;
+- the expected behavior;
+- the observed behavior; and
+- the disclosure status.
+
+We aim to acknowledge reports in five business days.
 
 ## Threat model
 
-- **Skill instructions:** malicious or overly broad instructions can cause unsafe tool use.
-  Frontmatter declares capabilities; skill bodies define human gates and fail-closed behavior.
-- **Dependency substitution:** Mnemosyne and Hephaestus owner overrides can redirect Athena to
-  custom content and therefore act as explicit trust decisions. An automatically discovered fork
-  may contain organization-specific changes, but is accepted only when the current repository is
-  organization-owned, the authenticated viewer has write/maintain/admin permission there, and
-  GitHub verifies the candidate's canonical parent. Repository identity, SHA, and trust basis are
-  reported and the complete gate is repeated immediately before use. Existing checkout origins must
-  match the resolved repository.
-- **Instruction and execution trust:** Mnemosyne text enters agent context and Hephaestus automation
-  may execute commands. Athena reports the exact repository, commit, and trust basis before use and
-  fails closed when identity, authority, ancestry, or checked-out revision cannot be proved.
-- **Marketplace redirection:** host manifests use the repository root and are validated before
-  merge and release.
-- **Supply chain:** GitHub Actions are commit-pinned and restricted by the repository allowlist to
-  the reviewed action revisions used by the required and release workflows; dependency checkouts
-  verify identity, and the release contains repository resources rather than executable package
-  artifacts.
-- **Secrets:** required CI scans full history; repository policies prohibit credentials and private
-  data.
+- **Skill instructions:** Malicious or overly broad instructions can cause unsafe tool use.
+  Frontmatter declares capabilities. Skill bodies define human gates and fail-closed behavior.
+- **Dependency substitution:** Owner overrides for Mnemosyne and Hephaestus can direct Athena to
+  custom content. Thus, each override is an explicit trust decision. An automatically discovered
+  fork can contain organization-specific changes. Athena accepts that fork only when all these
+  conditions are true:
 
-Security issues in a dependency's own code or corpus should be reported to that resolved
-repository. Athena issues include unsafe resolution, invocation, permissions, packaging, or policy
-within this repository.
+  - The current repository has an organization owner.
+  - The authenticated viewer has `WRITE`, `MAINTAIN`, or `ADMIN` permission on that repository.
+  - GitHub verifies that the candidate has the canonical repository as its parent.
+
+  Athena reports the repository identity, commit SHA, and trust basis. Athena repeats the complete
+  gate immediately before use. The `origin` of an existing checkout must identify the resolved
+  repository.
+- **Instruction and execution trust:** Text from Mnemosyne enters the agent context. Automation from
+  Hephaestus can execute commands. Before use, Athena reports the exact repository, commit, and trust
+  basis. Athena stops when it cannot prove the identity, authority, ancestry, or checkout revision.
+- **Marketplace redirection:** Host manifests use the repository root. Athena validates the manifests
+  before merge and release.
+- **Supply chain:** GitHub Actions use commit pins. The repository allowlist permits only the reviewed
+  action revisions in the required and release workflows. Dependency checkouts verify their identity.
+  A release contains repository resources and not executable package artifacts.
+- **Secrets:** Required continuous integration (CI) scans the complete Git history. Repository
+  policies prohibit credentials and private data.
+
+Report a security issue in dependency code or its corpus to the resolved dependency repository.
+Athena security issues include unsafe resolution, invocation, permissions, packaging, or policy in
+this repository.
