@@ -7,7 +7,7 @@ source tree, and validation evidence identify the same immutable change. Use
 this reference to make that binding explicit. Do not treat branch names,
 checkout state, or ambient command-line interface (CLI) defaults as evidence.
 
-Use Athena's [ASD-STE100 writing policy](../../TECHNICAL_ENGLISH.md) for all technical prose
+Use the [ASD-STE100 technical-English policy](../../TECHNICAL_ENGLISH.md) for all technical prose
 and review output.
 
 ## Engineering principle routes

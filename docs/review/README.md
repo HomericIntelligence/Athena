@@ -6,7 +6,7 @@ the delivery channel appropriate to its scope. It applies the canonical
 [engineering principles](../principles/README.md) through review-specific profiles instead of
 redefining them.
 
-Use the [ASD-STE100 writing policy](../../skills/TECHNICAL_ENGLISH.md) for all technical prose and review
+Use the [ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.md) for all technical prose and review
 output.
 
 ## System at a glance
@@ -36,7 +36,7 @@ flowchart LR
 
 | Component | Owns | Read when |
 | --- | --- | --- |
-| [ASD-STE100 writing policy](../../skills/TECHNICAL_ENGLISH.md) | Method for technical prose and literal-text boundary. | Before you write or change technical prose or review output. |
+| [ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.md) | Method for technical prose and literal-text boundary. | Before you write or change technical prose or review output. |
 | [Shared contract](common.md) | Architecture gate, evidence, canonical-principle application profiles, findings, and delivery boundaries. | Every review. |
 | [Language routing](language-routing.md) | Applicable language and toolchain profile. | The changed or inventoried surface contains code or build tooling. |
 | [Behavior-first testing](behavior-first-testing.md) | Functional-test quality and false-confidence rules. | Tests, validation, or a plan are in scope. |
@@ -46,7 +46,7 @@ flowchart LR
 
 ## Read order
 
-1. Read the ASD-STE100 writing policy.
+1. Read the ASD-STE100 technical-English policy.
 2. Read the shared contract and repository guidance.
 3. Confirm that the artifact aligns with the architecture.
 4. Classify the surface.

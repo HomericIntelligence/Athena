@@ -4,7 +4,7 @@
 keeps each Athena review architecture-first and evidence-bound. It also specifies the correct delivery
 channel.
 
-Use the [ASD-STE100 writing policy](../../skills/TECHNICAL_ENGLISH.md) for all technical prose and review
+Use the [ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.md) for all technical prose and review
 output.
 
 This is the canonical contract for `change-review`, `issue-review`, `plan-issue`, `finalize-plan`,

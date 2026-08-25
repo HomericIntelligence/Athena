@@ -6,7 +6,7 @@ This profile separates validation from review. The reviewer must stay in the sup
 snapshot. The result is audit evidence only. An attested host controls each execution and forge action.
 Review prose does not control these actions.
 
-Use Athena's [ASD-STE100 writing policy](../../TECHNICAL_ENGLISH.md) for all technical prose
+Use the [ASD-STE100 technical-English policy](../../TECHNICAL_ENGLISH.md) for all technical prose
 and review output.
 
 ```text
