@@ -1755,7 +1755,7 @@ class WorktreeScriptTests(unittest.TestCase):
 
     def test_prepare_worktree_rejects_intermediate_symlink_parent(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
-            root = Path(temporary_directory)
+            root = Path(temporary_directory).resolve()
             repository = root / "repo"
             initialize_repository(repository)
             real_parent = root / "real"
@@ -1777,6 +1777,7 @@ class WorktreeScriptTests(unittest.TestCase):
                 cwd=repository,
             )
             self.assertFalse(target.exists())
+            self.assertIn(str(symlink_parent), result.stderr)
 
         assert_cli_failure(self, result, 1)
 
@@ -1886,7 +1887,7 @@ class WorktreeScriptTests(unittest.TestCase):
 
     def test_prepare_worktree_rejects_symlink_within_requested_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
-            root = Path(temporary_directory)
+            root = Path(temporary_directory).resolve()
             repository = root / "repo"
             initialize_repository(repository)
             outside = root / "outside"
@@ -1907,6 +1908,7 @@ class WorktreeScriptTests(unittest.TestCase):
                 cwd=repository,
             )
             self.assertFalse(target.exists())
+            self.assertIn(str(requested / "linked"), result.stderr)
 
         assert_cli_failure(self, result, 1)
 
@@ -1914,7 +1916,7 @@ class WorktreeScriptTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
-            root = Path(temporary_directory)
+            root = Path(temporary_directory).resolve()
             repository = root / "repo"
             initialize_repository(repository)
             real_parent = root / "real"
@@ -1936,6 +1938,7 @@ class WorktreeScriptTests(unittest.TestCase):
                 cwd=repository,
             )
             self.assertFalse(target.exists())
+            self.assertIn(str(linked_parent), result.stderr)
 
         assert_cli_failure(self, result, 1)
 
@@ -1943,7 +1946,7 @@ class WorktreeScriptTests(unittest.TestCase):
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
-            root = Path(temporary_directory)
+            root = Path(temporary_directory).resolve()
             repository = root / "repo"
             initialize_repository(repository)
             real_parent = root / "real"
@@ -1966,12 +1969,13 @@ class WorktreeScriptTests(unittest.TestCase):
                 cwd=repository,
             )
             self.assertFalse(target.exists())
+            self.assertIn(str(linked_parent), result.stderr)
 
         assert_cli_failure(self, result, 1)
 
     def test_prepare_worktree_rejects_broken_symlink_ancestor(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
-            root = Path(temporary_directory)
+            root = Path(temporary_directory).resolve()
             repository = root / "repo"
             initialize_repository(repository)
             broken_parent = root / "broken"
@@ -1991,6 +1995,7 @@ class WorktreeScriptTests(unittest.TestCase):
                 cwd=repository,
             )
             self.assertFalse(target.exists())
+            self.assertIn(str(broken_parent), result.stderr)
 
         assert_cli_failure(self, result, 1)
 

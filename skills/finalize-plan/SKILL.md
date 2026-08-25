@@ -72,7 +72,9 @@ Use the forge's native issue-body mechanism. The host must have these capabiliti
 - read back that body update.
 
 If one capability is not available, return a ready-to-publish draft. Identify the capability gap.
-Do not create, adopt, edit, or replace plan or review comments to make finalization possible.
+Do not create plan or review comments to make finalization possible. Do not adopt plan or review
+comments for this purpose. Do not edit plan or review comments for this purpose. Do not replace plan
+or review comments for this purpose.
 
 ## Finalized planning epoch
 
@@ -137,35 +139,36 @@ recursion.
 21. If a smaller lossless result is sufficient, do not duplicate the plan and review verbatim.
 22. Add the finalized marker.
 23. Calculate `F` from its canonical representation that does not contain its own value.
-24. If the user selects `--draft`, return the complete body, `R`, `P`, `V`, `F`, source links, and all
-    reasons for withheld writes.
-25. For `--draft`, do not make a forge write.
-26. Under [P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061),
-    immediately before publication, resolve the issue, actor, each comment and marker, `R`, `P`, `V`,
-    review disposition, and target body again for the authority check.
-27. If an input changed, return the ready-to-publish body with the `stale` status.
-28. After an input changes, do not write.
-29. Under [P044 Atomicity Where Possible](../../docs/principles/README.md#p044), publish exactly one
+24. If the user selects `--draft`, return the complete body, `R`, `P`, `V`, `F`, and source links.
+25. For `--draft`, return all reasons for withheld writes.
+26. For `--draft`, do not make a forge write.
+27. Immediately before publication, apply
+    [P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061).
+28. For this check, resolve the issue, actor, each comment and marker, `R`, `P`, `V`, review
+    disposition, and target body again.
+29. If an input changed, return the ready-to-publish body with the `stale` status.
+30. After an input changes, do not write.
+31. Under [P044 Atomicity Where Possible](../../docs/principles/README.md#p044), publish exactly one
     issue-body replacement.
-30. Immediately read the issue again.
-31. Under [P065 Verify Before Claiming Completion](../../docs/principles/README.md#p065), verify the
+32. Immediately read the issue again.
+33. Under [P065 Verify Before Claiming Completion](../../docs/principles/README.md#p065), verify the
     exact body, marker, `R`, `P`, `V`, and `F`.
-32. If a timeout, indeterminate response, or readback mismatch occurs, report `unknown-outcome`.
-33. After a timeout, indeterminate response, or readback mismatch, do not retry.
-34. After a timeout, indeterminate response, or readback mismatch, do not make another mutation.
-35. Only after a successful body readback, use
+34. If a timeout, indeterminate response, or readback mismatch occurs, report `unknown-outcome`.
+35. After a timeout, indeterminate response, or readback mismatch, do not retry.
+36. After a timeout, indeterminate response, or readback mismatch, do not make another mutation.
+37. Only after a successful body readback, use
     [P083 Irreversible Actions Last](../../docs/principles/README.md#p083) to read each sealed comment
     again.
-36. Verify the exact ID, actor, marker, and digest of each sealed comment.
-37. Delete the plan comment only after its exact verification.
-38. Delete the review comment only after its exact verification.
-39. Do not delete a foreign, replacement, or changed comment.
-40. If deletion fails, times out, or has an indeterminate result, report `partial-cleanup`.
-41. State that an indeterminate deletion result is unknown.
-42. After a deletion failure, timeout, or indeterminate result, do not retry.
-43. After a deletion failure, timeout, or indeterminate result, do not compensate.
-44. After a deletion failure, timeout, or indeterminate result, do not remove the finalized body.
-45. After a deletion failure, timeout, or indeterminate result, report the identities of the comments
+38. Verify the exact ID, actor, marker, and digest of each sealed comment.
+39. Delete the plan comment only after its exact verification.
+40. Delete the review comment only after its exact verification.
+41. Do not delete a foreign, replacement, or changed comment.
+42. If deletion fails, times out, or has an indeterminate result, report `partial-cleanup`.
+43. State that an indeterminate deletion result is unknown.
+44. After a deletion failure, timeout, or indeterminate result, do not retry.
+45. After a deletion failure, timeout, or indeterminate result, do not compensate.
+46. After a deletion failure, timeout, or indeterminate result, do not remove the finalized body.
+47. After a deletion failure, timeout, or indeterminate result, report the identities of the comments
     that remain.
 
 If the final material contains architecture, test, error, or security decisions, preserve the
@@ -213,7 +216,7 @@ headings, paragraph counts, or an example issue body.
 - Do not replace behavior-first verification with wording checks. Do not invent files, commands, or
   validation evidence during synthesis.
 - After a timeout or readback mismatch, do not retry. Report `unknown-outcome`.
-- After an indeterminate deletion, do not retry. Report `partial-cleanup` and state that the deletion
+- After an indeterminate deletion, do not retry. Report `partial-cleanup`. State that the deletion
   result is unknown.
 
 ## Result

@@ -40,9 +40,9 @@ planning decisions:
 ## Scope and delivery
 
 `--draft` is read-only. If the request does not include `--draft`, you may publish only the
-actor-owned canonical-plan issue comment in the issue-planning contract. Do not implement code,
-change labels or assignments, create commits, push branches, create pull requests, merge changes,
-or make other forge changes.
+actor-owned canonical-plan issue comment in the issue-planning contract. Do not implement code. Do
+not change labels or assignments. Do not create commits. Do not push branches. Do not create pull
+requests. Do not merge changes. Do not make other forge changes.
 
 Use the native issue-comment mechanism of the forge. If the forge cannot safely identify or update
 the actor-owned plan, return a ready-to-publish draft. Explain the capability or ownership gap.
@@ -103,10 +103,11 @@ Activate these shared profiles only for the specified surface:
 - For security or a new trust boundary, activate
   [P048 Secure by Design](../../docs/principles/README.md#p048).
 
-If the issue body has a valid finalized-planning marker, use its sealed provenance and generated
-plan text only as implementation context. Do not treat them as new requirements. If the finalized
-epoch is unchanged, do not create a new plan. If a later material edit changes the issue body,
-start a new requirements state. Plan from that edit under the issue-planning contract.
+If the issue body has a valid finalized-planning marker, use only its sealed provenance as
+implementation context. Use the generated plan text for the same purpose. Do not treat them as new
+requirements. If the finalized epoch is unchanged, do not create a new plan. If a later material
+edit changes the issue body, start a new requirements state. Plan from that edit under the
+issue-planning contract.
 
 For a material architecture decision, include or cite a
 [design record](../../docs/review/design-docs.md). Start the design record with the reason for the

@@ -64,7 +64,7 @@ trusted without verification.
   `scripts/list_retrievable_skills.py <knowledge-root>` by its absolute path.
 - Use only the returned flat main-skill paths as retrieval candidates. The helper excludes notes,
   history, and nested artifacts through the same executable contract that `learn` uses.
-- If the helper fails outside planning mode, report the capability failure and stop.
+- If the helper fails outside planning mode, report the capability failure. In that case, stop.
 - If the helper fails in planning mode, report `no applicable durable guidance` and the limit.
 - Do not replace a failed helper with a custom glob.
 - Search these fields in the returned files: names, descriptions, categories, tags, triggers, failed

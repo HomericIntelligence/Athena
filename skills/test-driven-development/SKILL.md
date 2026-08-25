@@ -57,9 +57,9 @@ START A PURE REFACTOR FROM A VERIFIED GREEN BASELINE
 ```
 
 If you wrote an in-scope implementation that changes behavior before RED, remove only the work that
-you added. Then, start with RED. If a pure refactor started without a verified baseline, stop and
-establish one before you continue. Preserve existing work and work that the user authored. If the
-source or scope of the work is not clear, ask for direction.
+you added. Then, start with RED. If a pure refactor started without a verified baseline, stop.
+Establish a verified baseline before you continue. Preserve existing work and work that the user
+authored. If the source or scope of the work is not clear, ask for direction.
 
 ## RED-GREEN-REFACTOR
 
@@ -86,7 +86,7 @@ step 5. If the intended work changes the observable contract, return to RED.
    - For a filtered command, use the output to prove that the command selected an applicable test.
    - Connect each C++/CMake test source to a real build target and test target.
    - If the test passes, it covers existing behavior.
-   - If the test has an error, correct the test setup and run the test again.
+   - If the test has an error, correct the test setup. Then, run the test again.
    - Under [P027](../../docs/principles/README.md#p027), keep the test deterministic and isolated.
 
 3. **GREEN:** Write the simplest behaviorally complete code that passes the behavior test.
@@ -142,7 +142,7 @@ use `learn`. The scope and delivery rules of `learn` determine if it publishes a
 
 - Do not write production code before RED.
 - Do not keep in-scope implementation that you wrote before the test.
-- Do not accept a test error as RED. Correct the setup and run the test until it fails for the
+- Do not accept a test error as RED. Correct the setup. Then, run the test until it fails for the
   expected missing behavior.
 - Do not weaken a test to reach GREEN. Correct the code.
 - Do not add speculative features or unrelated refactors beyond the need that the test shows.

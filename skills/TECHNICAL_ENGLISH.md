@@ -76,4 +76,4 @@ If you cannot use the current official standard:
 
 Do not state that the text conforms to ASD-STE100.
 
-Do not state that a person or tool certified or verified the text.
+Do not state that a person or tool certified or verified ASD-STE100 conformance.

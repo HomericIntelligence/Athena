@@ -1,7 +1,7 @@
 ---
 name: git-worktrees
 license: BSD-3-Clause
-description: Use for feature work that needs an isolated Git worktree. If Git does not ignore a project-local directory, use the verified temporary-directory fallback. If repository guidance requires the local directory, report the problem and stop before creation. If the helper cannot verify a clean base commit, report the problem and stop before creation. Do not delete anything.
+description: Use for feature work that needs an isolated Git worktree. If Git does not ignore a project-local directory, use the verified temporary-directory fallback. If repository guidance requires the local directory, report the problem. In that case, stop before creation. If the helper cannot verify a clean base commit, report the problem. In that case, stop before creation. Do not delete anything.
 argument-hint: <branch-name or feature description>
 allowed-tools: [Bash, Read]
 ---
@@ -75,18 +75,19 @@ ignore the directory, the helper stops before it makes a change.
 
 #### If Git does not ignore the directory
 
-1. Do not edit or commit `.gitignore`.
-2. Do not create the project-local worktree.
-3. If repository guidance requires the project-local directory, report the ignore-policy
+1. Do not edit `.gitignore`.
+2. Do not commit `.gitignore`.
+3. Do not create the project-local worktree.
+4. If repository guidance requires the project-local directory, report the ignore-policy
    prerequisite.
-4. If repository guidance requires the project-local directory, stop.
-5. Change `.gitignore` only in a separate authorized change.
-6. After that change is validated and committed, prepare the worktree again.
-7. If repository guidance does not require the project-local directory, get `<temporary-root>` from
+5. If repository guidance requires the project-local directory, stop.
+6. Change `.gitignore` only in a separate authorized change.
+7. After that change is validated and committed, prepare the worktree again.
+8. If repository guidance does not require the project-local directory, get `<temporary-root>` from
    the host.
-8. Give preference to a safe temporary destination.
-9. Pass `--path <temporary-root>/<project>-<branch>` and `--path-root <temporary-root>` to the helper.
-10. Report the fallback path.
+9. Give preference to a safe temporary destination.
+10. Pass `--path <temporary-root>/<project>-<branch>` and `--path-root <temporary-root>` to the helper.
+11. Report the fallback path.
 
 This check prevents Git from tracking the worktree contents.
 
@@ -103,15 +104,16 @@ You do not have to verify `.gitignore` for a path under `/tmp`. This path is out
 5. Prepare `BRANCH_NAME --start-point BASE_SHA --dry-run` as the helper arguments.
 6. If the contract requires a distinct branch and path, add exact `--path` and `--path-root` values.
 7. If repository guidance specifies a directory, add it through `--directory`.
-8. If an unignored local directory requires the temporary fallback, use the same exact `--path` and
-   `--path-root` values for both helper calls.
-9. Invoke the helper by its absolute path with the prepared dry-run arguments.
-10. Create the worktree with the same arguments without `--dry-run`.
-11. Do not replace the recorded SHA with the current `HEAD`.
-12. Change to the returned path.
-13. If the repository defines a bootstrap, run it.
-14. Use the repository tests to verify a clean baseline.
-15. Report the path, start SHA, and result.
+8. If an unignored local directory requires the temporary fallback, retain the exact `--path` and
+   `--path-root` values.
+9. For this fallback, use those values for both helper calls.
+10. Invoke the helper by its absolute path with the prepared dry-run arguments.
+11. Create the worktree with the same arguments without `--dry-run`.
+12. Do not replace the recorded SHA with the current `HEAD`.
+13. Change to the returned path.
+14. If the repository defines a bootstrap, run it.
+15. Use the repository tests to verify a clean baseline.
+16. Report the path, start SHA, and result.
 
 **If the tests fail:** Report the failures. Ask whether to continue or investigate.
 

@@ -59,7 +59,7 @@ best effort. Report these items:
 - origin and trust status; and
 - each freshness or verification limit.
 
-If no usable checkout exists or inspection fails, report `blocked` and stop. Do not substitute a
+If no usable checkout exists or inspection fails, report `blocked`. In that case, stop. Do not substitute a
 different repository. Do not continue to analyze possible duplicates.
 
 Before you create a new PR, complete the normal dependency-resolution update and revalidation. Use
@@ -307,15 +307,15 @@ Do not use this fallback to reconstruct an Existing-PR worktree.
     - exact validation evidence.
 
 A write disposition succeeds only if it has a PR URL. If validation, push, or PR creation fails,
-preserve the isolated worktree and report the blocker. Do not use Athena, a default branch, or a
+preserve the isolated worktree. In that case, report the blocker. Do not use Athena, a default branch, or a
 different repository as a fallback. Preserve delegated and delivery worktrees until their unique
 work is integrated or explicitly rejected.
 
 Cleanup is a separate operation. Remove only a worktree that this invocation created. Require user
 authority for the removal. Before removal, confirm that no uncommitted or unintegrated state remains.
 If these conditions are not satisfied, leave each applicable worktree intact. For each worktree,
-report its path, owner, revision, cleanliness, and integration state. Do not delete branches, discard
-changes, force removal, or change a pre-existing worktree.
+report its path, owner, revision, cleanliness, and integration state. Do not delete branches. Do not
+discard changes. Do not force removal. Do not change a pre-existing worktree.
 
 ## Failed approaches
 

@@ -147,15 +147,17 @@ Complete in order:
 
 ### Save a specification only when necessary
 
-For a small change, keep the design in the conversation and continue. If complexity, project policy,
-or a current downstream consumer requires a durable specification, save it to
+For a small change, keep the design in the conversation. Then, continue with the requested
+implementation. If complexity, project policy, or a current downstream consumer requires a durable
+specification, save it to
 `docs/specs/YYYY-MM-DD-<topic>-design.md`. Use this commit message:
 `docs(specs): add <topic> design document`.
 
 Before you write or commit a specification, read the target repository policies for mutation,
 signing, the Developer Certificate of Origin (DCO), and review. If the specification is in scope,
-you can write and commit it without a separate approval prompt. If a durable artifact is not
-necessary, keep the specification in the conversation.
+you can write it without a separate approval prompt. After you write an in-scope specification, you
+can commit it without a separate approval prompt. If a durable artifact is not necessary, keep the
+specification in the conversation.
 
 ### Review the specification
 
@@ -188,7 +190,7 @@ implementation unless the user requests changes. Use this message:
 - **Compare alternatives.** Always propose two or three approaches.
 - **Validate in increments.** Present the design in sections. Resolve material ambiguity before you
   continue.
-- **Invoke `advise` first.** Do not duplicate an existing solution or repeat a problem that prior
+- **Invoke `advise` first.** Do not duplicate an existing solution. Do not repeat a problem that prior
   guidance already resolved.
 
 ---

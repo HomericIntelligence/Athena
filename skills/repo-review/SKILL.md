@@ -1,7 +1,7 @@
 ---
 name: repo-review
 license: BSD-3-Clause
-description: Perform an architecture-first, full-inventory repository review with adaptive surface and language checks. Use this skill to assess a repository. Unless the user requests `--report-only`, publish deduplicated GitHub tracking issues and available Project fields or a GitLab epic for actionable findings.
+description: Perform an architecture-first, full-inventory repository review with adaptive surface and language checks. Use this skill to assess a repository. Unless the user requests `--report-only`, publish actionable findings. For GitHub, use deduplicated tracking issues and available Project fields. For GitLab, use an epic.
 argument-hint: "[quick|default] [--report-only]"
 allowed-tools: [Read, Bash, Grep, Glob, Agent]
 ---
@@ -64,17 +64,20 @@ unrelated principle.
 
 ## Delivery and modes
 
-`--report-only` is read-only. If a requested review does not include `--report-only`, perform only
-the documented tracker and work-item publication after the review is complete. Do not merge, change
-labels, close issues, push, or modify source. An indirect invocation does not increase the forge
-write scope.
+`--report-only` is read-only. Complete the review before publication. If a requested review does not
+include `--report-only`, perform only the documented tracker and work-item publication. Do not merge.
+Do not change labels. Do not close issues. Do not push. Do not modify source. An indirect invocation
+does not increase the forge write scope.
 
 `default` gives full coverage and a detailed report. `quick` uses the same coverage and standards.
 It returns the decisive evidence, blockers, and top three actions. The `quick` mode does not use a
 lower standard.
 
-If independent agents are available, give them inventory areas that do not overlap. Before the
-final report, repeat or complete each failed, timed-out, or sampled section.
+If independent agents are available, give them inventory areas that do not overlap. Before the final
+report, select one action for each failed, timed-out, or sampled section:
+
+- repeat it; or
+- complete it.
 
 ## Review
 
@@ -178,12 +181,13 @@ bindings again. If one of these bindings changed, withhold all remaining writes.
 partial result accurately.
 
 On GitHub, use a writable Project only if you verify its item capability and the meaning of each
-mapped field. Do not create, rename, or guess fields. On GitLab, use a group epic and child issues if
-they are available. If a required publication capability is not available, return ready-to-publish
-artifacts and name the capability gap.
+mapped field. Do not create fields. Do not rename fields. Do not guess fields. On GitLab, use a group
+epic and child issues if they are available. If a required publication capability is not available,
+return ready-to-publish artifacts. Name the capability gap.
 
-When requested, create or update one actor-owned tracker. Include the binding, scope, architecture
-decision, scorecard, and finding URLs. Use a stable marker only in content that the actor owns.
+When requested, use one actor-owned tracker. Create it if it does not exist. Otherwise, update it.
+Include the binding, scope, architecture decision, scorecard, and finding URLs. Use a stable marker
+only in content that the actor owns.
 
 Create one deduplicated child for each remaining actionable finding. Link the child as a GitHub
 sub-issue or GitLab epic child. Link an existing issue only if it is open and still covers the
@@ -191,13 +195,14 @@ remediation. A regression requires its own active child unless the requested sco
 issue.
 
 If a writable compatible GitHub Project is available, add tracker and child items to it. Preserve
-unrelated fields and record the returned URLs or IDs. If a publication step fails, report the
-partial result. Leave the remaining ready-to-publish items in the result.
+unrelated fields. Record the returned URLs or IDs. If a publication step fails, report the partial
+result. Leave the remaining ready-to-publish items in the result.
 
 ## Failed approaches
 
 - Do not publish tracker issues in `--report-only` mode.
-- Do not merge, label, close, or push in any mode.
+- Do not merge in any mode. Do not label in any mode. Do not close in any mode. Do not push in any
+  mode.
 - Do not grade sections from prose, intent, filenames, or badges.
 - Grade sections from observed inventory evidence.
 - Do not create a duplicate issue if an open issue covers the remediation. Link the open issue.

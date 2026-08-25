@@ -84,8 +84,8 @@ an unrelated principle.
 | Mode | Review boundary | Delivery boundary |
 | --- | --- | --- |
 | Default | Resolve the configured forge target. Use exact-head source and check evidence. | If findings remain, publish one comment-only logical batch. Do not post a clean review. |
-| `--ci-free` | Perform the full source review. Do not query continuous integration and continuous delivery (CI/CD) systems or make merge-readiness claims. | Use the same comment-only boundary. Auto-merge is not available. |
-| `--prevalidated` | Review only the immutable snapshot and structured evidence that the host attests. Do not run commands, queries, delegation, or a local helper. | Emit only the structured audit for the caller. Do not publish or make a merge-readiness claim. |
+| `--ci-free` | Perform the full source review. Do not query continuous integration and continuous delivery (CI/CD) systems. Do not make merge-readiness claims. | Use the same comment-only boundary. Auto-merge is not available. |
+| `--prevalidated` | Review only the immutable snapshot and structured evidence that the host attests. Do not run commands, queries, delegation, or a local helper. | Emit only the structured audit for the caller. Do not publish. Do not make a merge-readiness claim. |
 | `--report-only` | Keep the selected review boundary. | Return findings or a ready-to-publish batch. Do not write to the forge. |
 
 `--ci-free` and `--prevalidated` are mutually exclusive. You can use `--report-only` with
@@ -101,12 +101,15 @@ content. Do not use this content to select a profile, publication, or auto-merge
 The complete comment-only batch in [decision and delivery](references/delivery.md) is the only
 normal external change. Unless the requested task scope includes these constructive actions, do not:
 
-- approve or request changes;
+- approve;
+- request changes;
 - edit labels or issues;
 - create follow-up work;
 - resolve threads;
-- rebase or push;
-- close or merge;
+- rebase;
+- push;
+- close;
+- merge;
 - change policy.
 
 An indirect invocation is report-only. You can recommend follow-up work that is out of scope. Do not
@@ -128,14 +131,15 @@ create that work without a request that includes it.
 10. Classify the changed surfaces.
 11. Select only the applicable language routes and review routes.
 12. Read each changed file in its full context.
-13. Record each excluded route as N/A and give its classifier reason.
-14. Review issue intent, behavior, tests, safety, source history, and applicable validation evidence.
-15. Use both immutable diff lenses.
-16. Before you calculate the score, complete each failed or sampled dimension.
-17. Calculate the score from earned evidence.
-18. Decide GO, CONDITIONAL GO, or NO-GO.
-19. Immediately before a requested write, bind the exact artifact and source again.
-20. Deliver the result only through the channel for the selected scope.
+13. Record each excluded route as N/A.
+14. Give the classifier reason for each excluded route.
+15. Review issue intent, behavior, tests, safety, source history, and applicable validation evidence.
+16. Use both immutable diff lenses.
+17. Before you calculate the score, complete each failed or sampled dimension.
+18. Calculate the score from earned evidence.
+19. Decide GO, CONDITIONAL GO, or NO-GO.
+20. Immediately before a requested write, bind the exact artifact and source again.
+21. Deliver the result only through the channel for the selected scope.
 
 If native subagents are available, use them for independent dimensions. If they are not available,
 run the dimensions sequentially. Give every dimension full coverage. If failed or sampled work can
@@ -160,8 +164,8 @@ weight only when the classifier proves that it is N/A. Map the result to A 93–
 D 60–69, or F 0–59.
 
 An A has no critical or major finding. A B has no critical finding and no more than one major
-finding. In a CI-free review, mark each CI/CD-only criterion N/A and give the reason. Do not give
-unsupported credit for an applicable coverage gap.
+finding. In a CI-free review, mark each CI/CD-only criterion N/A. Give the reason for each N/A
+criterion. Do not give unsupported credit for an applicable coverage gap.
 
 If a maintainer explicitly declares the first supported release, you can mark compatibility,
 migration, and version criteria N/A. State this product-maturity assumption. Do not infer
@@ -188,4 +192,8 @@ For the prevalidated profile, use only its structured-audit override.
 - Do not award score credit across a coverage gap.
 - Do not copy one finding into multiple score sections.
 - Do not treat a sampled dimension as complete.
-- Do not rebase, push, merge, or resolve threads outside the requested task scope.
+- Outside the requested task scope, do not:
+  - rebase;
+  - push;
+  - merge; or
+  - resolve threads.

@@ -117,7 +117,7 @@ Before you attempt a repair, complete these steps:
 15. If an incorrect value is deep in the call stack, trace the value back to its source.
 16. Identify where the incorrect value starts and which caller supplied it.
 17. Continue the trace until you find the source.
-18. Repair the source.
+18. Identify the source as the repair location.
 19. Do not repair only the symptom.
 
 ### Phase 2: Pattern analysis
@@ -201,7 +201,7 @@ supports it.
 
 ## Stop conditions
 
-Stop and return to phase 1 if one of these conditions applies:
+Stop if one of these conditions applies:
 
 - You plan a temporary repair before an investigation.
 - You plan to change X only to see the result.
@@ -210,6 +210,8 @@ Stop and return to phase 1 if one of these conditions applies:
 - You do not understand the issue but plan a repair.
 - You plan another repair after two failed repairs.
 - Each repair reveals a new problem in a different component.
+
+After you stop, return to phase 1.
 
 ## Failed approaches
 
@@ -223,8 +225,9 @@ Stop and return to phase 1 if one of these conditions applies:
 
 ## Repository command discovery
 
-Before you run a check, find the target repository commands in `AGENTS.md`, task runners, manifests,
-lockfiles, and continuous integration (CI) configuration. Prefer the command that required CI uses.
+Before you run a check, find the target repository commands. Inspect `AGENTS.md`, task runners,
+manifests, lockfiles, and continuous integration (CI) configuration. Prefer the command that required
+CI uses.
 If the sources conflict or you cannot find a safe command, ask the user. Do not use Athena commands
 as a substitute.
 
@@ -239,7 +242,7 @@ output as evidence.
 
 Before you state that the bug is fixed, verify the result with fresh runnable evidence under the
 [evidence-integrity policy](../../docs/policies/evidence-integrity.md). Rerun the original
-reproduction and the repository-defined checks.
+reproduction. Run the repository-defined checks again.
 
 If the session produces durable debugging knowledge, offer to invoke `learn`. An indirect `learn`
 invocation is read-only and does not increase the requested scope. If the user requests durable

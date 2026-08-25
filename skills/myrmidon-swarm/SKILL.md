@@ -68,7 +68,7 @@ Before you start subagents, record the integration base revision. For each work 
   a complete read-only report. The coordinator remains responsible for the final result.
 
 Read-only agents can inspect the same evidence, but they must not edit it. If the coordinator cannot
-establish safe isolation, stop delegation and use the sequential fallback.
+establish safe isolation, stop delegation. In that case, use the sequential fallback.
 
 ## Workflow
 
@@ -104,13 +104,14 @@ establish safe isolation, stop delegation and use the sequential fallback.
 19. Reject unrelated changes and stale results.
 20. Integrate accepted results sequentially onto the coordinator branch.
 21. After all producers finish, resolve shared integration files.
-22. If repository policy or risk requires an independent review, route security-critical or
-    availability-critical changes to a qualified reviewer before you accept them.
-23. After each integration, run focused checks for the affected boundary.
-24. After the final integration, run all relevant repository validation on the combined tree.
-25. Summarize the changes, verification, unresolved risks, and preserved worktrees.
-26. In the summary, identify each useful lesson that is suitable for `learn`.
-27. If you invoke `learn`, follow its delivery boundary.
+22. If repository policy or risk requires an independent review, route each security-critical or
+    availability-critical change to a qualified reviewer.
+23. Complete each review before you accept the related change.
+24. After each integration, run focused checks for the affected boundary.
+25. After the final integration, run all relevant repository validation on the combined tree.
+26. Summarize the changes, verification, unresolved risks, and preserved worktrees.
+27. In the summary, identify each useful lesson that is suitable for `learn`.
+28. If you invoke `learn`, follow its delivery boundary.
 
 ## Worktree disposition
 
@@ -124,8 +125,8 @@ For each worktree, report its path, owner, branch or revision, cleanliness, and 
 Cleanup is a filesystem-destructive operation. If the user grants cleanup authority, first check
 again for uncommitted or unintegrated state. Prove that no unique work remains. Then, remove only
 worktrees that this invocation created. If the user does not grant cleanup authority, preserve the
-worktrees and report their exact status. Do not delete branches, discard changes, force removal, or
-change a pre-existing worktree.
+worktrees. In that case, report their exact status. Do not delete branches. Do not discard changes. Do not
+force removal. Do not change a pre-existing worktree.
 
 ## Safety
 
@@ -139,7 +140,8 @@ change a pre-existing worktree.
 
 - Do not let specialists write outside their worktrees or file sets.
 - Do not reuse a worktree that another agent owns.
-- Do not merge results or remove worktrees without the disposition contract.
+- Do not merge results without the disposition contract.
+- Do not remove worktrees without the disposition contract.
 - Do not remove worktrees without user cleanup authority.
 - Do not report swarm status without results, evidence, and worktree status for each specialist.
 - Do not expand a subagent assignment beyond its bounded prompt. Stop if assignments overlap.

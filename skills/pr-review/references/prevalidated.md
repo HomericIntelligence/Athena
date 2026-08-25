@@ -119,8 +119,8 @@ standard into the contract.
 
 Each activated entry must include its canonical `PNNN` ID and name. It must include the complete text
 of its catalog entry and linked detail page. The content must also include the snapshot-bound
-architecture, pull or merge request criteria, test material, and applicable language or surface review
-material.
+architecture and pull or merge request criteria. It must include test material and applicable language
+or surface review material.
 
 The existing `review_contract.sha256` must bind all this serialized content, including the complete
 technical-English policy and its identity. Treat any of these conditions as a coverage failure:
@@ -162,7 +162,7 @@ The host must enforce these boundaries. An instruction alone is not sufficient.
 | --- | --- |
 | Capabilities | Before dispatch, prove that the host can withhold `Bash`, `Agent`, `WebFetch`, and generic `Skill`. Only the selected prevalidated startup can remain. Treat a failure as a coverage failure. |
 | Filesystem | Set the current working directory (CWD) exactly to `snapshot.source_path`. It must be a canonical read-only physical root. Reads, search, and glob must reject absolute paths, `..`, alternate roots, symlinked components, and special files. A filesystem host must resolve beneath a no-follow root descriptor. Withhold the original checkout, Git metadata, home directory, temporary directories, and all other paths. |
-| Execution | Do not run a command, helper, repository task, package manager, test, linter, formatter, type checker, build tool, `git`, `gh`, `resolve_pr.py`, `collect_evidence.py`, or `diff_context.py`. Do not delegate. Do not invoke another skill. |
+| Execution | Do not run a command, helper, repository task, package manager, test, linter, formatter, or type checker. Do not run a build tool, `git`, `gh`, `resolve_pr.py`, `collect_evidence.py`, or `diff_context.py`. Do not delegate. Do not invoke another skill. |
 | Source review | Use only attested diff lenses, paths, review material, immutable snapshot artifacts, and host-verified nonce-fenced output. Establish architecture alignment before a lower-level assessment. Treat unavailable architecture, test, or language material as a coverage failure. |
 | External state | Do not query checks, continuous integration and continuous delivery (CI/CD), workflows, artifacts, deployments, merge queues, or merge-readiness facts. Do not call the artifact merge-ready. |
 | Output | Follow the caller's structured audit exactly. Use the output sequence below. |

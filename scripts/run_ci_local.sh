@@ -56,7 +56,7 @@ log_step()  { echo -e "\n${BLUE}==>${NC} $*"; }
 detect_engine() {
     if [ -n "${CONTAINER_ENGINE:-}" ]; then
         if ! command -v "${CONTAINER_ENGINE}" &> /dev/null; then
-            log_error "The command cannot find 'CONTAINER_ENGINE=${CONTAINER_ENGINE}' in PATH."
+            log_error "The script cannot find the selected executable '${CONTAINER_ENGINE}'."
             exit 1
         fi
         log_info "The selected container engine is '${CONTAINER_ENGINE}'."

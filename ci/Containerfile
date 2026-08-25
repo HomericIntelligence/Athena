@@ -18,13 +18,11 @@
 #   podman run --rm -v .:/workspace:Z athena-ci:local uv run pre-commit run --all-files
 
 # ============================================================================
-# Stage 0 installs the uv binary from a pinned GitHub release.
-# The checksum verifies the release archive.
-# Podman, Buildah, and Docker resolve the same release artifact.
-# This method does not copy a third-party image between registries.
-# The version tags for the ghcr.io astral-sh/uv image do not track uv command-line
-# interface versions. For example, version 0.11.21 is not available there.
-# Thus, this stage pins the release archive.
+# Stage 0 installs the uv binary from a pinned GitHub release archive.
+# The pinned URL selects one uv release.
+# The SHA-256 checksum verifies the archive.
+# Each supported container engine downloads the same archive.
+# This method does not copy the official uv container image between registries.
 # ============================================================================
 FROM python:3.13-slim@sha256:6771159cd4fa5d9bba1258caf0b82e6b73458c694d178ad97c5e925c2d0e1a91 AS uv
 
@@ -63,9 +61,9 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install the pinned uv release.
-# When you update uv, update the release URL and SHA-256 checksum together.
-# Also update astral-sh/setup-uv in .github/workflows/*.yml to the same version.
+# This image pins uv for checks that run in the container.
+# Workflows pin setup-uv separately for checks that run outside this image.
+# When you update this image pin, update the release URL and SHA-256 checksum together.
 COPY --from=uv /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/
 
 # Layer 1 copies the dependency files. Dependency changes invalidate this cache layer.

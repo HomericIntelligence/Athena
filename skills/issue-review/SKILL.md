@@ -46,9 +46,9 @@ issue-planning contract to identify the plan owner, marker, presence or absence,
 historical plans and reviews only as background information.
 
 If the request includes `--report-only`, this skill is read-only. Do not publish a comment. If the
-request does not include this option, first compare the required identities and confirm a safe forge
-capability. Then you can publish exactly one actor-owned structured review comment. Do not expand
-the scope to these items:
+request does not include this option, first compare the required identities. Then, confirm a safe
+forge capability. You can then publish exactly one actor-owned structured review comment. Do not
+expand the scope to these items:
 
 - labels;
 - assignment;
@@ -122,13 +122,15 @@ Review only a later material issue change and its current canonical plan. An unc
 epoch is not a new review target.
 
 Immediately before you publish the requested comment, resolve the canonical planning identity again.
-If one of these conditions is true, withhold the comment and report the `stale` status:
+If one of these conditions is true, withhold the comment:
 
 - identity drift;
 - a foreign marker;
 - multiple markers;
 - a change to verified absence; or
 - no safe forge capability.
+
+If you withhold the comment, report the `stale` status.
 
 Otherwise, publish exactly one actor-owned structured comment. Include a clean result or verified
 absent-plan coverage gap.
@@ -141,7 +143,7 @@ absent-plan coverage gap.
   the structured review comment. For `--report-only`, return the findings without publication.
 - Do not invent acceptance criteria that the reporter did not state. Do not accept an unresolved
   prior finding only because someone acknowledged it.
-- After drift, do not publish the comment again. Withhold it and report `stale`.
+- After drift, do not publish the comment again. Withhold it. Report `stale`.
 
 ## Result
 

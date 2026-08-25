@@ -41,16 +41,16 @@ and review output.
 
 ## Decision
 
-For a default or continuous-integration-free (CI-free) normal report, calculate the findings and
-score. Then, emit exactly one terminal verdict. For the prevalidated profile, emit only its structured
-audit. Do not emit a verdict, scorecard, publication, or auto-merge state. GitLab can report a verdict.
-This skill must not enable GitLab auto-merge.
+For a default or continuous-integration-free (CI-free) normal report, calculate the findings. Then,
+calculate the score. Emit exactly one terminal verdict. For the prevalidated profile, emit only its structured
+audit. Do not emit a verdict, scorecard, or publication. The prevalidated profile has no auto-merge
+workflow. GitLab can report a verdict. This skill must not enable GitLab auto-merge.
 
 | Verdict | Required conditions |
 | --- | --- |
 | **GO** | Use only for the default profile. Require grade A (93–100). Require aligned architecture or an evidenced intentional change. Require zero `required` findings. Require complete applicable source, scope, requirements, language, and validation coverage. Require all host-selected local checks to pass on the reviewed head. |
 | **CONDITIONAL GO** | Require architecture to pass. Require no open `required` source finding. Require a score of at least B. Use when a remediable review condition remains. Examples include incomplete source, scope, requirement, language, or validation coverage; a local validation gap; or deliberately limited CI-free evidence. State each condition. |
-| **NO-GO** | Use for a score below B, a `required` finding, a material or unexplained architecture violation, or failed required local validation. Also use it for an invalid, stale, or drifted identity, scope, requirement, path, or current-head binding. |
+| **NO-GO** | Use for a score below B or a `required` finding. Also use it for a material or unexplained architecture violation or failed required local validation. Use it for an invalid, stale, or drifted identity, scope, requirement, path, or current-head binding. |
 
 `--report-only` can report `GO`. It records `auto_merge: withheld (read-only)`. Without
 `--enable-auto-merge-on-go`, a `GO` records `auto_merge: withheld (not requested)`. For
@@ -85,18 +85,24 @@ change.
 7. Require an authenticated capability that binds the canonical target and can enable normal
    auto-merge without administrator bypass.
 8. Use the one repository-supported method that the capability returns.
-9. Do not select, guess, or change the method.
-10. If the repository requires a merge queue, require a separate exact-head queue-admission capability.
-11. Do not use normal auto-merge as a queue-admission proxy.
-12. Invoke exactly one bound operation: enable auto-merge with the retained PR node ID and
-    `expectedHeadOid`, or use queue admission with the same target and head.
-13. Do not use ambient repository state, ambient branch state, generic command-line interface (CLI)
-    defaults, a direct merge command, fallback mutation, or a retry after a failed or indeterminate
-    result.
-14. Fetch the exact PR again.
-15. Report `enabled` only if auto-merge uses the same node ID, head, and supported method.
-16. Report `queue-enqueued` only if its entry binds the same PR, target, and reviewed head.
-17. Do not report the PR as merged.
+9. Do not select the method.
+10. Do not guess the method.
+11. Do not change the method.
+12. If the repository requires a merge queue, require a separate exact-head queue-admission capability.
+13. Do not use normal auto-merge as a queue-admission proxy.
+14. Invoke exactly one bound operation:
+
+    - Enable auto-merge with the retained PR node ID and `expectedHeadOid`; or
+    - Use queue admission with the same target and head.
+
+15. Do not use ambient repository state, ambient branch state, or generic command-line interface
+    (CLI) defaults.
+16. Do not use a direct merge command or fallback mutation.
+17. Do not retry after a failed or indeterminate result.
+18. Fetch the exact PR again.
+19. Report `enabled` only if auto-merge uses the same node ID, head, and supported method.
+20. Report `queue-enqueued` only if its entry binds the same PR, target, and reviewed head.
+21. Do not report the PR as merged.
 
 ## Normal report
 

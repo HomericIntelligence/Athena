@@ -52,7 +52,7 @@ workflow-specific rules:
 
 Keep the target repository as the current working directory. Treat each user argument as a
 `hephaestus-tidy` argument. Forward it without a change. If the user wants a preview, forward
-`--dry-run`. Do not reinterpret this option or add it implicitly.
+`--dry-run`. Do not reinterpret this option. Do not add it implicitly.
 
 Under [P053 — Validate at Trust Boundaries](../../docs/principles/README.md#p053), treat the arguments
 as opaque, untrusted command-line data. Preserve the boundary of each argument. The
@@ -78,10 +78,12 @@ as opaque, untrusted command-line data. Preserve the boundary of each argument. 
    ```
 
 8. Leave stdin, stdout, and stderr attached.
-9. Do not capture or pipe the command.
-10. Do not replace the command output with a summary.
-11. Do not answer an interactive prompt from Hephaestus. The user answers each prompt.
-12. Do not retry or otherwise mediate the command.
+9. Do not capture the command.
+10. Do not pipe the command.
+11. Do not replace the command output with a summary.
+12. Do not answer an interactive prompt from Hephaestus. The user answers each prompt.
+13. Do not retry the command.
+14. Do not otherwise mediate it.
 
 Athena does not do these operations:
 
@@ -96,24 +98,25 @@ Do not replace the dependency-locked command with a `hephaestus-tidy` executable
 
 Delegation keeps existing authority for constructive actions that are in scope. It does not create
 new authority. Keep the Hephaestus prompts attached. Do not use delegation to bypass action-bound
-approval for a destructive or other irreversible operation that the user did not authorize.
+approval. This restriction applies to each destructive or other irreversible operation that the user
+did not authorize.
 
 ## Dependency and capability failures
 
 Dependency preparation requires authenticated `gh`, Git, and network access. The locked command
 requires Python 3 and `uv`. If a capability is not available or the command result is nonzero,
-return the failure without a change and stop. Do not use a stale checkout, a repository with a
+return the failure without a change. In that case, stop. Do not use a stale checkout, a repository with a
 similar name, an ambient executable, or a second cleanup implementation.
 
 ## Failed approaches
 
-- Do not audit or remove worktrees in Athena. This duplicates the Hephaestus policy and creates a
-  second set of destructive-action prompts.
+- Do not audit worktrees in Athena. Do not remove worktrees in Athena. These actions duplicate the
+  Hephaestus policy and create a second set of destructive-action prompts.
 - Do not invoke an ambient `hephaestus-tidy`. It can bypass the resolved repository and its lockfile.
-- Do not parse, normalize, or reconstruct user arguments. These actions change the delegated
-  command-line contract.
-- Do not capture or pipe the process. These actions can change interactive behavior, output,
-  signals, or exit status.
+- Do not parse user arguments. Do not normalize user arguments. Do not reconstruct user arguments.
+  These actions change the delegated command-line contract.
+- Do not capture the process. Do not pipe the process. These actions can change interactive behavior,
+  output, signals, or exit status.
 
 ## Output
 

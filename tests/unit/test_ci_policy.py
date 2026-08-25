@@ -363,6 +363,10 @@ class ReleasePolicyTests(unittest.TestCase):
                 ci_policy.verify_release_assets(directory)
 
     def test_release_spdx_validation_fails_closed(self) -> None:
+        valid_plugin_package = {
+            "name": "athena-plugin",
+            "versionInfo": "1.2.3",
+        }
         cases: tuple[tuple[str, object, type[Exception]], ...] = (
             ("invalid-json", "not-json", ValueError),
             ("non-object-document", [], TypeError),
@@ -372,7 +376,7 @@ class ReleasePolicyTests(unittest.TestCase):
                     "spdxVersion": "SPDX-2.2",
                     "name": "athena-plugin-1.2.3",
                     "documentNamespace": "athena-plugin-1.2.3",
-                    "packages": [],
+                    "packages": [valid_plugin_package],
                 },
                 ValueError,
             ),
@@ -382,7 +386,7 @@ class ReleasePolicyTests(unittest.TestCase):
                     "spdxVersion": "SPDX-2.3",
                     "name": "wrong",
                     "documentNamespace": "athena-plugin-1.2.3",
-                    "packages": [],
+                    "packages": [valid_plugin_package],
                 },
                 ValueError,
             ),
@@ -392,7 +396,7 @@ class ReleasePolicyTests(unittest.TestCase):
                     "spdxVersion": "SPDX-2.3",
                     "name": "athena-plugin-1.2.3",
                     "documentNamespace": "wrong",
-                    "packages": [],
+                    "packages": [valid_plugin_package],
                 },
                 ValueError,
             ),
