@@ -273,14 +273,15 @@ Do not use this fallback to reconstruct an Existing-PR worktree.
     main entry.
 25. Except for the required historical snapshot, do not copy content between artifact types.
 26. Give current rules, history records, and notes evidence one owner each.
-27. During consolidation, migrate verified active consumers before you retire each named duplicate.
-28. Before you commit, review each proposed artifact and delivery text against the private and
+27. During consolidation, migrate verified active consumers.
+28. After the consumer migration, retire each named duplicate.
+29. Before you commit, review each proposed artifact and delivery text against the private and
     proprietary information rules.
-29. Remove or generalize sensitive details.
-30. Use a correct public equivalent only if one exists.
-31. If safe generalization is not possible, reject the lesson.
-32. Run all applicable Mnemosyne validation.
-33. Verify these conditions:
+30. Remove or generalize sensitive details.
+31. Use a correct public equivalent only if one exists.
+32. If safe generalization is not possible, reject the lesson.
+33. Run all applicable Mnemosyne validation.
+34. Verify these conditions:
 
     - exactly one active entry remains for the intent;
     - its main file is in the configured size limit;
@@ -289,13 +290,13 @@ Do not use this fallback to reconstruct an Existing-PR worktree.
     - there is no version history in the main entry; and
     - there is no stale consolidated name.
 
-34. Create a signed commit with a Developer Certificate of Origin (DCO) attestation.
-35. For a new PR, push the feature branch.
-36. For a new PR, open a PR against the resolved default branch.
-37. For Existing-PR mode, push only to the bound source ref.
-38. For Existing-PR mode, do not open another PR.
-39. Do not merge automatically.
-40. Report these items:
+35. Create a signed commit with a Developer Certificate of Origin (DCO) attestation.
+36. For a new PR, push the feature branch.
+37. For a new PR, open a PR against the resolved default branch.
+38. For Existing-PR mode, push only to the bound source ref.
+39. For Existing-PR mode, do not open another PR.
+40. Do not merge automatically.
+41. Report these items:
 
     - disposition;
     - bound or new PR URL;

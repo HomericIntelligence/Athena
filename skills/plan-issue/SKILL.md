@@ -63,10 +63,10 @@ the actor-owned plan, return a ready-to-publish draft. Explain the capability or
 4. Invoke `advise` with the outcome, architecture, languages, risks, and test needs.
 5. In planning mode, use the best available result from the existing checkout.
 6. Do not require upstream synchronization for the planning-mode result.
-7. Report the result revision and its limits of trust and freshness. If `advise` gives an explicit
-   no-guidance result, report that result.
-8. Continue issue planning after you report the `advise` result.
-9. Before you propose files or abstractions, establish the architecture under
+7. Report the result revision and its limits of trust and freshness.
+8. If `advise` gives an explicit no-guidance result, report that result.
+9. Continue issue planning after you report the `advise` result.
+10. Before you propose files or abstractions, establish the architecture under
    [P015 Architecture Conformance](../../docs/principles/README.md#p015) from these sources:
 
    - repository guidance;
@@ -75,24 +75,24 @@ the actor-owned plan, return a ready-to-publish draft. Explain the capability or
    - dependency direction;
    - public interfaces.
 
-10. Under [P012 Evidence Before Modification](../../docs/principles/README.md#p012), verify current
+11. Under [P012 Evidence Before Modification](../../docs/principles/README.md#p012), verify current
    code, tests, commands, dependencies, paths, and symbols.
-11. Treat the issue and an earlier plan as sources to verify, not as verified evidence.
-12. Under [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063), map each
+12. Treat the issue and an earlier plan as sources to verify, not as verified evidence.
+13. Under [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063), map each
     current acceptance criterion to a minimum architecture-aligned change and behavior-first
     validation.
-13. When you compare solution sizes, apply
+14. When you compare solution sizes, apply
     [P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001) and
     [P002 YAGNI — You Ain't Gonna Need It](../../docs/principles/README.md#p002).
-14. Prefer an applicable existing mechanism under
+15. Prefer an applicable existing mechanism under
     [P074 Prefer Existing Mechanisms](../../docs/principles/README.md#p074).
-15. Do not include speculative abstractions or unrelated cleanup.
-16. Before you delete or consolidate a mechanism, apply
+16. Do not include speculative abstractions or unrelated cleanup.
+17. Before you delete or consolidate a mechanism, apply
     [P008 Understand Before Subtracting](../../docs/principles/README.md#p008).
-17. Follow the canonical-plan content, ownership, and identity rules in the issue-planning contract.
-18. Preserve all content that another actor owns.
-19. If ownership or identity is ambiguous, return the draft.
-20. Do not overwrite content with ambiguous ownership or identity.
+18. Follow the canonical-plan content, ownership, and identity rules in the issue-planning contract.
+19. Preserve all content that another actor owns.
+20. If ownership or identity is ambiguous, return the draft.
+21. Do not overwrite content with ambiguous ownership or identity.
 
 Activate these shared profiles only for the specified surface:
 

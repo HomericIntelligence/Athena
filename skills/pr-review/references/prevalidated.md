@@ -131,7 +131,8 @@ technical-English policy and its identity. Treat any of these conditions as a co
 - the catalog revision does not agree; or
 - the technical-English policy source path, revision, digest, or complete content does not agree.
 
-Accept only schema version 4. Versions 1–3 do not bind the canonical forge, artifact, and open state.
+Accept only schema version 4. Versions 1 through 3 do not bind the canonical forge, artifact, and
+open state.
 Require `review_artifact.state` to equal `OPEN`. Accept only a `github`/`pull_request` pair or a
 `gitlab`/`merge_request` pair. Bind the forge, artifact ID, number or internal ID (IID), uniform
 resource locator (URL), project, and state together. Do not use a draft attribute instead of the

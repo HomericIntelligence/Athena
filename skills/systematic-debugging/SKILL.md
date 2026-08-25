@@ -160,21 +160,22 @@ Do not repair only the symptom.
    - Rerun the reproduction.
    - Run the applicable test suite.
 7. Under [P027](../../docs/principles/README.md#p027), keep the test deterministic and isolated.
-8. Under [P067](../../docs/principles/README.md#p067) and
-   [P068](../../docs/principles/README.md#p068), do not weaken tests or bypass validation.
+8. Under [P067](../../docs/principles/README.md#p067), do not weaken tests.
+9. Under [P068](../../docs/principles/README.md#p068), do not bypass validation.
 
 If the repair changes failure behavior, complete these steps:
 
-1. Under [P029](../../docs/principles/README.md#p029), generalize the policy and preserve the cause.
-2. Handle the failure at the
+1. Under [P029](../../docs/principles/README.md#p029), generalize the policy.
+2. Under [P029](../../docs/principles/README.md#p029), preserve the cause.
+3. Handle the failure at the
    [nearest responsible boundary](../../docs/principles/README.md#p030).
-3. [Propagate unrecovered failures](../../docs/principles/README.md#p031).
-4. [Handle the failure once without losing causality](../../docs/principles/README.md#p032).
-5. Under [P033](../../docs/principles/README.md#p033), preserve valid state.
-6. Select [fail-fast](../../docs/principles/README.md#p034),
+4. [Propagate unrecovered failures](../../docs/principles/README.md#p031).
+5. [Handle the failure once without losing causality](../../docs/principles/README.md#p032).
+6. Under [P033](../../docs/principles/README.md#p033), preserve valid state.
+7. Select [fail-fast](../../docs/principles/README.md#p034),
    [fail-closed](../../docs/principles/README.md#p035), or
    [graceful degradation](../../docs/principles/README.md#p036).
-7. Base this selection on the correctness and security importance of the failed capability.
+8. Base this selection on the correctness and security importance of the failed capability.
 
 If the repair does not correct the issue, complete these steps:
 
