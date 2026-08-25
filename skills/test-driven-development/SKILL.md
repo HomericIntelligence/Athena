@@ -61,15 +61,16 @@ you added. Then, start with RED. If a pure refactor started without a verified b
 establish one before you continue. Preserve existing work and work that the user authored. If the
 source or scope of the work is not clear, ask for direction.
 
-## RED–GREEN–REFACTOR
+## RED-GREEN-REFACTOR
 
 For a refactor that preserves behavior, verify the existing characterization suite. Then, start at
 step 5. If the intended work changes the observable contract, return to RED.
 
 1. **RED:** Write one minimum, clearly named test under
-   [P022](../../docs/principles/README.md#p022). Make the test cover one observable behavior, data
-   contract, security property, or executable artifact result.
+   [P022](../../docs/principles/README.md#p022).
 
+   - The test must cover one observable behavior, data contract, security property, or executable
+     artifact result.
    - Use real code unless a real external boundary requires a controlled substitute.
    - If the behavior requires them, apply [P023](../../docs/principles/README.md#p023),
      [P024](../../docs/principles/README.md#p024),

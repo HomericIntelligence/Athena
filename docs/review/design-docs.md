@@ -8,15 +8,15 @@ output.
 
 ## Required order
 
-1. **Why** — state the problem, intended outcome, and protected boundary in one or two sentences.
-2. **At a glance** — name the decision, scope, non-goals, and invariants.
-3. **System shape** — if relationships, ownership, or flow are clearer in a diagram, add one block
+1. **Why:** State the problem, intended outcome, and protected boundary in one or two sentences.
+2. **At a glance:** Name the decision, scope, non-goals, and invariants.
+3. **System shape:** If relationships, ownership, or flow are clearer in a diagram, add one block
    diagram.
-4. **High-level design** — map components, interfaces, and dependency direction before implementation
+4. **High-level design:** Map components, interfaces, and dependency direction before implementation
    detail.
-5. **Component details** — explain each component separately: responsibility, inputs and outputs,
+5. **Component details:** Explain each component separately: responsibility, inputs and outputs,
    state ownership, failure boundary, and verification.
-6. **Operations and consequences** — record security, rollout, rollback, migration, observability,
+6. **Operations and consequences:** Record security, rollout, rollback, migration, observability,
    alternatives, and unresolved decisions when applicable.
 
 ## Minimal template

@@ -19,7 +19,7 @@ flowchart LR
     Scope --> Pull["pr-review"]
     Scope --> Repository["repo-review"]
 
-    Change --> Framework["Shared framework\narchitecture → applicable checks → evidence"]
+    Change --> Framework["Shared framework\narchitecture, then checks, then evidence"]
     Issue --> Framework
     Pull --> Framework
     Repository --> Framework

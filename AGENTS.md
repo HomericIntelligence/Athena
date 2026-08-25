@@ -1,4 +1,4 @@
-# AGENTS.md — Athena
+# Athena repository instructions
 
 This file is the authoritative contract for each AI coding harness that operates in Athena.
 Host-specific files point to this file. They do not copy it.

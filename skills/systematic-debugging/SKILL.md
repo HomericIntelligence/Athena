@@ -149,8 +149,10 @@ Repair the root cause. Do not repair only the symptom.
 4. Under [P028](../../docs/principles/README.md#p028), make the test cover the applicable failure
    path.
 5. Implement one repair that corrects the root cause.
-6. Under [P065](../../docs/principles/README.md#p065), rerun the reproduction and applicable test
-   suite.
+6. Under [P065](../../docs/principles/README.md#p065), run this validation:
+
+   - Rerun the reproduction.
+   - Run the applicable test suite.
 7. Under [P027](../../docs/principles/README.md#p027), keep the test deterministic and isolated.
 8. Under [P067](../../docs/principles/README.md#p067) and
    [P068](../../docs/principles/README.md#p068), do not weaken tests or bypass validation.

@@ -50,13 +50,17 @@ flowchart LR
 
 For dependency `<Repository>` with environment override `<OWNER_VARIABLE>`, use these steps:
 
-1. If `<OWNER_VARIABLE>` is not empty, use `<value>/<Repository>`. If the explicit override is not
-   valid, report an error and stop. Do not use a fallback. Before you use the owner in a path or
-   command, validate it as a GitHub owner name. The owner name must meet these requirements:
+1. If `<OWNER_VARIABLE>` is not empty, select `<value>/<Repository>`.
 
-   - It contains 1 through 39 characters.
-   - It contains only ASCII letters, digits, or single hyphens.
-   - It does not start or end with a hyphen.
+   - Before you use the owner in a path or command, validate it as a GitHub owner name.
+   - If the explicit override is not valid, report an error.
+   - If the explicit override is not valid, stop.
+   - If the explicit override is not valid, do not use a fallback.
+   - The owner name must meet these requirements:
+
+     - It contains 1 through 39 characters.
+     - It contains only ASCII letters, digits, or single hyphens.
+     - It does not start or end with a hyphen.
 
 2. If `<OWNER_VARIABLE>` is empty, get the current repository owner with this command:
 
