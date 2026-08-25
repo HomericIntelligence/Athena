@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Materialize one immutable GitHub pull-request snapshot in an isolated repository."""
+"""Create one immutable GitHub pull-request snapshot in an isolated repository."""
 
 from __future__ import annotations
 
@@ -458,7 +458,7 @@ def _bounded_materialize_main(arguments: Sequence[str]) -> int:
     prints the result as JSON. Exit 2 means the quota boundary itself could
     not be established; exit 1 means materialization failed.
     """
-    parser = argument_parser(description="Bounded snapshot materialization.")
+    parser = argument_parser(description="Create a bounded pull-request snapshot.")
     parser.add_argument("--root", required=True, metavar="ROOT")
     parser.add_argument("--repository-url", required=True, metavar="URL")
     parser.add_argument("--pr-number", required=True, type=int, metavar="NUMBER")
@@ -471,7 +471,7 @@ def _bounded_materialize_main(arguments: Sequence[str]) -> int:
     temporary_root = Path(tempfile.gettempdir()).resolve()
     if root.parent != temporary_root or not root.name.startswith("athena-pr-review-"):
         print(
-            "refusing to materialize outside the managed temporary directory",
+            "The helper cannot create a snapshot outside the managed temporary directory.",
             file=sys.stderr,
         )
         return 1
@@ -678,7 +678,7 @@ def remove_snapshot(root: Path) -> None:
         "athena-pr-review-"
     ):
         raise RuntimeError(
-            "refusing to remove a snapshot outside the managed temporary directory"
+            "The helper cannot remove a snapshot outside the managed temporary directory."
         )
     source = resolved / "source"
     if source.is_mount():

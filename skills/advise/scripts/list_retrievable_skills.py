@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""List flat Mnemosyne main-skill files eligible for normal retrieval."""
+"""List the Mnemosyne main skill files that normal retrieval can use."""
 
 from __future__ import annotations
 

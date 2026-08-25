@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage the deterministic opencode npm plugin package from canonical sources."""
+"""Create the deterministic opencode npm plugin package from canonical sources."""
 
 from __future__ import annotations
 
@@ -126,10 +126,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Stage the opencode npm plugin package."""
     parser = argument_parser(description=__doc__)
     parser.add_argument(
-        "--root", type=Path, help="repository root (defaults to Git root)"
+        "--root", type=Path, help="Repository root. By default, use the Git root."
     )
     parser.add_argument(
-        "--output", type=Path, help=f"staging directory (default {DEFAULT_OUTPUT})"
+        "--output",
+        type=Path,
+        help=f"Output directory. By default, use {DEFAULT_OUTPUT}.",
     )
     arguments = parser.parse_args(argv)
     try:

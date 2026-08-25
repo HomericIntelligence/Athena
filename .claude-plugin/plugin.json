@@ -1,7 +1,7 @@
 {
   "name": "athena",
   "version": "0.5.0",
-  "description": "Agent-host plugins and skills imported by Claude Code / Codex / opencode / Pi.",
+  "description": "Athena provides agent-host plugins and skills for Claude Code, Codex, opencode, and Pi.",
   "author": {
     "name": "HomericIntelligence",
     "url": "https://github.com/HomericIntelligence"

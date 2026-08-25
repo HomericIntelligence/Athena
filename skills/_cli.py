@@ -74,8 +74,8 @@ def require_complete_git_history(*, cwd: Path | None = None) -> None:
         raise RuntimeError(message)
     if result.stdout.strip() != "false":
         raise RuntimeError(
-            "immutable review evidence requires a non-shallow repository; "
-            "use a complete source snapshot"
+            "The immutable review evidence needs a non-shallow repository. "
+            "Use a complete source snapshot."
         )
 
 
@@ -147,6 +147,6 @@ def argument_parser(*, description: str | None = None) -> argparse.ArgumentParse
         "--version",
         action=_PluginVersionAction,
         nargs=0,
-        help="show the Athena plugin version and exit",
+        help="Show the Athena plugin version and exit.",
     )
     return parser

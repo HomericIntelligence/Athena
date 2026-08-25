@@ -5,14 +5,14 @@
     "url": "https://github.com/HomericIntelligence"
   },
   "metadata": {
-    "description": "Portable workflow skills for Claude Code, Codex, and Pi.",
+    "description": "Athena provides portable workflow skills for Claude Code, Codex, and Pi.",
     "version": "0.5.0"
   },
   "plugins": [
     {
       "name": "athena",
       "source": "./",
-      "description": "Repository auditing, agent orchestration, and development workflow skills."
+      "description": "Athena provides skills for repository reviews, agent coordination, and development workflows."
     }
   ]
 }

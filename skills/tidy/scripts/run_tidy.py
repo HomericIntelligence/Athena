@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replace this process with the dependency-locked Hephaestus tidy command."""
+"""Run the dependency-locked Hephaestus tidy command in place of this process."""
 
 from __future__ import annotations
 

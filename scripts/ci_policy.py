@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Executable CI and release policies for Athena."""
+"""Apply the Athena continuous integration (CI) and release policies."""
 
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ def _pr_policy_command() -> int:
     )
     if errors:
         raise SystemExit("\n".join(errors))
-    print("PR policy passed")
+    print("The pull-request policy passed.")
     return 0
 
 
@@ -109,9 +109,12 @@ def _required_jobs_command() -> int:
     failures = failed_required_jobs(event_name, results)
     if failures:
         raise SystemExit(
-            f"Required jobs not green: {json.dumps(failures, sort_keys=True)}"
+            f"Required jobs did not pass: {json.dumps(failures, sort_keys=True)}"
         )
-    print("All required jobs are green; PR policy was skipped only if inapplicable.")
+    print(
+        "All required jobs passed. The pull-request policy was skipped only when "
+        "it did not apply."
+    )
     return 0
 
 
@@ -180,7 +183,7 @@ def _suppression_command(repo_root: Path) -> int:
     findings = find_suppressions(files)
     if findings:
         raise SystemExit("\n".join(findings))
-    print("No silent-failure suppressions found.")
+    print("The check found no silent-failure suppressions.")
     return 0
 
 

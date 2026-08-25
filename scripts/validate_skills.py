@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate Athena's plugin-only distribution using the Python standard library."""
+"""Validate the plugin-only Athena distribution with the Python standard library."""
 
 from __future__ import annotations
 
@@ -655,18 +655,20 @@ def validate() -> list[ValidationError]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argument_parser(description="Validate Athena's plugin-only distribution.")
+    parser = argument_parser(
+        description="Validate the plugin-only Athena distribution."
+    )
     parser.add_argument("--quiet", action="store_true", help="Suppress success output.")
     parser.add_argument(
         "--root",
         type=Path,
         default=REPO_ROOT,
-        help="Repository root to validate (defaults to this checkout).",
+        help="Repository root. By default, use this checkout.",
     )
     args = parser.parse_args(argv)
     errors = validate_repository(args.root)
     if errors:
-        print("Athena skill validation FAILED:", file=sys.stderr)
+        print("Athena skill validation failed:", file=sys.stderr)
         for error in errors:
             print(f"  - {error.surface}: {error.reason}", file=sys.stderr)
         return 2

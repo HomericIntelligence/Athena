@@ -8,11 +8,11 @@
 #
 # Toolchain: uv (Odysseus ADR-017). Pattern mirrors Scylla ci/Containerfile.
 #
-# Build (OCI-compliant — works with both podman and docker):
+# Build the image with one of these commands:
 #   podman build -f ci/Containerfile -t athena-ci:local .
 #   docker build -f ci/Containerfile -t athena-ci:local .
 #
-# Run:
+# Run the image with one of these commands:
 #   podman run --rm -v .:/workspace:Z athena-ci:local uv run pytest tests
 #   podman run --rm -v .:/workspace:Z athena-ci:local uv run pre-commit run --all-files
 
@@ -87,7 +87,7 @@ RUN git init . && \
 FROM python:3.13-slim@sha256:6771159cd4fa5d9bba1258caf0b82e6b73458c694d178ad97c5e925c2d0e1a91
 
 LABEL org.opencontainers.image.title="athena-ci"
-LABEL org.opencontainers.image.description="CI container for Athena — validation, linting, packaging"
+LABEL org.opencontainers.image.description="This Athena continuous integration container validates, lints, and builds packages."
 LABEL org.opencontainers.image.vendor="Athena"
 LABEL org.opencontainers.image.source="https://github.com/HomericIntelligence/Athena"
 

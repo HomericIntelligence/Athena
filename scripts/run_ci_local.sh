@@ -1,22 +1,24 @@
 #!/bin/bash
-# Run the Athena CI suite locally inside a container.
+# Run Athena continuous integration (CI) checks in a local container.
 #
-# Mirrors what GitHub Actions runs, using the same CI container image.
-# Supports both Podman (rootless, no SU — preferred) and Docker.
+# This script runs the same checks as GitHub Actions. It uses the same CI image.
+# Use rootless Podman where possible. You can also use Docker.
 #
-# Usage:
-#   ./scripts/run_ci_local.sh              # Run all CI checks
-#   ./scripts/run_ci_local.sh validate     # Plugin-distribution validation only
-#   ./scripts/run_ci_local.sh test         # Contract tests with coverage threshold
-#   ./scripts/run_ci_local.sh static       # Lint + format-check + typecheck
-#   ./scripts/run_ci_local.sh markdownlint # Documentation lint
-#   ./scripts/run_ci_local.sh workflow     # Workflow syntax + schema validation
+# Use one of these commands:
+#   ./scripts/run_ci_local.sh              # Run all CI checks.
+#   ./scripts/run_ci_local.sh validate     # Validate the plugin distribution.
+#   ./scripts/run_ci_local.sh test         # Run contract tests with the coverage limit.
+#   ./scripts/run_ci_local.sh static       # Run lint, format, and type checks.
+#   ./scripts/run_ci_local.sh markdownlint # Lint the documentation.
+#   ./scripts/run_ci_local.sh workflow     # Validate workflow syntax and schemas.
 #
-# Container engine: auto-detected (podman first, docker fallback).
-# Override: CONTAINER_ENGINE=docker ./scripts/run_ci_local.sh
+# The script selects a container engine. It tries Podman before Docker.
+# To select the engine, set CONTAINER_ENGINE. For example:
+#   CONTAINER_ENGINE=docker ./scripts/run_ci_local.sh
 #
-# Image: uses 'athena-ci:local' if available, falls back to GHCR image.
-# Build locally: just ci-build  (or: podman build -f ci/Containerfile -t athena-ci:local .)
+# The script uses the local 'athena-ci:local' image.
+# Before you run the script, build the image with `just ci-build` or this command:
+#   podman build -f ci/Containerfile -t athena-ci:local .
 
 set -euo pipefail
 
@@ -52,21 +54,22 @@ log_step()  { echo -e "\n${BLUE}==>${NC} $*"; }
 detect_engine() {
     if [ -n "${CONTAINER_ENGINE:-}" ]; then
         if ! command -v "${CONTAINER_ENGINE}" &> /dev/null; then
-            log_error "CONTAINER_ENGINE=${CONTAINER_ENGINE} not found in PATH"
+            log_error "The command cannot find CONTAINER_ENGINE=${CONTAINER_ENGINE} in PATH."
             exit 1
         fi
-        log_info "Container engine: ${CONTAINER_ENGINE} (from env)"
+        log_info "Container engine from the environment: ${CONTAINER_ENGINE}"
         return
     fi
 
     if command -v podman &> /dev/null; then
         CONTAINER_ENGINE="podman"
-        log_info "Container engine: podman (rootless)"
+        log_info "Rootless container engine: Podman"
     elif command -v docker &> /dev/null; then
         CONTAINER_ENGINE="docker"
-        log_info "Container engine: docker"
+        log_info "Container engine: Docker"
     else
-        log_error "No container engine found. Install podman (recommended) or docker."
+        log_error "The command cannot find Podman or Docker. Install a container engine."
+        log_error "Use Podman where possible."
         log_error "  Podman: https://podman.io/getting-started/installation"
         exit 1
     fi
@@ -81,11 +84,11 @@ resolve_image() {
     if "${CONTAINER_ENGINE}" image exists "${LOCAL_IMAGE}" 2>/dev/null || \
        "${CONTAINER_ENGINE}" images -q "${LOCAL_IMAGE}" 2>/dev/null | grep -q .; then
         CI_IMAGE="${LOCAL_IMAGE}"
-        log_info "Using local CI image: ${CI_IMAGE}"
+        log_info "The command uses this local CI image: ${CI_IMAGE}"
     else
-        log_error "Local image '${LOCAL_IMAGE}' not found."
-        log_error "Build it first: just ci-build"
-        log_error "  (podman build -f ci/Containerfile -t ${LOCAL_IMAGE} .)"
+        log_error "The command cannot find the local image '${LOCAL_IMAGE}'."
+        log_error "Before you continue, build the image: just ci-build"
+        log_error "Alternative command: podman build -f ci/Containerfile -t ${LOCAL_IMAGE} ."
         exit 1
     fi
     export CI_IMAGE
@@ -170,7 +173,7 @@ run_step() {
     local fn="$2"
     if ! "${fn}"; then
         FAILED+=("${name}")
-        log_error "${name} FAILED"
+        log_error "${name} failed."
     fi
 }
 
@@ -204,8 +207,8 @@ case "${SUBSET}" in
         run_step "workflow" run_workflow
         ;;
     *)
-        log_error "Unknown subset: ${SUBSET}"
-        log_error "Valid values: all, validate, test, static, markdownlint, workflow"
+        log_error "The subset is not valid: ${SUBSET}"
+        log_error "Use one of these values: all, validate, test, static, markdownlint, workflow"
         exit 1
         ;;
 esac
@@ -214,6 +217,6 @@ echo ""
 if [ "${#FAILED[@]}" -eq 0 ]; then
     log_info "All CI checks passed."
 else
-    log_error "Failed: ${FAILED[*]}"
+    log_error "These checks failed: ${FAILED[*]}"
     exit 1
 fi

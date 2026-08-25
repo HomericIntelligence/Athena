@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and verify Athena's deterministic AI-harness plugin archive."""
+"""Build and verify the deterministic Athena plugin archive."""
 
 from __future__ import annotations
 
@@ -254,7 +254,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Validate the repository and build its plugin distribution."""
     parser = argument_parser(description=__doc__)
     parser.add_argument(
-        "--root", type=Path, help="repository root (defaults to Git root)"
+        "--root", type=Path, help="Repository root. By default, use the Git root."
     )
     arguments = parser.parse_args(argv)
     try:

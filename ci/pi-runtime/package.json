@@ -2,7 +2,7 @@
   "name": "athena-pi-ci-runtime",
   "version": "0.0.0",
   "private": true,
-  "description": "Locked CI-only Pi runtime: the official released coding agent plus delegation packages, for Athena package verification.",
+  "description": "This private package supplies the locked Pi runtime for Athena package verification in continuous integration (CI). It includes the official coding agent and delegation packages.",
   "engines": {
     "node": ">=22.19.0"
   },

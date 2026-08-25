@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scan a Syft inventory with Grype and enforce Athena's vulnerability policy."""
+"""Scan a Syft inventory with Grype. Apply the Athena vulnerability policy."""
 
 from __future__ import annotations
 
@@ -127,7 +127,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if blocking:
         print("\n".join(blocking), file=sys.stderr)
         return 1
-    print(f"Vulnerability policy passed; full report: {arguments.report}")
+    print(f"The vulnerability policy passed. The full report is at {arguments.report}.")
     return 0
 
 

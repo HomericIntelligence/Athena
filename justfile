@@ -75,7 +75,8 @@ ci-entrypoints:
 
 # === Containerized CI (podman by default) ===
 
-# Build the CI container image (podman first, docker fallback)
+# Build the continuous integration (CI) container image.
+# Try Podman first. If Podman is unavailable, use Docker.
 ci-build:
     podman build -f ci/Containerfile -t athena-ci:local . || docker build -f ci/Containerfile -t athena-ci:local .
 

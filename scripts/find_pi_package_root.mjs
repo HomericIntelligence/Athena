@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 const [installRootArgument] = process.argv.slice(2);
 
 if (!installRootArgument) {
-  throw new Error("usage: node find_pi_package_root.mjs PI_INSTALL_ROOT");
+  throw new Error("Usage: node find_pi_package_root.mjs PI_INSTALL_ROOT");
 }
 
 const installRoot = resolve(installRootArgument);

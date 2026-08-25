@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Select, validate, and optionally create an isolated Git worktree."""
+"""Prepare an isolated Git worktree."""
 
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ def main() -> int:
         if branch_check.returncode != 0:
             raise RuntimeError(f"invalid branch name: {arguments.branch}")
         if (arguments.path is None) != (arguments.path_root is None):
-            raise RuntimeError("--path and --path-root must be provided together")
+            raise RuntimeError("Specify --path and --path-root together.")
         path, project_local = select_path(
             root,
             arguments.branch,

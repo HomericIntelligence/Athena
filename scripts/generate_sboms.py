@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate deterministic SPDX SBOMs for Athena's plugin and build environment."""
+"""Generate deterministic software bills of materials (SBOMs) for the Athena plugin and build environment."""
 
 from __future__ import annotations
 

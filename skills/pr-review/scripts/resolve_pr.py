@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resolve an explicit PR or the sole open PR for the current branch."""
+"""Resolve an explicit pull request or the only open pull request for the current branch."""
 
 from __future__ import annotations
 
@@ -92,7 +92,7 @@ def target_from_arguments(
         raise AssertionError("argument parser returned after a URL error")
 
     if (host is None) != (repository is None):
-        parser.error("--target-host and --target-repository must be supplied together")
+        parser.error("Specify --target-host and --target-repository together.")
     if host is not None and repository is not None:
         try:
             target = RepositoryTarget(
@@ -113,8 +113,8 @@ def target_from_arguments(
             repository=repository,
         )
     parser.error(
-        "numeric pull requests and branch discovery require --target-host and "
-        "--target-repository"
+        "For a numeric pull-request identifier or branch discovery, specify "
+        "--target-host and --target-repository."
     )
     raise AssertionError("argument parser returned after a target error")
 
@@ -180,7 +180,9 @@ def resolve(explicit: str | None, target: RepositoryTarget) -> dict[str, Any]:
 
     branch = current_branch()
     if not branch:
-        raise RuntimeError("current checkout is detached; provide a PR number or URL")
+        raise RuntimeError(
+            "The current checkout is detached. Specify a pull-request number or URL."
+        )
     raw_candidates = json.loads(
         command(
             "gh",
@@ -220,12 +222,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--target-host",
         metavar="HOST",
-        help="canonical GitHub host from the configured forge capability",
+        help="Canonical GitHub host from the configured forge capability.",
     )
     parser.add_argument(
         "--target-repository",
         metavar="OWNER/REPOSITORY",
-        help="canonical GitHub repository from the configured forge capability",
+        help="Canonical GitHub repository from the configured forge capability.",
     )
     parser.add_argument("pull_request", nargs="?", metavar="PR_NUMBER_OR_URL")
     arguments = parser.parse_args(argv)

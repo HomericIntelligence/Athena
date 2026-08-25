@@ -26,7 +26,7 @@ export function syncSkills() {
   const target = installTarget();
   if (!existsSync(join(source, "_cli.py"))) {
     throw new Error(
-      `Athena skill corpus is missing next to plugin.js: ${source}`,
+      `The plugin cannot find the Athena skills next to plugin.js: ${source}`,
     );
   }
   mkdirSync(dirname(target), { recursive: true });
@@ -39,7 +39,9 @@ async function athenaPlugin() {
   try {
     syncSkills();
   } catch (error) {
-    console.warn(`[athena-opencode] skill installation failed: ${error}`);
+    console.warn(
+      `[athena-opencode] The plugin could not install the skills: ${error}`,
+    );
   }
   return {};
 }

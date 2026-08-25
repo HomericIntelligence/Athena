@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect GitHub PR metadata and immutable review evidence."""
+"""Collect GitHub pull-request metadata and immutable review evidence."""
 
 from __future__ import annotations
 
@@ -354,9 +354,7 @@ def expected_identity(
 ) -> tuple[str, str] | None:
     """Validate the optional immutable identity supplied by resolve_pr.py."""
     if (base_oid is None) != (head_oid is None):
-        parser.error(
-            "--expected-base-oid and --expected-head-oid must be supplied together"
-        )
+        parser.error("Specify --expected-base-oid and --expected-head-oid together.")
     if base_oid is None or head_oid is None:
         return None
     if COMMIT_OID.fullmatch(base_oid) is None:
@@ -383,14 +381,15 @@ def expected_target(
             or url is not None
         ):
             parser.error(
-                "--expected-host, --expected-repository, --expected-pr-number, and "
-                "--expected-pr-url require immutable expected OIDs"
+                "If you specify an expected target, also specify --expected-base-oid "
+                "and --expected-head-oid."
             )
         return None
     if host is None or repository is None or number is None or url is None:
         parser.error(
+            "With --expected-base-oid and --expected-head-oid, specify "
             "--expected-host, --expected-repository, --expected-pr-number, and "
-            "--expected-pr-url are required with immutable expected OIDs"
+            "--expected-pr-url."
         )
     assert host is not None
     assert repository is not None
@@ -1263,33 +1262,33 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--expected-base-oid",
         metavar="BASE_OID",
-        help="immutable base revision returned by resolve_pr.py",
+        help="Immutable base revision from resolve_pr.py.",
     )
     parser.add_argument(
         "--expected-head-oid",
         metavar="HEAD_OID",
-        help="immutable head revision returned by resolve_pr.py",
+        help="Immutable head revision from resolve_pr.py.",
     )
     parser.add_argument(
         "--expected-host",
         metavar="HOST",
-        help="canonical GitHub host returned by resolve_pr.py",
+        help="Canonical GitHub host from resolve_pr.py.",
     )
     parser.add_argument(
         "--expected-repository",
         metavar="OWNER/REPOSITORY",
-        help="canonical GitHub repository returned by resolve_pr.py",
+        help="Canonical GitHub repository from resolve_pr.py.",
     )
     parser.add_argument(
         "--expected-pr-number",
         metavar="NUMBER",
         type=int,
-        help="canonical pull-request number returned by resolve_pr.py",
+        help="Canonical pull-request number from resolve_pr.py.",
     )
     parser.add_argument(
         "--expected-pr-url",
         metavar="URL",
-        help="canonical pull-request URL returned by resolve_pr.py",
+        help="Canonical pull-request URL from resolve_pr.py.",
     )
     parser.add_argument("pull_request", metavar="PR_NUMBER_OR_URL")
     arguments = parser.parse_args(argv)

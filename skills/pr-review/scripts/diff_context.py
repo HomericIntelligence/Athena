@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compute the two required pull-request diff lenses."""
+"""Calculate the two Git ranges for a pull-request review."""
 
 from __future__ import annotations
 

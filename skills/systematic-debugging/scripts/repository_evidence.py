@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect reproducible recent-change and source-pattern evidence."""
+"""Collect reproducible evidence about recent changes and source patterns."""
 
 from __future__ import annotations
 

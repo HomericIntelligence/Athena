@@ -1594,7 +1594,7 @@ class ChangeReviewScriptTests(unittest.TestCase):
                     side_effect=[first_capture, second_capture],
                 ),
                 self.assertRaisesRegex(
-                    RuntimeError, "change scope changed while resolving"
+                    RuntimeError, "change scope changed during resolution"
                 ),
             ):
                 module.resolve_scope("worktree", None, ())

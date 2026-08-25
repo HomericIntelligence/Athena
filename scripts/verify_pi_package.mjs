@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 const [packageRootArgument, rpcOutputPath] = process.argv.slice(2);
 
 if (!packageRootArgument || !rpcOutputPath) {
-  throw new Error("usage: node verify_pi_package.mjs PACKAGE_ROOT RPC_OUTPUT_PATH");
+  throw new Error("Usage: node verify_pi_package.mjs PACKAGE_ROOT RPC_OUTPUT_PATH");
 }
 
 const packageRoot = resolve(packageRootArgument);

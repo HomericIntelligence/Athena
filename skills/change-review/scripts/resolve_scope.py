@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resolve a change-review scope without changing repository or Git state."""
+"""Resolve the scope for a change review. Do not change the repository or Git state."""
 
 from __future__ import annotations
 
@@ -997,15 +997,15 @@ def worktree_tracked_capture(
             and index_entry.kind == "git-submodule"
         ):
             raise RuntimeError(
-                "worktree scope cannot safely determine submodule state for "
-                f"{path}; use --staged or --range"
+                "The worktree scope cannot safely determine the submodule state for "
+                f"{path}. Use --staged or --range."
             )
         index_differs_from_head = index_entry != head_entry
         if path in metadata.skip_worktree_paths and snapshot.entry.kind == "absent":
             if index_differs_from_head:
                 raise RuntimeError(
-                    "worktree scope cannot safely inspect staged change in "
-                    f"skip-worktree path {path}; use --staged"
+                    "The worktree scope cannot safely inspect the staged change in "
+                    f"skip-worktree path {path}. Use --staged."
                 )
             continue
         if (
@@ -1014,8 +1014,8 @@ def worktree_tracked_capture(
             and not worktree_matches_entry(snapshot, index_entry)
         ):
             raise RuntimeError(
-                "worktree scope cannot safely inspect staged change whose live "
-                f"bytes differ from the index for {path}; use --staged"
+                "The worktree scope cannot safely inspect a staged change whose live "
+                f"bytes differ from the index for {path}. Use --staged."
             )
         if worktree_matches_entry(snapshot, head_entry):
             continue
@@ -1163,9 +1163,11 @@ def resolve_scope(
     first_capture = capture_scope(scope, base, head, paths, repository_root)
     second_capture = capture_scope(scope, base, head, paths, repository_root)
     if first_capture != second_capture:
-        raise RuntimeError("change scope changed while resolving; retry the review")
+        raise RuntimeError(
+            "change scope changed during resolution. Run the review again."
+        )
     if scope != "range" and verified_commit("HEAD", repository_root) != head:
-        raise RuntimeError("HEAD changed while resolving; retry the review")
+        raise RuntimeError("HEAD changed during resolution. Run the review again.")
     return {
         "base": base,
         "content_source": (

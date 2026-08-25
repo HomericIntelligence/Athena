@@ -1,7 +1,7 @@
 [project]
 name = "athena-development"
 version = "0.0.0"
-description = "Development tooling for the Athena plugin distribution."
+description = "This package contains development tools for the Athena plugin distribution."
 requires-python = ">=3.13,<3.14"
 dependencies = []
 
