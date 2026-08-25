@@ -11,7 +11,7 @@ allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 Use this skill for a task that has multiple independent work items. Do not use it if one agent can
 complete the task clearly.
 
-Apply the [ASD-STE100 technical-English policy](../../docs/technical-english.md) to this skill and to
+Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to
 all prose that it produces.
 
 ## Engineering principles

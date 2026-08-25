@@ -13,8 +13,8 @@ session. First, determine if the source contains a verified change that can help
 put current guidance, history, and supporting notes in their specified artifacts. If the user
 requests a write, deliver it through a pull request (PR) from an isolated worktree.
 
-Apply the [ASD-STE100 technical-English policy](../../docs/technical-english.md) to this skill and to
-all prose that it produces.
+Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to all
+prose that it produces.
 
 ## Engineering principles
 

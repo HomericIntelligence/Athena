@@ -4,7 +4,7 @@
 make tests preserve wording, implementation layout, or incidental timing. This contract applies to
 planning, implementation, change review, pull request review, and repository review.
 
-Use the [ASD-STE100 writing policy](../technical-english.md) for all technical prose and review
+Use the [ASD-STE100 writing policy](../../skills/TECHNICAL_ENGLISH.md) for all technical prose and review
 output.
 
 This contract applies the catalog's testing rules:

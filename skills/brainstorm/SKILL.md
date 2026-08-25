@@ -10,8 +10,8 @@ allowed-tools: [Read, Write, Bash, Grep, Glob, Agent]
 
 Develop a complete design and specification through a dialog with the user.
 
-Apply the [ASD-STE100 technical-English policy](../../docs/technical-english.md) to this skill and to
-all prose that it produces.
+Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to all
+prose that it produces.
 
 First, inspect the current project. Ask one question in each message to clarify the idea. When the
 requirements are clear, present the design. Continue with the requested implementation unless a

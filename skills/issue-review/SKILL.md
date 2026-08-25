@@ -11,8 +11,8 @@ allowed-tools: [Read, Bash, Grep, Glob, Agent, WebFetch]
 Purpose: Review the plan before implementation. Early review helps you find architecture, scope,
 and verification gaps before code changes start.
 
-Apply the [ASD-STE100 technical-English policy](../../docs/technical-english.md) to this skill and to
-all prose that it produces.
+Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to all
+prose that it produces.
 
 Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 [review contract](../../docs/review/common.md),

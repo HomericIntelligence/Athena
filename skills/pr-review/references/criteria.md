@@ -3,7 +3,7 @@
 Use the shared review contract, language routing, and behavior-first testing
 first. This file owns only evidence unique to a pull or merge request.
 
-Use Athena's [ASD-STE100 writing policy](../../../docs/technical-english.md) for all technical prose
+Use Athena's [ASD-STE100 writing policy](../../TECHNICAL_ENGLISH.md) for all technical prose
 and review output.
 
 ## Engineering principle routes

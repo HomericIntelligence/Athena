@@ -3,7 +3,7 @@
 **Why:** A design is easier to review and implement when readers first understand the problem and
 boundary it protects, then the system shape, and only then each component's decisions.
 
-Use the [ASD-STE100 writing policy](../technical-english.md) for all technical prose and review
+Use the [ASD-STE100 writing policy](../../skills/TECHNICAL_ENGLISH.md) for all technical prose and review
 output.
 
 ## Required order

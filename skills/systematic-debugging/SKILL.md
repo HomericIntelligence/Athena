@@ -13,7 +13,7 @@ allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 A repair without evidence wastes time and can create a new bug. A repair of only the symptom can
 hide the root cause.
 
-Apply the [ASD-STE100 technical-English policy](../../docs/technical-english.md) to this skill and to
+Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to
 all prose that it produces.
 
 ## Working rules

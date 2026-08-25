@@ -11,7 +11,7 @@ allowed-tools: [Read, Bash, Grep, Glob, Agent]
 Use this skill to create the smallest architecture-aligned plan for the current issue requirements.
 Include behavior-first verification in the plan. Create the plan before implementation starts.
 
-Apply the [ASD-STE100 technical-English policy](../../docs/technical-english.md) to this skill and to
+Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to
 all prose that it produces.
 
 Use the shared [issue-planning contract](../../docs/review/issue-planning.md),

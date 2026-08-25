@@ -4,7 +4,7 @@
 that a generic checklist does not replace the conventions, failure modes, and tools of the changed
 code.
 
-Use the [ASD-STE100 writing policy](../technical-english.md) for all technical prose and review
+Use the [ASD-STE100 writing policy](../../skills/TECHNICAL_ENGLISH.md) for all technical prose and review
 output.
 
 Follow repository guidance and repository-selected tools first. These instructions override the

@@ -13,7 +13,8 @@ technical-English, and governance contracts. Do not copy these contracts for eac
 
 ## Policies
 
-- [`technical-english.md`](technical-english.md): the required ASD-STE100 technical-English policy
+- [`skills/TECHNICAL_ENGLISH.md`](../skills/TECHNICAL_ENGLISH.md): the required ASD-STE100
+  technical-English policy
   for Athena instructions and output prose.
 - [`policies/development.md`](policies/development.md): Git, pull-request, safety, and human-review
   rules.

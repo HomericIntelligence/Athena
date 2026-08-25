@@ -5,7 +5,7 @@
 the corpus in the opencode configuration directory. Opencode finds and loads the corpus there.
 
 Athena uses the
-[ASD-STE100 technical-English policy](https://github.com/HomericIntelligence/Athena/blob/main/docs/technical-english.md)
+[ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.md)
 for its English technical prose.
 
 ## Install

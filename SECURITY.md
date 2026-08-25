@@ -1,6 +1,6 @@
 # Security policy
 
-Apply the [ASD-STE100 technical-English policy](docs/technical-english.md) to all English technical
+Apply the [ASD-STE100 technical-English policy](skills/TECHNICAL_ENGLISH.md) to all English technical
 prose in this document.
 
 Athena distributes plugins that contain instructions for artificial intelligence (AI) harnesses.

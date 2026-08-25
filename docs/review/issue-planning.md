@@ -4,7 +4,7 @@
 ambiguous issue comment from controlling implementation. The issue remains the requirements source.
 A plan proposes work. It does not authorize implementation, merge, or another forge change.
 
-Use the [ASD-STE100 writing policy](../technical-english.md) for all technical prose and review
+Use the [ASD-STE100 writing policy](../../skills/TECHNICAL_ENGLISH.md) for all technical prose and review
 output.
 
 ## Principle routing

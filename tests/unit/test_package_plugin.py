@@ -5,6 +5,8 @@ from __future__ import annotations
 import io
 import json
 import os
+import posixpath
+import re
 import shutil
 import subprocess
 import tarfile
@@ -26,6 +28,18 @@ from scripts.package_plugin import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
+MARKDOWN_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+
+
+def technical_english_targets(markdown: str) -> list[str]:
+    """Return local links to the shipped technical-English policy."""
+    targets: list[str] = []
+    for target in MARKDOWN_LINK.findall(markdown):
+        path = target.split("#", 1)[0]
+        normalized_name = Path(path).name.lower().replace("-", "_")
+        if normalized_name == "technical_english.md":
+            targets.append(path)
+    return targets
 
 
 def create_repository(root: Path, *, version: str = "1.2.3") -> None:
@@ -312,7 +326,7 @@ if (
 
     def test_source_archive_requires_the_technical_english_policy(self) -> None:
         """Every packaged harness receives the shared writing policy."""
-        member = "docs/technical-english.md"
+        member = "skills/TECHNICAL_ENGLISH.md"
         self.assertIn(member, REQUIRED_MEMBERS)
 
         archive_path, checksum_path = build_package(ROOT)
@@ -320,7 +334,25 @@ if (
         self.addCleanup(checksum_path.unlink, missing_ok=True)
 
         with tarfile.open(archive_path, mode="r:gz") as archive:
-            self.assertIsNotNone(archive.getmember(member))
+            names = {item.name for item in archive.getmembers()}
+            self.assertIn(member, names)
+            for name in sorted(names):
+                if not name.startswith("skills/") or not name.endswith(".md"):
+                    continue
+                if name == member:
+                    continue
+                source = archive.extractfile(name)
+                assert source is not None
+                targets = technical_english_targets(source.read().decode("utf-8"))
+                if name.endswith("/SKILL.md"):
+                    self.assertTrue(targets, f"{name} has no policy link")
+                for target in targets:
+                    with self.subTest(markdown=name, target=target):
+                        resolved = posixpath.normpath(
+                            f"{posixpath.dirname(name)}/{target}"
+                        )
+                        self.assertTrue(resolved.startswith("skills/"))
+                        self.assertIn(resolved, names)
 
     def test_source_python_cache_directories_are_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

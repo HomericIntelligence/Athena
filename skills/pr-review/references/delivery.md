@@ -6,7 +6,7 @@ A review verdict is evidence. It does not expand the forge scope. Immediately be
 publication, bind the exact artifact again. This check prevents the review from adding a comment or
 automation to a later artifact. It also prevents approval of a later artifact.
 
-Use Athena's [ASD-STE100 writing policy](../../../docs/technical-english.md) for all technical prose
+Use Athena's [ASD-STE100 writing policy](../../TECHNICAL_ENGLISH.md) for all technical prose
 and review output.
 
 ```text

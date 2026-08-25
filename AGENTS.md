@@ -26,7 +26,7 @@ these requirements in this repository-agent contract.
 ## Technical English
 
 All Athena English technical prose must follow the
-[ASD-STE100 technical-English policy](docs/technical-english.md). This requirement applies to
+[ASD-STE100 technical-English policy](skills/TECHNICAL_ENGLISH.md). This requirement applies to
 skills, agent directions, documents, user messages from skills, and user-interface text. Preserve
 literal text. Preserve all safety, security, evidence, permission, and failure requirements.
 
@@ -133,7 +133,7 @@ The skill body must include these items:
 - an output contract; and
 - attribution.
 
-Follow the [ASD-STE100 technical-English policy](docs/technical-english.md) for all English technical
+Follow the [ASD-STE100 technical-English policy](skills/TECHNICAL_ENGLISH.md) for all English technical
 prose in the skill.
 
 Use placeholders for paths and commands in a target repository. Put repository-specific case studies

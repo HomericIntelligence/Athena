@@ -3,7 +3,7 @@
 **Why:** A repository review needs a complete, architecture-first inventory so a strong area cannot hide
 an unsafe boundary or an unreviewed surface.
 
-Use the [ASD-STE100 writing policy](../technical-english.md) for all technical prose and review
+Use the [ASD-STE100 writing policy](../../skills/TECHNICAL_ENGLISH.md) for all technical prose and review
 output.
 
 Use these prerequisites before you calculate the score:

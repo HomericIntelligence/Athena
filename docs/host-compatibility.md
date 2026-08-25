@@ -1,6 +1,6 @@
 # Coding-harness compatibility
 
-Apply the [ASD-STE100 technical-English policy](technical-english.md) to all English technical prose
+Apply the [ASD-STE100 technical-English policy](../skills/TECHNICAL_ENGLISH.md) to all English technical prose
 in this document.
 
 Athena uses one canonical skill corpus in all coding harnesses. Harnesses have different invocation
@@ -14,7 +14,7 @@ capability map.
 | No delegation support | Run independent work sequentially with the current agent. |
 | Model selection | If the selected model is available, use it. Otherwise, use the default model. Do not require a named model tier. |
 | Repository contract | Read the `AGENTS.md` guidance of the repository. |
-| Technical English | Apply the [ASD-STE100 technical-English policy](technical-english.md) to English technical prose. |
+| Technical English | Apply the [ASD-STE100 technical-English policy](../skills/TECHNICAL_ENGLISH.md) to English technical prose. |
 
 Canonical skill bodies use the instruction `invoke the <name> skill`. The harness supplies the
 applicable syntax. Skills use these neutral terms:

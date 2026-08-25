@@ -1,6 +1,6 @@
 # Required repository resolution
 
-Apply the [ASD-STE100 technical-English policy](technical-english.md) to all English technical prose
+Apply the [ASD-STE100 technical-English policy](../skills/TECHNICAL_ENGLISH.md) to all English technical prose
 in this document.
 
 **Why:** Athena must use trusted and current knowledge and automation. It must not use a repository

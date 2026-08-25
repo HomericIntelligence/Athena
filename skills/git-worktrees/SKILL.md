@@ -13,8 +13,8 @@ allowed-tools: [Bash, Read]
 Git worktrees are isolated workspaces that share one repository. You can work on multiple branches
 at the same time. You do not have to switch the active branch.
 
-Apply the [ASD-STE100 technical-English policy](../../docs/technical-english.md) to this skill and to
-all prose that it produces.
+Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to all
+prose that it produces.
 
 **Rule:** Select the directory systematically. Then complete the safety checks. These actions give
 reliable isolation.

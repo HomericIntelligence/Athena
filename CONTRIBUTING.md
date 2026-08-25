@@ -8,7 +8,7 @@ Before you change the repository:
 
 1. Read [`AGENTS.md`](AGENTS.md).
 2. Read the [`development policy`](docs/policies/development.md).
-3. Follow the [ASD-STE100 technical-English policy](docs/technical-english.md) for English technical
+3. Follow the [ASD-STE100 technical-English policy](skills/TECHNICAL_ENGLISH.md) for English technical
    prose.
 
 ## Environment setup
@@ -42,7 +42,7 @@ It does not build Python distribution artifacts.
 4. Put target-repository-specific examples in `references/`. Keep the executable workflow portable.
 5. Apply the [`AGENTS.md` principle-routing rule](AGENTS.md#authoring-a-skill) against the canonical
    [`engineering principles catalog`](docs/principles/README.md).
-6. Apply the [ASD-STE100 technical-English policy](docs/technical-english.md) to all English
+6. Apply the [ASD-STE100 technical-English policy](skills/TECHNICAL_ENGLISH.md) to all English
    technical prose.
 7. Run `just all`.
 8. Commit with a signed Conventional Commit that includes a Developer Certificate of Origin (DCO)

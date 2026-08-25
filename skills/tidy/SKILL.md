@@ -22,7 +22,7 @@ operation to `hephaestus-tidy`.
 - output;
 - final exit status.
 
-Apply the [ASD-STE100 technical-English policy](../../docs/technical-english.md) to this skill and to
+Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to
 all prose that it produces.
 
 ## Engineering principles

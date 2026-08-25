@@ -11,7 +11,7 @@ allowed-tools: [Read, Bash, Grep, Glob, Agent]
 Use a full architecture-first inventory review to find systemic product risks that a change review
 cannot find.
 
-Apply the [ASD-STE100 technical-English policy](../../docs/technical-english.md) to this skill and to
+Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to
 all prose that it produces.
 
 Use the shared [review contract](../../docs/review/common.md),

@@ -4,7 +4,7 @@ Why: a local checkout is mutable. It can contain links, filters, and index
 state that do not agree with the visible file path. Review only objects that the
 resolver binds.
 
-Use Athena's [ASD-STE100 writing policy](../../../docs/technical-english.md) for all technical prose
+Use Athena's [ASD-STE100 writing policy](../../TECHNICAL_ENGLISH.md) for all technical prose
 and review output.
 
 First, invoke `scripts/resolve_scope.py`. Then, read this reference. Only then,

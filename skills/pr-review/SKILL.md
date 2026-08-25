@@ -14,7 +14,7 @@ Protect the product from a review that appears correct but examines the wrong ch
 the open artifact and immutable source. Then, use architecture alignment as the gate for each
 detailed review, score, comment, and merge-state decision.
 
-Apply the [ASD-STE100 technical-English policy](../../docs/technical-english.md) to this skill and to
+Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to
 all prose that it produces.
 
 ```text

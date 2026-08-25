@@ -11,7 +11,7 @@ allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
 A focused test that fails proves that it can detect the missing product behavior. A passing test
 proves that the smallest implementation satisfies the test.
 
-Apply the [ASD-STE100 technical-English policy](../../docs/technical-english.md) to this skill and to
+Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to
 all prose that it produces.
 
 Use Athena's shared [behavior-first testing guidance](../../docs/review/behavior-first-testing.md)

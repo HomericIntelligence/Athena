@@ -1,6 +1,6 @@
 # Required-check policy
 
-Apply the [ASD-STE100 technical-English policy](../technical-english.md) to all English technical
+Apply the [ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.md) to all English technical
 prose in this document.
 
 Athena uses `.github/workflows/_required.yml` as the canonical merge gate. Each GitHub Action has an
@@ -21,7 +21,7 @@ timeout.
 
 - `markdownlint` validates public documents and the shipped `skills/**/*.md` product corpus. It does
   not verify ASD-STE100 conformance. Review applicable prose under the
-  [ASD-STE100 technical-English policy](../technical-english.md).
+  [ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.md).
 - `workflow-schema` validates GitHub workflow syntax.
 - `justfile-check` makes sure that documented task entry points parse.
 - `security/secrets-scan` scans the complete Git history for secrets.

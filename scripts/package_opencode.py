@@ -30,6 +30,9 @@ LEGAL_FILES: Final[tuple[PurePosixPath, ...]] = (
     PurePosixPath("NOTICE"),
 )
 SKILLS_ROOT: Final[PurePosixPath] = PurePosixPath("skills")
+REQUIRED_SKILL_FILES: Final[tuple[PurePosixPath, ...]] = (
+    SKILLS_ROOT / "TECHNICAL_ENGLISH.md",
+)
 VERSION_MANIFEST: Final[PurePosixPath] = PurePosixPath(".codex-plugin") / "plugin.json"
 DEFAULT_OUTPUT: Final[PurePosixPath] = PurePosixPath("dist") / "opencode-npm"
 GENERATED_SUFFIXES: Final[frozenset[str]] = frozenset({".pyc", ".pyo"})
@@ -102,6 +105,13 @@ def stage_package(repo_root: Path, output_directory: Path | None = None) -> Path
     ]
     for source_path, relative_path in sources:
         _validate_source(source_path, relative_path)
+    for relative_path in REQUIRED_SKILL_FILES:
+        source_path = repo_root / relative_path.as_posix()
+        _validate_source(source_path, relative_path)
+        if not source_path.is_file():
+            raise PackageError(
+                f"required package input must be a file: {relative_path}"
+            )
     for path in _skill_sources(repo_root):
         _validate_source(path, _relative(path, repo_root))
 

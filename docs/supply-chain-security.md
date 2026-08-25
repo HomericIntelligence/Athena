@@ -1,6 +1,6 @@
 # Supply-chain security
 
-Apply the [ASD-STE100 technical-English policy](technical-english.md) to all English technical prose
+Apply the [ASD-STE100 technical-English policy](../skills/TECHNICAL_ENGLISH.md) to all English technical prose
 in this document.
 
 Athena publishes two checksummed Software Package Data Exchange (SPDX) 2.3 software bills of

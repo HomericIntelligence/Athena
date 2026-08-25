@@ -2,7 +2,7 @@
 
 ## Technical English
 
-Apply the [ASD-STE100 technical-English policy](../technical-english.md) to all English technical
+Apply the [ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.md) to all English technical
 prose in this document. Do not remove or weaken a technical, safety, security, evidence, permission,
 or failure requirement to make text shorter.
 
