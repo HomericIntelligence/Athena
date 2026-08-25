@@ -3,12 +3,15 @@
 **Why:** A design is easier to review and implement when readers first understand the problem and
 boundary it protects, then the system shape, and only then each component's decisions.
 
+Use the [ASD-STE100 writing policy](../technical-english.md) for all technical prose and review
+output.
+
 ## Required order
 
 1. **Why** — state the problem, intended outcome, and protected boundary in one or two sentences.
 2. **At a glance** — name the decision, scope, non-goals, and invariants.
-3. **System shape** — add one block diagram only when relationships, ownership, or flow are clearer
-   visually than in a table.
+3. **System shape** — if relationships, ownership, or flow are clearer in a diagram, add one block
+   diagram.
 4. **High-level design** — map components, interfaces, and dependency direction before implementation
    detail.
 5. **Component details** — explain each component separately: responsibility, inputs and outputs,
@@ -55,16 +58,17 @@ boundary it protects, then the system shape, and only then each component's deci
 
 ## Diagram rules
 
-Use a diagram to clarify three or more relationships, a control-flow branch, or ownership that would
-otherwise require repeated prose. Keep it at the system boundary; do not repeat the same diagram in
-component documents. Prefer a table for a simple mapping, a sequence for time-ordered interaction,
-and prose for one local decision.
+Use a diagram if it clarifies three or more relationships, a control-flow branch, or ownership. Keep
+the diagram at the system boundary. Do not repeat the same diagram in component documents. Use a
+table for a simple mapping. Use a sequence for a time-ordered interaction. Use prose for one local
+decision.
 
 ## Safety and architecture
 
-A design document explains a current requirement; it does not authorize implementation, external
-writes, or a change to an accepted ADR. Apply the [shared review contract](common.md): architecture
-alignment precedes implementation detail, and a material architecture change needs an evidenced design
-decision or ADR. Create or change one only when it explains a current product decision; do not duplicate
-an existing requested scope or add a document without a consumer. Accepted ADRs are append-only; write a
-superseding ADR rather than editing one.
+A design document explains a current requirement. It does not authorize implementation, external
+writes, or a change to an accepted architecture decision record (ADR). Apply the
+[shared review contract](common.md). Confirm architecture alignment before you inspect implementation
+detail. Support a material architecture change with an evidenced design decision or ADR. Create or
+change a design document only when it explains a current product decision. Do not duplicate an
+existing requested scope. Do not add a document without a consumer. Do not edit an accepted ADR.
+Write a superseding ADR.

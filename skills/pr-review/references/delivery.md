@@ -2,9 +2,12 @@
 
 ## Why
 
-A review verdict is evidence, not a forge-scope expansion. Rebinding immediately before
-one scoped publication prevents a correct review from commenting on, approving,
-or automating a later artifact.
+A review verdict is evidence. It does not expand the forge scope. Immediately before one scoped
+publication, bind the exact artifact again. This check prevents the review from adding a comment or
+automation to a later artifact. It also prevents approval of a later artifact.
+
+Use Athena's [ASD-STE100 writing policy](../../../docs/technical-english.md) for all technical prose
+and review output.
 
 ```text
 [complete review] -> [verdict] -> [rebind exact artifact]
@@ -17,95 +20,132 @@ or automating a later artifact.
 ## Engineering principle routes
 
 - [P037 Idempotency Before Retry](../../../docs/principles/README.md#p037) and
-  [P044 Atomicity Where Possible](../../../docs/principles/README.md#p044) require one bound,
-  atomic comment batch where the forge supports it and prohibit blind retry after a failed or
-  indeterminate write.
+  [P044 Atomicity Where Possible](../../../docs/principles/README.md#p044) require one bound atomic
+  comment batch when the forge supports it. They prohibit a blind retry after a failed or indeterminate
+  write.
 - [P050 Least Privilege](../../../docs/principles/README.md#p050),
   [P051 Complete Mediation](../../../docs/principles/README.md#p051),
   [P052 Separation of Duties](../../../docs/principles/README.md#p052), and
-  [P058 Bounded Agent Authority](../../../docs/principles/README.md#p058) keep review, publication,
-  approval, and merge capabilities distinct and limited to the selected profile and requested task.
+  [P058 Bounded Agent Authority](../../../docs/principles/README.md#p058) keep the review, publication,
+  approval, and merge capabilities separate. They limit these capabilities to the selected profile and
+  requested task.
 - [P061 Separate Decision from High-Impact Execution](../../../docs/principles/README.md#p061),
   [P062 Human Approval for Irreversible or High-Risk Actions](../../../docs/principles/README.md#p062),
-  and [P083 Irreversible Actions Last](../../../docs/principles/README.md#p083) require a fresh
-  authority and identity check immediately before a requested write or guarded auto-merge opt-in;
-  existing specific authorization is honored without a redundant approval prompt.
+  and [P083 Irreversible Actions Last](../../../docs/principles/README.md#p083) require a new authority
+  and identity check immediately before a requested write or guarded auto-merge opt-in. If the user
+  already gave specific authorization, do not request the same approval again.
 - [P065 Verify Before Claiming Completion](../../../docs/principles/README.md#p065) and
   [P068 No Validation Bypass](../../../docs/principles/README.md#p068) prohibit a favorable verdict,
-  successful-publication claim, or automation state based on stale, incomplete, bypassed, or
-  unverified evidence.
+  successful-publication claim, or automation state from stale, incomplete, bypassed, or unverified
+  evidence.
 
 ## Decision
 
-For default and CI-free normal reports, calculate findings and score before
-emitting exactly one terminal verdict. The prevalidated profile emits only its
-structured audit; it has no verdict, scorecard, publication, or auto-merge
-path. GitLab may report a verdict, but this skill never enables its auto-merge.
+For a default or continuous-integration-free (CI-free) normal report, calculate the findings and
+score. Then, emit exactly one terminal verdict. For the prevalidated profile, emit only its structured
+audit. Do not emit a verdict, scorecard, publication, or auto-merge state. GitLab can report a verdict.
+This skill must not enable GitLab auto-merge.
 
 | Verdict | Required conditions |
 | --- | --- |
-| **GO** | Default profile; A (93–100); architecture aligned or evidenced intentional change; zero `required` findings; complete applicable source, scope, requirements, language, and validation coverage; and host-selected local checks passing on the reviewed head. |
-| **CONDITIONAL GO** | Architecture passes, no `required` source finding is open, and score is at least B, but a remediable review condition remains: for example incomplete source, scope, requirement, language, or validation coverage, a local validation gap, or CI-free's deliberately limited evidence. State every condition. |
-| **NO-GO** | Score below B; any `required` finding; material or unexplained architecture violation; failed required local validation; or invalid/stale/drifted identity, scope, requirement, path, or current-head binding. |
+| **GO** | Use only for the default profile. Require grade A (93–100). Require aligned architecture or an evidenced intentional change. Require zero `required` findings. Require complete applicable source, scope, requirements, language, and validation coverage. Require all host-selected local checks to pass on the reviewed head. |
+| **CONDITIONAL GO** | Require architecture to pass. Require no open `required` source finding. Require a score of at least B. Use when a remediable review condition remains. Examples include incomplete source, scope, requirement, language, or validation coverage; a local validation gap; or deliberately limited CI-free evidence. State each condition. |
+| **NO-GO** | Use for a score below B, a `required` finding, a material or unexplained architecture violation, or failed required local validation. Also use it for an invalid, stale, or drifted identity, scope, requirement, path, or current-head binding. |
 
-`--report-only` may report GO but records `auto_merge: withheld (read-only)`.
-Without `--enable-auto-merge-on-go`, a GO records `auto_merge: withheld (not
-requested)`. CONDITIONAL GO, NO-GO, CI-free, prevalidated, and GitLab records
-`auto_merge: not-eligible` with the blocker.
+`--report-only` can report `GO`. It records `auto_merge: withheld (read-only)`. Without
+`--enable-auto-merge-on-go`, a `GO` records `auto_merge: withheld (not requested)`. For
+`CONDITIONAL GO`, `NO-GO`, CI-free, prevalidated, and GitLab, record `auto_merge: not-eligible` with
+the blocker.
 
 ## Guarded GitHub auto-merge
 
-An explicit direct-user `--enable-auto-merge-on-go` request is the only
-auto-merge selection. It applies only to an exact eligible default-profile
-GitHub GO, after any requested comment batch is verified; it never permits a
-direct merge, retry, approval, label, bypass, or policy change.
+Enable auto-merge only when the user directly requests `--enable-auto-merge-on-go`. Apply this option
+only to an exact eligible default-profile GitHub `GO`. Before you apply it, verify each requested
+comment batch. This option does not permit a direct merge, retry, approval, label, bypass, or policy
+change.
 
-1. Re-resolve canonical host, repository, PR number and node ID, OPEN/non-draft
-   state, target, base/head OIDs, both lenses, scope digest,
-   linked-requirements digest, path manifest, all effective pre-admission gates,
-   and required queue route. Withhold on drift, missing binding, gate failure or
-   pending state, changed author/reviewer, required unresolved thread, or failed
-   or indeterminate comment publication.
-2. Require an authenticated capability that binds the canonical target and can
-   enable normal auto-merge without administrator bypass. It returns the one
-   repository-supported permitted method; never choose, guess, or change one.
-   If a merge queue is required, require a separate exact-head queue-admission
-   capability instead; normal auto-merge is never a queue-admission proxy.
-3. Invoke exactly one bound operation: enable auto-merge with retained PR node
-   ID and `expectedHeadOid`, or queue admission with the same target and head.
-   Do not use ambient repository or branch state, generic CLI defaults, a direct
-   merge command, fallback mutation, or retry after failure or indeterminate
-   results.
-4. Re-fetch the exact PR. Report `enabled` only when auto-merge is enabled for
-   the same node ID, head, and supported method; report `queue-enqueued` only
-   when its entry binds the same PR, target, and reviewed head. Never report the
-   PR as merged.
+1. Resolve these values again:
+   - canonical host;
+   - repository;
+   - pull request (PR) number and node ID;
+   - `OPEN` and non-draft state;
+   - target;
+   - base and head object identifiers (OIDs);
+   - both lenses;
+   - scope digest;
+   - linked-requirements digest;
+   - path manifest;
+   - all effective pre-admission gates; and
+   - required queue route.
+2. If a value changed or a binding is missing, withhold auto-merge.
+3. If a gate failed or is pending, withhold auto-merge.
+4. If the author or reviewer changed, withhold auto-merge.
+5. If a required thread is unresolved, withhold auto-merge.
+6. If comment publication failed or is indeterminate, withhold auto-merge.
+7. Require an authenticated capability that binds the canonical target and can enable normal
+   auto-merge without administrator bypass.
+8. Use the one repository-supported method that the capability returns.
+9. Do not select, guess, or change the method.
+10. If the repository requires a merge queue, require a separate exact-head queue-admission capability.
+11. Do not use normal auto-merge as a queue-admission proxy.
+12. Invoke exactly one bound operation: enable auto-merge with the retained PR node ID and
+    `expectedHeadOid`, or use queue admission with the same target and head.
+13. Do not use ambient repository state, ambient branch state, generic command-line interface (CLI)
+    defaults, a direct merge command, fallback mutation, or a retry after a failed or indeterminate
+    result.
+14. Fetch the exact PR again.
+15. Report `enabled` only if auto-merge uses the same node ID, head, and supported method.
+16. Report `queue-enqueued` only if its entry binds the same PR, target, and reviewed head.
+17. Do not report the PR as merged.
 
 ## Normal report
 
 Return, in order:
 
-1. Artifact identity, forge, base/head, immutable scope and path bindings,
-   behind count, files reviewed, linked issue, acceptance criteria, and each
-   unbound check as a coverage gap.
-2. Architecture decision, language/surface routes, and N/A reasons.
-3. Findings from CRITICAL through FYI. Every finding has independent
-   `required`, `suggestion`, `nit`, or `FYI` disposition; exact location;
-   observed gap; impact and governing evidence; and proportionate fix.
-4. Six-dimension scorecard, weighted grade, terminal verdict, commands and
-   pass/fail state, coverage gaps, delivery/auto-merge state, and brief
-   strengths after findings.
+1. Report the artifact identity, forge, base and head, immutable scope, and path bindings.
+2. Report the behind count, files reviewed, linked issue, and acceptance criteria.
+3. Report each unbound check as a coverage gap.
+4. Report the architecture decision, language routes, surface routes, and not-applicable (N/A) reasons.
+5. Report findings from `CRITICAL` through `FYI`.
+6. For each finding, report these items:
+   - independent `required`, `suggestion`, `nit`, or `FYI` disposition;
+   - exact location;
+   - observed gap;
+   - impact and governing evidence; and
+   - proportionate fix.
+7. Report the six-dimension scorecard, weighted grade, and terminal verdict.
+8. Report commands and their pass or fail state.
+9. Report coverage gaps, delivery state, and auto-merge state.
+10. After the findings, report brief strengths.
 
 ## Comment-only publication
 
-The requested review delivery boundary permits normal publication. It permits comments only, never approval, request-changes, labels,
-issue edits, thread resolution, rebase, push, close, merge, or a follow-up
-work-item. Indirect invocation, `--report-only`, absent forge capability, no
-findings, or drift returns the complete ready-to-publish batch without a write.
+The requested review delivery boundary permits normal publication. Publish comments only. Do not do
+any of these actions:
+
+- approve;
+- request changes;
+- change labels;
+- edit an issue;
+- resolve a thread;
+- rebase;
+- push;
+- close;
+- merge; or
+- create a follow-up work item.
+
+If any of these conditions applies, return the complete ready-to-publish batch without a write:
+
+- The invocation is indirect.
+- The invocation uses `--report-only`.
+- A forge capability is absent.
+- There are no findings.
+- A bound value changed.
+
 Do not post a clean review.
 
-Before every requested write, re-fetch the exact open artifact and derive the
-fully-qualified write target only from the retained identity. Revalidate:
+Before each requested write, fetch the exact open artifact again. Derive the fully qualified write
+target only from the retained identity. Revalidate these values:
 
 | Forge/profile | Required rebind |
 | --- | --- |
@@ -113,13 +153,12 @@ fully-qualified write target only from the retained identity. Revalidate:
 | CI-free GitHub | Exact repository/PR/base/head plus the final non-CI source-scope binding. Never call `collect_evidence.py` or a CI endpoint. |
 | GitLab | Exact identity, scope, linked requirements, changed paths, and complete base/start/head position tuple. |
 
-On any drift, withhold the entire set and restart the review. A general summary
-is optional and may cover only architecture, scope, coverage, or another truly
-cross-cutting point without a changed-line anchor. It must not repeat an inline
-finding. Each independently actionable changed-line finding gets exactly one
-inline comment or discussion on its one causal changed line; never combine
-separate fixes, use a line range instead of a causal line, or duplicate it at
-several locations.
+If a value changes, withhold the complete set. Start a new review. Use a general summary only for
+architecture, scope, coverage, or another cross-cutting point that has no changed-line anchor. Do not
+repeat an inline finding in the summary. Publish each independently actionable changed-line finding
+exactly once. Put it in one inline comment or discussion on its causal changed line. Do not combine
+separate fixes. Do not use a line range instead of the causal line. Do not duplicate the finding at
+multiple locations.
 
 ### GitHub batch
 
@@ -133,24 +172,37 @@ body      = non-empty (neutral transport body is valid)
 comments  = one entry per anchorable independent finding
 ```
 
-Each comment entry contains only one verified changed `path`, `side`, causal
-`line`, and finding body; `commit_id` is top-level, never per comment. Verify
-the returned review and fetched comments identify the target, `COMMENT` or
-`COMMENTED` event/state, reviewed commit, and every expected path, side, line,
-and body anchor. On failed or indeterminate verification, make no further write
-or retry. Do not substitute `gh pr review --comment`.
+Put only one verified changed `path`, `side`, causal `line`, and finding body in each comment entry.
+Put `commit_id` at the top level. Do not put it in an individual comment. Verify that the returned
+review and fetched comments identify these values:
+
+- the target;
+- the `COMMENT` or `COMMENTED` event or state;
+- the reviewed commit; and
+- each expected path, side, line, and body anchor.
+
+If verification fails or is indeterminate, make no additional write. Do not retry. Do not substitute
+`gh pr review --comment`.
 
 ### GitLab discussions
 
-Create one actionable changed-line discussion for each anchorable independent
-finding. Every text position includes exact `base_sha`, `start_sha`, `head_sha`,
-`old_path`, `new_path`, and `position_type=text`; use only `new_line` for an
-added/right-side finding, only `old_line` for deletion/left-side, and both for
-an unchanged line. Prefer an atomic draft or batch. If unavailable, rebind
-before every ordered discussion; stop on drift, retain created URLs, and return
-the remaining batch. Verify each returned target, tuple, paths, and line fields
-exactly. If an atomic batch is required but unsupported, withhold the whole set.
+Create one actionable changed-line discussion for each anchorable independent finding. Put these
+exact values in each text position:
 
-Report review/discussion URLs, posting failure, residual risks, and unverified
-assumptions honestly. The forge and its approval policy—not review prose—own
-labels, acceptance, and merging.
+- `base_sha`;
+- `start_sha`;
+- `head_sha`;
+- `old_path`;
+- `new_path`; and
+- `position_type=text`.
+
+For an added or right-side finding, use only `new_line`. For a deletion or left-side finding, use only
+`old_line`. For an unchanged line, use both fields. Use an atomic draft or batch when it is available.
+If it is not available, bind the artifact again before each ordered discussion. If a value changes,
+stop. Retain the created uniform resource locators (URLs). Return the remaining batch. Verify each
+returned target, tuple, path, and line field exactly. If the workflow requires an atomic batch and the
+forge does not support it, withhold the complete set.
+
+Report review or discussion URLs, publication failures, residual risks, and unverified assumptions
+accurately. The forge and its approval policy control labels, acceptance, and merge. Review prose does
+not control them.

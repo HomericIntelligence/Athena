@@ -6,6 +6,9 @@ the delivery channel appropriate to its scope. It applies the canonical
 [engineering principles](../principles/README.md) through review-specific profiles instead of
 redefining them.
 
+Use the [ASD-STE100 writing policy](../technical-english.md) for all technical prose and review
+output.
+
 ## System at a glance
 
 ```mermaid
@@ -33,6 +36,7 @@ flowchart LR
 
 | Component | Owns | Read when |
 | --- | --- | --- |
+| [ASD-STE100 writing policy](../technical-english.md) | Method for technical prose and literal-text boundary. | Before you write or change technical prose or review output. |
 | [Shared contract](common.md) | Architecture gate, evidence, canonical-principle application profiles, findings, and delivery boundaries. | Every review. |
 | [Language routing](language-routing.md) | Applicable language and toolchain profile. | The changed or inventoried surface contains code or build tooling. |
 | [Behavior-first testing](behavior-first-testing.md) | Functional-test quality and false-confidence rules. | Tests, validation, or a plan are in scope. |
@@ -42,10 +46,14 @@ flowchart LR
 
 ## Read order
 
-1. Read the shared contract and repository guidance; establish architecture alignment first.
-2. Classify the surface, then read only the applicable language and testing guidance.
-3. Add the issue-planning or repository-scorecard contract when that scope applies.
-4. Follow the invoking skill for scope resolution and its authorized delivery channel.
+1. Read the ASD-STE100 writing policy.
+2. Read the shared contract and repository guidance.
+3. Confirm that the artifact aligns with the architecture.
+4. Classify the surface.
+5. Read only the applicable language and test guidance.
+6. If the scope includes issue planning, read the issue-planning contract.
+7. If the scope includes a repository review, read the repository scorecard.
+8. Follow the invoking skill for scope resolution and its authorized delivery channel.
 
 The diagram appears only here. Component documents use tables or prose when those communicate their
 own decision more clearly.
