@@ -2,52 +2,89 @@
 
 ## Definition
 
-Before creating a utility, abstraction, parser, serializer, retry framework, cache, synchronization
-primitive, security mechanism, dependency, or service, determine whether the repository, language,
-framework, platform, or standard library already supplies an appropriate mechanism.
+Before creation of a utility, abstraction, parser, serializer, retry framework, cache,
+synchronization primitive, security mechanism, dependency, or service, search for an appropriate
+mechanism. The repository, language, framework, platform, or standard library can already supply it.
 
-**Aliases:** reuse before build; avoid reinventing the wheel.
+**Aliases:** reuse before a new build, use established mechanisms first.
 
 ## Provenance
 
 **Classification:** practitioner heuristic.
 
-Reuse of established components is a long-standing software practice with no verified single origin.
-This formulation prioritizes local and standard mechanisms while still requiring a fitness and
-security assessment rather than assuming that all reuse is beneficial.
+Reuse of established components is a long-standing software practice. No verified source owns the
+practice. This rule gives priority to local and standard mechanisms. It still requires a fitness and
+security assessment because reuse does not always help.
 
 ## Decision rule
 
-Adopt an existing mechanism when it satisfies the demonstrated contract, is supported in the target
-environment, and has a lower total correctness, security, maintenance, and operational cost than a
-new one. Build only the missing capability, not a competing framework by default.
+Use an established mechanism when it satisfies the contract and has support in the target
+environment. Its total correctness, security, maintenance, and operation cost must be lower than a
+new mechanism. By default, create only the absent capability instead of a rival framework.
 
 ## How to apply
 
 - Search repository code, documentation, dependency manifests, and architecture decisions first.
 - Check the language and framework standard facilities next.
 - Compare semantics, failure behavior, maintenance, provenance, licensing, and migration cost.
-- Extend the existing owner through its intended seam when the gap is small and coherent.
+- Add a small, coherent extension at the interface that the established mechanism provides.
 - Document why a new mechanism is necessary when available options do not meet the contract.
+
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Define required capability"] --> B["Search repository mechanisms"]
+    B --> C["Search language and platform mechanisms"]
+    C --> D{"Established mechanism fits contract?"}
+    D -- "Yes" --> E["Assess support, security, and total cost"]
+    E --> F{"Reuse has lower total risk?"}
+    F -- "Yes" --> G["Use or extend established mechanism"]
+    D -- "No" --> H["Create only absent capability"]
+    F -- "No" --> H
+```
+
+## Language examples
+
+The two examples use an established URL parser and reject a URL without a host.
+
+```python
+from urllib.parse import urlparse
+
+def host(value):
+    parsed = urlparse(value)
+    if not parsed.hostname:
+        raise ValueError("URL has no host")
+    return parsed.hostname
+```
+
+```rust
+use url::Url;
+
+fn host(value: &str) -> Result<String, &'static str> {
+    let parsed = Url::parse(value).map_err(|_| "invalid URL")?;
+    parsed.host_str().map(str::to_owned).ok_or("URL has no host")
+}
+```
 
 ## Boundaries and tensions
 
-Existing does not mean correct, secure, maintained, or suitable. Do not contort a mechanism beyond
-its contract, depend on private internals, or retain a known vulnerability solely to avoid new code.
-Adding a third-party dependency can enlarge supply-chain and attack surface, so a small local
-implementation may sometimes be safer. Reuse must also preserve local reasoning and explicit
+An established mechanism is not always correct, secure, maintained, or suitable. Do not force a
+mechanism beyond its contract. Do not depend on private internals or retain a known vulnerability
+only to avoid new code. A third-party dependency can enlarge the supply-chain and attack surfaces.
+A small local implementation can therefore be safer. Reuse must preserve local analysis and explicit
 ownership.
 
 ## Examples
 
-**Positive:** A command uses the standard library's mature URL parser and the repository's existing
-error envelope instead of creating two slightly different replacements.
+**Positive:** A command uses the standard library URL parser and the repository error envelope. It
+does not create two replacements with small differences.
 
-**Misuse:** A custom retry loop is added even though the repository client already owns bounded
-retry, causing nested attempts and inconsistent backoff.
+**Misuse:** A custom retry loop duplicates the bounded retry in the repository client. The duplicate
+causes nested attempts and inconsistent delay intervals.
 
-**Athena/agent workflow:** An author invokes a tested skill-local helper and its documented CLI rather
-than embedding a second parser as a Markdown code block.
+**Athena/agent workflow:** An author invokes a tested skill-local helper through its documented CLI.
+The author does not add a second parser to a Markdown code block.
 
 ## Related principles
 
@@ -62,20 +99,20 @@ than embedding a second parser as a Markdown code block.
 ### Origin/history
 
 - [Python tutorial: Batteries included](https://docs.python.org/3/tutorial/stdlib.html#batteries-included)
-  documents one influential language philosophy of shipping robust common mechanisms; no claim is
-  made that it originated the broader reuse heuristic.
+  documents one influential language philosophy for robust common mechanisms. This page does not
+  claim that it originated the broader reuse heuristic.
 
 ### Current guidance
 
 - [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-  asks whether a change belongs in the codebase or a library and whether it integrates with the
-  existing system.
+  asks whether the codebase or a library must own a change. It also asks whether the change fits the
+  system.
 - [NIST SSDF 1.1](https://csrc.nist.gov/pubs/sp/800/218/final) requires organizations to manage and
-  protect both internally developed and third-party software components.
+  protect internal and third-party software components.
 
 ### Further reading
 
 - [Google Engineering Practices: Small CLs](https://google.github.io/eng-practices/review/developer/small-cls.html)
-  explains why unused APIs and unrelated framework work should not accompany a focused change.
+  explains how unused APIs and unrelated framework work can reduce the focus of a change.
 
 [Back to the engineering principles catalog](../README.md#p074)

@@ -2,24 +2,23 @@
 
 ## Definition
 
-**Readability Counts** means optimizing code for the people who must review, debug, operate, and
-change it. Clear names, straightforward control flow, focused units, and understandable data shapes
-are correctness and maintenance features, not cosmetic polish.
+**Readability Counts** makes code clear for the people who review, debug, operate, and change it.
+Clear names, direct control flow, focused units, and clear data forms support correctness and
+maintenance. They are not cosmetic features.
 
-**Aliases:** code readability; readable-code principle.
+**Aliases:** code readability and readable-code principle.
 
 ## Provenance
 
 **Classification:** practitioner heuristic.
 
-The exact aphorism appears in Tim Peters's Zen of Python, recorded as PEP 20. The broader priority
-is older and language-independent; programming practice has long recognized that software is read
-and maintained repeatedly after it is written.
+The exact aphorism occurs in Tim Peters's Zen of Python, which PEP 20 records. The broader priority
+is older and independent of language. Software needs many reads and changes after its first version.
 
 ## Decision rule
 
-Among correct designs, choose the one that lets the intended maintainer recover purpose, control
-flow, data meaning, and failure behavior with the least avoidable mental simulation.
+Among correct designs, select the one that shows its purpose, control flow, data meaning, and
+failure behavior most clearly.
 
 ## How to apply
 
@@ -30,23 +29,58 @@ flow, data meaning, and failure behavior with the least avoidable mental simulat
 - Follow established formatting and language idioms.
 - Review code in its surrounding context, not only as an isolated diff.
 
+## Diagram
+
+The reader follows named decisions through one direct control flow.
+
+```mermaid
+flowchart LR
+    A["Clear inputs"] --> B["Named condition"]
+    B -->|Pass| C["Named action"]
+    B -->|Fail| D["Clear failure"]
+    C --> E["Understandable result"]
+```
+
+## Language examples
+
+The two examples use named predicates to show the eligibility rules.
+
+### Python
+
+```python
+def is_eligible(user: User) -> bool:
+    has_verified_email = user.email_verified
+    is_active = user.status is Status.ACTIVE
+    return has_verified_email and is_active
+```
+
+### Rust
+
+```rust
+fn is_eligible(user: &User) -> bool {
+    let has_verified_email = user.email_verified;
+    let is_active = user.status == Status::Active;
+    has_verified_email && is_active
+}
+```
+
 ## Boundaries and tensions
 
-Readability depends partly on audience and ecosystem conventions. Replacing a standard idiom with
-verbose ceremony can make code less readable. Do not flatten useful abstractions or duplicate
-knowledge merely to keep everything in one file. Performance, security, and interoperability may
-require intrinsic complexity; isolate it, test it, and explain the non-obvious constraints.
+Readability depends partly on the audience and system conventions. A verbose replacement for a
+standard form can reduce readability. Do not remove useful abstractions or duplicate knowledge to
+keep all code in one file. Performance, security, and interoperability can need complex code.
+Isolate and test that code. Explain its nonobvious limits.
 
 ## Examples
 
-**Positive:** A compound eligibility check is expressed through named predicates that match the
-domain rules and expose which rule failed.
+**Positive:** Named predicates express a compound eligibility check. The predicates match the domain
+rules and expose which rule failed.
 
 **Misuse:** A dense expression saves four lines but mixes conversion, validation, mutation, and
 fallback behavior in one statement.
 
 **Athena/agent workflow:** An agent produces a focused diff and evidence summary whose intent a
-reviewer can verify without reconstructing the entire session transcript.
+reviewer can verify. The reviewer does not need the full session transcript.
 
 ## Related principles
 

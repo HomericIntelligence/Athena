@@ -2,25 +2,24 @@
 
 ## Definition
 
-**Explicit Ownership and Lifetimes** requires every resource and unit of work to have a clear owner,
-a defined valid lifetime, and deterministic transfer, cleanup, or termination semantics. Resources
-include memory, files, locks, transactions, connections, callbacks, processes, tasks, and temporary
-artifacts.
+**Explicit Ownership and Lifetimes** gives each resource and work unit a clear owner and a defined
+lifetime. The principle also defines transfer, cleanup, and termination. Resources include memory,
+files, locks, transactions, connections, callbacks, processes, tasks, and temporary artifacts.
 
-**Aliases:** none in common use; RAII and ownership types are related implementation families.
+**Aliases:** none in common use. RAII and ownership types are related implementation families.
 
 ## Provenance
 
 **Classification:** established principle.
 
-The general rule has no single origin. It is embodied by structured programming, C++ Resource
-Acquisition Is Initialization (RAII), ownership types, scope-bound cleanup, and structured
-concurrency. These mechanisms differ, but all make responsibility and lifetime visible.
+The general rule has no single origin. Structured programs, C++ Resource Acquisition Is
+Initialization (RAII), ownership types, scope cleanup, and structured concurrency apply it. These
+mechanisms differ. Each mechanism makes responsibility and lifetime visible.
 
 ## Decision rule
 
-Before acquiring a resource or starting work, identify who owns it, when ownership transfers, which
-events end its lifetime, and how cleanup occurs on success, failure, timeout, and cancellation.
+Before resource acquisition, identify its owner and lifetime. Define each ownership transfer. Define
+cleanup for success, failure, timeout, and cancellation.
 
 ## How to apply
 
@@ -28,26 +27,65 @@ events end its lifetime, and how cleanup occurs on success, failure, timeout, an
 - Make ownership transfer visible in types, names, or interface contracts.
 - Tie child tasks to a parent scope unless a durable owner explicitly adopts them.
 - Define shutdown order and wait behavior for concurrent work.
-- Track temporary artifacts and partial state until their final disposition is known.
+- Track temporary artifacts and partial state until an owner records their final disposition.
 - Test exceptional exits as well as the normal release path.
+
+## Diagram
+
+The owner controls the resource through its full lifetime.
+
+```mermaid
+flowchart LR
+    A["Acquire resource"] --> B["Named owner"]
+    B --> C{"Transfer?"}
+    C -->|Yes| D["New named owner"]
+    C -->|No| E["Current owner"]
+    D --> F["Cleanup on every exit"]
+    E --> F
+```
+
+## Language examples
+
+The two examples bind file cleanup to a visible scope and report an empty file.
+
+### Python
+
+```python
+def first_line(path: Path) -> str:
+    with path.open(encoding="utf-8") as stream:
+        line = stream.readline()
+        if line == "":
+            raise EOFError("empty file")
+        return line.rstrip("\r\n")
+```
+
+### Rust
+
+```rust
+fn first_line(path: &Path) -> io::Result<String> {
+    let file = File::open(path)?;
+    let mut lines = BufReader::new(file).lines();
+    lines.next().transpose()?.ok_or_else(|| io::ErrorKind::UnexpectedEof.into())
+}
+```
 
 ## Boundaries and tensions
 
 Garbage collection does not close files, release locks, cancel requests, or settle transactions.
-Shared ownership and long-lived background work can be valid, but their final owner and shutdown
-protocol must still be explicit. Lifetimes need not always be lexical; leases and durable workflows
-can express them when scope-bound cleanup is insufficient.
+Shared ownership and long work can be valid. Their final owner and shutdown protocol must stay
+explicit. A lifetime does not have to match a lexical scope. Leases and durable workflows can define
+longer lifetimes.
 
 ## Examples
 
-**Positive:** A transaction object owns its lock and connection, commits or rolls back exactly once,
-and releases both on every exit path.
+**Positive:** A transaction object owns its lock and connection. It performs one commit or rollback
+and releases each resource on every exit path.
 
-**Misuse:** A helper launches a detached task that continues using a request-scoped credential after
-the request ends, with no cancellation or supervisor.
+**Misuse:** A helper launches a detached task that uses a request-scoped credential after the request
+ends. The task has no cancellation contract or supervisor.
 
 **Athena/agent workflow:** A coordinator records each subagent, its deadline, expected output, and
-terminal disposition, then collects or cancels every child before reporting completion.
+terminal disposition. The coordinator collects or cancels every child. It then reports completion.
 
 ## Related principles
 
@@ -68,8 +106,8 @@ terminal disposition, then collects or cancels every child before reporting comp
 
 - [The Rust Programming Language: What Is Ownership?](https://doc.rust-lang.org/stable/book/ch04-01-what-is-ownership.html)
   demonstrates compiler-enforced ownership and scope rules.
-- [Go: Contexts and structs](https://go.dev/blog/context-and-structs) explains why making a
-  request's lifetime visible at each call avoids confused cancellation and deadlines.
+- [Go: Contexts and structs](https://go.dev/blog/context-and-structs) explains how a visible request
+  lifetime at each call prevents confused cancellation and deadlines.
 
 ### Further reading
 

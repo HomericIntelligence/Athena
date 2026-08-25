@@ -2,55 +2,101 @@
 
 ## Definition
 
-Express one behavioral rule once and run it against multiple named cases containing inputs,
-expected outcomes, and relevant context. This separates the invariant test procedure from the
-examples used to exercise it.
+Express one behavior rule once. Apply that rule to multiple named cases with inputs, expected
+results, and relevant context.
 
-**Aliases:** data-driven tests; test tables; parameterized tests; theories.
+This structure separates the common test procedure from its examples.
+
+**Aliases:** data-driven tests, test tables, parameterized tests, theories.
 
 ## Provenance
 
 **Classification:** established principle.
 
-Data-driven testing appeared in multiple early frameworks and language communities. The
-slash-combined name reflects two common forms and has no single verified origin.
+Data-driven tests appeared in several early frameworks and language communities. The combined name
+describes two common forms. It has no single verified origin.
 
 ## Decision rule
 
-When several cases differ primarily in data rather than setup or expected behavior, use one clear
-test procedure with independently named cases.
+Use one clear test procedure when cases differ mainly in data. Give each case an independent name.
 
 ## How to apply
 
-- Give every case a diagnostic name describing its distinguishing condition.
-- Store explicit expected results rather than recomputing them with production logic.
-- Include representative normal, non-default, empty, missing, invalid, and boundary cases.
-- Keep per-case setup and assertions small; split cases that express a different rule.
-- Ensure mutable case data is isolated and a failure identifies the exact case.
+- Give every case a diagnostic name that states its distinct condition.
+- Store explicit expected results. Do not calculate them with production logic.
+- Include representative normal, nondefault, empty, missing, invalid, and boundary cases.
+- Keep setup and assertions small for each case. Separate cases that express another rule.
+- Isolate mutable case data. Make each failure identify the exact case.
+
+## Diagram
+
+```mermaid
+flowchart LR
+    Rule["One behavior rule"] --> Procedure["Common test procedure"]
+    Cases["Named input and expected-result cases"] --> Procedure
+    Procedure --> Run["Run each case"]
+    Run --> Result{"Case passes?"}
+    Result -->|No| Name["Report exact case name"]
+    Result -->|Yes| Next["Evaluate next case"]
+    Next --> Procedure
+```
+
+## Language examples
+
+The two examples apply one normalization rule to the same named cases.
+
+Python:
+
+```python
+def normalize(value: str) -> str:
+    return value.strip().lower()
+
+def test_normalize_cases() -> None:
+    cases = [("trim", " Yes ", "yes"), ("case", "NO", "no"), ("empty", " ", "")]
+    for name, given, expected in cases:
+        assert normalize(given) == expected, name
+```
+
+Rust:
+
+```rust
+fn normalize(value: &str) -> String {
+    value.trim().to_lowercase()
+}
+
+#[test]
+fn normalize_cases() {
+    let cases = [("trim", " Yes ", "yes"), ("case", "NO", "no"), ("empty", " ", "")];
+    for (name, given, expected) in cases {
+        assert_eq!(normalize(given), expected, "{name}");
+    }
+}
+```
 
 ## Boundaries and tensions
 
-A large table can hide intent when cases require different workflows or many conditional fields.
-Do not force integration scenarios into a common loop solely to remove lines. Parameterization
-increases coverage of chosen examples but is not exhaustive and does not replace invariant-based or
-boundary analysis.
+A large table can conceal intent when cases require different workflows or many conditional fields.
+Do not force different integration scenarios into one loop only to remove lines.
+
+Parameterization adds coverage for selected examples. It is not exhaustive. It does not replace
+property tests or boundary analysis.
 
 ## Examples
 
 ### Positive application
 
-A parser test runs the same public operation for named cases covering a normal value, whitespace,
-an empty input, malformed syntax, and the documented maximum length.
+A parser test uses one public operation for several named cases. Cases cover a normal value,
+whitespace, empty input, malformed syntax, and maximum length.
 
 ### Misuse or counterexample
 
-A single table includes flags that choose different setup, invocation, and assertion branches. The
-test loop becomes a second implementation that is harder to understand than separate tests.
+One table contains flags that select different setup, invocation, and assertion branches. The test
+loop becomes a second implementation that is difficult to understand.
 
 ### Athena or agent workflow
 
-A validator helper uses named cases for valid frontmatter, a missing required field, an unknown
-field, and malformed YAML while sharing one invocation and result-checking path.
+A validator uses named cases for valid frontmatter, a missing field, an unknown field, and malformed
+YAML. Every case uses one invocation and result check.
 
 ## Related principles
 
@@ -63,18 +109,18 @@ field, and malformed YAML while sharing one invocation and result-checking path.
 ### Origin and history
 
 - [Go project, "TableDrivenTests"](https://go.dev/wiki/TableDrivenTests)
-  records the established Go practice of separating reusable test logic from complete named cases.
+  records the established Go practice of separate test logic and full named cases.
 
 ### Current guidance
 
 - [pytest, "How to parametrize fixtures and test functions"](https://docs.pytest.org/en/stable/how-to/parametrize.html)
-  documents built-in parameter sets, generated cases, fixtures, and per-case marks.
+  documents parameter sets, generated cases, fixtures, and per-case marks.
 - [JUnit User Guide, "Parameterized Classes and Tests"](https://docs.junit.org/current/writing-tests/parameterized-classes-and-tests.html)
-  documents current parameter sources, argument conversion, and named invocations.
+  documents parameter sources, argument conversion, and named invocations.
 
 ### Further reading
 
 - [Microsoft, ".NET unit testing best practices"](https://learn.microsoft.com/en-us/dotnet/core/testing/unit-testing-best-practices)
-  contrasts duplicated test logic with theory-style named input and expected-output cases.
+  contrasts duplicate test logic with named input and expected-result cases.
 
 [Back to the engineering principles catalog](../README.md#p023)

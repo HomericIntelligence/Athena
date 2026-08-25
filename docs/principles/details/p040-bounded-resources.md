@@ -2,9 +2,11 @@
 
 ## Definition
 
-Any resource whose demand can grow must have a deliberate limit or a proven physical bound. This
-includes queues, buffers, concurrency, recursion, batches, memory, disk, outstanding work, agent
-iterations, token use, and tool invocations. Reaching the bound must produce controlled behavior.
+Every resource with variable demand must have a deliberate limit or a proven physical bound.
+Examples are queues, buffers, concurrency, recursion, batches, memory, disk, incomplete work, agent
+iterations, tokens, and tool calls.
+
+The system must provide controlled behavior at the bound.
 
 **Aliases:** resource limits, finite capacity, quotas
 
@@ -12,53 +14,98 @@ iterations, token use, and tool invocations. Reaching the bound must produce con
 
 **Classification:** established principle.
 
-Resource bounding is foundational across operating systems, queueing, and secure design. No single
-origin for this language-neutral rule is asserted.
+Resource limits are fundamental to operating systems, queueing theory, and secure design. Athena does
+not assert one origin for this language-neutral rule.
 
 ## Decision rule
 
-For every potentially repeated or accumulated unit of work, identify the capacity owner, set a
-limit based on evidence and risk, and define admission, rejection, cleanup, and recovery at that
-limit.
+For each repeated or accumulated work unit, identify the capacity owner. Set an evidence-based
+limit. Define admission, rejection, cleanup, and recovery behavior at that limit.
 
 ## How to apply
 
-- Inventory resources consumed per request, tenant, process, and dependency.
-- Bound both item count and item cost where items can vary greatly in size or complexity.
-- Prefer platform-provided quotas, bounded executors, and bounded queues over bespoke counters.
-- Reserve capacity or separate pools for critical work so low-value demand cannot consume it all.
-- Make rejection cheaper than admitted work and provide a clear overload signal.
-- Monitor saturation, rejected work, queue age, and time at the limit; revisit limits as workloads
-  change.
-- Test the system at and beyond each important limit, including cleanup and recovery.
+- Make a resource inventory for each request, tenant, process, and dependency.
+- Limit item count and item cost when items can differ greatly in size or complexity.
+- Prefer platform quotas, finite executors, and finite queues to custom counters.
+- Reserve capacity or use separate pools for critical work. Low-value demand must not consume all
+  capacity.
+- Make rejection cheaper than admitted work. Provide a clear overload signal.
+- Monitor saturation, rejected work, queue age, and time at the limit. Revise limits after workload
+  changes.
+- Test the system at and above each important limit. Verify cleanup and recovery.
+
+## Diagram
+
+```mermaid
+flowchart TD
+    A["A request needs a finite resource"] --> B{"Is capacity available?"}
+    B -- Yes --> C["Admit the request"]
+    C --> D["Use and release the resource"]
+    B -- No --> E["Reject with an overload result"]
+    E --> F["Preserve capacity for admitted work"]
+```
+
+## Language examples
+
+Each example caps queue capacity and rejects work that exceeds the limit.
+
+### Python
+
+```python
+queue = Queue(maxsize=100)
+
+def submit(task):
+    try:
+        queue.put_nowait(task)
+        return Accepted()
+    except Full:
+        return Overloaded()
+```
+
+### Rust
+
+```rust
+fn task_queue() -> (SyncSender<Task>, Receiver<Task>) {
+    sync_channel(100)
+}
+
+fn submit(tx: &SyncSender<Task>, task: Task) -> Outcome {
+    match tx.try_send(task) {
+        Ok(()) => Outcome::Accepted,
+        Err(TrySendError::Full(_)) => Outcome::Overloaded,
+        Err(TrySendError::Disconnected(_)) => Outcome::Unavailable,
+    }
+}
+```
 
 ## Boundaries and tensions
 
-A large finite number is not a meaningful bound if it exceeds available capacity. A small limit can
-also harm correctness or availability if it ignores legitimate bursts. Use measurements and service
-objectives rather than arbitrary constants.
+A large finite number is not useful when it exceeds available capacity. A small limit can harm
+correctness or availability when it excludes valid bursts.
 
-[P041](p041-backpressure-and-load-shedding.md) defines how demand should react at capacity, while
-[P042](p042-fault-isolation-bulkheads.md) prevents one consumer from exhausting unrelated capacity.
-[P039](p039-bounded-waiting.md) limits resource holding time as well as resource count.
+Use measurements and service objectives to select limits. Do not use arbitrary constants.
+
+[P041](p041-backpressure-and-load-shedding.md) defines the demand response at capacity.
+[P042](p042-fault-isolation-bulkheads.md) prevents one consumer from exhaustion of unrelated
+capacity. [P039](p039-bounded-waiting.md) limits resource retention time. Bounded Resources limits
+resource count and capacity.
 
 ## Examples
 
 ### Positive application
 
-A worker pool caps in-flight tasks and queue depth. When full, it rejects new work with a retryable
-overload response, exposes queue-age metrics, and retains reserved capacity for health operations.
+A worker pool limits active tasks and queue depth. At capacity, it rejects new work with a retryable
+overload response. It records queue age and reserves capacity for health operations.
 
 ### Misuse or counterexample
 
-An API buffers every request in an unbounded in-memory queue during a downstream outage. Memory
-growth eventually crashes the process and discards the entire backlog.
+An API stores every request in an unlimited memory queue during a downstream outage. Memory use
+increases until the process stops. The process then loses the full backlog.
 
 ### Athena or agent workflow
 
-A swarm workflow sets explicit limits on concurrent specialists, iterations, tool calls, and token
-budget. Hitting a limit returns a truthful partial or failed outcome instead of silently spawning
-more work.
+A swarm workflow sets limits on concurrent specialists, iterations, tool calls, and tokens. At a
+limit, it returns a truthful partial result or failure. It does not create more work.
 
 ## Related principles
 
@@ -71,19 +118,19 @@ more work.
 
 ### Origin and history
 
-- No single primary origin is asserted. Operating systems and network services have long used
-  quotas and capacity limits; Athena generalizes the practice to software and agentic resources.
+- Athena does not assert one primary origin. Operating systems and network services have long used
+  quotas and capacity limits. Athena applies the practice to software and agent resources.
 
 ### Current guidance
 
 - [CWE List 4.20, CWE-770: Allocation of Resources Without Limits or Throttling](https://cwe.mitre.org/data/definitions/770.html)
-  — current weakness definition, consequences, and mitigations for unbounded allocation.
+  — current weakness definition, consequences, and controls for unlimited resource allocation.
 - [Google SRE, Addressing Cascading Failures](https://sre.google/sre-book/addressing-cascading-failures/)
-  — production guidance on queue, memory, thread, CPU, and file-descriptor exhaustion.
+  — production guidance for queue, memory, thread, CPU, and file-descriptor exhaustion.
 
 ### Further reading
 
 - [Microsoft Azure, Throttling pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/throttling)
-  — guidance for aligning limits to the resource that saturates first and controlling admission.
+  — guidance for limits that match the first saturated resource and for admission control.
 
 [Back to the engineering principles catalog](../README.md#p040)

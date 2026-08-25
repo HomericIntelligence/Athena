@@ -2,10 +2,11 @@
 
 ## Definition
 
-Any wait for an external operation, lock, queue, process, asynchronous result, or delegated task
-must have termination behavior appropriate to its risk: a deadline, timeout, cancellation signal,
-or another demonstrable bound. The caller must be able to distinguish completion, cancellation,
-timeout, and failure.
+Every wait for an external operation, lock, queue, process, asynchronous result, or delegated task
+must have termination behavior appropriate to its risk.
+
+Use a deadline, timeout, cancellation signal, or other proven bound. The caller must distinguish
+completion, cancellation, timeout, and failure.
 
 **Aliases:** deadlines, timeouts, finite blocking, wait budget
 
@@ -13,51 +14,101 @@ timeout, and failure.
 
 **Classification:** established principle.
 
-Timeouts and deadlines are longstanding concurrency and distributed-systems mechanisms. This broad
-formulation has no single verified origin.
+Concurrent systems and distributed systems have long used timeouts and deadlines. This broad rule
+has no verified single origin.
 
 ## Decision rule
 
-If completion depends on another actor or contested resource, define how long the caller is willing
-to wait and what safe outcome follows when that budget expires.
+When completion depends on another actor or contested resource, define the maximum wait. Define the
+safe outcome after budget expiration.
 
 ## How to apply
 
-- Prefer an end-to-end deadline that downstream calls inherit over unrelated per-hop timeouts.
+- Prefer one end-to-end deadline that all downstream calls inherit. Do not use unrelated per-hop
+  timeouts.
 - Derive budgets from service objectives, measured latency, operation value, and cleanup cost.
-- Propagate cancellation and remaining time to child operations.
-- On timeout, stop or detach work only according to an explicit ownership contract; a caller timeout
-  does not prove that remote side effects stopped.
+- Pass cancellation and residual time to child operations.
+- Stop or detach work after timeout only under an ownership contract. A timeout does not prove that
+  remote effects stopped.
 - Release locks, slots, and temporary resources on every terminal path.
-- Test deadline expiry, cancellation races, slow dependencies, and work that completes just before
-  or after the boundary.
+- Test deadline expiration, cancellation races, slow dependencies, and completion near each side
+  of the boundary.
+
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Start an external wait"] --> B["Set a deadline and pass cancellation"]
+    B --> C{"What terminal event occurs?"}
+    C -- Completion --> D["Return the result"]
+    C -- Cancellation --> E["Release owned resources"]
+    C -- Timeout --> F["Return a distinct timeout result"]
+    C -- Failure --> G["Return the failure"]
+    E --> H["Report cancellation"]
+```
+
+## Language examples
+
+Each example limits the wait and returns a distinct timeout result.
+
+### Python
+
+```python
+def await_result(future):
+    try:
+        return Completed(future.result(timeout=2.0))
+    except CancelledError:
+        return Cancelled()
+    except TimeoutError:
+        return TimedOut()
+    except OperationError as error:
+        return Failed(error)
+```
+
+### Rust
+
+```rust
+fn await_result(rx: Receiver<Result<Value, Error>>) -> Outcome {
+    match rx.recv_timeout(Duration::from_secs(2)) {
+        Ok(Ok(value)) => Outcome::Completed(value),
+        Ok(Err(error)) => Outcome::Failed(error),
+        Err(RecvTimeoutError::Timeout) => Outcome::TimedOut,
+        Err(RecvTimeoutError::Disconnected) => Outcome::Cancelled,
+    }
+}
+```
 
 ## Boundaries and tensions
 
-A timeout bounds the caller's wait, not necessarily the callee's execution. Side-effecting work may
-need [P037](p037-idempotency-before-retry.md), status reconciliation, or compensation before a retry.
+A timeout bounds the caller wait. It does not always bound callee execution. Work with side effects
+can require [P037](p037-idempotency-before-retry.md), status reconciliation, or compensation before
+a retry.
 
-Timeouts that are unrealistically short create self-inflicted failure; missing timeouts permit
-resource leaks and cascades. Use evidence to set the budget, and combine it with
-[P040](p040-bounded-resources.md) so many individually bounded waits cannot exhaust the system.
+Very short timeouts cause avoidable failure. Absent timeouts permit resource leaks and failure
+cascades. Use evidence to set the budget.
+
+Combine the budget with [P040](p040-bounded-resources.md). Many finite waits must not exhaust the
+system.
 
 ## Examples
 
 ### Positive application
 
-An incoming request carries a two-second deadline. Each downstream call receives the remaining
-budget, stops spawned work on cancellation, and returns a distinct deadline-exceeded result.
+A request has a two-second deadline. Each downstream call receives the residual budget. Each call
+stops owned child work after cancellation and returns a distinct deadline result.
 
 ### Misuse or counterexample
 
-A worker calls an external process with no timeout and holds a concurrency slot forever when that
-process hangs. The bounded queue eventually stops making progress.
+A worker calls an external process without a timeout. The stalled process holds a concurrency slot
+without a limit. The finite queue cannot make progress.
 
 ### Athena or agent workflow
 
-A coordinator gives delegated research a stated deadline and checks the resulting status. On
-timeout it reports incomplete evidence and terminates or safely abandons the task according to the
-host contract; it does not wait indefinitely or invent a result.
+A coordinator gives delegated research a stated deadline and checks the result status. After a
+timeout, it reports incomplete evidence. It then terminates or releases the task under the host
+contract.
+
+It does not wait without a limit or invent a result.
 
 ## Related principles
 
@@ -70,19 +121,20 @@ host contract; it does not wait indefinitely or invent a result.
 
 ### Origin and history
 
-- No single origin is asserted. Deadline and timeout mechanisms predate contemporary RPC systems
-  and appear across operating-system, concurrency, and networking literature.
+- Athena does not assert one origin. Deadline and timeout controls predate current RPC systems and
+  occur throughout literature about operating systems, concurrency, and networks.
 
 ### Current guidance
 
-- [gRPC, Deadlines](https://grpc.io/docs/guides/deadlines/) — official guidance to set realistic
-  deadlines, propagate them, and stop server work after expiry.
-- [gRPC, Cancellation](https://grpc.io/docs/guides/cancellation/) — official guidance for signaling
-  lost interest and propagating cancellation through an RPC call graph.
+- [gRPC, Deadlines](https://grpc.io/docs/guides/deadlines/) — official guidance for realistic
+  deadlines, deadline propagation, and server work termination after expiration.
+- [gRPC, Cancellation](https://grpc.io/docs/guides/cancellation/) — official guidance for a lost
+  interest signal and cancellation propagation through an RPC call graph.
 
 ### Further reading
 
 - [Google SRE, Addressing Cascading Failures](https://sre.google/sre-book/addressing-cascading-failures/)
-  — connects expired client deadlines, wasted server work, resource exhaustion, and cascades.
+  — connects expired client deadlines with wasted server work, resource exhaustion, and failure
+  cascades.
 
 [Back to the engineering principles catalog](../README.md#p039)

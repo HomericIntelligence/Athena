@@ -2,58 +2,105 @@
 
 ## Definition
 
-Encode important architectural constraints in mechanisms that can evaluate the implementation,
-such as tests, type systems, schemas, static analysis, dependency rules, CI policy, or runtime
-guards. Documentation explains intent; executable checks detect drift.
+Encode important architectural constraints in mechanisms that can evaluate the implementation.
+Possible mechanisms include tests, type systems, schemas, static analysis, dependency rules, CI
+policy, and runtime guards.
 
-**Aliases:** architecture fitness functions; architecture tests; automated architecture
+Documentation explains intent. Executable checks detect drift.
+
+**Aliases:** architecture fitness functions, architecture tests, automated architecture
 governance.
 
 ## Provenance
 
 **Classification:** practitioner heuristic.
 
-This practitioner architectural technique has no single verified origin. Ford, Parsons, and Kua
-popularized architectural fitness functions as part of evolutionary architecture; many earlier
-tools enforced dependency and conformance rules.
+This architectural technique has no single verified origin. Ford, Parsons, and Kua popularized
+architecture fitness functions as part of evolutionary architecture. Earlier tools also enforced
+dependency and conformance rules.
 
 ## Decision rule
 
-When violating an architectural rule would create material risk and the rule is mechanically
-observable, add the smallest reliable check at the closest practical feedback boundary.
+Add the smallest reliable check when a mechanically observable architecture violation can create
+material risk. Place the check at the closest practical feedback boundary.
 
 ## How to apply
 
-- Choose a few consequential qualities or dependency rules, not every architectural preference.
-- Select the cheapest faithful mechanism: compiler, linter, unit test, integration check, or CI.
-- Make failure output identify the violated rule and the offending dependency or artifact.
-- Keep the check in the same change as the rule it protects.
-- Review checks when the architecture intentionally evolves; update rule and implementation
-  together.
+- Select a few important qualities or dependency rules.
+- Choose the least costly faithful mechanism, such as a compiler, linter, test, or CI check.
+- Make failure output identify the violated rule and the relevant dependency or artifact.
+- Add the rule and its check in the same change.
+- Revise the check after an intentional architecture change. Revise the rule and implementation in
+  the same change.
+
+## Diagram
+
+```mermaid
+flowchart LR
+    Rule["Architecture rule"] --> Observable{"Mechanically observable?"}
+    Observable -->|No| Review["Use design review"]
+    Observable -->|Yes| Check["Add the smallest faithful check"]
+    Check --> Change["Evaluate each change"]
+    Change --> Drift{"Rule violation?"}
+    Drift -->|Yes| Reject["Report exact invalid edge"]
+    Drift -->|No| Accept["Accept conformance"]
+```
+
+## Language examples
+
+The two examples make the same dependency direction an executable rule.
+
+Python:
+
+```python
+ALLOWED = {("api", "domain"), ("storage", "domain")}
+
+def dependency_allowed(source: str, target: str) -> bool:
+    return (source, target) in ALLOWED
+
+def test_domain_cannot_depend_on_api() -> None:
+    assert not dependency_allowed("domain", "api")
+```
+
+Rust:
+
+```rust
+const ALLOWED: [(&str, &str); 2] = [("api", "domain"), ("storage", "domain")];
+
+fn dependency_allowed(source: &str, target: &str) -> bool {
+    ALLOWED.contains(&(source, target))
+}
+
+#[test]
+fn domain_cannot_depend_on_api() {
+    assert!(!dependency_allowed("domain", "api"));
+}
+```
 
 ## Boundaries and tensions
 
-Not every architectural property is computable. A proxy metric can be gamed or reject sound
-designs, so human review remains necessary for semantics and trade-offs. Avoid prose-string tests,
-snapshot inventories, and brittle dependency rules that freeze incidental layout instead of a
-consumer-relevant boundary.
+Not every architectural property is computable. A proxy metric can reward poor behavior or reject
+sound designs. Human review must assess semantics and trade-offs.
+
+Avoid prose-string tests, snapshot inventories, and brittle dependency rules. Such checks freeze
+incidental layout instead of a consumer-relevant boundary.
 
 ## Examples
 
 ### Positive application
 
-A dependency test rejects imports from the domain layer into transport adapters and reports the
-exact edge. The architecture document explains why the direction matters.
+A dependency test rejects imports from the domain layer into transport adapters. It reports the
+exact invalid edge. The architecture document explains why the direction matters.
 
 ### Misuse or counterexample
 
-A test asserts that a document contains a particular heading, claiming this enforces modularity.
-It freezes wording without checking any architectural behavior.
+A test requires a specific document heading and claims to enforce modularity. The test freezes
+words but does not check architectural behavior.
 
 ### Athena or agent workflow
 
-Athena's validator discovers canonical skill entrypoints and rejects host-specific skill mirrors.
-The repository policy explains the boundary; the check prevents distribution drift.
+Athena's validator finds canonical skill entry points and rejects host-specific skill mirrors. The
+repository policy explains the boundary. The validator prevents distribution drift.
 
 ## Related principles
 
@@ -66,7 +113,7 @@ The repository policy explains the boundary; the check prevents distribution dri
 ### Origin and history
 
 - [Ford, Parsons, and Kua, *Building Evolutionary Architectures*, second-edition sample](https://www.thoughtworks.com/content/dam/thoughtworks/documents/books/bk_building_evolutionary_architectures_second_edition_free_chapter.pdf)
-  explains fitness functions as objective checks that guide architectural change.
+  explains fitness functions as objective checks for architectural change.
 
 ### Current guidance
 

@@ -2,10 +2,11 @@
 
 ## Definition
 
-When demand approaches or exceeds capacity, protect the system with an explicit control response.
-**Backpressure** signals producers to slow, pause, or reduce concurrency. **Load shedding** rejects,
-drops, or degrades selected work that cannot be admitted safely. Both prevent uncontrolled queues
-and resource use from turning overload into collapse.
+When demand nears or exceeds capacity, protect the system with an explicit control response.
+**Backpressure** tells producers to reduce rate or concurrency.
+
+**Load shedding** rejects, drops, or reduces selected work that the system cannot admit safely. The two
+controls prevent unlimited queues and resource exhaustion during overload.
 
 **Aliases:** flow control, overload signaling, admission shedding
 
@@ -13,56 +14,98 @@ and resource use from turning overload into collapse.
 
 **Classification:** established principle.
 
-Backpressure has established meanings in flow-control and streaming systems; load shedding has
-established use in overload control. Athena combines the complementary tools but does not treat
-them as synonyms.
+Backpressure has established meanings in flow-control and data-stream systems. Load shedding has
+established use in overload control. Athena combines these complementary tools but keeps their
+meanings distinct.
 
 ## Decision rule
 
-Before saturation, either make upstream demand conform to sustainable capacity or reject work
-cheaply and predictably. Never accept unlimited work merely because it can be queued.
+Before saturation, make upstream demand conform to sustainable capacity. Otherwise, reject work
+cheaply and predictably. Never accept unlimited work because a queue exists.
 
 ## How to apply
 
-- Identify the actual bottleneck: concurrency, queue depth, CPU, memory, downstream quota, or
-  another constrained resource.
-- Expose standard overload signals, such as paused demand, bounded credits, HTTP 429 or 503, and
-  safe retry guidance.
-- Propagate downstream backpressure rather than hiding it behind immediate retries.
-- Shed work before collapse, using explicit priority and fairness rules when requests differ in
+- Identify the actual bottleneck. Examples are concurrency, queue depth, CPU, memory, and downstream
+  quota.
+- Provide standard overload signals. Examples are demand pause, finite credits, HTTP 429 or 503,
+  and safe retry guidance.
+- Send downstream backpressure to producers. Do not hide it with immediate retries.
+- Reject work before collapse. Apply explicit priority and fairness rules when requests differ in
   value or cost.
-- Keep rejection cheaper than accepted work and avoid expensive parsing before admission when safe.
-- Monitor saturation, shed rate, affected principals, tail latency, and recovery.
-- Load-test steady overload, bursts, retrying callers, and recovery after load falls.
+- Keep rejection cheaper than accepted work. Avoid expensive parse work before admission when safe.
+- Monitor saturation, rejection rate, affected principals, tail latency, and recovery.
+- Test steady overload, bursts, callers with retry policies, and recovery after load decreases.
+
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Demand nears capacity"] --> B{"Can the producer reduce demand?"}
+    B -- Yes --> C["Send a backpressure signal"]
+    C --> D["Match demand to sustainable capacity"]
+    B -- No --> E["Apply priority and fairness rules"]
+    E --> F["Reject excess work cheaply"]
+    F --> G["Preserve service for admitted work"]
+```
+
+## Language examples
+
+Each example rejects excess work before slot exhaustion and provides a retry signal.
+
+### Python
+
+```python
+def admit(request, slots):
+    if not slots.acquire(blocking=False):
+        return Response(status=503, headers={"Retry-After": "1"})
+    try:
+        return serve(request)
+    finally:
+        slots.release()
+```
+
+### Rust
+
+```rust
+fn admit(request: Request, slots: &Semaphore) -> Response {
+    let Ok(_permit) = slots.try_acquire() else {
+        return Response::retry_after(503, 1);
+    };
+    serve(request)
+}
+```
 
 ## Boundaries and tensions
 
-Buffering smooths a short mismatch but is not backpressure if the buffer can grow without bound.
-Apply [P040](p040-bounded-resources.md) to every queue. A retry response is useful only when callers
-follow [P038](p038-bounded-retry.md); otherwise, rejection can become a retry storm.
+A buffer can absorb a short demand mismatch. It does not provide backpressure unless it has a limit
+and producers receive a capacity signal. Apply [P040](p040-bounded-resources.md) to every queue.
 
-Load shedding intentionally declines some work. [P036](p036-graceful-degradation.md) instead serves
-a reduced but valid result. They can be combined, but neither may bypass security or silently alter
-a required correctness contract.
+A retry response helps only when callers apply [P038](p038-bounded-retry.md). Otherwise, rejection
+can cause a retry storm.
+
+Load shedding intentionally refuses some work. [P036](p036-graceful-degradation.md) provides a
+reduced but valid result. A system can combine the two controls.
+
+Neither control can bypass security or silently change a required correctness contract.
 
 ## Examples
 
 ### Positive application
 
-A service begins returning HTTP 503 with bounded retry guidance as its in-flight limit approaches.
-It first sheds low-priority refresh requests, preserves reserved capacity for critical writes, and
-recovers admission gradually after latency stabilizes.
+A service nears its active request limit. It returns HTTP 503 with finite retry guidance for new
+low-priority refresh requests. It preserves reserved capacity for critical writes.
+
+The service restores admission in stages after latency becomes stable.
 
 ### Misuse or counterexample
 
-A consumer acknowledges messages immediately and stores them in an unbounded local list. The
-producer sees no pressure, memory grows, and the process crashes with all buffered work at risk.
+A consumer acknowledges messages immediately and stores them in an unlimited local list. The
+producer receives no pressure signal. Memory use increases until the process stops.
 
 ### Athena or agent workflow
 
-A coordinator at its concurrency limit queues only a bounded number of independent tasks. It
-defers or rejects lower-priority delegation and reports the constraint rather than spawning agents
-until the host or token budget is exhausted.
+A coordinator at its concurrency limit keeps only a finite task queue. It defers or rejects
+low-priority tasks and reports the constraint. It does not exhaust host or token capacity.
 
 ## Related principles
 
@@ -76,20 +119,20 @@ until the host or token budget is exhausted.
 ### Origin and history
 
 - [Reactive Manifesto 2.0 (2014)](https://www.reactivemanifesto.org/) — influential practitioner
-  statement connecting message-driven flow control, monitored queues, and backpressure; it is not
-  the origin of flow control.
+  statement that connects message-based flow control, queue observation, and backpressure. It is
+  not the origin of flow control.
 
 ### Current guidance
 
 - [Reactive Streams 1.0.4](https://www.reactive-streams.org/) — specification and compatibility
-  kit defining asynchronous stream processing with nonblocking backpressure.
+  kit for asynchronous stream operations with nonblocking backpressure.
 - [Google SRE, Addressing Cascading Failures](https://sre.google/sre-book/addressing-cascading-failures/)
-  — production guidance on load shedding, overload signals, bounded queues, and degraded results.
+  — production guidance for load shedding, overload signals, finite queues, and reduced results.
 
 ### Further reading
 
 - [Microsoft Azure, Throttling pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/throttling)
-  — detailed current guidance on early shedding, caller signals, fairness, and propagating
-  backpressure through a call chain.
+  — current guidance for early load shedding, caller signals, fairness, and backpressure across a
+  call chain.
 
 [Back to the engineering principles catalog](../README.md#p041)

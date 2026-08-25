@@ -2,24 +2,24 @@
 
 ## Definition
 
-**Delete Dead Code** means removing unreachable, unused, superseded, commented-out, or obsolete
-implementation after establishing that no required consumer or contract depends on it. Version
-control preserves history; dormant alternatives increase maintenance cost and cognitive load.
+**Delete Dead Code** removes unreachable, unused, superseded, commented-out, or obsolete code. First,
+verify that no required consumer or contract depends on it. Version control preserves history.
+Dormant alternatives increase maintenance cost and mental load.
 
-**Aliases:** dead-code removal; obsolete-code cleanup.
+**Aliases:** dead-code removal and obsolete-code cleanup.
 
 ## Provenance
 
 **Classification:** practitioner heuristic.
 
-No verified single origin exists for the rule. Compilers have long performed dead-code elimination,
-while maintainers apply the broader practice to source that is technically reachable but no longer
-serves a product purpose. Athena's wording adds an evidence requirement before deletion.
+No verified single origin exists for the rule. Compilers have long removed dead code. Maintainers
+apply the broader practice to reachable source that has no product purpose. Athena requires evidence
+before deletion.
 
 ## Decision rule
 
-When code has no supported runtime, build, test, migration, compatibility, or documentation
-consumer, remove it and verify the affected behavior instead of retaining it as speculative backup.
+Remove code that has no supported consumer in runtime, build, test, migration, compatibility, or
+documentation. Verify the affected behavior. Do not keep speculative backup code.
 
 ## How to apply
 
@@ -30,24 +30,66 @@ consumer, remove it and verify the affected behavior instead of retaining it as 
 - Keep the removal focused and reviewable.
 - Run the repository's relevant static, behavioral, packaging, and integration checks.
 
+## Diagram
+
+The deletion starts only after evidence shows that no required consumer remains.
+
+```mermaid
+flowchart LR
+    A["Candidate dead code"] --> B["Search all consumers"]
+    B --> C{"Required consumer?"}
+    C -->|Yes| D["Keep or migrate"]
+    C -->|No| E["Delete all obsolete code"]
+    E --> F["Verify affected behavior"]
+```
+
+## Language examples
+
+The two examples show the supported path after removal of an obsolete fallback.
+
+### Python
+
+```python
+HANDLERS: dict[str, Callable[[], None]] = {"serve": serve}
+
+def dispatch(name: str) -> None:
+    handler = HANDLERS[name]
+    handler()
+```
+
+### Rust
+
+```rust
+enum Command {
+    Serve,
+}
+
+fn dispatch(command: Command) {
+    match command {
+        Command::Serve => serve(),
+    }
+}
+```
+
 ## Boundaries and tensions
 
-No local reference does not prove that a public API or plug-in hook is unused. Deprecation and
-migration may be required before removal. Historical rationale that still constrains current code is
-not dead merely because it is non-executable. Generated sources should normally be removed by
-changing their canonical input, not by editing outputs independently. Scope fidelity still limits
-unrelated cleanup.
+A local search cannot prove that a public interface or plug-in hook is unused. A removal can require
+deprecation and migration. Historical rationale is not dead when it still limits current code.
+Remove generated source through its canonical input. Do not edit its output independently. Scope
+fidelity still limits unrelated cleanup.
 
 ## Examples
 
-**Positive:** A retired command has no external compatibility obligation, so its handler,
-registration, tests, and command-specific help are removed together and the package is rebuilt.
+**Positive:** A maintainer retires a command with no external compatibility obligation. The
+maintainer removes its handler, registration, tests, and command-specific help, then rebuilds the
+package.
 
-**Misuse:** A reviewer deletes an apparently unused callback without checking that a framework
-loads it by name from configuration.
+**Misuse:** A reviewer deletes an apparently unused callback without a check for its configuration
+name. A framework loads the callback by that name.
 
-**Athena/agent workflow:** An agent verifies manifests, references, tests, and repository history
-before removing an obsolete helper rather than treating a text-search miss as proof.
+**Athena/agent workflow:** An agent first verifies manifests, references, tests, and repository
+history. The agent removes the helper only after this review and does not use a text-search miss as
+proof.
 
 ## Related principles
 
@@ -61,19 +103,19 @@ before removing an obsolete helper rather than treating a text-search miss as pr
 
 ### Origin/history
 
-- No primary source establishing one coinage was found. The source-level rule is best treated as a
+- No primary source for one coinage was found. The source-level rule is best treated as a
   maintenance heuristic related to, but broader than, compiler dead-code elimination.
 
 ### Current guidance
 
-- [Google SRE: Operational Simplicity](https://sre.google/sre-book/simplicity/) recommends routinely
-  removing dead code and ensuring that operational code has an essential purpose.
+- [Google SRE: Operational Simplicity](https://sre.google/sre-book/simplicity/) recommends routine
+  dead-code removal. It requires an essential purpose for operational code.
 - [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
   asks reviewers to examine existing comments and TODOs that a change may make obsolete.
 
 ### Further reading
 
 - [Google Engineering Practices: Small CLs](https://google.github.io/eng-practices/review/developer/small-cls.html)
-  explains why self-contained deletions and small changes are easier to review and roll back.
+  explains why self-contained deletions and small changes are easier to review and reverse.
 
 [Back to the engineering principles catalog](../README.md#p088)

@@ -2,9 +2,11 @@
 
 ## Definition
 
-When a noncritical feature or dependency fails, a system may continue with explicitly reduced
-functionality if the reduced mode remains correct, secure, observable, and consistent with its
-documented contract. The system must not present missing required work as a successful full result.
+A system can continue after a noncritical feature or dependency fails. The system must classify that
+capability as optional before the failure.
+
+The reduced mode must remain correct, secure, observable, and consistent with the documented
+contract. The system must not present omitted required work as a full result.
 
 **Aliases:** degraded mode, partial service, fallback capability
 
@@ -12,53 +14,94 @@ documented contract. The system must not present missing required work as a succ
 
 **Classification:** established principle.
 
-The concept developed across fault-tolerant and distributed systems; no single origin for this
-exact software rule is reliably established.
+Fault-tolerant systems and distributed systems developed this concept. This exact software rule has
+no verified single origin.
 
 ## Decision rule
 
-Degrade only when the failed capability was classified as optional in advance and a tested fallback
-can preserve every required invariant. Otherwise, fail the affected operation clearly.
+Use a reduced mode only for a capability that has a prior optional classification. The tested
+fallback must preserve every required invariant. Otherwise, report operation failure clearly.
 
 ## How to apply
 
-- Classify capabilities as required, optional, or safety/security critical before an incident.
-- Define the reduced output, user-visible indication, entry trigger, recovery trigger, and maximum
-  duration of degraded mode.
-- Prefer simple fallbacks with bounded cost, such as omitting recommendations while preserving the
+- Classify each capability before an incident. Use required, optional, safety-critical, or
+  security-critical categories.
+- Define the reduced output, visible notice, entry trigger, recovery trigger, and maximum duration.
+- Select a simple fallback with a bounded cost. For example, omit recommendations but preserve the
   primary transaction.
-- Keep authorization, integrity, and required validation in force; a fallback must not bypass them.
-- Emit metrics and structured events when degraded mode starts, persists, and ends.
-- Exercise the fallback under realistic dependency failure and overload conditions.
+- Maintain authorization, integrity, and required validation. Never use a fallback to bypass these
+  controls.
+- Record metrics and structured events at mode entry, at set intervals, and at recovery.
+- Test the fallback under realistic dependency failure and overload conditions.
+
+## Diagram
+
+```mermaid
+flowchart TD
+    A["A capability fails"] --> B{"Was it optional before failure?"}
+    B -- No --> C["Report operation failure"]
+    B -- Yes --> D{"Does the fallback preserve all required invariants?"}
+    D -- No --> C
+    D -- Yes --> E["Provide a visible reduced result"]
+    E --> F["Record mode state and test recovery"]
+```
+
+## Language examples
+
+Each example preserves product search and identifies the optional recommendation failure.
+
+### Python
+
+```python
+def build_view(products, recommendation_result):
+    if recommendation_result.is_error:
+        return {"products": products, "recommendations": [], "mode": "degraded"}
+    return {
+        "products": products,
+        "recommendations": recommendation_result.value,
+        "mode": "full",
+    }
+```
+
+### Rust
+
+```rust
+fn build_view(products: Vec<Product>, recommendations: Result<Vec<Product>, Error>) -> View {
+    match recommendations {
+        Ok(items) => View::full(products, items),
+        Err(_) => View::degraded(products, Vec::new()),
+    }
+}
+```
 
 ## Boundaries and tensions
 
-[P034](p034-fail-fast.md) governs a failed **required** capability or violated invariant.
-[P035](p035-fail-secure-fail-closed.md) governs uncertain security decisions. Graceful degradation
-cannot redefine either category after failure just to improve availability.
+[P034](p034-fail-fast.md) governs a failed **required** capability or a violated invariant.
+[P035](p035-fail-secure-fail-closed.md) governs an uncertain security decision. Do not reclassify a
+capability after failure to increase availability.
 
-Degradation also differs from swallowing an error. The caller or operator must be able to determine
-that reduced service was delivered when that fact affects meaning, remediation, or service level.
-Complex fallback paths can create more failure modes than they prevent, so their value must justify
-their maintenance and testing cost.
+Graceful degradation also differs from error suppression. The result must show reduced service when
+that fact affects meaning, correction, or service level.
+
+Complex fallback paths can add failure modes. Their value must exceed their maintenance and test
+cost.
 
 ## Examples
 
 ### Positive application
 
-A storefront's recommendation service is unavailable. Product search and checkout continue, the
-recommendation panel is omitted, and telemetry marks the dependency and duration of reduced mode.
+A storefront loses its recommendation service. Product search and checkout continue. The site
+omits the recommendation panel and records the reduced mode.
 
 ### Misuse or counterexample
 
-A payment API times out while charging a card, then returns “order completed” without reconciling
-whether the charge occurred. Required transactional uncertainty is disguised as degradation.
+A payment API times out after a card charge request. It returns “order completed” without proof of
+the charge result. This response hides required transaction uncertainty.
 
 ### Athena or agent workflow
 
-If optional web research is unavailable, a planning skill may continue from verified repository
-evidence and clearly state the research limitation. It may not fabricate citations or omit a
-required hard-dependency check.
+An Athena skill can continue without optional web research. It uses verified repository evidence
+and states the research limit. It must not fabricate citations or omit a required dependency check.
 
 ## Related principles
 
@@ -71,21 +114,21 @@ required hard-dependency check.
 
 ### Origin and history
 
-- No single primary source is asserted for the general software phrase. It draws on longstanding
-  fault-tolerance work and should not be attributed to a particular vendor or cloud platform.
+- Athena does not assert one primary source for the general software phrase. The concept comes from
+  long-established fault-tolerance work, not from one vendor.
 
 ### Current guidance
 
 - [Microsoft Azure Well-Architected Framework, self-preservation](https://learn.microsoft.com/en-us/azure/well-architected/reliability/self-preservation)
-  — current guidance for designing, triggering, communicating, and recovering from an explicit
-  graceful-degradation mode.
+  — current guidance for the design, activation, communication, and recovery of an explicit reduced
+  mode.
 - [Google SRE, Addressing Cascading Failures](https://sre.google/sre-book/addressing-cascading-failures/)
-  — production guidance on serving degraded results under overload while testing and monitoring
-  the rarely used path.
+  — production guidance for degraded results during overload, with tests and telemetry for the rare
+  path.
 
 ### Further reading
 
 - [Microsoft Azure, Throttling pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/throttling)
-  — relates degradation to capacity controls, load shedding, and service-level objectives.
+  — connects degradation with capacity controls, load shedding, and service-level objectives.
 
 [Back to the engineering principles catalog](../README.md#p036)

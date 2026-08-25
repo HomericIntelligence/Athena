@@ -2,25 +2,24 @@
 
 ## Definition
 
-**Explicit Is Better Than Implicit** means making behavior that affects correctness, security, or
-maintenance visible in interfaces, types, configuration, and nearby control flow. Dependencies,
-defaults, conversions, state transitions, ownership, and side effects should not rely on surprising
-ambient behavior or hidden convention.
+**Explicit Is Better Than Implicit** makes important behavior visible in interfaces, types,
+configuration, and nearby control flow. This behavior can affect correctness, security, or
+maintenance. Dependencies, defaults, conversions, state changes, ownership, and side effects must
+not depend on hidden conventions.
 
-**Aliases:** explicitness principle; explicit over implicit.
+**Aliases:** explicitness principle and explicit over implicit.
 
 ## Provenance
 
 **Classification:** practitioner heuristic.
 
-Tim Peters included the exact aphorism in the Zen of Python, first posted to the Python community in
-1999 and later recorded as PEP 20. Similar guidance appears across interface and language design;
-Athena applies it beyond Python.
+Tim Peters included the exact aphorism in the Zen of Python. He first posted it to the Python
+community in 1999. PEP 20 later recorded it. Similar guidance occurs in interface and language
+design. Athena applies the rule to all languages.
 
 ## Decision rule
 
-If a fact can materially change an operation's meaning or outcome, make the fact discoverable at
-the point where the operation is selected or invoked.
+If a fact changes an operation, make that fact visible at the selection or call point.
 
 ## How to apply
 
@@ -31,23 +30,68 @@ the point where the operation is selected or invoked.
 - Declare configuration precedence and the source of each effective value.
 - Prefer schemas and typed values over magic strings and positional conventions.
 
+## Diagram
+
+The call site supplies each fact that can change the result.
+
+```mermaid
+flowchart LR
+    A["Named dependency"] --> D["Operation"]
+    B["Explicit option"] --> D
+    C["Declared default"] --> D
+    D --> E["Predictable result"]
+```
+
+## Language examples
+
+The two examples accept a local wall time and explicit source and target zones. Each example rejects
+ambiguous and nonexistent source times.
+
+### Python
+
+```python
+def convert_time(local: datetime, source: ZoneInfo, target: ZoneInfo) -> datetime:
+    if local.tzinfo is not None:
+        raise ValueError("expected local wall time")
+    candidates = [local.replace(tzinfo=source, fold=fold) for fold in (0, 1)]
+    valid = [value for value in candidates if value.astimezone(timezone.utc)
+             .astimezone(source).replace(tzinfo=None) == local]
+    instants = {value.astimezone(timezone.utc) for value in valid}
+    if len(instants) != 1:
+        raise ValueError("ambiguous or nonexistent local time")
+    return instants.pop().astimezone(target)
+```
+
+### Rust
+
+```rust
+fn convert_time(local: NaiveDateTime, source: Tz, target: Tz)
+    -> Result<DateTime<Tz>, &'static str> {
+    match source.from_local_datetime(&local) {
+        LocalResult::Single(value) => Ok(value.with_timezone(&target)),
+        LocalResult::Ambiguous(_, _) => Err("ambiguous local time"),
+        LocalResult::None => Err("nonexistent local time"),
+    }
+}
+```
+
 ## Boundaries and tensions
 
-Explicitness is not maximum verbosity. Stable language idioms and well-known repository conventions
-can communicate more clearly than ceremonial wrappers. Information hiding remains valuable: expose
-the contract, not every internal detail. Avoid turning every implementation choice into public
-configuration, which increases surface area and transfers complexity to users.
+Explicitness does not require maximum text. Stable language forms and known repository conventions
+can be clearer than ceremonial wrappers. Information hiding remains useful. Expose the contract,
+not each internal detail. Do not make each implementation choice public configuration. Such
+configuration increases surface area and transfers complexity to users.
 
 ## Examples
 
-**Positive:** A timestamp conversion names both source and destination time zones instead of
-depending on the process locale.
+**Positive:** A timestamp conversion names the source and destination time zones. It does not use
+the process locale.
 
-**Misuse:** A save method sometimes publishes an external event because a thread-local flag was set
-by an unrelated middleware layer.
+**Misuse:** A save method sometimes publishes an external event because unrelated middleware sets
+a thread-local flag.
 
 **Athena/agent workflow:** An agent states assumptions, validation limits, and externally visible
-actions instead of silently inferring authority from repository content.
+actions. The agent does not infer authority from repository content.
 
 ## Related principles
 

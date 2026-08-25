@@ -2,10 +2,11 @@
 
 ## Definition
 
-When several state changes form one logical operation and can share a trustworthy transaction
-boundary, make their success or failure all-or-none: either every change commits or none does. If
-concurrent observers must not see intermediate state, separately choose an isolation level or atomic
-publication mechanism that provides that visibility guarantee.
+When several state changes form one logical operation and share a reliable transaction boundary,
+make the result all-or-none. Either all changes commit, or no change commits.
+
+If concurrent observers must not see intermediate state, select a suitable isolation level or
+atomic publication control separately.
 
 **Aliases:** all-or-nothing update, transactional commit, failure atomicity
 
@@ -13,59 +14,102 @@ publication mechanism that provides that visibility guarantee.
 
 **Classification:** established principle.
 
-Atomic transactions predate the ACID acronym. Härder and Reuter's 1983 paper is the primary source
-commonly associated with the ACID terminology, not the origin of every form of atomic update.
+Atomic transactions predate the ACID acronym. Sources commonly associate the ACID terms with the
+1983 paper by Härder and Reuter. That paper did not originate every atomic update form.
 
 ## Decision rule
 
-If partial completion would violate an invariant and one supported transaction boundary can cover all
-effects, use it before designing custom rollback or compensation. Specify suitable isolation or atomic
-publication separately when partial visibility would violate an invariant.
+Use one supported transaction boundary if partial completion can violate an invariant and that
+boundary can contain all effects. Prefer it to custom reversal or compensation.
+
+Specify isolation or atomic publication separately if partial visibility can violate an
+invariant.
 
 ## How to apply
 
 - Identify the logical operation, affected state, invariants, and observers.
-- Use the datastore, filesystem, message broker, or platform's documented transaction primitives for
-  all-or-none commit.
-- Select an isolation level or atomic publication primitive that meets the required visibility contract.
-- Keep the transaction no broader or longer than required; avoid network calls and user waits while
-  holding transactional resources.
-- Validate prerequisites before the transaction and defer irreversible external effects until after
+- Use documented transaction controls from the data store, file system, message broker, or platform.
+  Require an all-or-none commit.
+- Select an isolation level or atomic publication control that meets the visibility contract.
+- Limit transaction scope and duration. Do not make network calls or wait for users while the
+  transaction holds resources.
+- Validate prerequisites before the transaction. Defer irreversible external effects until after
   reversible preparation.
-- Treat commit acknowledgement loss as an unknown outcome that may require status lookup.
-- Test failure before commit, during commit, after commit acknowledgement loss, and under the intended
-  concurrent-observation and isolation conditions.
+- Treat a lost commit acknowledgment as an unknown outcome that can require a status query.
+- Test failures before commit, during commit, and after loss of the commit acknowledgment. Test the
+  required isolation under concurrent observation.
+
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Identify one logical operation"] --> B{"Can one reliable transaction contain every effect?"}
+    B -- No --> C["Use durable progress and compensation"]
+    B -- Yes --> D["Start the transaction"]
+    D --> E["Apply all state changes"]
+    E --> F{"Did every change succeed?"}
+    F -- Yes --> G["Commit all changes"]
+    F -- No --> H["Abort without a committed change"]
+```
+
+## Language examples
+
+Each example commits the order, items, and inventory reservation as one transaction.
+
+### Python
+
+```python
+def place_order(db, order, items):
+    with db.transaction() as tx:
+        tx.insert_order(order)
+        tx.insert_items(order.id, items)
+        tx.reserve_inventory(items)
+```
+
+### Rust
+
+```rust
+fn place_order(db: &mut Database, order: &Order, items: &[Item]) -> Result<(), Error> {
+    let mut tx = db.transaction()?;
+    tx.insert_order(order)?;
+    tx.insert_items(order.id, items)?;
+    tx.reserve_inventory(items)?;
+    tx.commit()
+}
+```
 
 ## Boundaries and tensions
 
-Atomicity is scoped: a database transaction does not automatically include an email, remote API,
-filesystem, or second datastore. Do not describe a local transaction as end-to-end atomic when
-effects escape its boundary.
+Atomicity has a defined scope. A database transaction does not automatically include an email,
+remote API, file system, or second data store.
 
-When one reliable boundary cannot cover the workflow, apply
-[P045](p045-compensation-where-atomicity-is-impossible.md) and durable progress rather than inventing
-a fragile distributed transaction. [P033](p033-state-safe-failure-semantics.md) remains the broader
-post-failure requirement. Atomicity also does not imply isolation level, durability, or business
-validity; those guarantees must be specified separately.
+Do not describe a local transaction as end-to-end atomic when effects exist outside its boundary.
+
+When one reliable boundary cannot contain the workflow, apply
+[P045](p045-compensation-where-atomicity-is-impossible.md) and durable progress. Do not invent a
+fragile distributed transaction.
+
+[P033](p033-state-safe-failure-semantics.md) remains the broader failure requirement. Atomicity does
+not guarantee isolation, durability, or business validity. Specify these guarantees separately.
 
 ## Examples
 
 ### Positive application
 
-A database transaction inserts an order and its line items and updates the inventory reservation, so
-all changes commit or roll back together. Readers that require a stable multi-object view use an
-isolation level that provides it.
+A database transaction inserts an order and its line items. It also updates the inventory
+reservation. All changes commit together, or no change commits.
+
+Readers that require a stable multi-object view use a suitable isolation level.
 
 ### Misuse or counterexample
 
-Code commits an order, then publishes an event, and calls the pair “atomic.” A crash between those
-steps leaves committed state without its required notification.
+Code commits an order and then publishes an event. It describes the pair as “atomic.” A failure
+between those steps leaves committed state without its required event.
 
 ### Athena or agent workflow
 
-An Athena document update is assembled and validated before replacing its target. Related
-repository edits are kept in one coherent patch and a failed validation is reported before any
-external publication step.
+An Athena workflow assembles and validates a document before target replacement. It keeps related
+repository edits in one coherent patch. It reports failed validation before external publication.
 
 ## Related principles
 
@@ -79,18 +123,17 @@ external publication step.
 ### Origin and history
 
 - [Härder and Reuter, “Principles of Transaction-Oriented Database Recovery” (1983)](https://doi.org/10.1145/289.291)
-  — primary source for the ACID terminology and transaction-recovery framework.
+  — primary source for the ACID terms and transaction recovery framework.
 
 ### Current guidance
 
 - [PostgreSQL 18, Transactions](https://www.postgresql.org/docs/18/tutorial-transactions.html)
-  — current database documentation illustrating complete-or-not-at-all updates, visibility, commit,
-  and rollback.
+  — current database documentation with examples of all-or-none updates, visibility, commit, and
+  reversal.
 
 ### Further reading
 
 - [AWS Builders' Library, Making retries safe with idempotent APIs](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/)
-  — explains why recording an idempotency token and its related mutation may itself require an
-  atomic operation.
+  — explains why an idempotency token and its related state change can require one atomic operation.
 
 [Back to the engineering principles catalog](../README.md#p044)

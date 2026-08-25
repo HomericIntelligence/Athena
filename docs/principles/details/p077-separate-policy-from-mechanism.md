@@ -2,52 +2,84 @@
 
 ## Definition
 
-**Separate Policy from Mechanism** means keeping decisions about *what should happen* apart from
-the machinery that determines *how it happens*. A mechanism exposes dependable capabilities; a
-policy selects and constrains their use for a particular context.
+**Separate Policy from Mechanism** keeps a decision about required behavior separate from the means
+that execute the behavior. A mechanism supplies stable capabilities. A policy selects and limits
+those capabilities for a specified context.
 
-**Aliases:** policy-mechanism separation; separation of policy and mechanism.
+**Aliases:** policy-mechanism separation and separation of policy and mechanism.
 
 ## Provenance
 
 **Classification:** established principle.
 
-The distinction was developed in early operating-system work and made explicit in the Hydra
-system, where scheduling, paging, and protection mechanisms were designed to support replaceable
-external policies. The idea now applies to application rules, security decisions, orchestration,
-storage, and infrastructure as well as kernels.
+Early operating-system work developed this distinction. The Hydra system made the distinction
+explicit for schedules, memory pages, and protection. Its mechanisms supported replaceable external
+policies. The rule also applies to applications, security, work control, storage, and infrastructure.
 
 ## Decision rule
 
-When a rule is expected to vary independently from the capability that enforces it, give the rule a
-named policy boundary and keep the mechanism neutral enough to implement every supported policy
-correctly.
+Give a variable rule a named policy boundary. Keep the mechanism neutral enough to apply each
+supported policy correctly.
 
 ## How to apply
 
 - Identify variable decisions separately from stable primitive operations.
 - Give policy inputs, outputs, defaults, and failure behavior an explicit contract.
-- Inject or configure policy through a narrow interface instead of branching throughout machinery.
+- Supply the policy through a narrow interface. Do not copy policy branches into the mechanism.
 - Test policy choices independently from mechanism correctness.
 - Keep enforcement mandatory when a policy protects security or integrity.
 
+## Diagram
+
+The policy selects an action. The mechanism performs only the selected action.
+
+```mermaid
+flowchart LR
+    A["Context"] --> B["Policy decision"]
+    B --> C["Selected action"]
+    C --> D["Neutral mechanism"]
+    D --> E["Result"]
+```
+
+## Language examples
+
+The two examples pass a policy to a stable queue mechanism.
+
+### Python
+
+```python
+def dispatch(job, priority_policy, queue) -> None:
+    priority = priority_policy(job)
+    entry = QueueEntry(job, priority)
+    queue.push(entry)
+```
+
+### Rust
+
+```rust
+fn dispatch<P: PriorityPolicy>(job: Job, policy: &P, queue: &mut Queue) {
+    let priority = policy.priority(&job);
+    let entry = QueueEntry::new(job, priority);
+    queue.push(entry);
+}
+```
+
 ## Boundaries and tensions
 
-This principle does not require an abstraction for every condition. A policy with one stable use
-may remain local until variation is observed. Nor should a supposedly neutral mechanism expose a
-bypass that makes required policy optional. Some low-level policy is unavoidable where fairness,
-safety, or resource limits must always hold; document that choice rather than hiding it.
+This principle does not require an abstraction for each condition. A stable policy can stay local
+until the system has another use. A neutral mechanism must not give a bypass for required policy.
+Some low-level policy is necessary for fairness, safety, or resource limits. Document that choice.
 
 ## Examples
 
 **Positive:** A scheduler supplies queueing and dispatch primitives while a separate strategy
 selects priority and fairness rules.
 
-**Misuse:** Authorization rules are copied into transport handlers, database helpers, and user
-interfaces, so changing a role requires inconsistent edits across all three.
+**Misuse:** Authorization rules appear in transport handlers, database helpers, and user interfaces.
+One role change requires inconsistent edits across all three.
 
-**Athena/agent workflow:** A coordinator decides which independent tasks may run in parallel; the
-delegation mechanism starts, monitors, and collects workers without inventing new scope policy.
+**Athena/agent workflow:** A coordinator decides which independent tasks may run in parallel. The
+delegation mechanism starts, monitors, and collects workers without new scope policy.
 
 ## Related principles
 
@@ -62,18 +94,18 @@ delegation mechanism starts, monitors, and collects workers without inventing ne
 ### Origin/history
 
 - [Policy/mechanism separation in Hydra](https://doi.org/10.1145/1067629.806531)
-  is the 1975 primary paper describing the principle in scheduling, paging, and protection.
+  is the 1975 primary paper that defines the principle for schedules, memory pages, and protection.
 
 ### Current guidance
 
 - [Linux Integrity Policy Enforcement](https://www.kernel.org/doc/html/latest/security/ipe.html)
-  documents a contemporary kernel design in which integrity measurement and local enforcement
-  policies are deliberately separated.
+  documents a contemporary kernel design that separates integrity measurement from local
+  enforcement policies.
 
 ### Further reading
 
 - [The Protection of Information in Computer Systems](https://www.cs.virginia.edu/~evans/cs551/saltzer/)
-  supplies related foundational guidance on complete mediation, least privilege, and economical
+  supplies related foundational guidance on Complete Mediation, least privilege, and economical
   security mechanisms.
 
 [Back to the engineering principles catalog](../README.md#p077)

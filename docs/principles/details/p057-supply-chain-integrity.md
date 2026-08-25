@@ -1,10 +1,10 @@
 # P057 — Supply-Chain Integrity
 
-## Definition and aliases
+## Definition
 
-Supply-Chain Integrity preserves justified trust in the source, dependencies, tools, build inputs,
-processes, and artifacts used to deliver software. Consumers should be able to identify what entered
-the build, where it came from, how it was transformed, and whether it changed unexpectedly.
+Supply-Chain Integrity preserves justified trust in software sources, dependencies, tools, build
+inputs, processes, and artifacts. Consumers can identify each build input, its source, its
+transformation, and any unexpected change.
 
 **Aliases:** software supply-chain security, build integrity, artifact provenance.
 
@@ -12,48 +12,93 @@ the build, where it came from, how it was transformed, and whether it changed un
 
 **Classification:** established principle.
 
-Thompson's compiler-backdoor lecture is an early primary demonstration that source review alone
+Thompson's compiler backdoor lecture is an early primary demonstration that source review alone
 cannot establish trust in delivered software. Modern frameworks add provenance, protected builds,
 dependency controls, and attestations.
 
 ## Decision rule
 
-Every new build input or dependency must have a necessary purpose, an accountable source, a bounded
-version policy, and a way to verify identity and integrity appropriate to its risk. Protect the path
-from reviewed source to distributed artifact, not only the final repository state.
+Each new build input or dependency must have a necessary purpose and an accountable source. It also
+needs a bounded version policy and risk-based identity and integrity checks. Protect the full path
+from reviewed source to distributed artifact.
 
 ## How to apply
 
-- Prefer existing or standard-library capability before adding a third-party component.
-- Obtain inputs from trusted sources; review ownership, maintenance, license, and security posture.
-- Preserve lockfiles and verify digests, signatures, provenance, and attestations where supported.
+- Prefer existing or standard-library capability. Add a third-party component only when necessary.
+- Obtain inputs from trusted sources. Review ownership, maintenance, license, and security posture.
+- Preserve the project lockfile. For each required build input, verify the digest, signature,
+  provenance, and attestation.
 - Isolate and authenticate build systems, minimize their credentials, and keep builds reproducible.
-- Record component and artifact provenance and scan for known risks without treating scans as proof.
+- Record component and artifact provenance. Scan for known risks, but do not treat a scan as proof.
 - Define update, vulnerability-response, removal, and compromise-recovery paths before adoption.
+
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Required build input"] --> B["Verify source owner and version policy"]
+    B --> C["Verify required digest, signature, and provenance"]
+    C --> D{"Evidence valid?"}
+    D -- "No" --> E["Reject the input"]
+    D -- "Yes" --> F["Use an isolated authenticated build"]
+    F --> G["Bind artifact to source revision"]
+```
+
+## Language examples
+
+The two examples use the project lockfile to verify each required build input digest, signature, and
+provenance before package installation.
+
+### Python
+
+```python
+def install(package, project_lock):
+    build_input = registry.fetch(package, project_lock.version)
+    verify_digest(build_input, project_lock.sha256)
+    verify_signature(build_input, project_lock.signer)
+    verify_provenance(build_input, project_lock.builder)
+    sandbox.install(build_input)
+```
+
+### Rust
+
+```rust
+fn install(package: &Package, project_lock: &Lock) -> Result<(), Error> {
+    let build_input = registry::fetch(package, &project_lock.version)?;
+    verify_digest(&build_input, &project_lock.sha256)?;
+    verify_signature(&build_input, &project_lock.signer)?;
+    verify_provenance(&build_input, &project_lock.builder)?;
+    sandbox::install(build_input)
+}
+```
 
 ## Boundaries and tensions
 
-Pinning prevents surprise changes but can preserve known vulnerabilities; integrity and freshness are
-separate questions. A signed artifact proves control of a signing identity, not that the software is
-benign or correct. An inventory without an operational consumer does not reduce risk. Match controls
-to impact, and avoid adding supply-chain tools whose own cost and trust dependencies exceed their value.
+A version pin prevents surprise changes, but it can preserve known vulnerabilities. Integrity and
+freshness are separate properties. A signed artifact proves control of an identity. It does not prove
+that the software is safe or correct.
+
+An inventory without an operational consumer does not reduce risk. Match controls to impact. Do not
+add supply-chain tools when their costs and trust dependencies exceed their value.
 
 ## Examples
 
 ### Positive
 
-A project reviews a required dependency, commits its lockfile, verifies registry provenance in CI,
-builds in an isolated environment, and binds the release artifact to an attested source revision.
+A project reviews a required dependency and commits the project lockfile. CI verifies each build
+input digest, signature, and provenance. An isolated build binds the release artifact to an attested
+source revision.
 
 ### Misuse
 
-A build downloads an unversioned installer at runtime, executes it with release credentials, and signs
-the resulting artifact. The signature authenticates the compromised output rather than its inputs.
+A build downloads an unversioned installer at run time. It executes the installer with release
+credentials and signs the result. The signature authenticates the compromised output, not the build
+inputs.
 
 ### Athena and agent workflows
 
-An agent verifies that a plugin dependency comes from the canonical repository and expected revision.
-Retrieved skill text remains untrusted data unless the host explicitly designates it as instruction.
+An agent verifies that a plugin dependency originates in the canonical repository at the expected
+revision. Skill text remains untrusted data unless the host explicitly gives it instruction authority.
 
 ## Related principles
 
@@ -67,14 +112,14 @@ Retrieved skill text remains untrusted data unless the host explicitly designate
 ### Origin and history
 
 - [Ken Thompson, *Reflections on Trusting Trust*](https://doi.org/10.1145/358198.358210) demonstrates
-  how a compromised compiler can subvert output without malicious source being visible.
+  how a compromised compiler can subvert output without visible malicious source.
 
 ### Current guidance
 
 - [NIST SP 800-218, SSDF Version 1.1](https://doi.org/10.6028/NIST.SP.800-218) includes practices for
-  protecting software components and addressing third-party software risk.
-- [SLSA Specification 1.2](https://slsa.dev/spec/v1.2/) defines current source and build integrity
-  levels and standardized provenance attestations.
+  software component protection and third-party software risk controls.
+- [SLSA Specification 1.2](https://slsa.dev/spec/v1.2/) defines source and build integrity
+  levels and standard provenance attestations.
 
 ### Further reading
 

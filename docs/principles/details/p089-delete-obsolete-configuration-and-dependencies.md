@@ -2,10 +2,9 @@
 
 ## Definition
 
-**Delete Obsolete Configuration and Dependencies** means completing a removal across its entire
-supporting surface. When a feature, compatibility path, or subsystem is retired, remove the flags,
-packages, lockfile entries, deployment settings, tests, documentation, metrics, and scaffolding that
-have no remaining purpose, after verifying that they have no consumers.
+**Delete Obsolete Configuration and Dependencies** completes a removal across its full support
+surface. First, verify that no consumer remains. Then, remove obsolete flags, packages, lockfile
+entries, deployment settings, tests, documents, metrics, and support code.
 
 **Aliases:** none in common use.
 
@@ -14,13 +13,13 @@ have no remaining purpose, after verifying that they have no consumers.
 **Classification:** Athena synthesis.
 
 No single source establishes this exact rule. It combines dependency hygiene, configuration
-management, attack-surface reduction, and the operational lesson that partial removals leave
-misleading or vulnerable artifacts behind.
+control, attack-surface reduction, and operational evidence. A partial removal can leave false or
+vulnerable artifacts.
 
 ## Decision rule
 
-A removal is complete only when every supporting artifact either has another demonstrated current
-consumer or is deleted through its canonical management mechanism.
+Complete a removal only when each support artifact has a current consumer or the canonical control
+mechanism removes the artifact.
 
 ## How to apply
 
@@ -32,23 +31,61 @@ consumer or is deleted through its canonical management mechanism.
 - Test clean installation, packaging, startup, supported platforms, and deployment paths.
 - Review the final dependency and configuration diff for unintended upgrades or drift.
 
+## Diagram
+
+The removal follows every support artifact to its last verified consumer.
+
+```mermaid
+flowchart LR
+    A["Retired capability"] --> B["Trace support surface"]
+    B --> C{"Current consumer?"}
+    C -->|Yes| D["Keep required artifact"]
+    C -->|No| E["Remove canonical input"]
+    E --> F["Regenerate derived state"]
+    F --> G["Verify clean install and package"]
+```
+
+## Language examples
+
+The two examples use only the current encoder after removal of the obsolete dependency.
+
+### Python
+
+```python
+from current_encoder import encode
+
+def export(data: Record) -> bytes:
+    payload = encode(data)
+    return payload
+```
+
+### Rust
+
+```rust
+use current_encoder::encode;
+
+fn export(data: &Record) -> Vec<u8> {
+    encode(data)
+}
+```
+
 ## Boundaries and tensions
 
-Configuration and packages may serve external, downstream, migration, or rarely exercised platform
-consumers invisible to a local search. Honor compatibility and deprecation contracts. Do not turn a
-focused cleanup into an unrelated dependency upgrade. Preserve lockfile integrity and supply-chain
-evidence, and never remove a safety control merely because its normal path is quiet.
+Configuration and packages can serve external, downstream, migration, or rare platform consumers.
+A local search might not show these consumers. Obey compatibility and deprecation contracts. Do not
+add an unrelated dependency update to a focused cleanup. Preserve lockfile integrity and supply-chain
+evidence. Never remove a quiet safety control without evidence.
 
 ## Examples
 
-**Positive:** Removing an obsolete exporter also removes its package, lockfile closure, feature
+**Positive:** Removal of an obsolete exporter also removes its package, lockfile closure, feature
 flag, credentials, container layer, metrics, tests, and operator documentation.
 
-**Misuse:** Production code stops reading a flag, but deployment templates still advertise it and
-the unused parser dependency remains in every release image.
+**Misuse:** Production code no longer reads a flag. Deployment templates still advertise the flag,
+and each release image still contains the unused parser dependency.
 
-**Athena/agent workflow:** When removing a skill helper, an agent verifies and updates its package
-inclusion, references, tests, and shipped documentation rather than deleting only the script.
+**Athena/agent workflow:** An agent that removes a skill helper also verifies its package inclusion,
+references, tests, and shipped documentation. The agent does not delete only the script.
 
 ## Related principles
 
@@ -63,22 +100,22 @@ inclusion, references, tests, and shipped documentation rather than deleting onl
 
 ### Origin/history
 
-- No primary source for the combined rule is established; Athena treats it as a lifecycle and
-  supply-chain synthesis rather than attributing it to one author.
+- No primary source for the combined rule is established. Athena treats it as a lifecycle and
+  supply-chain synthesis and does not attribute it to one author.
 
 ### Current guidance
 
 - [OpenSSF: Simplifying Software Component Updates](https://best.openssf.org/Simplifying-Software-Component-Updates)
-  explains dependency cost, minimizing unneeded components, lockfiles, and automated verification.
+  explains dependency cost, the removal of unneeded components, lockfiles, and automated
+  verification.
 - [NIST SP 800-218, Secure Software Development Framework 1.1](https://csrc.nist.gov/pubs/sp/800/218/final)
-  defines current practices for protecting and maintaining software components and build inputs.
+  defines current practices that protect and maintain software components and build inputs.
 
 ### Further reading
 
 - [CISA: Secure by Design and Default](https://www.cisa.gov/sites/default/files/2023-06/principles_approaches_for_security-by-design-default_508c.pdf)
-  recommends prioritizing protective mechanisms over unnecessary features that enlarge attack
-  surface.
-- [Google SRE: Regaining Simplicity](https://sre.google/workbook/simplicity/) discusses removing
-  unused dependencies, configuration, and operational complexity as staffed engineering work.
+  recommends protective mechanisms instead of unnecessary features that enlarge attack surface.
+- [Google SRE: Regaining Simplicity](https://sre.google/workbook/simplicity/) discusses the removal
+  of unused dependencies, configuration, and operational complexity as staffed engineering work.
 
 [Back to the engineering principles catalog](../README.md#p089)

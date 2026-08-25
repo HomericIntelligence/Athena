@@ -2,57 +2,99 @@
 
 ## Definition
 
-**Test-Driven Development** (TDD) is a short development loop in which the next observable behavior
-is expressed as a failing automated test, the smallest production change makes the suite pass, and
-the design is improved while all tests remain green. The cycle is commonly summarized as
-Red–Green–Refactor.
+**Test-Driven Development** (TDD) is a short development cycle. First, an automated test shows the
+next required behavior and fails. Then, the smallest coherent production change makes the test pass.
+Finally, the author improves the design while all tests pass. The cycle is Red-Green-Refactor.
 
-**Aliases:** TDD; Red–Green–Refactor cycle.
+**Aliases:** TDD and Red-Green-Refactor cycle.
 
 ## Provenance
 
 **Classification:** established principle.
 
-Kent Beck developed the modern TDD practice in the context of Extreme Programming in the late 1990s
-and documented it in *Test-Driven Development: By Example* in 2002–2003. Athena retains TDD as a
-workflow principle because its ordering creates rapid behavioral and design feedback.
+Kent Beck developed the modern TDD practice for Extreme Programming in the late 1990s. His 2002
+book, *Test-Driven Development: By Example*, documents it. Athena keeps TDD because its order gives
+fast behavior and design feedback.
 
 ## Decision rule
 
-For a behavior change, work in the smallest meaningful Red–Green–Refactor cycle: observe the new
-test fail for the intended reason, make it pass with a coherent implementation, then improve the
-design without changing behavior.
+Use the smallest useful Red-Green-Refactor cycle for a behavior change. Confirm the expected test
+failure. Make the test pass with a coherent change. Then, improve the design without a behavior
+change.
 
 ## How to apply
 
-- List the next required behaviors, including important failures and boundaries.
+- List the next required behaviors, their important failures, and their boundaries.
 - Select one small behavior and write a test at the appropriate observable boundary.
 - Run it and confirm the failure is expected and meaningful.
 - Write only enough coherent production code to make all relevant tests pass.
-- Refactor tests and production code while keeping the suite green.
+- Improve tests and production code while the suite passes.
 - Repeat, then run the repository's broader required verification.
+
+## Diagram
+
+The cycle adds one behavior and keeps the design clear.
+
+```mermaid
+flowchart LR
+    A["Write one behavior test"] --> B["Confirm expected failure"]
+    B --> C["Make smallest coherent change"]
+    C --> D["Confirm all tests pass"]
+    D --> E["Improve design"]
+    E --> D
+    D --> F["Select next behavior"]
+    F --> A
+```
+
+## Language examples
+
+The two examples state the behavior before they add the smallest implementation.
+
+### Python
+
+```python
+def test_clamps_negative_count() -> None:
+    assert clamp_count(-1) == 0
+
+def clamp_count(value: int) -> int:
+    return max(0, value)
+```
+
+### Rust
+
+```rust
+#[test]
+fn clamps_negative_count() {
+    assert_eq!(clamp_count(-1), 0);
+}
+
+fn clamp_count(value: i32) -> i32 {
+    value.max(0)
+}
+```
 
 ## Boundaries and tensions
 
-TDD is a development loop, not the whole testing strategy. [P026 Regression Before
-Repair](p026-regression-before-repair.md) is specifically about reproducing a defect; TDD applies to
-incremental behavior development more broadly. P022–P028 govern test quality and scope, while TDD
-governs work order. Generic verification also includes builds, types, linting, integration,
-security, and operational checks. A pure behavior-preserving refactor begins from a green,
-adequately characterized baseline; do not manufacture a failing test merely to claim a Red step.
+TDD is a development cycle, not the full test strategy. [P026 Regression Before
+Repair](p026-regression-before-repair.md) applies specifically to a defect. TDD applies to incremental
+behavior development. P022-P028 govern test quality and scope.
+
+TDD governs work order. Verification also includes builds, types, lint, integration, security, and
+operation checks. A pure behavior-preserving refactor starts from an adequate green baseline. Do not
+create a false failure only to claim a Red step.
 
 ## Examples
 
-**Positive:** A parser's next boundary case is specified by a behavioral test that fails with the
-old result, a narrow implementation makes it pass, and duplication is removed while the suite stays
-green.
+**Positive:** A developer writes a behavioral test for the parser's next boundary case. The old
+result makes the test fail. A narrow implementation makes it pass. The developer then removes
+duplication while the suite stays green.
 
-**Misuse:** Implementation is completed first, then a brittle test of private call order is added
-and the work is labeled TDD.
+**Misuse:** A developer completes the implementation first. The developer then adds a brittle test
+of private call order and labels the work TDD.
 
-**Athena/agent workflow:** For a requested behavior change, an agent records the failing test output,
-implements the minimum coherent fix, reruns the focused suite, refactors under green, and then runs
-the repository gate. For a pure refactor it first establishes and reports the green baseline.
+**Athena/agent workflow:** For a behavior change, an agent records the expected test failure. The
+agent makes the minimum coherent fix and runs the focused suite again. Then, the agent improves the
+design and runs the repository gate. For a pure refactor, the agent first reports the green baseline.
 
 ## Related principles
 
@@ -76,12 +118,12 @@ the repository gate. For a pure refactor it first establishes and reports the gr
 
 - [The GDS Way: Test-driven development](https://gds-way.digital.cabinet-office.gov.uk/standards/test-driven-development.html)
   gives current government engineering guidance for expected-failure, green implementation, and
-  refactoring cycles, including cases where other feedback mechanisms are needed.
+  Red-Green-Refactor cycles. It also identifies cases that need other feedback mechanisms.
 
 ### Further reading
 
 - [Agile Alliance: Testing in agile software development](https://agilealliance.org/agile-qa-testing-in-agile-software-development/)
-  distinguishes TDD from acceptance-test-driven and behavior-driven practices while relating all of
-  them to continuous quality.
+  distinguishes TDD from acceptance-test-driven and behavior-driven practices. It shows how all
+  three practices relate to continuous quality.
 
 [Back to the engineering principles catalog](../README.md#p091)

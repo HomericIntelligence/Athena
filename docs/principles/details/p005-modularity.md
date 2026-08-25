@@ -2,23 +2,22 @@
 
 ## Definition
 
-**Modularity** organizes a system into cohesive components with explicit interfaces and limited
-dependencies. A change inside one module should have minimal, intentional effects on unrelated
-modules.
+**Modularity** divides a system into cohesive components with explicit interfaces and limited
+dependencies. A change in one module must have few intentional effects on unrelated modules.
 
 ## Provenance
 
 **Classification:** established principle.
 
 Modular design predates modern software engineering. David Parnas's 1972 paper supplied a durable
-software-specific foundation: module boundaries should hide design decisions likely to change,
-rather than merely follow processing steps.
+software foundation. The paper directs designers to hide decisions that can change behind module
+boundaries. An operation sequence alone does not define the boundaries.
 
 ## Decision rule
 
-Create or preserve a module boundary when it gives a coherent responsibility a clear owner, hides a
-volatile decision, or contains change and failure. Do not split a system merely to increase its
-module count.
+Create or preserve a module boundary when it gives a coherent responsibility a clear owner. A
+boundary can also hide a volatile decision or contain change and failure. Do not divide a system
+only to increase its module count.
 
 ## How to apply
 
@@ -26,27 +25,71 @@ module count.
 - Expose a small contract and keep implementation choices private.
 - Make dependency direction explicit and detect unwanted boundary crossings.
 - Keep deployment, failure, and ownership boundaries aligned where the product needs independence.
-- Test both module behavior and the contracts between modules.
+- Test each module's behavior and the contracts between modules.
+
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Identify one coherent responsibility"] --> B["Assign one module owner"]
+    B --> C["Expose a small contract"]
+    C --> D["Hide volatile decisions"]
+    D --> E{"Does change remain contained?"}
+    E -->|No| B
+    E -->|Yes| F["Preserve the boundary"]
+```
+
+## Language examples
+
+The two examples accept only ASCII decimal digits for ports from 1 through 65,535.
+
+```python
+def parse_port(text: str) -> int:
+    if not text.isascii() or not text.isdigit():
+        raise ValueError("invalid port")
+    try:
+        port = int(text)
+    except ValueError as error:
+        raise ValueError("invalid port") from error
+    if not 1 <= port <= 65_535:
+        raise ValueError("invalid port")
+    return port
+```
+
+```rust
+fn parse_port(text: &str) -> Result<u16, &'static str> {
+    if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("invalid port");
+    }
+    let port = text.parse::<u16>().map_err(|_| "invalid port")?;
+    if port == 0 {
+        return Err("invalid port");
+    }
+    Ok(port)
+}
+```
 
 ## Boundaries and tensions
 
-Physical separation alone is not modularity. Tiny packages with pervasive cross-calls, shared
-mutable state, or cyclic dependencies can be less modular than a cohesive single component.
-Distributed services add operational boundaries and should not be introduced solely to obtain code
-organization. Balance [P003 DRY](p003-dry.md) against local ownership, and use
-[P012 Evidence Before Modification](p012-evidence-before-modification.md) before moving established
-boundaries.
+Physical separation alone does not create modularity. Tiny packages can call each other across all
+boundaries and can share mutable state or cyclic dependencies. Such packages can be less modular
+than one cohesive component.
+
+Distributed services add operational boundaries. Do not introduce them only for code organization.
+Balance [P003 DRY](p003-dry.md) against local ownership. Apply
+[P012 Evidence Before Modification](p012-evidence-before-modification.md) before a change to an
+established boundary.
 
 ## Examples
 
-**Positive:** Parsing owns external syntax and returns a stable internal value, while business
-policy depends on that value rather than parser internals.
+**Positive:** A parser owns external syntax and returns a stable internal value. Business policy
+depends on that value, not on parser details.
 
-**Misuse:** A small application is divided into services that must deploy together and share one
-database, adding network failure without independent ownership or evolution.
+**Misuse:** A small application uses services that must deploy together and share one database.
+This design adds network failure without independent ownership or evolution.
 
-**Athena/agent workflow:** Canonical skills remain in `skills/`; host manifests point to them rather
-than maintaining host-specific copies that can diverge.
+**Athena/agent workflow:** Canonical skills remain in `skills/`. Host manifests reference those
+skills and do not contain host-specific copies.
 
 ## Related principles
 
@@ -62,18 +105,18 @@ than maintaining host-specific copies that can diverge.
 ### Origin/history
 
 - [David Parnas: On the Criteria To Be Used in Decomposing Systems into Modules](https://doi.org/10.1145/361598.361623)
-  is the foundational paper connecting modular boundaries to hidden design decisions.
+  is the foundational paper that connects modular boundaries to hidden design decisions.
 
 ### Current guidance
 
 - [Microsoft: Architectural principles](https://learn.microsoft.com/en-us/dotnet/architecture/modern-web-apps-azure/architectural-principles)
-  describes separation of concerns and encapsulation as current architecture practices.
+  describes separation of concerns and encapsulation as architecture practices.
 - [SEI: Quality Attribute Workshops](https://www.sei.cmu.edu/library/quality-attribute-workshops/)
-  provides a current method for connecting architectural choices to concrete quality requirements.
+  provides a method that connects architecture choices to concrete quality requirements.
 
 ### Further reading
 
 - [Liskov and Wing: A Behavioral Notion of Subtyping](https://doi.org/10.1145/197320.197383)
-  is useful when a module contract supports substitutable implementations.
+  supports analysis of module contracts with substitutable implementations.
 
 [Back to the engineering principles catalog](../README.md#p005)

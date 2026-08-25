@@ -2,9 +2,9 @@
 
 ## Definition
 
-**Forward Progress With Safety** requires an operation either to make bounded, observable progress
-toward a valid outcome or to terminate in a clear recoverable failure state. It combines safety
-properties—nothing invalid happens—with liveness properties—required progress eventually happens.
+**Forward Progress With Safety** requires bounded and visible progress toward a valid result. If
+progress stops, the operation terminates in a clear recoverable state. The rule combines safety and
+liveness properties.
 
 **Aliases:** none in common use.
 
@@ -12,43 +12,87 @@ properties—nothing invalid happens—with liveness properties—required progr
 
 **Classification:** Athena synthesis.
 
-Athena's operational wording is not a named theorem. Leslie Lamport's 1977 work established the
-modern distinction between safety and liveness properties for concurrent programs. Reliability
-practice adds deadlines, retry budgets, cancellation, and recovery states to make that distinction
-actionable in production workflows.
+Athena's operational wording is not a named theorem. Leslie Lamport's 1977 work defined the modern
+difference between safety and liveness properties. Reliability practice adds deadlines, retry
+budgets, cancellation, and recovery states for production workflows.
 
 ## Decision rule
 
-For every loop, wait, retry, queue, and multistep workflow, define the progress measure, the bound or
-termination condition, the invariants that must remain true, and the recoverable outcome when
-progress cannot continue.
+For each loop, wait, retry, queue, and multistep workflow, define a progress measure and a bound.
+Define the required invariants. Define a recoverable result for stopped progress.
 
 ## How to apply
 
 - Make terminal success, failure, cancellation, and paused states distinguishable.
 - Bound retries, waits, queues, and internal iteration.
-- Detect and report stagnation rather than resetting a watchdog without real progress.
+- Detect and report stagnation. Do not reset a watchdog without real progress.
 - Preserve invariants at every checkpoint and failure exit.
 - Persist enough state to resume long work safely when required.
 - Test deadlock, timeout, starvation, cancellation, and dependency-loss scenarios.
 
+## Diagram
+
+The workflow either makes measured progress or enters a recoverable terminal state.
+
+```mermaid
+flowchart LR
+    A["Start bounded work"] --> H["Run next bounded work unit"]
+    H --> B{"Progress?"}
+    B -->|Yes| C{"Work completed?"}
+    C -->|No| H
+    C -->|Yes| D["Valid success"]
+    B -->|No| E{"Retry budget available?"}
+    E -->|Yes| F["Apply recovery step"]
+    F --> H
+    E -->|No| G["Recoverable failure"]
+```
+
+## Language examples
+
+The two examples stop after a fixed number of attempts and return a clear failure.
+
+### Python
+
+```python
+def complete(job: Job) -> Result:
+    for _ in range(3):
+        result = job.try_once()
+        if result.done:
+            return result
+    raise ProgressError("retry budget exhausted")
+```
+
+### Rust
+
+```rust
+fn complete(job: &mut Job) -> Result<Outcome, ProgressError> {
+    for _ in 0..3 {
+        let result = job.try_once()?;
+        if result.done {
+            return Ok(result);
+        }
+    }
+    Err(ProgressError::BudgetExhausted)
+}
+```
+
 ## Boundaries and tensions
 
-The principle does not require every algorithm to be wait-free or every operation to have a short
-fixed duration. Some safe work is slow or dependent on external events; it still needs observability,
-cancellation, or an explicit resumable state. Safety may require stopping rather than forcing
-progress. A timeout is a failure outcome, not evidence that an attempted side effect did not occur.
+The principle does not require a wait-free algorithm or a short duration. Some safe work is slow or
+depends on external events. It still needs visible state, cancellation, or an explicit resume state.
+Safety can require a stop. A timeout is a failure result. It does not prove that a side effect did
+not occur.
 
 ## Examples
 
-**Positive:** A migration records each completed batch, enforces a time budget, and exits as
-`paused` with a resume token while preserving schema invariants.
+**Positive:** A migration records each completed batch and enforces a time budget. It preserves
+schema invariants and exits as `paused` with a resume token.
 
-**Misuse:** A worker catches every error and retries forever, consuming a queue slot while callers
+**Misuse:** A worker catches every error and retries forever. It retains a queue slot while callers
 see neither completion nor failure.
 
-**Athena/agent workflow:** A delegated task has a bounded iteration budget and produces success,
-blocked, or failed status with evidence instead of remaining indefinitely active.
+**Athena/agent workflow:** A delegated task has a bounded iteration budget. It produces success,
+blocked, or failed status with evidence. It does not stay active without a limit.
 
 ## Related principles
 
@@ -63,7 +107,7 @@ blocked, or failed status with evidence instead of remaining indefinitely active
 ### Origin/history
 
 - [Proving the Correctness of Multiprocess Programs](https://doi.org/10.1109/TSE.1977.229904)
-  is Lamport's 1977 primary work introducing safety and liveness as distinct correctness concerns.
+  is Lamport's 1977 primary work that defines safety and liveness as distinct correctness concerns.
 
 ### Current guidance
 

@@ -2,25 +2,25 @@
 
 ## Definition
 
-Use types, schemas, constructors, validation, encapsulation, and state machines so invalid
-combinations of data are rejected at creation or cannot be expressed by ordinary program paths.
-Core logic should receive values whose important structural invariants already hold.
+Use types, schemas, constructors, validation, encapsulation, and state machines to prevent invalid
+data combinations. Reject invalid data at creation, or make its representation unavailable to
+ordinary program paths. Core logic must receive values that satisfy important structural invariants.
 
-**Aliases:** make illegal states unrepresentable; encode invariants in the model.
+**Aliases:** make illegal states unrepresentable, encode invariants in the model.
 
 ## Provenance
 
 **Classification:** practitioner heuristic.
 
-The aphorism has diffuse provenance across typed functional programming and domain modeling; this
-page does not assign it to a single author. Algebraic data types, abstract data types, design by
-contract, and schema validation supply established technical foundations.
+The aphorism has broad provenance in typed functional programs and domain models. This page does not
+assign it to one author. Algebraic data types, abstract data types, design by contract, and schema
+validation supply established technical foundations.
 
 ## Decision rule
 
-When a state combination is always invalid, model construction so normal callers cannot create it.
-Use repeated runtime checks only for invariants that cannot be enforced more clearly at the boundary
-or in the representation.
+When a state combination is always invalid, design construction so normal callers cannot create that
+combination. Use repeated runtime checks only when the boundary or representation cannot enforce the
+invariant more clearly.
 
 ## How to apply
 
@@ -28,27 +28,63 @@ or in the representation.
 - Use validated constructors or factories that return a valid value or a specific error.
 - Keep fields private when unrestricted mutation could violate invariants.
 - Express units, identifiers, required fields, and legal transitions in types or schemas.
-- Revalidate facts that depend on external mutable state at the responsible boundary.
+- Revalidate facts from external mutable state at the responsible boundary.
+
+## Diagram
+
+```mermaid
+flowchart LR
+    A["Receive boundary data"] --> B["Parse explicit state variant"]
+    B --> C["Apply constructor invariants"]
+    C --> D{"State valid?"}
+    D -- "No" --> E["Return specific error"]
+    D -- "Yes" --> F["Give valid value to core logic"]
+    F --> G["Permit only legal transition"]
+```
+
+## Language examples
+
+The two examples represent exclusive payment states as variants with state-specific data.
+
+```python
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class Pending:
+    request_id: str
+
+@dataclass(frozen=True)
+class Settled:
+    receipt_id: str
+
+Payment = Pending | Settled
+```
+
+```rust
+enum Payment {
+    Pending { request_id: String },
+    Settled { receipt_id: String },
+}
+```
 
 ## Boundaries and tensions
 
 No type system can prove every temporal, distributed, authorization, or business invariant. External
-data remains untrusted and still requires [P053 boundary validation](p053-validate-at-trust-boundaries.md)
-and [P076 parse-validate-operate](p076-parse-then-validate-then-operate.md). Avoid a maze of wrappers,
-generics, or type-level machinery whose complexity exceeds the prevented risk. Representations must
-remain readable, evolvable, and compatible with required serialization contracts.
+data remains untrusted. It still requires [P053 boundary validation](p053-validate-at-trust-boundaries.md)
+and [P076 parse-validate-operate](p076-parse-then-validate-then-operate.md). Avoid wrappers, generics,
+or type-level mechanisms when their complexity exceeds the prevented risk. Representations must
+remain clear, adaptable, and compatible with required serialization contracts.
 
 ## Examples
 
-**Positive:** A payment state is one enum with variant-specific data, so `settled` and `failed`
-cannot both be true and only legal transitions are exposed.
+**Positive:** One enum represents a payment state with variant-specific data. The payment cannot have
+the `settled` and `failed` states at the same time. The interface exposes only legal transitions.
 
-**Misuse:** Three booleans and two nullable timestamps encode workflow state, forcing every caller to
-rediscover and check impossible combinations.
+**Misuse:** Three booleans and two nullable time stamps represent workflow state. Each caller must
+identify and reject the invalid combinations again.
 
-**Athena/agent workflow:** A review contract is parsed into a structure whose constructor requires a
-revision, scope, and activated principle content, so the restricted reviewer never receives a
-partially initialized contract.
+**Athena/agent workflow:** A constructor for a review contract requires a revision, scope, and active
+principle content. The restricted reviewer therefore cannot receive a partial contract.
 
 ## Related principles
 
@@ -63,20 +99,19 @@ partially initialized contract.
 ### Origin/history
 
 - [Liskov and Zilles, "Programming with Abstract Data Types" (1974)](https://doi.org/10.1145/800233.807045)
-  is a foundational primary source for using abstract types to control representation and
-  operations; the later aphorism itself has no verified single origin.
+  is a foundational primary source for abstract types that control representation and operations.
+  The later aphorism has no verified single origin.
 
 ### Current guidance
 
 - [The Rust Programming Language: Defining an Enum](https://doc.rust-lang.org/book/ch06-01-defining-an-enum.html)
-  shows how variants and exhaustive matching let a compiler distinguish and check valid cases.
+  shows how variants and exhaustive matches let a compiler distinguish and check valid cases.
 - [Microsoft C#: Nullable reference types](https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/null-safety/nullable-reference-types)
-  documents type annotations and flow analysis that detect states inconsistent with declared null
-  contracts.
+  documents type annotations and flow analysis that detect states outside declared null contracts.
 
 ### Further reading
 
 - [Meyer, "Applying Design by Contract"](https://www.kth.se/social/files/59526bfb56be5b4f17000807/meyer-92-contracts.pdf)
-  develops preconditions, postconditions, and invariants as complementary runtime contract tools.
+  presents preconditions, postconditions, and invariants as complementary runtime contract tools.
 
 [Back to the engineering principles catalog](../README.md#p075)

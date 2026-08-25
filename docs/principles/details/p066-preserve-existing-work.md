@@ -2,52 +2,83 @@
 
 ## Definition
 
-Do not revert, overwrite, reformat, regenerate, delete, or clean up unrelated work to simplify the
-current change. Identify pre-existing modifications, keep task-owned edits distinct, and stop or
-isolate the work when both cannot be preserved safely.
+Do not revert, overwrite, reformat, regenerate, delete, or remove unrelated work to simplify the
+current change. Identify prior modifications and keep task-owned edits distinct. Stop or isolate the
+task when you cannot preserve the two sets of work.
 
-**Aliases:** worktree preservation; noninterference with existing changes.
+**Aliases:** worktree preservation, noninterference with prior changes.
 
 ## Provenance
 
 **Classification:** Athena synthesis.
 
-No singular historical origin is established. The rule adapts version-control safety, narrow-change
-practice, and collaborative ownership into an explicit contract for agents sharing a workspace with
-users and other agents.
+No verified source defines this exact rule. The rule combines version-control safety, narrow-change
+practice, and collaborative ownership. It gives agents an explicit contract for a shared workspace.
 
 ## Decision rule
 
-Before changing or cleaning a path, determine whether it contains work outside the current task. If
-the intended edit cannot preserve that work, do not discard or overwrite it without explicit
-authority; use safe isolation or request direction.
+Before an edit or removal, determine whether the path contains work outside the current task. If you
+cannot preserve that work, do not discard or overwrite it without explicit authority. Use safe
+isolation or request direction.
 
 ## How to apply
 
-- Inspect working-tree, index, branch, and worktree state before editing or cleanup.
-- Attribute changes by comparing the initial state, task scope, and current diff.
+- Inspect working-tree, index, branch, and worktree state before any edit or cleanup.
+- Attribute changes from the initial state, task scope, and current diff.
 - Edit only intentional paths and stage explicit pathsets.
-- Use an isolated branch or linked worktree when concurrent changes would overlap unsafely.
-- Report conflicts or ambiguous ownership instead of resolving them by deletion.
+- Use an isolated branch or linked worktree if concurrent changes overlap unsafely.
+- Report conflicts or ambiguous ownership. Do not use deletion to resolve them.
+
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Inspect path and repository state"] --> B{"Work outside task exists?"}
+    B -- "No" --> C["Edit explicit task paths"]
+    B -- "Yes" --> D{"Can the two changes remain safe?"}
+    D -- "Yes" --> C
+    D -- "No" --> E["Use isolated worktree or stop"]
+    C --> F["Review task-owned diff"]
+```
+
+## Language examples
+
+The two examples change the task-owned field and preserve all other fields.
+
+```python
+def update_owned_field(record, value):
+    result = record.copy()
+    result["owned"] = value
+    return result
+```
+
+```rust
+fn update_owned_field(record: &Record, value: String) -> Record {
+    let mut result = record.clone();
+    result.owned = value;
+    result
+}
+```
 
 ## Boundaries and tensions
 
-Preservation does not make existing changes immutable. The user may ask to modify, replace, or remove
-them, and a scoped task may require careful edits to an already modified file. Generated output may
-also need coherent regeneration when it is a real product artifact. The rule forbids silent loss or
-unrelated churn, not authorized collaboration. A clean repository is not more valuable than its
-uncommitted work.
+Preservation does not make prior changes immutable. The user can request a modification, replacement,
+or removal. A scoped task can require careful edits to an already modified file. A real generated
+product artifact can also require coherent regeneration.
+
+The rule forbids silent loss and unrelated churn. It does not forbid authorized collaboration. A
+clean repository is not more valuable than its uncommitted work.
 
 ## Examples
 
-**Positive:** An agent sees unrelated edits in the primary checkout and performs feature work in a
-new linked worktree, staging only the feature's paths.
+**Positive:** An agent finds unrelated edits in the primary checkout. The agent uses a new linked
+worktree and stages only the feature paths.
 
-**Misuse:** A formatter rewrites the entire repository, or a reset removes unknown modifications,
-solely to make the requested patch easier to review.
+**Misuse:** A formatter rewrites the entire repository to simplify review of one patch. A reset also
+removes modifications with unknown ownership.
 
-**Athena/agent workflow:** A delegated writer detects that another agent is editing the same skill,
-avoids the file, and reports the overlap to the coordinator rather than replacing the other patch.
+**Athena/agent workflow:** A delegated writer detects another agent on the same skill. The writer
+avoids the overlapping skill file and reports the overlap to the coordinator.
 
 ## Related principles
 
@@ -61,19 +92,20 @@ avoids the file, and reports the overlap to the coordinator rather than replacin
 ### Origin/history
 
 - [Git worktree documentation](https://git-scm.com/docs/git-worktree) describes linked worktrees and
-  gives an example of isolating an urgent change without disturbing in-progress work; it is not
-  claimed as the origin of this broader principle.
+  gives an example that isolates an urgent change from active work. It is not the origin of this
+  broader principle.
 
 ### Current guidance
 
-- [Git status documentation](https://git-scm.com/docs/git-status) defines how to inspect staged,
-  unstaged, and untracked working-tree state before acting on it.
+- [Git status documentation](https://git-scm.com/docs/git-status) defines inspection of staged,
+  unstaged, and untracked working-tree state before an action.
 - [Google Engineering Practices: Small CLs](https://google.github.io/eng-practices/review/developer/small-cls.html)
-  recommends separating unrelated refactoring and keeping a change conceptually focused.
+  recommends separate refactors and a narrow conceptual focus for each change.
 
 ### Further reading
 
 - [Git restore documentation](https://git-scm.com/docs/git-restore) makes explicit that restoration
-  can replace working-tree content or remove paths, underscoring why targets must be resolved first.
+  can replace working-tree content or remove paths. This result makes prior target resolution
+  necessary.
 
 [Back to the engineering principles catalog](../README.md#p066)
