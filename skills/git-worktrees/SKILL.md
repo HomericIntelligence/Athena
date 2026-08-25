@@ -1,7 +1,7 @@
 ---
 name: git-worktrees
 license: BSD-3-Clause
-description: Use when starting feature work that needs isolation from current workspace — creates isolated git worktrees with safety verification. Fails closed, reporting and stopping without creating or deleting anything when the target directory is not ignored or a clean base commit cannot be verified.
+description: Use for feature work that needs an isolated Git worktree. If Git does not ignore a project-local directory, report the problem and stop before creation. If the helper cannot verify a clean base commit, report the problem and stop before creation. Do not delete anything.
 argument-hint: <branch-name or feature description>
 allowed-tools: [Bash, Read]
 ---
@@ -10,17 +10,17 @@ allowed-tools: [Bash, Read]
 
 ## Overview
 
-Git worktrees create isolated workspaces that share one repository. They let you work on multiple
-branches without switching the active branch.
+Git worktrees are isolated workspaces that share one repository. You can work on multiple branches
+at the same time. You do not have to switch the active branch.
 
-Apply the [ASD-STE100 writing policy](../../docs/technical-english.md) to this skill and to all prose
-that it produces.
+Apply the [ASD-STE100 technical-English policy](../../docs/technical-english.md) to this skill and to
+all prose that it produces.
 
-**Working rule:** Systematic directory selection plus safety verification produces reliable
-isolation.
+**Rule:** Select the directory systematically. Then complete the safety checks. These actions give
+reliable isolation.
 
-**When NOT to use this skill manually:** The `myrmidon-swarm` skill owns worktree creation for its
-background subagents. Use this skill for manual development work, not to duplicate swarm setup.
+**Do not use this skill for `myrmidon-swarm` worktrees.** That skill creates worktrees for its
+background subagents. Use this skill for manual development work.
 
 ## Engineering principles
 
@@ -44,102 +44,110 @@ workflow-specific rules:
 - [P083 — Irreversible Actions Last](../../docs/principles/README.md#p083): complete dry-run and safety
   validation before creating the branch and worktree, and delegate later removal to `tidy`.
 
-## Directory Selection
+## Select the directory
 
 Follow this priority order:
 
-### 1. Check Existing Directories
+### 1. Check existing directories
 
 The tested `scripts/prepare_worktree.py` helper checks `.worktrees` and then `worktrees`. If both
-exist, `.worktrees` wins.
+directories exist, the helper selects `.worktrees`.
 
 ### 2. Check repository guidance
 
-Read `AGENTS.md` and its referenced repository guidance. If a preference is specified, pass it to
-the helper with `--directory DIRECTORY`.
+Read `AGENTS.md` and its referenced repository guidance. If repository guidance specifies a
+preference, pass it to the helper with `--directory DIRECTORY`.
 
 ### 3. Portable default
 
-When no repository preference exists, use the host's temporary directory from
-`tempfile.gettempdir()` with `<project>-<branch>`. This is commonly `/tmp` on Unix-like hosts and
-avoids polluting the project directory.
+If the repository does not specify a location, use the host temporary directory from
+`tempfile.gettempdir()` with `<project>-<branch>`. On Unix-like hosts, this directory is usually
+`/tmp`. This location keeps the worktree outside the project directory.
 
 The helper computes the project name from the repository root.
 
-## Safety Verification
+## Verify safety
 
-### For Project-Local Directories (.worktrees or worktrees)
+### For project-local directories
 
-**MUST verify directory is ignored before creating worktree.** The helper fails closed when its
-project-local directory is not ignored.
+Before you create a project-local worktree, verify that Git ignores its directory. If Git does not
+ignore the directory, the helper stops before it makes a change.
 
-**If NOT ignored:**
+#### If Git does not ignore the directory
 
-1. Do not silently edit or commit `.gitignore`, and do not create the project-local worktree.
-2. Prefer a safe temporary destination by passing both
-   `--path <temporary-root>/<project>-<branch>` and `--path-root <temporary-root>` to the helper;
-   derive `<temporary-root>` from the host and report the fallback path.
-3. If repository guidance requires the project-local directory, report the unmet ignore-policy
-   prerequisite and stop. Change `.gitignore` only as a separately authorized, scoped change; after
-   that change is validated and committed, rerun worktree preparation.
+1. Do not edit or commit `.gitignore`.
+2. Do not create the project-local worktree.
+3. If repository guidance requires the project-local directory, report the ignore-policy
+   prerequisite.
+4. If repository guidance requires the project-local directory, stop.
+5. Change `.gitignore` only in a separate authorized change.
+6. After that change is validated and committed, prepare the worktree again.
+7. If repository guidance does not require the project-local directory, get `<temporary-root>` from
+   the host.
+8. Give preference to a safe temporary destination.
+9. Pass `--path <temporary-root>/<project>-<branch>` and `--path-root <temporary-root>` to the helper.
+10. Report the fallback path.
 
-**Why critical:** Prevents accidentally committing worktree contents to repository.
+This check prevents Git from tracking the worktree contents.
 
-### For /tmp Locations
+### For `/tmp` locations
 
-No `.gitignore` verification needed — outside the project entirely.
+You do not have to verify `.gitignore` for a path under `/tmp`. This path is outside the project.
 
-## Creation Steps
+## Create the worktree
 
-1. Resolve and record the intended base commit SHA.
-2. Keep the target repository as the current working directory. Resolve `scripts/prepare_worktree.py`
-   against this installed skill directory and invoke that absolute helper path with
-   `BRANCH_NAME --start-point BASE_SHA --dry-run`. For a contract requiring a distinct branch and
-   path, also pass exact `--path` and `--path-root` values.
-3. Create it with the same arguments without `--dry-run`, optionally supplying the documented
-   repository preference through `--directory`. When an unignored local directory requires the
-   temporary fallback, pass the same exact `--path` and `--path-root` to both calls. Never replace
-   the recorded SHA with ambient HEAD.
-4. Change to the returned path and run the repository-defined bootstrap when one exists.
-5. Verify a clean baseline with the repository-defined tests and report the path, start SHA, and result.
+1. Resolve the intended base commit SHA.
+2. Record the intended base commit SHA.
+3. Keep the target repository as the current working directory.
+4. Resolve `scripts/prepare_worktree.py` from this installed skill directory.
+5. Prepare `BRANCH_NAME --start-point BASE_SHA --dry-run` as the helper arguments.
+6. If the contract requires a distinct branch and path, add exact `--path` and `--path-root` values.
+7. If repository guidance specifies a directory, add it through `--directory`.
+8. If an unignored local directory requires the temporary fallback, use the same exact `--path` and
+   `--path-root` values for both helper calls.
+9. Invoke the helper by its absolute path with the prepared dry-run arguments.
+10. Create the worktree with the same arguments without `--dry-run`.
+11. Do not replace the recorded SHA with the current `HEAD`.
+12. Change to the returned path.
+13. If the repository defines a bootstrap, run it.
+14. Use the repository tests to verify a clean baseline.
+15. Report the path, start SHA, and result.
 
-**If tests fail:** Report failures, ask whether to proceed or investigate.
+**If the tests fail:** Report the failures. Ask whether to continue or investigate.
 
-**If tests pass:** Report ready.
+**If the tests pass:** Report that the worktree is ready.
 
-## Cleanup
+## Clean up
 
-When work is done, invoke `tidy` for branch and worktree cleanup. It prepares the trusted
-Hephaestus dependency and delegates directly to `hephaestus-tidy`, whose interactive workflow owns
-discovery, preservation rules, deletion prompts, rebases, and cleanup safeguards. Do not duplicate
-that policy or improvise deletion commands in this skill.
+When the work is complete, invoke `tidy` for branch and worktree cleanup. `tidy` prepares the trusted
+Hephaestus dependency. It delegates the work directly to `hephaestus-tidy`. The interactive workflow
+controls discovery, preservation rules, deletion prompts, rebases, and cleanup safeguards. Do not
+duplicate that policy. Do not write deletion commands in this skill.
 
 Preserve the worktree by default. Delivery, merge, abandonment, or a general cleanup request does
-not itself authorize this skill to remove it; route any cleanup through `tidy` and leave the
-decision to the Hephaestus workflow and the user's answers to its prompts.
+not authorize this skill to remove the worktree. Use `tidy` for each cleanup. The Hephaestus
+workflow and the user's answers to its prompts control the removal decision.
 
 ## Quick Reference
 
 | Situation | Action |
 | ----------- | -------- |
-| `.worktrees/` exists + ignored | Use it |
+| `.worktrees/` exists and is ignored | Use it. |
 | Neither exists | Use the host temporary directory with `<project>-<branch>` |
-| Directory not ignored | Use and report an explicit temporary path, or stop on a repository-mandated local path |
-| Tests fail at baseline | Report failures + ask before proceeding |
+| Directory is not ignored | Use an explicit temporary path. Report the path. If the repository requires a local path, stop. |
+| Tests fail at baseline | Report the failures. Ask before you continue. |
 
 ## Failed approaches
 
-- **Skipping ignore verification** for project-local worktrees → contents get tracked
-- **Proceeding with failing baseline** → can't distinguish new bugs from pre-existing
-- **Not cleaning up** → stale worktrees accumulate
+- Do not skip ignore verification for a project-local worktree. Git can track the worktree contents.
+- Do not continue if the baseline tests fail. You cannot separate new defects from existing defects.
+- When cleanup is authorized, use `tidy`. Do not leave stale worktrees.
 
-## Integration
-
-**Pairs with:**
+## Related workflow
 
 - Invoke `tidy` for dependency-locked delegation to Hephaestus branch and worktree cleanup.
-- Verify with fresh runnable evidence per the evidence-integrity policy before finishing and
-  cleaning up.
+- Before you report completion or start cleanup, get fresh runnable evidence. Follow the
+  evidence-integrity policy.
 
 ---
 

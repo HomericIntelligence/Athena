@@ -1,21 +1,25 @@
 ---
 name: brainstorm
 license: BSD-3-Clause
-description: Use before complex creative work to explore intent and requirements. Requires the Mnemosyne knowledge backend through advise and fails closed when it cannot be prepared.
+description: Use before complex creative work. Examine intent and requirements. Stop if `advise` cannot prepare Mnemosyne.
 argument-hint: <idea or feature description>
 allowed-tools: [Read, Write, Bash, Grep, Glob, Agent]
 ---
 
-# Brainstorming Ideas Into Designs
+# Develop designs from ideas
 
-Help the user turn an idea into a complete design through a natural, collaborative dialogue.
+Develop a complete design and specification through a dialog with the user.
 
-Apply the [ASD-STE100 writing policy](../../docs/technical-english.md) to this skill and to all prose
-that it produces.
+Apply the [ASD-STE100 technical-English policy](../../docs/technical-english.md) to this skill and to
+all prose that it produces.
 
-Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design and proceed with the requested implementation unless a requirement remains unresolved.
+First, inspect the current project. Ask one question in each message to clarify the idea. When the
+requirements are clear, present the design. Continue with the requested implementation unless a
+requirement remains unresolved.
 
-**DESIGN CHECKPOINT:** Present a scaled design before complex implementation. It is a shared understanding checkpoint, not a permission gate; pause only for unresolved requirements or a filesystem-destructive action.
+**DESIGN CHECKPOINT:** Before a complex implementation, present a design that has sufficient detail
+for the scope. Use this checkpoint to confirm shared understanding. It is not a permission gate.
+Stop only for an unresolved requirement or a filesystem-destructive action.
 
 ## Engineering principles
 
@@ -41,130 +45,151 @@ definition source. Apply these principles to this workflow:
 
 ## Failed approaches
 
-Every feature goes through this process. "Simple" projects are where unexamined assumptions cause the most wasted work. The design can be short (a few sentences), and should make assumptions and constraints visible before implementation.
+Use this process for each feature. A short design can be sufficient for a simple change. Before
+implementation, the design must show its assumptions and constraints.
 
-- Skipping `advise` retrieval before design proposes what already exists or was already debugged.
+- Do not skip `advise` retrieval. Without this retrieval, the design can duplicate an existing
+  solution or repeat a problem that prior guidance already resolved.
 
 ## Checklist
 
 Complete in order:
 
-1. **Run `advise`** with the feature description to check the required knowledge backend.
-2. **Explore project context** — check files, docs, recent commits
-3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
-4. **Propose 2-3 approaches** — with trade-offs and your recommendation
-5. **Present design** — in sections scaled to their complexity; ask only to resolve material ambiguity
-6. **Persist when needed** — write `docs/specs/YYYY-MM-DD-<topic>-design.md` only when complexity,
-   project policy, or a current downstream consumer requires a durable specification
-7. **Design self-review** — scan for placeholders, contradictions, ambiguity, and scope issues
-8. **User confirms the design** — request file review only when a specification was persisted
-9. **Transition to implementation** — invoke `myrmidon-swarm` for complex implementation. If an
-   installed planning skill is available, it may track the approved design; otherwise write a short
-   numbered implementation plan in the current conversation and proceed sequentially.
+1. **Advise retrieval.** Run `advise` with the feature description to check the required knowledge
+   backend.
+2. **Project evidence.** Read applicable files, documents, and recent commits.
+3. **Clarification.** Ask one question in each message to identify the purpose, constraints, and
+   success criteria.
+4. **Approach options.** Propose two or three approaches.
+5. **Trade-offs.** State the trade-offs for each approach.
+6. **Recommendation.** Identify your recommended approach.
+7. **Design presentation.** Present sections that have sufficient detail for their complexity.
+8. **Material ambiguity.** Ask a question only to resolve a material ambiguity.
+9. **Durable specification.** Write `docs/specs/YYYY-MM-DD-<topic>-design.md` only if complexity,
+   project policy, or a current downstream consumer requires it.
+10. **Design review.** Check the design for placeholders, contradictions, ambiguities, and scope
+    errors.
+11. **Saved path.** If you saved a specification, report its path.
+12. **User review.** Ask the user to review a saved specification.
+13. **Continuation.** Do not stop unless a requirement remains unresolved.
+14. **Implementation.** Start the requested implementation.
+15. **Complex work.** For a complex implementation, invoke `myrmidon-swarm`.
+16. **Planning skill.** If an installed planning skill is available, use it to track the design.
+17. **Planning fallback.** Otherwise, write a short numbered plan in the current conversation.
+18. **Sequential work.** Complete the fallback plan in sequence.
 
-## The Process
+## Process
 
-**Understanding the idea:**
+### Understand the idea
 
-- Check out the current project state first (files, docs, `git log --oneline -10`)
-- Before asking detailed questions, assess scope: if the request describes multiple independent subsystems, flag this immediately. Help the user decompose into sub-projects first.
-- For appropriately-scoped projects, ask questions one at a time
-- Prefer multiple choice questions when possible
-- Only one question per message
-- Focus on: purpose, constraints, success criteria
+- First, inspect the current project files, documents, and `git log --oneline -10`.
+- Before you ask detailed questions, assess the scope.
+- If the request contains multiple independent subsystems, tell the user immediately. Help the user
+  divide the request into subprojects.
+- If the project has a suitable scope, ask questions one at a time.
+- Use multiple-choice questions when possible.
+- Ask only one question in each message.
+- Ask about the purpose, constraints, and success criteria.
 
-**Exploring approaches:**
+### Compare approaches
 
-- Propose 2-3 different approaches with trade-offs
-- Lead with your recommended option and explain why
-- Reference existing patterns in the target codebase
+- Propose two or three different approaches with trade-offs.
+- Put your recommended option first. Explain the reason for the recommendation.
+- Refer to existing patterns in the target codebase.
 
-**Presenting the design:**
+### Present the design
 
-- Present in sections, ask after each whether it looks right
-- Scale each section to its complexity
-- Cover: architecture, components, data flow, error handling, testing strategy
-- Define component responsibilities and boundaries using
+- Present the design in sections. Ask after each section if it is correct.
+- Give each section sufficient detail for its complexity.
+- Include architecture, components, data flow, error handling, and the test strategy.
+- Use these principles to define component responsibilities and boundaries:
   [P004 — SOLID](../../docs/principles/README.md#p004),
   [P005 — Modularity](../../docs/principles/README.md#p005),
   [P016 — Separation of Concerns](../../docs/principles/README.md#p016),
   [P017 — High Cohesion, Low Coupling](../../docs/principles/README.md#p017), and
   [P018 — Information Hiding](../../docs/principles/README.md#p018).
-- Make interfaces predictable by documenting observable inputs, outputs, errors, and invariants with
-  [P006 — POLA — Principle of Least Astonishment](../../docs/principles/README.md#p006),
-  and [P019 — Explicit Contracts](../../docs/principles/README.md#p019).
-- Identify critical architecture rules that need automated enforcement under
-  [P020 — Executable Architecture](../../docs/principles/README.md#p020), and stage the design as
-  reversible increments with explicit migration or rollback boundaries under
-  [P021 — Evolutionary and Reversible Design](../../docs/principles/README.md#p021).
-- Separate decisions from machinery and identify authoritative state and cleanup through
-  [P077 — Separate Policy from Mechanism](../../docs/principles/README.md#p077),
-  [P078 — Single Source of Truth](../../docs/principles/README.md#p078), and
-  [P079 — Explicit Ownership and Lifetimes](../../docs/principles/README.md#p079).
-- Challenge additions with [P007](../../docs/principles/README.md#p007) and
-  [P008](../../docs/principles/README.md#p008); remove verified dead code and obsolete scaffolding
-  under [P088](../../docs/principles/README.md#p088) and
-  [P089](../../docs/principles/README.md#p089), preferring
-  [P090 — Prefer Negative Code](../../docs/principles/README.md#p090) only among equally correct
-  designs.
-- Bound the proposal to the stated goal with
-  [P010 — Scope Fidelity](../../docs/principles/README.md#p010), then select the smallest complete
-  evidence-backed change with [P011 — Minimal Coherent Change](../../docs/principles/README.md#p011)
-  and [P012 — Evidence Before Modification](../../docs/principles/README.md#p012).
-- Prefer a reusable mechanism under
-  [P009 — General Mechanisms Over Special Cases](../../docs/principles/README.md#p009) only when
-  current repeated cases demonstrate it; use
-  [P013 — AHA — Avoid Hasty Abstractions](../../docs/principles/README.md#p013) to defer an unstable
+- Use [P006 — POLA — Principle of Least Astonishment](../../docs/principles/README.md#p006) and
+  [P019 — Explicit Contracts](../../docs/principles/README.md#p019) to make interfaces predictable.
+  Document observable inputs, outputs, errors, and invariants.
+- Use [P020 — Executable Architecture](../../docs/principles/README.md#p020) to identify critical
+  architecture rules that need automated enforcement. Use
+  [P021 — Evolutionary and Reversible Design](../../docs/principles/README.md#p021) to divide the
+  design into reversible increments. Specify the migration and rollback boundaries.
+- Use [P077 — Separate Policy from Mechanism](../../docs/principles/README.md#p077) to separate
+  decisions from machinery. Use
+  [P078 — Single Source of Truth](../../docs/principles/README.md#p078) to identify the authoritative
+  state. Use [P079 — Explicit Ownership and Lifetimes](../../docs/principles/README.md#p079) to
+  identify ownership and cleanup.
+- Use [P007](../../docs/principles/README.md#p007) and
+  [P008](../../docs/principles/README.md#p008) to question additions. Use
+  [P088](../../docs/principles/README.md#p088) and
+  [P089](../../docs/principles/README.md#p089) to remove verified dead code and obsolete scaffolding.
+  If designs are equally correct, give preference to
+  [P090 — Prefer Negative Code](../../docs/principles/README.md#p090).
+- Use [P010 — Scope Fidelity](../../docs/principles/README.md#p010) to keep the proposal in the stated
+  goal. Then use [P011 — Minimal Coherent Change](../../docs/principles/README.md#p011) and
+  [P012 — Evidence Before Modification](../../docs/principles/README.md#p012) to select the smallest
+  complete change that the evidence supports.
+- Use [P009 — General Mechanisms Over Special Cases](../../docs/principles/README.md#p009) only if
+  current repeated cases show the need for a reusable mechanism. Use
+  [P013 — AHA — Avoid Hasty Abstractions](../../docs/principles/README.md#p013) to delay an unstable
   abstraction.
-- Enumerate behavior outside the requested change and preserve it under
+- Identify behavior that is outside the requested change. Preserve it under
   [P014 — Preserve Unrequested Behavior](../../docs/principles/README.md#p014).
 
-**Working in existing codebases:**
+### Work in existing codebases
 
-- Follow existing patterns in the target repository
-- Invoke the `advise` skill first to check for existing implementations
-- Don't propose unrelated refactoring — stay focused on the current goal
+- Follow existing patterns in the target repository.
+- Invoke `advise` first to check for existing implementations.
+- Do not propose unrelated refactoring. Keep the work in the current goal.
 
-## After the Design
+## After the design
 
-**Persist a spec only when required:**
+### Save a specification only when necessary
 
-For small changes, keep the approved design in the conversation and proceed. When complexity,
-project policy, or a current downstream consumer requires a durable specification, save it to
-`docs/specs/YYYY-MM-DD-<topic>-design.md` and commit it as
+For a small change, keep the design in the conversation and continue. If complexity, project policy,
+or a current downstream consumer requires a durable specification, save it to
+`docs/specs/YYYY-MM-DD-<topic>-design.md`. Use this commit message:
 `docs(specs): add <topic> design document`.
 
-Before writing or committing a specification, read the target repository's mutation, signing, DCO,
-and review policy. A specification that is in scope may be written and committed without a separate
-approval prompt; retain it in the conversation when a durable artifact is not needed.
+Before you write or commit a specification, read the target repository policies for mutation,
+signing, the Developer Certificate of Origin (DCO), and review. If the specification is in scope,
+you can write and commit it without a separate approval prompt. If a durable artifact is not
+necessary, keep the specification in the conversation.
 
-**Spec Self-Review:**
+### Review the specification
 
-1. **Placeholder scan:** Any "TBD", "TODO", incomplete sections? Fix them.
-2. **Internal consistency:** Do any sections contradict each other?
-3. **Scope check:** Is this focused enough for a single plan?
-4. **Ambiguity check:** Can any requirement be interpreted two ways? Pick one and make it explicit.
+1. **Find placeholders.** Search for `TBD`, `TODO`, and incomplete sections.
+2. **Correct placeholders.** Correct each item that the search finds.
+3. **Check consistency.** Correct each conflict between sections.
+4. **Check the scope.** Make sure that one plan can contain the work.
+5. **Select one meaning.** If a requirement has two possible meanings, select one meaning.
+6. **State the meaning.** State the selected meaning clearly.
 
-**User Review:**
-After self-review of a persisted specification, report its location and proceed with the requested
-implementation unless the user requests changes:
-> "Spec written and committed to `docs/specs/<filename>`. Please review and let me know if you want changes before we start planning implementation."
+### Report the specification
 
-**Implementation:**
+After you review a saved specification, report its location. Continue with the requested
+implementation unless the user requests changes. Use this message:
 
-- Use an installed planning skill for task tracking, or write the numbered plan inline when none is
-  installed.
-- Invoke the `myrmidon-swarm` skill for complex multi-agent work.
+> I wrote and committed the specification at `docs/specs/<filename>`. Review it and tell me if you
+> want changes.
 
-## Working rules
+### Implement the design
 
-- **One question at a time** — don't overwhelm with multiple questions
-- **Apply [P002 — YAGNI — You Ain't Gonna Need It](../../docs/principles/README.md#p002)** — remove
-  unnecessary features from
-  all designs
-- **Explore alternatives** — always propose 2-3 approaches
-- **Incremental validation** — present design sections and resolve material ambiguity before moving on
-- **Invoke `advise` first** — don't propose what's already been built or debugged
+- If a planning skill is installed, use it to track the task. Otherwise, write the numbered plan in
+  the conversation.
+- For complex multi-agent work, invoke `myrmidon-swarm`.
+
+## Rules
+
+- **Ask one question at a time.** Do not put multiple questions in one message.
+- **Apply [P002 — YAGNI — You Ain't Gonna Need It](../../docs/principles/README.md#p002).** Remove
+  unnecessary features from all designs.
+- **Compare alternatives.** Always propose two or three approaches.
+- **Validate in increments.** Present the design in sections. Resolve material ambiguity before you
+  continue.
+- **Invoke `advise` first.** Do not duplicate an existing solution or repeat a problem that prior
+  guidance already resolved.
 
 ---
 
