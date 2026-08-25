@@ -1,15 +1,18 @@
 ---
 name: change-review
 license: BSD-3-Clause
-description: Review only the working-tree, staged, or explicit-range changes for architecture alignment, behavior, language practices, and evidence. Use before committing or opening a PR; it never edits source or posts forge comments. An ambiguous, unresolvable, or out-of-scope change set blocks the review with a reported reason instead of being silently widened.
+description: Review only a worktree, staged, or explicit-range change for architecture, behavior, language, and evidence. Use before a commit or pull request. This skill is read-only. If the scope is ambiguous, unresolved, or out of scope, report the reason. In that case, stop.
 argument-hint: "[--worktree | --staged | --range BASE..HEAD] [PATH ...]"
 allowed-tools: [Read, Bash, Grep, Glob, Agent]
 ---
 
 # Change review
 
-Why: bind the exact local change before review so findings apply to the bytes
-that will be committed.
+Purpose: Bind the exact local change to the review. Findings must apply only to the selected
+content.
+
+Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to all
+prose that it produces.
 
 Use the shared [review contract](../../docs/review/common.md),
 [language routing](../../docs/review/language-routing.md), and
@@ -39,66 +42,78 @@ state, posts forge content, opens issues, or writes review notes into source.
 
 ## Bind the scope
 
-Choose exactly one scope:
+Select exactly one scope:
 
-- `--worktree` (default): tracked differences from `HEAD` and non-ignored
-  untracked files;
-- `--staged`: index changes from `HEAD`; or
-- `--range BASE..HEAD`: the explicit Git range.
+- Use `--worktree` by default. It selects tracked differences from `HEAD` and non-ignored untracked
+  files.
+- Use `--staged` to select index changes from `HEAD`.
+- Use `--range BASE..HEAD` to select the explicit Git range.
 
-Resolve the installed [`scripts/resolve_scope.py`](scripts/resolve_scope.py)
-from this skill directory before inspection. Read every eligible object in its
-manifest and follow the [scope-resolution safety contract](references/scope-resolution.md).
-Paths further restrict the selected diff and must remain inside the repository
-root.
+Before you inspect content, resolve the installed
+[`scripts/resolve_scope.py`](scripts/resolve_scope.py) from this skill directory. Read each eligible
+object in its manifest. Follow the
+[scope-resolution safety contract](references/scope-resolution.md). Use path arguments only to
+reduce the selected diff. Make sure that each path remains inside the repository root.
 
-For a range, report immutable base and head commits. For worktree or staged
-scope, report `HEAD`, selected paths, and the returned content-bound digest;
-never create a commit, tree, stash, temporary index, or other Git state to
-invent a head. Report an empty scope and never silently substitute a different
-range.
+For a range, report the immutable base and head commits. For worktree or staged scope, report these
+items:
 
-`--staged` and `--range` exclude untracked worktree files. State that boundary
-in the result. If resolution cannot safely cover the selected scope, report the
-coverage gap and narrow the paths or choose a safer scope; never sample it.
+- `HEAD`;
+- selected paths; and
+- the returned content-bound digest.
+
+Do not create a commit, tree, stash, temporary index, or other Git state to represent a nonexistent
+head. If the scope is empty, report the empty scope. Do not substitute a different range.
+
+`--staged` and `--range` exclude untracked worktree files. State this boundary in the result. If
+resolution cannot safely cover the selected scope, report the coverage gap. Reduce the paths.
+Alternatively, select a safer scope. Do not inspect a sample of the scope.
 
 ## Review and deliver
 
-Follow the shared review flow: establish architecture first, classify only
-applicable surfaces and language profiles, inspect changed behavior and tests,
-then de-duplicate severity-ranked evidence. Record each skipped check as N/A
-with its reason.
+Follow this shared review flow:
 
-Activate the shared profiles only when the selected change contains the relevant surface: use
-[P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001) for added complexity,
-[P015 Architecture Conformance](../../docs/principles/README.md#p015) for boundary or dependency
-changes, [P022 Test Behavior, Not Implementation](../../docs/principles/README.md#p022) for testable
-behavior, [P029 Generalize Error Policy; Preserve Specific Cause](../../docs/principles/README.md#p029)
-for error-path changes, and [P048 Secure by Design](../../docs/principles/README.md#p048) for security
-or trust-boundary changes.
+1. Establish the architecture.
+2. Select only applicable surfaces and language profiles.
+3. Inspect changed behavior and tests.
+4. Prepare unique findings in severity order.
 
-For a material architecture change, require a stated design decision, ADR, or
-[design record](../../docs/review/design-docs.md). Missing architecture evidence
-is a blocker; do not invent it.
+For each skipped check, record not applicable (`N/A`). Give the reason for that status.
 
-Return in the console or host-native read-only annotation surface:
+Activate a shared profile only if the selected change contains its surface:
 
-1. scope identity, base/head or manifest digest, and files read;
-2. architecture decision first, then applicable and N/A checks;
-3. severity-ranked findings with exact `path:line`, impact, evidence, and a
-   proportionate remediation direction;
-4. behavior-first testing and validation coverage; and
-5. residual risks and unverified assumptions.
+- Use [P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001) for added complexity.
+- Use [P015 Architecture Conformance](../../docs/principles/README.md#p015) for boundary or dependency
+  changes.
+- Use [P022 Test Behavior, Not Implementation](../../docs/principles/README.md#p022) for testable
+  behavior.
+- Use
+  [P029 Generalize Error Policy; Preserve Specific Cause](../../docs/principles/README.md#p029) for
+  error-path changes.
+- Use [P048 Secure by Design](../../docs/principles/README.md#p048) for security or trust-boundary
+  changes.
 
-Use native source annotations only for changed locations when the host supports
-them. Otherwise use `path:line` in the console; never simulate annotations by
-editing source.
+For a material architecture change, require a stated design decision, architecture decision record
+(ADR), or [design record](../../docs/review/design-docs.md). If architecture evidence is missing,
+report a blocking finding. Do not invent evidence.
+
+Include these items in the console or host-native read-only annotation surface:
+
+1. Identify the scope, base and head or manifest digest, and files read.
+2. Give the architecture decision first.
+3. List applicable and `N/A` checks.
+4. Give severity-ranked findings with the exact `path:line`, impact, and evidence.
+5. For each finding, give a correction that is proportional to the impact.
+6. Give behavior-first test and validation coverage.
+7. Give residual risks and unverified assumptions.
+
+If the host supports native source annotations, use them only for changed locations. Otherwise, use
+`path:line` in the console. Do not simulate annotations by editing source.
 
 ## Failed approaches
 
-- Reviewing uncommitted work as if it were committed, or inventing a head commit to bind a range.
-- Widening scope past the requested range, paths, or selected diff instead of reporting the
-  boundary.
-- Editing source, staging files, posting forge comments, or simulating native annotations to deliver
-  findings.
-- Sampling an unsafe-to-cover scope instead of reporting the coverage gap and narrowing the paths.
+- Do not review uncommitted work as if it is committed. Do not invent a head commit to bind a range.
+- Do not increase the scope beyond the requested range, paths, or selected diff. Report the boundary.
+- Do not edit source. Do not stage files. Do not publish forge comments. Do not simulate native
+  annotations to deliver findings.
+- Do not sample a scope that you cannot cover safely. Report the coverage gap. Then, reduce the paths.

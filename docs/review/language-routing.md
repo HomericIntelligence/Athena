@@ -1,55 +1,94 @@
 # Language and toolchain routing
 
-**Why:** Architecture-first review still needs language-specific evidence. Routing prevents a generic
-checklist from substituting for the conventions, failure modes, and tools of the code actually changed.
+**Why:** An architecture-first review also needs language-specific evidence. Use language routing so
+that a generic checklist does not replace the conventions, failure modes, and tools of the changed
+code.
 
-Repository guidance, selected formatter, linter, type checker, compiler, test runner, and framework
-policy override these defaults. When the repository has no local rule, use current primary language or
-framework documentation; if it is unavailable, use repository evidence and report the documentation
-coverage gap. An unknown executable language is a coverage gap, never a generic-checklist pass.
+Use the [ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.md) for all technical prose and review
+output.
+
+Follow repository guidance and repository-selected tools first. These instructions override the
+defaults in this document. If the repository has no local rule, use the current primary language or
+framework documentation. If that documentation is not available, use repository evidence. Report the
+documentation coverage gap. If the executable language is unknown, report a coverage gap. Do not
+report a generic-checklist pass.
 
 ## Select a profile
 
-After the shared architecture gate and surface classification, use every applicable deep or routed
-profile below. Do not route an intentionally excluded language through an invented generic overlay;
-apply the shared architecture, surface, security, and behavior review instead.
+After the shared architecture gate and surface classification, apply every relevant deep or routed
+profile. If a language is intentionally excluded, do not create a generic language overlay. Apply the
+shared architecture, surface, security, and behavior review.
 
 ## Deep profiles
 
 ### Python
 
-Review public type and data contracts, exception boundaries, resource lifetime, async or concurrency,
-import and packaging effects, and test isolation. Prefer repository-selected formatters, linters, type
-checkers, and test tools. Runtime validation protects untyped boundaries; mocks stay at genuine external
-boundaries. When local rules do not define a stricter public-type contract, use the current
+Review these items:
+
+- public type and data contracts;
+- exception boundaries;
+- resource lifetime;
+- asynchronous operations or concurrency;
+- import and packaging effects; and
+- test isolation.
+
+Use repository-selected formatters, linters, type checkers, and test tools. Use runtime validation at
+untyped boundaries. Use mocks only at genuine external boundaries. If local rules do not define a
+stricter public-type contract, use the current
 [Python typing documentation](https://docs.python.org/3/library/typing.html).
 
 ### C++
 
-Review interfaces and ABI impact, ownership and lifetime, RAII, error conventions, constness, value and
-reference semantics, concurrency and data races, exception safety, and measured performance claims. Use
-configured warnings, formatters, static analysis, sanitizers, and test targets. A C++ test is evidence
-only when wired into a real build target. Default to the
-[C++ Core Guidelines](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines) when local guidance
-does not supersede them.
+Review these items:
+
+- interfaces and application binary interface (ABI) effects;
+- ownership and lifetime;
+- resource acquisition is initialization (RAII);
+- error conventions;
+- constness;
+- value and reference semantics;
+- concurrency and data races;
+- exception safety; and
+- measured performance claims.
+
+Use configured warnings, formatters, static analysis, sanitizers, and test targets. Accept a C++ test
+as evidence only when a real build target includes it. If local guidance does not supersede them, use
+the [C++ Core Guidelines](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines).
 
 ### Go
 
-Review package and API design, `context.Context` propagation and cancellation, goroutine lifetime,
-error wrapping and handling, zero-value behavior, data-race risks, and public documentation. Use
-`gofmt`, configured static analysis, race testing, and package tests where applicable. A filtered
-`go test -run` command is evidence only after its match set is proven non-empty. Default to
-[Go Code Review Comments](https://go.dev/wiki/CodeReviewComments) when local guidance does not supersede
-them.
+Review these items:
+
+- package and application programming interface (API) design;
+- `context.Context` propagation and cancellation;
+- goroutine lifetime;
+- error wrapping and error handling;
+- zero-value behavior;
+- data-race risks; and
+- public documentation.
+
+Use `gofmt`, configured static analysis, race tests, and package tests when they apply. Accept a
+filtered `go test -run` command as evidence only after you verify that it selects at least one test.
+If local guidance does not supersede it, use
+[Go Code Review Comments](https://go.dev/wiki/CodeReviewComments).
 
 ### Mojo
 
-Review ownership, lifetime, argument conventions, resource destructors, error contracts, and `fn` versus
-`def` semantics. For accelerator code, inspect CPU/GPU boundaries, data movement, launch assumptions,
-and performance evidence. For Python interoperability, review both sides of the boundary and runtime
-type and ownership contracts. Use repository tooling and current official Modular guidance, especially
+Review these items:
+
+- ownership;
+- lifetime;
+- argument conventions;
+- resource destructors;
+- error contracts; and
+- `fn` and `def` semantics.
+
+For accelerator code, inspect central processing unit (CPU) and graphics processing unit (GPU)
+boundaries. Also inspect data movement, launch assumptions, and performance evidence. For Python
+interoperability, review both sides of the boundary. Review the runtime type and ownership contracts.
+Use repository tooling and current official Modular guidance. Give special attention to
 [modular/skills](https://github.com/modular/skills): `mojo-syntax`, `mojo-gpu-fundamentals`, and
-`mojo-python-interop`. Use native Mojo testing when available.
+`mojo-python-interop`. Use native Mojo tests when they are available.
 
 ## Routed profiles
 
@@ -73,9 +112,30 @@ type and ownership contracts. Use repository tooling and current official Modula
 
 ## Intentionally excluded dedicated profiles
 
-The following are intentional N/A for a dedicated language profile, not unknown-language coverage gaps:
-Cython, PowerShell, SQL/PLpgSQL/PLSQL, HCL, Nix, Starlark, Jsonnet, CSS, SCSS, MDX, Liquid, XSLT,
-Jupyter Notebook, TeX, BibTeX (including BibTeX Style), Roff, ANTLR, Tree-sitter Query, Rocq
-(including Rocq Prover), Red, and POV-Ray SDL. Apply shared architecture, surface, security, and
-behavior review when their artifact requires it; do not invent a generic or dedicated overlay without a
-demonstrated product need.
+Treat these languages as intentionally not applicable (N/A) for a dedicated language profile. Do not
+treat them as unknown-language coverage gaps:
+
+- Cython;
+- PowerShell;
+- SQL, PLpgSQL, and PLSQL;
+- HCL;
+- Nix;
+- Starlark;
+- Jsonnet;
+- CSS;
+- SCSS;
+- MDX;
+- Liquid;
+- XSLT;
+- Jupyter Notebook;
+- TeX;
+- BibTeX, including BibTeX Style;
+- Roff;
+- ANTLR;
+- Tree-sitter Query;
+- Rocq, including Rocq Prover;
+- Red; and
+- POV-Ray SDL.
+
+Apply the shared architecture, surface, security, and behavior review when the artifact requires it.
+Do not create a generic or dedicated overlay without a demonstrated product need.

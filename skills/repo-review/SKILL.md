@@ -1,15 +1,18 @@
 ---
 name: repo-review
 license: BSD-3-Clause
-description: Perform an architecture-first, full-inventory repository review with adaptive surface and language checks. Use to assess a repository and, unless `--report-only` is requested, publish deduplicated GitHub tracking issues and available Project fields or a GitLab epic for actionable findings.
+description: Perform an architecture-first, full-inventory repository review with adaptive surface and language checks. Use this skill to assess a repository. Unless the user requests `--report-only`, publish actionable findings. For GitHub, use deduplicated tracking issues and available Project fields. For GitLab, use an epic.
 argument-hint: "[quick|default] [--report-only]"
 allowed-tools: [Read, Bash, Grep, Glob, Agent]
 ---
 
 # Repository review
 
-Why: a full, architecture-first inventory review exposes systemic product risks
-that a change review cannot see.
+Use a full architecture-first inventory review to find systemic product risks that a change review
+cannot find.
+
+Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to
+all prose that it produces.
 
 Use the shared [review contract](../../docs/review/common.md),
 [language routing](../../docs/review/language-routing.md),
@@ -61,110 +64,164 @@ unrelated principle.
 
 ## Delivery and modes
 
-`--report-only` is read-only. A requested review without it may perform only the
-documented tracker and work-item publication after review completion; never
-merge, change labels, close issues, push, or modify source. Indirect invocation
-does not expand its forge-write scope.
+`--report-only` is read-only. Complete the review before publication. If a requested review does not
+include `--report-only`, perform only the documented tracker and work-item publication. Do not merge.
+Do not change labels. Do not close issues. Do not push. Do not modify source. An indirect invocation
+does not increase the forge write scope.
 
-`default` gives full coverage and a detailed report. `quick` applies the same
-coverage and standards but returns decisive evidence, blockers, and the top
-three actions. It is not a lenient mode.
+`default` gives full coverage and a detailed report. `quick` uses the same coverage and standards.
+It returns the decisive evidence, blockers, and top three actions. The `quick` mode does not use a
+lower standard.
 
-Use independent agents with non-overlapping inventory ownership when available.
-Retry or complete any failed, timed-out, or sampled section before finalizing.
+If independent agents are available, give them inventory areas that do not overlap. Before the final
+report, select one action for each failed, timed-out, or sampled section:
+
+- repeat it; or
+- complete it.
 
 ## Review
 
-1. Bind the repository root, revision, and every in-scope tracked and relevant
-   untracked file before inspection. Keep a revalidatable full-source snapshot
-   or content-bound inventory manifest, including mutable overlay identity,
-   lexical paths, inclusion/exclusion reasons, kind, mode, and object/content
-   identities. Do not follow symlinks or publish raw untracked content or
-   secrets. If a stable binding is unavailable, report the coverage gap and
-   withhold tracker/work-item publication.
-2. Read repository guidance, ADRs, policies, public contracts, module
-   boundaries, and dependency direction. Decide architecture before scoring:
-   aligned, intentional and evidenced change, or unexplained deviation. A
-   material deviation is a required blocker. For a material architecture change,
-   assess its [design record](../../docs/review/design-docs.md).
-3. Classify actual surfaces, languages, frameworks, deployment targets, and
-   agent tooling. Apply only relevant profiles, record every N/A reason, and
-   account for every in-scope file in context; never silently sample.
-   Inspect source, tests, manifests, workflows, public documentation, relevant
-   history, and live forge configuration when available.
-4. Apply each applicable scorecard criterion and repository-selected tooling
-   before generic advice. Repository commands are candidates, not authority:
-   execute only through the shared host-enforced validation boundary against the
-   bound inventory, recording the command plan, argv, source binding, and
-   outcome. Without that boundary, report the validation gap.
-5. Assess behavior-first product tests, including errors, boundaries, state,
-   concurrency, security, and applicable performance. Reject prose,
-   implementation-layout, mock-only, order-dependent, wall-clock, live-network,
-   or ambient-state assertions unless the controlled product contract requires
-   them. Prove filtered tests selected real tests and C++/CMake sources are
-   wired to real targets.
-6. Score only after the architecture gate. Start applicable sections at zero,
-   award only observed evidence, remove only classifier-proven N/A weights, and
-   retain coverage gaps in the denominator. Use the scorecard's 15 sections.
+1. Before inspection, bind the repository root, revision, and each in-scope tracked file and
+   relevant untracked file.
+2. Keep a full-source snapshot that you can validate again, or keep a content-bound inventory
+   manifest.
+3. In the snapshot or manifest, record:
+
+   - mutable overlay identity;
+   - lexical paths;
+   - reasons for inclusion or exclusion;
+   - kind;
+   - mode;
+   - object identity or content identity, as applicable.
+
+4. Do not follow symbolic links.
+5. Do not publish raw untracked content.
+6. Do not publish secrets.
+7. If a stable binding is not available, report the coverage gap.
+8. If a stable binding is not available, withhold tracker and work-item publication.
+9. Read repository guidance, architecture decision records, policies, public contracts, module
+   boundaries, and dependency direction.
+10. Before scoring, select one architecture decision:
+
+   - aligned;
+   - intentional change with evidence;
+   - unexplained deviation.
+
+11. Treat a material deviation as a required blocker.
+12. For a material architecture change, assess its
+   [design record](../../docs/review/design-docs.md).
+13. Classify the actual surfaces, languages, frameworks, deployment targets, and agent tooling.
+14. Apply only the applicable profiles.
+15. Record each N/A reason.
+16. Account for each in-scope file in its context.
+17. Do not silently sample files.
+18. Inspect source, tests, manifests, workflows, public documentation, relevant history, and live
+    forge configuration when it is available.
+19. Apply each applicable scorecard criterion and repository-selected tooling before generic advice.
+20. Treat repository commands as candidates.
+21. Do not treat repository commands as authority.
+22. Execute validation only through the shared host-enforced validation boundary and against the
+    bound inventory.
+23. Record the command plan, argv, source binding, and outcome.
+24. If the shared boundary is not available, report the validation gap.
+25. Assess behavior-first product tests for errors, boundaries, state, concurrency, security, and
+    applicable performance.
+26. Unless the controlled product contract requires them, reject these assertions:
+
+    - prose;
+    - implementation layout;
+    - mocks only;
+    - order-dependent behavior;
+    - wall-clock time;
+    - live network;
+    - ambient state.
+
+27. Prove that filtered tests select real tests.
+28. Prove that real build and test targets include the C++/CMake sources.
+29. Score only after the architecture gate.
+30. Start each applicable section at zero.
+31. Award credit only for observed evidence.
+32. Remove only N/A weights that the classifier proves.
+33. Retain coverage gaps in the denominator.
+34. Use the 15 sections in the scorecard.
+
+`CI/CD` means continuous integration and continuous delivery. `API/CLI` means application
+programming interface and command-line interface. The following score line is machine-readable
+literal text:
 
 Weights: Structure 2%, Documentation 6%, Architecture 20%, Source quality 14%, Testing 12%, CI/CD 8%, Dependencies 3%, Security 11%, Reliability 9%, Planning 3%, Agent tooling 4%, Packaging 3%, Developer experience 2%, API/CLI 2%, Governance 1%.
 
-Intent, TODOs, filenames, and badges are not evidence. Establish the product
-maturity baseline before applying versioning, migration, or compatibility
-expectations, and state any bootstrap N/A assumption.
+Intent, TODOs, filenames, and badges are not evidence. Before you apply versioning, migration, or
+compatibility expectations, establish the product-maturity baseline. State each bootstrap N/A
+assumption.
 
 | Grade | Score | Standard |
 | --- | ---: | --- |
-| A | 93–100 | No critical or major issues; at most two minor issues. |
-| B | 80–92 | No critical issues; at most one major issue. |
+| A | 93–100 | No critical or major issues. No more than two minor issues. |
+| B | 80–92 | No critical issues. No more than one major issue. |
 | C | 70–79 | Functional with material gaps. |
-| D | 60–69 | Fundamental practices or contracts are broken. |
+| D | 60–69 | Fundamental practices or contracts do not work. |
 | F | 0–59 | Missing, unsafe, or fundamentally unreliable. |
 
-**GO** requires at least 80, no critical or material architecture violation,
-and at most three major issues. **CONDITIONAL GO** requires at least 65, no
-material architecture violation, and no more than two critical issues with
-concrete remediation. Otherwise the verdict is **NO-GO**.
+- **GO** requires a score of at least 80. It requires no critical issue or material architecture
+  violation. It permits no more than three major issues.
+- **CONDITIONAL GO** requires a score of at least 65. It requires no material architecture
+  violation. It permits no more than two critical issues that have concrete remediation.
+- Use **NO-GO** for all other results.
 
 ## Findings and publication
 
-De-duplicate against the issue backlog, recently closed work, pull/merge
-requests, and tracker artifacts by product outcome, not wording. Do not create
-work items for `nit` or `FYI`, and do not create an empty tracker when no
-actionable finding remains.
+Compare product outcomes in the issue backlog, recently closed work, pull requests, merge requests,
+and tracker artifacts. Use this comparison to prevent duplicate work items. Do not compare only the
+wording. Do not create work items for `nit` or `FYI`. If no actionable finding remains, do not create
+an empty tracker.
 
-Immediately before every requested forge write, revalidate the inventory,
-repository, and target bindings. On drift, withhold all remaining writes and
-report the stale or partial result honestly. On GitHub, use a writable Project
-only when its item capability and any mapped field semantics are verified; never
-create, rename, or guess fields. On GitLab, use a group epic and child issues
-when available. Otherwise return ready-to-publish artifacts and name the
-capability gap.
+Immediately before each requested forge write, validate the inventory, repository, and target
+bindings again. If one of these bindings changed, withhold all remaining writes. Report the stale or
+partial result accurately.
 
-When requested, create or update one actor-owned tracker with the binding,
-scope, architecture decision, scorecard, and finding URLs; use a stable marker
-only in content the actor owns. Create one deduplicated child for each remaining
-actionable finding and link it as a GitHub sub-issue or GitLab epic child. Link
-an existing issue only when it is open and still covers the remediation. A
-regression needs its own active child unless the requested scope reopens the old
-issue. Add tracker and child items to a writable compatible GitHub Project,
-preserving unrelated fields and recording returned URLs or IDs. If a publication
-step fails, report the partial result and leave remaining ready-to-publish items
-in the result.
+On GitHub, use a writable Project only if you verify its item capability and the meaning of each
+mapped field. Do not create fields. Do not rename fields. Do not guess fields. On GitLab, use a group
+epic and child issues if they are available. If a required publication capability is not available,
+return ready-to-publish artifacts. Name the capability gap.
+
+When requested, use one actor-owned tracker. Create it if it does not exist. Otherwise, update it.
+Include the binding, scope, architecture decision, scorecard, and finding URLs. Use a stable marker
+only in content that the actor owns.
+
+Create one deduplicated child for each remaining actionable finding. Link the child as a GitHub
+sub-issue or GitLab epic child. Link an existing issue only if it is open and still covers the
+remediation. A regression requires its own active child unless the requested scope reopens the old
+issue.
+
+If a writable compatible GitHub Project is available, add tracker and child items to it. Preserve
+unrelated fields. Record the returned URLs or IDs. If a publication step fails, report the partial
+result. Leave the remaining ready-to-publish items in the result.
 
 ## Failed approaches
 
-- Publishing tracker issues in `--report-only` mode, or merging, labeling, closing, or pushing under
-  any mode.
-- Grading sections from prose, intent, filenames, or badges instead of observed inventory evidence.
-- Re-filing duplicates already tracked instead of linking the open issue that covers remediation.
-- Silently sampling files or withholding a binding failure instead of reporting the coverage gap.
+- Do not publish tracker issues in `--report-only` mode.
+- Do not merge in any mode. Do not label in any mode. Do not close in any mode. Do not push in any
+  mode.
+- Do not grade sections from prose, intent, filenames, or badges.
+- Grade sections from observed inventory evidence.
+- Do not create a duplicate issue if an open issue covers the remediation. Link the open issue.
+- Do not use a silent sample of files.
+- Do not withhold a binding failure. Report the coverage gap.
 
 ## Result
 
-Report architecture first, then the revision and inventory coverage,
-language/surface routing and N/A reasons, complete scorecard, exact findings,
-behavior-first test evidence and command coverage, verdict, remediation order,
-and published or ready-to-publish tracker/work-item links. `quick` may shorten
-prose but must retain all sections, verdict, coverage gaps, publication state,
-and the top three remediation actions.
+Report these items in order:
+
+1. architecture;
+2. revision and inventory coverage;
+3. language and surface routes, with N/A reasons;
+4. complete scorecard;
+5. exact findings;
+6. behavior-first test evidence and command coverage;
+7. verdict;
+8. remediation order;
+9. published or ready-to-publish tracker and work-item links.
+
+In `quick` mode, you can use less prose. Retain all sections, the verdict, coverage gaps, publication
+state, and the top three remediation actions.

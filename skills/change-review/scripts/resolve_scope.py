@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resolve a change-review scope without changing repository or Git state."""
+"""Resolve the scope for a change review. Do not change the repository or Git state."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ MAX_WORKTREE_CANDIDATES = 50_000
 
 
 def git_bytes(*arguments: str, repository_root: Path | None = None) -> bytes:
-    """Run Git and return its raw stdout or raise a concise error."""
+    """Run Git and return its raw standard output or raise a concise error."""
     command = git_command(arguments, repository_root)
     result = run_command(
         command,
@@ -47,7 +47,9 @@ def git_bytes(*arguments: str, repository_root: Path | None = None) -> bytes:
     stderr = cast(bytes, result.stderr)
     if result.returncode != 0:
         message = stderr.decode("utf-8", errors="replace").strip()
-        raise RuntimeError(message or f"git {' '.join(arguments)} failed")
+        raise RuntimeError(
+            message or f"The Git command failed. Command: git {' '.join(arguments)}"
+        )
     return stdout
 
 
@@ -60,13 +62,13 @@ def git_text(*arguments: str, repository_root: Path | None = None) -> str:
 
 
 def path_list(document: bytes) -> list[str]:
-    """Return sorted Git NUL-delimited paths without lossy shell parsing."""
+    """Return sorted Git paths from null-byte-delimited data without lossy parsing."""
     return sorted(os.fsdecode(path) for path in document.split(b"\0") if path)
 
 
 @dataclass(frozen=True)
 class PathEntry:
-    """One no-follow worktree or immutable Git-object manifest entry."""
+    """This record describes one worktree or immutable Git-object manifest entry."""
 
     path: str
     kind: str
@@ -77,7 +79,7 @@ class PathEntry:
 
 @dataclass(frozen=True)
 class ContentFingerprint:
-    """Bounded identity for an arbitrarily large byte stream."""
+    """This record contains a bounded identity for a byte stream of any size."""
 
     length: int
     digest: str
@@ -85,7 +87,7 @@ class ContentFingerprint:
 
 @dataclass(frozen=True)
 class ScopeCapture:
-    """One complete observed scope capture used to detect worktree races."""
+    """This record contains one scope observation that detects worktree races."""
 
     paths: tuple[str, ...]
     tracked_paths: tuple[str, ...]
@@ -135,12 +137,15 @@ def git_stream_fingerprint(
                 )
             except FileNotFoundError as error:
                 raise RuntimeError(
-                    f"required command unavailable: {error.filename or command[0]}"
+                    "The required command is not available: "
+                    f"'{error.filename or command[0]}'."
                 ) from error
             try:
                 stdout = process.stdout
                 if stdout is None:
-                    raise RuntimeError("Git did not provide stdout for scope capture")
+                    raise RuntimeError(
+                        "Git did not provide standard output for scope capture."
+                    )
                 try:
                     fingerprint = content_fingerprint(
                         iter(lambda: stdout.read(READ_CHUNK_SIZE), b"")
@@ -160,10 +165,16 @@ def git_stream_fingerprint(
                     .decode("utf-8", errors="replace")
                     .strip()
                 )
-                raise RuntimeError(message or f"git {' '.join(arguments)} failed")
+                raise RuntimeError(
+                    message
+                    or f"The Git command failed. Command: git {' '.join(arguments)}"
+                )
             return fingerprint
     except OSError as error:
-        raise RuntimeError(f"cannot stream git output: {error}") from error
+        raise RuntimeError(
+            "The tool cannot stream Git output. "
+            f"The operation returned this diagnostic.\n{error}"
+        ) from error
 
 
 def consume_git_nul_records(
@@ -171,7 +182,7 @@ def consume_git_nul_records(
     repository_root: Path,
     consume: Callable[[bytes], None],
 ) -> None:
-    """Pass Git NUL records to a consumer without buffering command output."""
+    """Pass null-byte-delimited Git records without buffering command output."""
     command = git_command(arguments, repository_root)
     try:
         with tempfile.TemporaryFile() as error_output:
@@ -184,13 +195,16 @@ def consume_git_nul_records(
                 )
             except FileNotFoundError as error:
                 raise RuntimeError(
-                    f"required command unavailable: {error.filename or command[0]}"
+                    "The required command is not available: "
+                    f"'{error.filename or command[0]}'."
                 ) from error
             stdout = process.stdout
             if stdout is None:
                 process.kill()
                 process.wait()
-                raise RuntimeError("Git did not provide stdout for scope capture")
+                raise RuntimeError(
+                    "Git did not provide standard output for scope capture."
+                )
             pending = b""
             try:
                 while chunk := stdout.read(READ_CHUNK_SIZE):
@@ -199,17 +213,18 @@ def consume_git_nul_records(
                     pending = records.pop()
                     if len(pending) > MAX_METADATA_RECORD_BYTES:
                         raise RuntimeError(
-                            "Git metadata record exceeds the safe scope limit"
+                            "The Git metadata record is larger than the safe scope limit."
                         )
                     for record in records:
                         if record:
                             if len(record) > MAX_METADATA_RECORD_BYTES:
                                 raise RuntimeError(
-                                    "Git metadata record exceeds the safe scope limit"
+                                    "The Git metadata record is larger than the safe scope "
+                                    "limit."
                                 )
                             consume(record)
                 if pending:
-                    raise RuntimeError("unterminated Git metadata record")
+                    raise RuntimeError("The Git metadata record is not terminated.")
                 return_code = process.wait()
             except BaseException:
                 stdout.close()
@@ -225,9 +240,15 @@ def consume_git_nul_records(
                     .decode("utf-8", errors="replace")
                     .strip()
                 )
-                raise RuntimeError(message or f"git {' '.join(arguments)} failed")
+                raise RuntimeError(
+                    message
+                    or f"The Git command failed. Command: git {' '.join(arguments)}"
+                )
     except OSError as error:
-        raise RuntimeError(f"cannot stream git metadata: {error}") from error
+        raise RuntimeError(
+            "The tool cannot stream Git metadata. "
+            f"The operation returned this diagnostic.\n{error}"
+        ) from error
 
 
 def pathspec_arguments(arguments: list[str], paths: Sequence[str]) -> list[str]:
@@ -237,7 +258,7 @@ def pathspec_arguments(arguments: list[str], paths: Sequence[str]) -> list[str]:
 
 
 def normalized_paths(repository_root: Path, paths: Sequence[str]) -> list[str]:
-    """Keep lexical filters inside the repository without following symlinks."""
+    """Keep lexical filters inside the repository without following symbolic links."""
     root = Path(os.path.abspath(os.fspath(repository_root)))
     normalized: list[str] = []
     for raw_path in paths:
@@ -249,15 +270,17 @@ def normalized_paths(repository_root: Path, paths: Sequence[str]) -> list[str]:
         try:
             relative = resolved.relative_to(root)
         except ValueError as error:
-            raise RuntimeError(f"path outside repository: {raw_path!r}") from error
+            raise RuntimeError(
+                f"The path is outside the repository: {raw_path!r}."
+            ) from error
         normalized.append(relative.as_posix())
     return sorted(set(normalized))
 
 
 def verified_commit(reference: str, repository_root: Path | None = None) -> str:
-    """Resolve one non-option Git reference to an immutable commit OID."""
+    """Resolve one non-option Git reference to an immutable commit object identifier."""
     if not reference or reference.startswith("-"):
-        raise RuntimeError(f"invalid Git reference: {reference!r}")
+        raise RuntimeError(f"The Git reference is not valid: {reference!r}.")
     return git_text(
         "rev-parse",
         "--verify",
@@ -267,9 +290,9 @@ def verified_commit(reference: str, repository_root: Path | None = None) -> str:
 
 
 def range_revisions(value: str, repository_root: Path) -> tuple[str, str]:
-    """Resolve the required BASE..HEAD notation to immutable commit OIDs."""
+    """Resolve the required BASE..HEAD notation to immutable commit object identifiers."""
     if value.count("..") != 1:
-        raise RuntimeError("range must use exactly one BASE..HEAD separator")
+        raise RuntimeError("The range must contain exactly one BASE..HEAD separator.")
     base_reference, head_reference = value.split("..", maxsplit=1)
     return (
         verified_commit(base_reference, repository_root),
@@ -368,8 +391,8 @@ def untracked_paths(paths: Sequence[str], repository_root: Path) -> list[str]:
     def consume(record: bytes) -> None:
         if len(selected) >= MAX_WORKTREE_CANDIDATES:
             raise RuntimeError(
-                "untracked path limit "
-                f"({MAX_WORKTREE_CANDIDATES}) reached; rerun with narrower PATH arguments"
+                f"The untracked path limit ({MAX_WORKTREE_CANDIDATES}) was reached. "
+                "Run the command again with narrower PATH arguments."
             )
         selected.append(os.fsdecode(record))
 
@@ -382,7 +405,7 @@ def untracked_paths(paths: Sequence[str], repository_root: Path) -> list[str]:
 
 
 class Digest(Protocol):
-    """Minimal hashlib protocol used by the canonical scope digest."""
+    """This protocol defines the minimum hashlib operations for the scope digest."""
 
     def update(self, data: bytes) -> None:
         """Add bytes to the digest state."""
@@ -405,7 +428,7 @@ def path_components(relative_path: str) -> tuple[str, ...]:
     """Return a verified repository-relative path split into lexical components."""
     components = Path(relative_path).parts
     if not components or any(component in {".", ".."} for component in components):
-        raise RuntimeError(f"invalid repository path: {relative_path!r}")
+        raise RuntimeError(f"The repository path is not valid: {relative_path!r}.")
     return components
 
 
@@ -421,10 +444,10 @@ def close_descriptor_quietly(descriptor: int) -> None:
 def nofollow_parent_descriptor(
     repository_root: Path, relative_path: str
 ) -> tuple[int, str]:
-    """Open a path's parent without following any repository symlink."""
+    """Open a path's parent without following any repository symbolic link."""
     if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
         raise RuntimeError(
-            "host cannot inspect repository paths without following links"
+            "The host cannot inspect repository paths without following symbolic links."
         )
     components = path_components(relative_path)
     descriptor: int | None = os.open(
@@ -442,13 +465,14 @@ def nofollow_parent_descriptor(
                 )
             except (NotImplementedError, TypeError) as error:
                 raise RuntimeError(
-                    "host cannot inspect repository paths without following links"
+                    "The host cannot inspect repository paths without following symbolic "
+                    "links."
                 ) from error
             try:
                 os.close(descriptor)
             except OSError:
-                # `close()` leaves descriptor state unspecified on error; do not
-                # retry the parent descriptor, but never leak the opened child.
+                # After an error, `close()` leaves the descriptor state unspecified.
+                # Do not try the parent descriptor again. Always close the opened child.
                 descriptor = None
                 close_descriptor_quietly(child_descriptor)
                 raise
@@ -462,7 +486,7 @@ def nofollow_parent_descriptor(
 
 
 def worktree_path_entry(repository_root: Path, relative_path: str) -> PathEntry:
-    """Describe a path without following repository or target symlinks."""
+    """Describe a path without following repository or target symbolic links."""
     try:
         parent_descriptor, filename = nofollow_parent_descriptor(
             repository_root, relative_path
@@ -474,7 +498,7 @@ def worktree_path_entry(repository_root: Path, relative_path: str) -> PathEntry:
             mode = os.lstat(filename, dir_fd=parent_descriptor).st_mode
         except (NotImplementedError, TypeError) as error:
             raise RuntimeError(
-                "host cannot inspect repository paths without following links"
+                "The host cannot inspect repository paths without following symbolic links."
             ) from error
         except FileNotFoundError:
             return PathEntry(relative_path, "absent")
@@ -483,7 +507,8 @@ def worktree_path_entry(repository_root: Path, relative_path: str) -> PathEntry:
                 target = os.readlink(filename, dir_fd=parent_descriptor)
             except (NotImplementedError, TypeError) as error:
                 raise RuntimeError(
-                    "host cannot inspect repository links without following them"
+                    "The host cannot inspect repository symbolic links without following "
+                    "them."
                 ) from error
             return PathEntry(
                 relative_path,
@@ -504,7 +529,7 @@ def worktree_path_entry(repository_root: Path, relative_path: str) -> PathEntry:
 def worktree_path_entries(
     repository_root: Path, paths: Sequence[str]
 ) -> tuple[PathEntry, ...]:
-    """Describe every selected repository object without dereferencing links."""
+    """Describe each selected repository object without following symbolic links."""
     return tuple(worktree_path_entry(repository_root, path) for path in paths)
 
 
@@ -520,7 +545,7 @@ def git_object_kind(mode: str, object_type: str) -> str:
 
 
 def nul_records(document: bytes) -> list[bytes]:
-    """Split a Git NUL-delimited record stream while preserving path bytes."""
+    """Split null-byte-delimited Git records and preserve the path bytes."""
     return [record for record in document.split(b"\0") if record]
 
 
@@ -540,12 +565,14 @@ def index_entry_map(
             raw_mode, raw_object_id, raw_stage = header.split()
         except ValueError as error:
             raise RuntimeError(
-                "invalid Git index entry while resolving scope"
+                "The Git index entry is not valid for scope resolution."
             ) from error
         path = os.fsdecode(raw_path)
         stage = raw_stage.decode("ascii")
         if stage != "0":
-            raise RuntimeError(f"unmerged index entry in selected scope: {path}")
+            raise RuntimeError(
+                f"The selected scope contains an unmerged index entry: '{path}'."
+            )
         mode = raw_mode.decode("ascii")
         object_id = raw_object_id.decode("ascii")
         entries[path] = PathEntry(
@@ -583,7 +610,7 @@ def head_tree_entry_map(
             raw_mode, raw_type, raw_object_id = header.split()
         except ValueError as error:
             raise RuntimeError(
-                "invalid Git tree entry while resolving scope"
+                "The Git tree entry is not valid for scope resolution."
             ) from error
         path = os.fsdecode(raw_path)
         mode = raw_mode.decode("ascii")
@@ -609,7 +636,7 @@ def head_tree_path_entries(
 
 @dataclass(frozen=True)
 class WorktreeMetadata:
-    """Bounded immutable metadata needed to compare raw worktree candidates."""
+    """This record contains bounded metadata for comparison of worktree candidates."""
 
     head_entries: dict[str, PathEntry]
     index_entries: dict[str, PathEntry]
@@ -623,8 +650,8 @@ def add_worktree_candidate(candidates: set[str], path: str) -> None:
         return
     if len(candidates) >= MAX_WORKTREE_CANDIDATES:
         raise RuntimeError(
-            "worktree candidate limit "
-            f"({MAX_WORKTREE_CANDIDATES}) reached; rerun with narrower PATH arguments"
+            f"The worktree candidate limit ({MAX_WORKTREE_CANDIDATES}) was reached. "
+            "Run the command again with narrower PATH arguments."
         )
     candidates.add(path)
 
@@ -635,7 +662,9 @@ def parse_head_tree_record(record: bytes) -> PathEntry:
         header, raw_path = record.split(b"\t", maxsplit=1)
         raw_mode, raw_type, raw_object_id = header.split()
     except ValueError as error:
-        raise RuntimeError("invalid Git tree entry while resolving scope") from error
+        raise RuntimeError(
+            "The Git tree entry is not valid for scope resolution."
+        ) from error
     path = os.fsdecode(raw_path)
     mode = raw_mode.decode("ascii")
     object_type = raw_type.decode("ascii")
@@ -654,11 +683,15 @@ def parse_tagged_index_record(record: bytes) -> tuple[PathEntry, bool]:
         header, raw_path = raw_entry.split(b"\t", maxsplit=1)
         raw_mode, raw_object_id, raw_stage = header.split()
     except ValueError as error:
-        raise RuntimeError("invalid Git index entry while resolving scope") from error
+        raise RuntimeError(
+            "The Git index entry is not valid for scope resolution."
+        ) from error
     path = os.fsdecode(raw_path)
     stage = raw_stage.decode("ascii")
     if stage != "0":
-        raise RuntimeError(f"unmerged index entry in selected scope: {path}")
+        raise RuntimeError(
+            f"The selected scope contains an unmerged index entry: '{path}'."
+        )
     mode = raw_mode.decode("ascii")
     return (
         PathEntry(
@@ -674,7 +707,7 @@ def parse_tagged_index_record(record: bytes) -> tuple[PathEntry, bool]:
 def worktree_metadata(
     head: str, paths: Sequence[str], repository_root: Path
 ) -> WorktreeMetadata:
-    """Stream bounded HEAD/index metadata without reading worktree bytes."""
+    """Stream bounded HEAD and index metadata without reading worktree bytes."""
     candidates: set[str] = set()
     head_entries: dict[str, PathEntry] = {}
     index_entries: dict[str, PathEntry] = {}
@@ -697,7 +730,8 @@ def worktree_metadata(
         path = os.fsdecode(record)
         if path not in candidates:
             raise RuntimeError(
-                f"staged change path was missing from worktree scope metadata: {path}"
+                "The worktree scope metadata does not contain this staged change "
+                f"path: '{path}'."
             )
         staged_change_paths.add(path)
 
@@ -747,7 +781,7 @@ def worktree_metadata(
 
 @dataclass(frozen=True)
 class FileSnapshot:
-    """A regular file's streamed content identity and optional Git blob OID."""
+    """This record contains a regular-file identity and optional Git blob object identifier."""
 
     fingerprint: ContentFingerprint
     object_id: str | None
@@ -756,7 +790,7 @@ class FileSnapshot:
 
 @dataclass(frozen=True)
 class WorktreePathSnapshot:
-    """No-follow worktree metadata plus raw content identity where applicable."""
+    """This record contains worktree metadata and the applicable raw content identity."""
 
     entry: PathEntry
     content: ContentFingerprint | None = None
@@ -765,7 +799,7 @@ class WorktreePathSnapshot:
 
 @dataclass(frozen=True)
 class WorktreeTrackedCapture:
-    """One bounded representation of all worktree changes relative to HEAD."""
+    """This record contains all worktree changes relative to HEAD within a size limit."""
 
     paths: tuple[str, ...]
     fingerprint: ContentFingerprint
@@ -780,7 +814,8 @@ def git_object_format(repository_root: Path) -> str:
         hashlib.new(object_format)
     except ValueError as error:
         raise RuntimeError(
-            f"unsupported Git object format for worktree review: {object_format}"
+            "The worktree review does not support this Git object format: "
+            f"'{object_format}'."
         ) from error
     return object_format
 
@@ -817,7 +852,7 @@ def read_regular_file_snapshot_without_following(
     relative_path: str,
     object_format: str | None = None,
 ) -> FileSnapshot:
-    """Fingerprint a regular file without following links or blocking on a FIFO."""
+    """Fingerprint a regular file without following symbolic links or blocking on a named pipe."""
     nonblocking_value = getattr(os, "O_NONBLOCK", None)
     try:
         if nonblocking_value is None:
@@ -825,7 +860,8 @@ def read_regular_file_snapshot_without_following(
         nonblocking_flag = index(nonblocking_value)
     except TypeError as error:
         raise RuntimeError(
-            "host cannot inspect repository files without nonblocking open support"
+            "The host cannot inspect repository files without support for a "
+            "nonblocking open operation."
         ) from error
     parent_descriptor, filename = nofollow_parent_descriptor(
         repository_root, relative_path
@@ -840,7 +876,8 @@ def read_regular_file_snapshot_without_following(
             )
         except (NotImplementedError, TypeError) as error:
             raise RuntimeError(
-                "host cannot inspect repository paths without following links"
+                "The host cannot inspect repository paths without following symbolic "
+                "links."
             ) from error
     finally:
         try:
@@ -853,7 +890,9 @@ def read_regular_file_snapshot_without_following(
     try:
         initial_stat = os.fstat(descriptor)
         if not stat.S_ISREG(initial_stat.st_mode):
-            raise RuntimeError(f"untracked path is not a regular file: {relative_path}")
+            raise RuntimeError(
+                f"The untracked path is not a regular file: '{relative_path}'."
+            )
         content_digest = sha256()
         object_digest = (
             hashlib.new(object_format) if object_format is not None else None
@@ -871,7 +910,7 @@ def read_regular_file_snapshot_without_following(
             initial_stat, final_stat
         ):
             raise RuntimeError(
-                f"repository file changed while resolving scope: {relative_path}"
+                f"The repository file changed during scope resolution: '{relative_path}'."
             )
         return FileSnapshot(
             fingerprint=ContentFingerprint(
@@ -910,7 +949,8 @@ def worktree_path_snapshot(
     if entry.kind == "symlink":
         if entry.target is None:
             raise RuntimeError(
-                f"repository link changed while resolving scope: {relative_path}"
+                "The repository symbolic link changed during scope resolution: "
+                f"'{relative_path}'."
             )
         contents = os.fsencode(entry.target)
         return WorktreePathSnapshot(
@@ -924,7 +964,7 @@ def worktree_path_snapshot(
 def git_mode_for_worktree_file(entry: PathEntry) -> str:
     """Map a regular filesystem mode to Git's executable-bit-only mode."""
     if entry.kind != "file" or entry.mode is None:
-        raise RuntimeError(f"invalid worktree file entry: {entry.path}")
+        raise RuntimeError(f"The worktree file entry is not valid: '{entry.path}'.")
     return "100755" if int(entry.mode, 8) & 0o111 else "100644"
 
 
@@ -947,7 +987,8 @@ def worktree_matches_entry(
             and tree_entry.mode == "120000"
         )
     raise RuntimeError(
-        f"worktree scope cannot safely compare Git object kind for {tree_entry.path}"
+        "The worktree scope cannot safely compare the Git object type for "
+        f"'{tree_entry.path}'."
     )
 
 
@@ -997,15 +1038,15 @@ def worktree_tracked_capture(
             and index_entry.kind == "git-submodule"
         ):
             raise RuntimeError(
-                "worktree scope cannot safely determine submodule state for "
-                f"{path}; use --staged or --range"
+                "The worktree scope cannot safely determine the submodule state for "
+                f"'{path}'. Use '--staged' or '--range'."
             )
         index_differs_from_head = index_entry != head_entry
         if path in metadata.skip_worktree_paths and snapshot.entry.kind == "absent":
             if index_differs_from_head:
                 raise RuntimeError(
-                    "worktree scope cannot safely inspect staged change in "
-                    f"skip-worktree path {path}; use --staged"
+                    "The worktree scope cannot safely inspect the staged change in "
+                    f"skip-worktree path '{path}'. Use '--staged'."
                 )
             continue
         if (
@@ -1014,8 +1055,8 @@ def worktree_tracked_capture(
             and not worktree_matches_entry(snapshot, index_entry)
         ):
             raise RuntimeError(
-                "worktree scope cannot safely inspect staged change whose live "
-                f"bytes differ from the index for {path}; use --staged"
+                "The worktree scope cannot safely inspect a staged change whose live "
+                f"bytes differ from the index for '{path}'. Use '--staged'."
             )
         if worktree_matches_entry(snapshot, head_entry):
             continue
@@ -1039,14 +1080,17 @@ def untracked_content(
     if entry.kind == "symlink":
         if entry.target is None:
             raise RuntimeError(
-                f"untracked link changed while resolving scope: {relative_path}"
+                "The untracked symbolic link changed during scope resolution: "
+                f"'{relative_path}'."
             )
         return b"symlink", content_fingerprint((os.fsencode(entry.target),))
     if entry.kind == "file":
         return b"file", read_regular_file_without_following(
             repository_root, relative_path
         )
-    raise RuntimeError(f"untracked path changed while resolving scope: {relative_path}")
+    raise RuntimeError(
+        f"The untracked path changed during scope resolution: '{relative_path}'."
+    )
 
 
 def scope_digest(
@@ -1154,7 +1198,7 @@ def resolve_scope(
     paths = normalized_paths(repository_root, selected_paths)
     if scope == "range":
         if range_value is None:
-            raise RuntimeError("range scope requires BASE..HEAD")
+            raise RuntimeError("The range scope requires 'BASE..HEAD'.")
         base, head = range_revisions(range_value, repository_root)
     else:
         head = verified_commit("HEAD", repository_root)
@@ -1163,9 +1207,11 @@ def resolve_scope(
     first_capture = capture_scope(scope, base, head, paths, repository_root)
     second_capture = capture_scope(scope, base, head, paths, repository_root)
     if first_capture != second_capture:
-        raise RuntimeError("change scope changed while resolving; retry the review")
+        raise RuntimeError(
+            "The change scope changed during resolution. Run the review again."
+        )
     if scope != "range" and verified_commit("HEAD", repository_root) != head:
-        raise RuntimeError("HEAD changed while resolving; retry the review")
+        raise RuntimeError("HEAD changed during resolution. Run the review again.")
     return {
         "base": base,
         "content_source": (

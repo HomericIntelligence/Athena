@@ -1,1 +1,1 @@
-"""Focused, transport-independent CI policy evaluators."""
+"""This package contains transport-independent continuous integration policy evaluators."""

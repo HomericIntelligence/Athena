@@ -1,56 +1,82 @@
-# AGENTS.md — Athena
+# Athena repository instructions
 
-This is the authoritative contract for every AI coding harness operating in Athena. Host-specific
-files point here rather than duplicate it.
+This file is the authoritative contract for each AI coding harness that operates in Athena.
+Host-specific files point to this file. They do not copy it.
 
 ## Purpose and scope
 
-Athena is a self-contained, host-neutral distribution of workflow skills for Claude Code, Codex,
-opencode, and Pi. The product is the top-level `skills/` corpus plus its host manifests and
-documentation. It does not publish a Python package.
+Athena is a self-contained, host-neutral distribution of workflow skills. It supports Claude Code,
+Codex, opencode, and Pi. The product contains the top-level `skills/` corpus, host manifests, and
+documentation. Athena does not publish a Python package.
 
 Athena owns:
 
-- `skills/`: canonical portable skill sources.
+- `skills/`: the canonical portable skill sources.
 - `.claude-plugin/`, `.codex-plugin/`, `.agents/plugins/`, and `npm/athena-opencode/`: host
   metadata.
-- `scripts/`: typed repository validation, CI-policy, and packaging tools; not a distributable
-  runtime library.
-- `tests/unit/`: behavior tests for executable repository and skill-local scripts.
+- `scripts/`: typed repository validation, continuous integration (CI) policy, and package tools.
+  These tools are not a distributable runtime library.
+- `tests/unit/`: behavior tests for repository scripts and skill-local scripts.
 - `docs/`, `assets/`, and `.github/`: policy, documentation, media, ownership, and automation.
 
-`skills/` is the only skill source. Do not create a nested plugin mirror or host-specific copy.
-Runtime repository requirements belong in the relevant skill descriptions and workflows, not in
-this repository-agent contract.
+`skills/` is the only skill source. Do not create a nested plugin mirror or a host-specific copy.
+Put runtime repository requirements in the applicable skill descriptions and workflows. Do not put
+these requirements in this repository-agent contract.
+
+## Technical English
+
+All Athena English technical prose must follow the
+[ASD-STE100 technical-English policy](skills/TECHNICAL_ENGLISH.md). This requirement applies to
+skills, agent directions, documents, user messages from skills, and user-interface text. Preserve
+literal text. Preserve all safety, security, evidence, permission, and failure requirements.
+
+The engineering principles in `docs/principles/**` do not have to follow this policy.
+
+Use the current official issue of ASD-STE100. Do not state that repository checks certify
+conformance to ASD-STE100.
 
 ## Multi-harness contract
 
-- Express capabilities, not fixed vendor APIs.
-- Use coordinator, specialist, executor, skill invocation, and subagent rather than branded model
-  tiers.
+- Express capabilities. Do not require fixed vendor application programming interfaces (APIs).
+- Use the terms coordinator, specialist, executor, skill invocation, and subagent. Do not use
+  branded model tiers.
 - Use the host default model when tier selection is unavailable.
 - Run independent work sequentially when the host cannot delegate.
-- Treat invocation syntax as an example: Claude uses `/athena:<skill>`, Codex uses `$<skill>` or
-  natural language, opencode uses natural language or its native skill invocation, and Pi uses
+- Treat invocation syntax as an example. Claude uses `/athena:<skill>`. Codex uses `$<skill>` or
+  natural language. opencode uses natural language or its native skill invocation. Pi uses
   `/skill:<skill>`.
 - Read `AGENTS.md` for repository guidance. `CLAUDE.md` is only a pointer.
-- Frontmatter tool names describe required capabilities; every skill documents a safe failure or
-  fallback when a host lacks one.
+- Use frontmatter tool names to describe required capabilities. Each skill must document a safe
+  failure or fallback when a host does not have a required capability.
 
 ## Permitted actions
 
-Agents may read repository files, edit files within the user's requested scope, run deterministic
-validation, and create isolated local branches or worktrees needed for that work. Read-only GitHub
-inspection is allowed when relevant.
+Agents can do these actions:
 
-Feature work always begins in an isolated Git worktree. Fetch `origin/main`, then either create the
-feature branch at that commit or rebase an existing feature branch onto it before making changes.
-Do not make feature edits in the primary checkout.
+- Read repository files.
+- Edit files in the scope that the user requested.
+- Run deterministic validation.
+- Create the isolated branches or worktrees that the work needs.
+- Inspect GitHub without a write when this inspection is relevant.
 
-Agents may perform constructive Git, GitHub CLI, and Hephaestus operations within the requested
-scope without an additional approval prompt, including pushes, pull requests, publishing, releases,
-merges, deployments, and safe force-with-lease updates. External-write scope and repository policy
-still apply. Filesystem-destructive commands and discarding changes require explicit authority.
+Always start feature work in an isolated Git worktree. Fetch `origin/main` before you make a change.
+Then, create the feature branch at that commit or rebase an existing feature branch onto it. Do not
+make feature edits in the primary checkout.
+
+Agents can do constructive Git, GitHub CLI, and Hephaestus operations in the requested scope. These
+operations include:
+
+- pushes;
+- pull requests;
+- publications;
+- releases;
+- merges;
+- deployments; and
+- safe force-with-lease updates.
+
+These operations do not need an additional approval prompt. External-write scope and repository
+policy still apply. Filesystem-destructive commands require explicit authority. An agent also needs
+explicit authority to discard a change.
 
 ## Prohibited actions
 
@@ -61,7 +87,7 @@ still apply. Filesystem-destructive commands and discarding changes require expl
 - Never run `git reset --hard`.
 - Never discard changes without explicit authority. Use the guarded Hephaestus tidy workflow for
   branch and worktree cleanup rather than improvised removal commands.
-- Never edit an accepted ADR in place; write a superseding ADR.
+- Never edit an accepted architecture decision record (ADR) in place. Write a superseding ADR.
 - Never overwrite unrelated user changes or silently retarget an existing dependency checkout.
 
 ## Evidence and delivery
@@ -72,9 +98,9 @@ Follow the local policies:
 - [`docs/policies/development.md`](docs/policies/development.md)
 - [`docs/policies/required-checks.md`](docs/policies/required-checks.md)
 
-Every completion claim includes runnable evidence. A blocked or timed-out run is reported honestly.
-Pull requests use signed, DCO-attested Conventional Commits and must pass the current-head required
-gate.
+Include runnable evidence with each completion claim. Report a blocked or timed-out run accurately.
+Use signed, Developer Certificate of Origin (DCO)-attested Conventional Commits for pull requests.
+Each pull request must pass the required gate for its current head.
 
 ## Authoring a skill
 
@@ -82,11 +108,12 @@ This section and the task entry points below apply to an Athena source checkout.
 archives intentionally omit repository-only development tools such as `scripts/`, `tests/`,
 `pyproject.toml`, `uv.lock`, and `justfile`.
 
-Create `skills/<name>/SKILL.md`. Put executable helpers in `skills/<name>/scripts/`; reference those
-tested files from the skill instead of embedding Bash or Python programs in Markdown.
-Every executable Python helper, including repository tooling, constructs its CLI with
-`skills._cli.argument_parser` so help, usage failures, and the plugin `--version` contract remain
-consistent. The repository validator rejects executable scripts that bypass this factory.
+Create `skills/<name>/SKILL.md`. Put executable helpers in `skills/<name>/scripts/`. Reference each
+tested file from the skill. Do not put Bash or Python programs directly in Markdown.
+Each executable Python helper must construct its command-line interface with
+`skills._cli.argument_parser`. This rule also applies to repository tools. The factory keeps help,
+usage failures, and the plugin `--version` contract consistent. The repository validator rejects an
+executable script that bypasses this factory.
 
 ```yaml
 ---
@@ -96,16 +123,31 @@ allowed-tools: []
 ---
 ```
 
-The body defines when to use the skill, inputs, a host-neutral verified workflow, dependency and
-capability failure behavior, failed approaches, an output contract, and attribution. Use
-placeholders for target-repository paths and commands. Keep repository-specific case studies in a
-`references/` file and label them as examples. Every skill links the canonical
-[`engineering principles catalog`](docs/principles/README.md), identifies only the stable `PNNN`
-principles that materially govern its workflow, and describes their workflow-specific consequences
-instead of copying their general definitions. Follow the durable-artifact and behavior-test rules in
-[`docs/policies/development.md`](docs/policies/development.md): never direct an agent to pin prose with
-text-string tests or create changelogs, generated docs, registries, inventories, or unrelated files
-without a demonstrated product consumer.
+The skill body must include these items:
+
+- the conditions that activate the skill;
+- the required inputs;
+- a verified, host-neutral workflow;
+- the dependency-failure and capability-failure behavior;
+- failed approaches;
+- an output contract; and
+- attribution.
+
+Follow the [ASD-STE100 technical-English policy](skills/TECHNICAL_ENGLISH.md) for all English technical
+prose in the skill.
+
+Use placeholders for paths and commands in a target repository. Put repository-specific case studies
+in a `references/` file. Identify these case studies as examples.
+
+Each skill must link the canonical
+[`engineering principles catalog`](docs/principles/README.md). Identify only the stable `PNNN`
+principles that have a material effect on the workflow. Describe that effect. Do not copy the general
+principle definitions.
+
+Follow the durable-artifact and behavior-test rules in
+[`docs/policies/development.md`](docs/policies/development.md). Do not tell an agent to pin prose with
+text-string tests. Do not create changelogs, generated documents, registries, inventories, or
+unrelated files without a demonstrated product consumer.
 
 After editing, run:
 
@@ -115,9 +157,14 @@ just all
 
 ## Escalation
 
-Stop and request human direction for conflicting requirements, an unsafe or destructive next step,
-workflow/required-check policy changes beyond the requested scope, inability to preserve user work,
-an invalid hard-dependency override, or any proposal to weaken a security or evidence control.
+Stop and request human direction in these conditions:
+
+- Requirements conflict.
+- The next step is unsafe or destructive.
+- A workflow or required-check policy change is outside the requested scope.
+- You cannot preserve user work.
+- A hard-dependency override is invalid.
+- A proposal weakens a security control or an evidence control.
 
 ## Task entry points
 
@@ -131,4 +178,8 @@ an invalid hard-dependency override, or any proposal to weaken a security or evi
 | `just static` | Run lint, format, and strict type checks over every executable script. |
 | `just markdownlint` | Validate public documentation and shipped skill Markdown. |
 | `just package` | Build and inspect the portable plugin archive. |
-| `just all` | Run the local check suite: validate, test, static, markdownlint, workflow-check, and package. SBOM generation and the dependency scan are required-CI-only gates (`just sbom` / `just sca` need CI-pinned Syft/Grype; see `docs/policies/required-checks.md`). |
+| `just all` | Run the local validation, test, static, Markdown, workflow, and package checks. |
+
+Software bill of materials (SBOM) generation and software composition analysis (SCA) are CI-only
+required gates. `just sbom` and `just sca` need CI-pinned Syft and Grype. See
+[`docs/policies/required-checks.md`](docs/policies/required-checks.md).

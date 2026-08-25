@@ -20,16 +20,22 @@ from scripts.semver import SEMVER_PATTERN
 from skills._cli import argument_parser
 
 PLUGIN_DIRECTORY: Final[PurePosixPath] = PurePosixPath("npm") / "athena-opencode"
+PLUGIN_README: Final[PurePosixPath] = PLUGIN_DIRECTORY / "README.md"
 PLUGIN_FILES: Final[tuple[PurePosixPath, ...]] = (
     PLUGIN_DIRECTORY / "package.json",
     PLUGIN_DIRECTORY / "plugin.js",
-    PLUGIN_DIRECTORY / "README.md",
+    PLUGIN_README,
 )
 LEGAL_FILES: Final[tuple[PurePosixPath, ...]] = (
     PurePosixPath("LICENSE"),
     PurePosixPath("NOTICE"),
 )
 SKILLS_ROOT: Final[PurePosixPath] = PurePosixPath("skills")
+REQUIRED_SKILL_FILES: Final[tuple[PurePosixPath, ...]] = (
+    SKILLS_ROOT / "TECHNICAL_ENGLISH.md",
+)
+SOURCE_README_POLICY_TARGET: Final[str] = "../../skills/TECHNICAL_ENGLISH.md"
+STAGED_README_POLICY_TARGET: Final[str] = "skills/TECHNICAL_ENGLISH.md"
 VERSION_MANIFEST: Final[PurePosixPath] = PurePosixPath(".codex-plugin") / "plugin.json"
 DEFAULT_OUTPUT: Final[PurePosixPath] = PurePosixPath("dist") / "opencode-npm"
 GENERATED_SUFFIXES: Final[frozenset[str]] = frozenset({".pyc", ".pyo"})
@@ -42,20 +48,27 @@ def _relative(path: Path, repo_root: Path) -> PurePosixPath:
 def _validate_source(path: Path, relative_path: PurePosixPath) -> None:
     if path.is_symlink():
         raise PackageError(
-            f"refusing forbidden package input (symlink): {relative_path}"
+            f"The package input must not be a symbolic link: '{relative_path}'."
         )
     if path.is_dir():
         return
     if forbidden_name(relative_path):
-        raise PackageError(f"refusing forbidden package input (name): {relative_path}")
+        raise PackageError(
+            f"The package input name is not permitted: '{relative_path}'."
+        )
     if not path.is_file():
-        raise PackageError(f"refusing forbidden package input (type): {relative_path}")
+        raise PackageError(
+            f"The package input type is not permitted: '{relative_path}'."
+        )
 
 
 def _read_semver(document: dict[str, object], label: str) -> str:
     version = document.get("version")
     if not isinstance(version, str) or SEMVER_PATTERN.fullmatch(version) is None:
-        raise PackageError(f"{label} version is not valid SemVer: {version!r}")
+        raise PackageError(
+            f"The {label} version is not valid Semantic Versioning (SemVer): "
+            f"{version!r}."
+        )
     return version
 
 
@@ -63,9 +76,12 @@ def _manifest_version(path: Path, relative_path: PurePosixPath, label: str) -> s
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        raise PackageError(f"cannot read {relative_path}: {error}") from error
+        raise PackageError(
+            f"The tool cannot read '{relative_path}'. "
+            f"The operation returned this diagnostic.\n{error}"
+        ) from error
     if not isinstance(document, dict):
-        raise PackageError(f"{relative_path} must be a JSON object")
+        raise PackageError(f"The file '{relative_path}' must be a JSON object.")
     return _read_semver(document, label)
 
 
@@ -76,8 +92,21 @@ def _skill_sources(repo_root: Path) -> Iterator[Path]:
         yield path
 
 
+def _copy_plugin_file(
+    source_path: Path, target: Path, relative_path: PurePosixPath
+) -> None:
+    """Copy a plugin file and adjust links for its staged location."""
+    if relative_path != PLUGIN_README:
+        shutil.copyfile(source_path, target)
+        return
+    readme = source_path.read_text(encoding="utf-8")
+    source_link = f"]({SOURCE_README_POLICY_TARGET})"
+    staged_link = f"]({STAGED_README_POLICY_TARGET})"
+    target.write_text(readme.replace(source_link, staged_link), encoding="utf-8")
+
+
 def stage_package(repo_root: Path, output_directory: Path | None = None) -> Path:
-    """Validate inputs and copy the publishable npm package into the output directory."""
+    """Validate the sources and stage the publishable npm package."""
     repo_root = repo_root.resolve()
     destination = (
         output_directory.resolve() if output_directory else repo_root / DEFAULT_OUTPUT
@@ -89,12 +118,12 @@ def stage_package(repo_root: Path, output_directory: Path | None = None) -> Path
     package_version = _manifest_version(
         repo_root / plugin_manifest.as_posix(),
         plugin_manifest,
-        "OpenCode plugin",
+        "opencode plugin",
     )
     if package_version != manifest_version:
         raise PackageError(
-            "OpenCode plugin version differs from host manifests: "
-            f"{package_version!r} != {manifest_version!r}"
+            f"The opencode plugin version {package_version!r} does not match the "
+            f"host-manifest version {manifest_version!r}."
         )
     sources = [
         *((repo_root / item.as_posix(), item) for item in PLUGIN_FILES),
@@ -102,6 +131,13 @@ def stage_package(repo_root: Path, output_directory: Path | None = None) -> Path
     ]
     for source_path, relative_path in sources:
         _validate_source(source_path, relative_path)
+    for relative_path in REQUIRED_SKILL_FILES:
+        source_path = repo_root / relative_path.as_posix()
+        _validate_source(source_path, relative_path)
+        if not source_path.is_file():
+            raise PackageError(
+                f"The required package input must be a file: '{relative_path}'."
+            )
     for path in _skill_sources(repo_root):
         _validate_source(path, _relative(path, repo_root))
 
@@ -110,7 +146,7 @@ def stage_package(repo_root: Path, output_directory: Path | None = None) -> Path
     destination.mkdir(parents=True)
     for source_path, relative_path in sources:
         target = destination / relative_path.name
-        shutil.copyfile(source_path, target)
+        _copy_plugin_file(source_path, target, relative_path)
     for path in _skill_sources(repo_root):
         relative_path = _relative(path, repo_root)
         target = destination / relative_path.as_posix()
@@ -126,10 +162,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Stage the opencode npm plugin package."""
     parser = argument_parser(description=__doc__)
     parser.add_argument(
-        "--root", type=Path, help="repository root (defaults to Git root)"
+        "--root",
+        type=Path,
+        help="Use this repository root. By default, use the Git root.",
     )
     parser.add_argument(
-        "--output", type=Path, help=f"staging directory (default {DEFAULT_OUTPUT})"
+        "--output",
+        type=Path,
+        help=f"Use this staging directory. By default, use '{DEFAULT_OUTPUT}'.",
     )
     arguments = parser.parse_args(argv)
     try:
@@ -138,7 +178,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (PackageError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    print(f"Staged OpenCode npm package at {staged}")
+    print(f"The tool staged the opencode npm package at '{staged}'.")
     return 0
 
 

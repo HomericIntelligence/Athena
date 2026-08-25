@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and verify Athena's deterministic AI-harness plugin archive."""
+"""Build and verify the deterministic Athena plugin archive."""
 
 from __future__ import annotations
 
@@ -53,6 +53,7 @@ REQUIRED_MEMBERS: Final[frozenset[str]] = frozenset(
         "skills/finalize-plan/SKILL.md",
         "docs/dependency-resolution.md",
         "docs/principles/README.md",
+        "skills/TECHNICAL_ENGLISH.md",
         "docs/review/common.md",
         "docs/review/README.md",
         "docs/review/design-docs.md",
@@ -84,7 +85,7 @@ SENSITIVE_SUFFIXES: Final[frozenset[str]] = frozenset({".key", ".p12", ".pem", "
 
 
 class PackageError(RuntimeError):
-    """Raised when repository content violates the package contract."""
+    """This error identifies repository content that violates the package contract."""
 
 
 def forbidden_name(path: PurePosixPath) -> bool:
@@ -110,29 +111,37 @@ def forbidden_name(path: PurePosixPath) -> bool:
 
 
 def read_plugin_version(repo_root: Path) -> str:
-    """Read and validate the SemVer used in the package filename."""
+    """Read and validate the Semantic Versioning (SemVer) value in the plugin manifest."""
     manifest = repo_root / ".codex-plugin" / "plugin.json"
     try:
         document = json.loads(manifest.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise PackageError(
-            f"cannot read plugin version from {manifest}: {error}"
+            f"The tool cannot read the plugin version from '{manifest}'. "
+            f"The operation returned this diagnostic.\n{error}"
         ) from error
     version = document.get("version") if isinstance(document, dict) else None
     if not isinstance(version, str) or SEMVER_PATTERN.fullmatch(version) is None:
-        raise PackageError(f"plugin version is not valid SemVer: {version!r}")
+        raise PackageError(
+            "The plugin version is not valid Semantic Versioning (SemVer): "
+            f"{version!r}."
+        )
     return version
 
 
 def _validate_source(path: Path, relative_path: PurePosixPath) -> None:
     if path.is_symlink():
         raise PackageError(
-            f"refusing forbidden archive input (symlink): {relative_path}"
+            f"The archive input must not be a symbolic link: '{relative_path}'."
         )
     if forbidden_name(relative_path):
-        raise PackageError(f"refusing forbidden archive input (name): {relative_path}")
+        raise PackageError(
+            f"The archive input name is not permitted: '{relative_path}'."
+        )
     if not path.is_file() and not path.is_dir():
-        raise PackageError(f"refusing forbidden archive input (type): {relative_path}")
+        raise PackageError(
+            f"The archive input type is not permitted: '{relative_path}'."
+        )
 
 
 def paths_to_archive(repo_root: Path) -> list[tuple[Path, PurePosixPath]]:
@@ -159,26 +168,39 @@ def inspect_archive(archive_path: Path) -> None:
         with tarfile.open(archive_path, mode="r:gz") as archive:
             members = archive.getmembers()
     except (OSError, tarfile.TarError) as error:
-        raise PackageError(f"cannot inspect archive {archive_path}: {error}") from error
+        raise PackageError(
+            f"The tool cannot inspect archive '{archive_path}'. "
+            f"The operation returned this diagnostic.\n{error}"
+        ) from error
 
     names = [member.name for member in members]
     if len(names) != len(set(names)):
-        raise PackageError("archive contains duplicate members")
+        raise PackageError("The archive contains duplicate members.")
     for member in members:
         path = PurePosixPath(member.name)
         if path.is_absolute() or ".." in path.parts:
-            raise PackageError(f"archive contains unsafe path: {member.name}")
+            raise PackageError(f"The archive contains an unsafe path: '{member.name}'.")
         if not path.parts or path.parts[0] not in ARCHIVE_ROOTS:
-            raise PackageError(f"archive contains disallowed member: {member.name}")
+            raise PackageError(
+                f"The archive contains a member that is not permitted: '{member.name}'."
+            )
         if forbidden_name(path):
-            raise PackageError(f"archive contains forbidden member: {member.name}")
+            raise PackageError(
+                f"The archive contains a forbidden member: '{member.name}'."
+            )
         if member.issym() or member.islnk():
-            raise PackageError(f"archive contains link: {member.name}")
+            raise PackageError(f"The archive contains a link: '{member.name}'.")
         if not member.isfile() and not member.isdir():
-            raise PackageError(f"archive contains special member: {member.name}")
+            raise PackageError(
+                f"The archive contains a special member: '{member.name}'."
+            )
     missing = sorted(REQUIRED_MEMBERS.difference(names))
     if missing:
-        raise PackageError(f"archive is missing required members: {', '.join(missing)}")
+        raise PackageError(
+            "The archive is missing these required members: "
+            + ", ".join(f"'{name}'" for name in missing)
+            + "."
+        )
 
 
 def _archive_bytes(repo_root: Path) -> bytes:
@@ -246,14 +268,16 @@ def _validate_repository(repo_root: Path) -> None:
         check=False,
     )
     if result.returncode != 0:
-        raise PackageError("repository validation failed")
+        raise PackageError("The repository validation failed.")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Validate the repository and build its plugin distribution."""
     parser = argument_parser(description=__doc__)
     parser.add_argument(
-        "--root", type=Path, help="repository root (defaults to Git root)"
+        "--root",
+        type=Path,
+        help="Use this repository root. By default, use the Git root.",
     )
     arguments = parser.parse_args(argv)
     try:
@@ -263,7 +287,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (PackageError, OSError, subprocess.SubprocessError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    print(f"Built {archive_path} and {checksum_path}")
+    print(f"The tool built '{archive_path}' and '{checksum_path}'.")
     return 0
 
 

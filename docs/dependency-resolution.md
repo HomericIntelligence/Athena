@@ -1,32 +1,46 @@
 # Required repository resolution
 
-**Why:** Athena must use trusted, current knowledge and automation rather than a
-similarly named fork, stale checkout, or unverified remote.
+Apply the [ASD-STE100 technical-English policy](../skills/TECHNICAL_ENGLISH.md) to all English technical prose
+in this document.
+
+**Why:** Athena must use trusted and current knowledge and automation. It must not use a repository
+only because it has a similar name. It must not use a stale checkout or an unverified remote.
 
 ## At a glance
 
-Athena normally resolves a trusted owner, synchronizes an exact checkout, and binds use
-to its reported revision. During normal resolution, any trust, authentication, checkout, or
-update failure stops the dependent skill. A planning-mode, read-only path may explicitly use an
-existing checkout as best effort without upstream synchronization; it must bind and report its
-current `HEAD`, state freshness and trust limits, never substitute another repository, and never
-perform durable writes.
-Skills may impose stricter requirements; `learn` requires a usable checkout before discovery or
-writing, and its discovery path does not create one in planning mode.
+During normal resolution, Athena does these steps:
+
+1. It resolves a trusted owner.
+2. It synchronizes an exact checkout.
+3. It binds use to the reported revision.
+
+A trust, authentication, checkout, or update failure stops the dependent skill.
+
+In planning mode, an explicit read-only path can use an existing checkout as a best-effort source.
+This path does not synchronize with the upstream repository. It must do these actions:
+
+- bind use to the current `HEAD`;
+- report the current `HEAD`;
+- report the freshness and trust limits;
+- never substitute a different repository; and
+- never make a durable write.
+
+A skill can impose stricter requirements. The `learn` skill requires a usable checkout before it
+starts discovery or writes a lesson. In planning mode, its discovery path does not create a checkout.
 
 ```mermaid
 flowchart LR
-    A["Resolve dependency"] --> B{"Explicit owner?"}
+    A["Resolve dependency"] --> B{"Is there an explicit owner?"}
     B -->|yes| C["Validate override"]
-    B -->|no| D{"Trusted organization fork?"}
+    B -->|no| D{"Is there a trusted organization fork?"}
     D -->|yes| E["Use maintained fork"]
     D -->|no| F["Use canonical upstream"]
     C --> G["Verify origin and clean checkout"]
     E --> G
     F --> G
-    G --> H{"Planning-mode read-only path?"}
+    G --> H{"Is this the read-only planning path?"}
     H -->|yes| I["Inspect existing checkout; bind current HEAD; report limits"]
-    H -->|no| J["Fetch, fast-forward, bind SHA"]
+    H -->|no| J["Fetch, fast-forward, and bind SHA"]
     J --> K["Revalidate automatic-fork trust before use"]
 ```
 
@@ -34,31 +48,45 @@ flowchart LR
 
 ### Owner selection
 
-For dependency `<Repository>` with environment override `<OWNER_VARIABLE>`:
+For dependency `<Repository>` with environment override `<OWNER_VARIABLE>`, use these steps:
 
-1. If `<OWNER_VARIABLE>` is non-empty, use `<value>/<Repository>`. An invalid explicit override is
-   an error and does not fall back. Validate the owner as a GitHub owner name before using it in a
-   path or command: 1–39 ASCII letters, digits, or single hyphens; no leading/trailing hyphen.
-2. Otherwise determine the current repository owner with:
+1. If `<OWNER_VARIABLE>` is not empty, select `<value>/<Repository>`.
+
+   - Before you use the owner in a path or command, validate it as a GitHub owner name.
+   - If the explicit override is not valid, report an error.
+   - If the explicit override is not valid, stop.
+   - If the explicit override is not valid, do not use a fallback.
+   - The owner name must meet these requirements:
+
+     - It contains 1 through 39 characters.
+     - It contains only ASCII letters, digits, or single hyphens.
+     - It does not start or end with a hyphen.
+
+2. If `<OWNER_VARIABLE>` is empty, get the current repository owner with this command:
 
    ```bash
    gh repo view --json owner --jq .owner.login
    ```
 
-   Prefer `<current-owner>/<Repository>` only when all automatic-fork trust gates pass:
+   Use `<current-owner>/<Repository>` only when all these automatic-fork trust gates pass:
 
-   - The current repository's `owner.type` is `Organization`, not `User`.
-   - The authenticated viewer's `viewerPermission` on the current repository is `WRITE` (push),
+   - The `owner.type` of the current repository is `Organization` and not `User`.
+   - The `viewerPermission` of the authenticated viewer on the current repository is `WRITE` (push),
      `MAINTAIN`, or `ADMIN`.
-   - GitHub confirms the candidate is a fork whose `parent.full_name` is
+   - GitHub confirms that the candidate is a fork. Its `parent.full_name` must be
      `HomericIntelligence/<Repository>`.
-   - The candidate repository and its remote default-branch tip SHA can be resolved and reported.
-3. Otherwise use `HomericIntelligence/<Repository>`.
+   - Athena can resolve and report the candidate repository and the tip SHA of its remote default
+     branch.
 
-Do not automatically select a same-named repository for a user-owned current repository, for a
-viewer with read/triage/no permission, or when canonical ancestry cannot be proved.
+3. If no trusted override or automatic fork applies, use `HomericIntelligence/<Repository>`.
 
-The fork decision must inspect repository metadata, not naming alone:
+Do not automatically select a repository with the same name in these conditions:
+
+- The owner of the current repository is a user.
+- The viewer has read, triage, or no permission.
+- Athena cannot prove canonical ancestry.
+
+Use repository metadata to make the fork decision. Do not use only the repository name:
 
 ```bash
 current_owner=$(gh repo view --json owner --jq '.owner.login')
@@ -66,16 +94,25 @@ gh api "repos/${current_owner}/<Repository>" \
   --jq '.fork == true and .parent.full_name == "HomericIntelligence/<Repository>"'
 ```
 
-Only the literal result `true` qualifies for the ancestry check. Use structured API output and quote
-every derived value. Resolve the current repository's `owner.type` and `viewerPermission`, then the
-candidate's `.default_branch` and exact tip `.sha`. Modified fork content is allowed after these
-automatic trust gates pass. A missing or ineligible same-owner candidate falls back to canonical
-upstream. An API/authentication error that prevents a trustworthy decision is fatal.
+Only the literal result `true` passes the ancestry check. Use structured application programming
+interface (API) output. Quote each derived value. Resolve these values:
 
-An explicit owner override is an explicit trust decision and may select custom fork content without
-the organization/viewer-permission gate. Before using any resolved dependency, report the exact
-repository, commit SHA, and trust basis (`explicit override`, `maintained organization fork`, or
-`canonical upstream`).
+- the `owner.type` of the current repository;
+- the `viewerPermission` of the authenticated viewer;
+- the `.default_branch` of the candidate; and
+- the exact tip `.sha` of that branch.
+
+The fork can contain modified content after all automatic trust gates pass. If the same-owner
+candidate is missing or not eligible, use the canonical upstream repository. If an API or
+authentication error prevents a trustworthy decision, treat the error as fatal and stop.
+
+An explicit owner override is an explicit trust decision. It can select custom fork content without
+the organization and viewer-permission gate. Before you use a resolved dependency, report this
+information:
+
+- the exact repository;
+- the commit SHA; and
+- the trust basis: `explicit override`, `maintained organization fork`, or `canonical upstream`.
 
 ### Dependency map
 
@@ -86,35 +123,70 @@ repository, commit SHA, and trust basis (`explicit override`, `maintained organi
 
 ### Checkout and revalidation
 
-Requirements are authenticated `gh`, `git`, and network access. Create `$HOME/.agent_brain` when
-needed. Clone the resolved repository when its checkout is absent. For an existing checkout:
+Normal resolution requires these capabilities:
+
+- authenticated GitHub CLI (`gh`);
+- `git`; and
+- network access.
+
+Create `$HOME/.agent_brain` when it is necessary. If the checkout is absent, clone the resolved
+repository. For an existing checkout, do these checks and actions:
 
 - Require `origin` to identify the resolved `owner/repository`.
-- Refuse to overwrite local changes or silently rewrite the remote.
-- Fetch `origin`, resolve its default branch, and fast-forward it.
+- Do not overwrite local changes or silently change the remote.
+- Fetch `origin`.
+- Resolve the default branch of `origin`.
+- Fast-forward that branch.
 - Report the resolved repository and commit SHA.
 
-For an automatically selected same-owner fork, immediately before reading knowledge or executing
-automation, re-query and require the current repository's Organization owner, viewer permission,
-candidate `parent.full_name`, resolved repository identity, default branch, and tip SHA to match the
-reported trust decision and checked-out commit. Stop on any mismatch. This closes the race between
+For an automatically selected same-owner fork, repeat the trust checks immediately before use. Do
+this before you read knowledge or execute automation. Re-query these values:
+
+- the Organization owner of the current repository;
+- the permission of the viewer;
+- the `parent.full_name` of the candidate;
+- the resolved repository identity;
+- the default branch; and
+- the tip SHA.
+
+Require these values to agree with the reported trust decision. Require the checked-out commit to
+agree with the re-queried tip SHA. Stop if a value does not agree. This check closes the race between
 resolution and use.
 
 ### Read-only local best effort
 
-Only a read-only planning or `learn` discovery path may use this exception. It may inspect an
-existing checkout and bind to its current `HEAD` without cloning, fetching, fast-forwarding, or
-revalidating an automatic fork. It must report the checkout, revision, trust basis or uncertainty,
-and freshness limitation. A missing checkout or failed inspection stops that dependent knowledge
-retrieval; the caller may continue its primary plan only when its skill contract permits planning
-without guidance. `learn` does not permit that fallback and blocks without an existing usable
-checkout.
+Use this exception only for a read-only planning path or a `learn` discovery path. The path can
+inspect an existing checkout. It can bind use to the current `HEAD` without these actions:
 
-An authentication failure, missing repository, invalid fork relationship, unexpected origin,
-conflicting local state, clone failure, fetch failure, or fast-forward failure is fatal.
-The fatal rule applies to normal execution and to the `learn` delivery boundary; the read-only
-local-best-effort exception never permits PR creation from an unsynchronized base.
+- clone;
+- fetch;
+- fast-forward; or
+- revalidation of an automatic fork.
 
-Mnemosyne writes use isolated worktrees and always end in a pull request. Hephaestus is read or
-executed from its canonical checkout; Athena skills never edit it unless the user explicitly asks
+Report this information:
+
+- the checkout;
+- the revision;
+- the trust basis or trust uncertainty; and
+- the freshness limit.
+
+If the checkout is missing or inspection fails, stop the dependent knowledge retrieval. The caller
+can continue its primary plan only when its skill contract permits planning without guidance. The
+`learn` skill does not permit this fallback. It blocks without an existing usable checkout.
+
+For normal execution and the `learn` delivery boundary, these conditions are fatal:
+
+- an authentication failure;
+- a missing repository;
+- a fork relationship that is not valid;
+- an unexpected `origin`;
+- conflicting local state;
+- a clone failure;
+- a fetch failure; or
+- a fast-forward failure.
+
+The read-only local exception never permits pull-request creation before upstream synchronization.
+
+Mnemosyne writes use isolated worktrees and always end in a pull request. Athena reads or executes
+Hephaestus from its canonical checkout. Athena never edits Hephaestus unless the user explicitly asks
 for a Hephaestus change.

@@ -1,7 +1,7 @@
 {
   "name": "athena",
   "version": "0.5.0",
-  "description": "Agent-host plugins and skills imported by Claude Code / Codex / opencode / Pi.",
+  "description": "Athena provides agent-host plugins and skills for Claude Code, Codex, opencode, and Pi.",
   "author": {
     "name": "HomericIntelligence",
     "url": "https://github.com/HomericIntelligence"
@@ -20,8 +20,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Athena",
-    "shortDescription": "Repository auditing, agent orchestration, and workflow skills for Codex.",
-    "longDescription": "Athena provides Codex skills for repository analysis, strict PR review, Myrmidon swarm orchestration, test-driven development, systematic debugging, worktree hygiene, and knowledge workflows.",
+    "shortDescription": "Athena provides Codex skills for reviews, agent coordination, and workflows.",
+    "longDescription": "Athena provides Codex skills for repository analysis and strict pull-request reviews. Athena also provides Myrmidon coordination, test-driven development, systematic fault isolation, Git worktrees, and knowledge workflows. All Athena English technical directions and output must follow ASD-STE100 Simplified Technical English.",
     "developerName": "HomericIntelligence",
     "category": "Productivity",
     "capabilities": [
@@ -29,7 +29,7 @@
       "Write"
     ],
     "websiteURL": "https://github.com/HomericIntelligence/Athena",
-    "defaultPrompt": "Use Athena to route this task to the right Codex skill.",
+    "defaultPrompt": "Use the applicable Athena skill for this task. Follow the Athena ASD-STE100 technical-English policy for all English technical prose.",
     "composerIcon": "./assets/icon.svg"
   }
 }

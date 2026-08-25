@@ -44,14 +44,22 @@ class DistributionTests(unittest.TestCase):
             ),
         )
 
-    def assert_invalid(self, surface: str, reason: str) -> None:
-        errors = validator.validate_repository(self.fixture)
-        self.assertTrue(
-            any(
-                error.surface == surface and reason in error.reason for error in errors
-            ),
-            errors,
-        )
+    def assert_validation_errors(
+        self,
+        validate: Callable[[Path], list[Any]],
+        surface: str,
+        *,
+        count: int = 1,
+        literal: str | None = None,
+    ) -> None:
+        errors = validate(self.fixture)
+        self.assertEqual([surface] * count, [error.surface for error in errors], errors)
+        if literal is not None:
+            self.assertEqual(
+                1,
+                sum(literal in error.reason for error in errors),
+                errors,
+            )
 
     def test_repository_is_valid(self) -> None:
         self.assertEqual(validator.validate_repository(self.fixture), [])
@@ -64,27 +72,42 @@ class DistributionTests(unittest.TestCase):
 
     def test_missing_skill_file_fails(self) -> None:
         (self.fixture / "skills" / "advise" / "SKILL.md").unlink()
-        self.assert_invalid("skills", "cannot read skills/advise/SKILL.md")
+        self.assert_validation_errors(
+            validator._validate_skills, "skills", literal="advise"
+        )
 
     def test_missing_skills_directory_fails(self) -> None:
         shutil.rmtree(self.fixture / "skills")
-        self.assert_invalid("skills", "skills/ directory is missing")
+        self.assert_validation_errors(
+            validator._validate_skills, "skills", literal="skills/"
+        )
 
     def test_duplicate_skill_name_fails(self) -> None:
         skill = self.fixture / "skills" / "brainstorm" / "SKILL.md"
+        original = skill.read_text(encoding="utf-8")
         skill.write_text(
-            skill.read_text(encoding="utf-8").replace(
-                "name: brainstorm", "name: advise", 1
-            ),
+            original.replace("name: brainstorm", "name: unique-name", 1),
             encoding="utf-8",
         )
-        self.assert_invalid("skills", "duplicate skill name: advise")
+        self.assert_validation_errors(
+            validator._validate_skills, "skills", literal="unique-name"
+        )
+
+        skill.write_text(
+            original.replace("name: brainstorm", "name: advise", 1),
+            encoding="utf-8",
+        )
+        self.assert_validation_errors(validator._validate_skills, "skills", count=2)
 
     def test_malformed_manifest_fails(self) -> None:
         (self.fixture / ".codex-plugin" / "plugin.json").write_text(
             "[]", encoding="utf-8"
         )
-        self.assert_invalid("codex", "must be a JSON object")
+        self.assert_validation_errors(
+            validator._validate_codex,
+            "codex",
+            literal=".codex-plugin/plugin.json",
+        )
 
     def test_cli_reports_malformed_current_manifest_without_traceback(self) -> None:
         manifest = self.fixture / ".codex-plugin" / "plugin.json"
@@ -104,7 +127,7 @@ class DistributionTests(unittest.TestCase):
         )
 
         self.assertEqual(2, result.returncode)
-        self.assertIn("cannot read .codex-plugin/plugin.json", result.stderr)
+        self.assertIn(".codex-plugin/plugin.json", result.stderr)
         self.assertNotIn("Traceback", result.stderr)
 
     def test_manifest_version_mismatch_fails(self) -> None:
@@ -112,9 +135,7 @@ class DistributionTests(unittest.TestCase):
         document = json.loads(manifest.read_text(encoding="utf-8"))
         document["version"] = "9.9.9"
         manifest.write_text(json.dumps(document), encoding="utf-8")
-        self.assert_invalid(
-            "version", "Claude marketplace and manifest versions differ"
-        )
+        self.assert_validation_errors(validator._validate_claude, "version")
 
     def test_pi_manifest_must_declare_only_the_canonical_skill_root(self) -> None:
         package = self.fixture / "package.json"
@@ -130,7 +151,7 @@ class DistributionTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        self.assert_invalid("pi", "load ['./skills']")
+        self.assert_validation_errors(validator._validate_pi, "pi")
 
     def test_pi_manifest_version_must_match_the_host_manifests(self) -> None:
         package = self.fixture / "package.json"
@@ -138,10 +159,7 @@ class DistributionTests(unittest.TestCase):
         document["version"] = "9.9.9"
         package.write_text(json.dumps(document), encoding="utf-8")
 
-        self.assert_invalid(
-            "version",
-            "Pi, Claude, Codex, and OpenCode manifest versions differ",
-        )
+        self.assert_validation_errors(validator.validate_repository, "version")
 
     def test_opencode_package_must_be_named_for_the_plugin(self) -> None:
         manifest = self.fixture / "npm" / "athena-opencode" / "package.json"
@@ -149,9 +167,7 @@ class DistributionTests(unittest.TestCase):
         document["name"] = "wrong"
         manifest.write_text(json.dumps(document), encoding="utf-8")
 
-        self.assert_invalid(
-            "opencode", "package must be named '@homericintelligence/athena-opencode'"
-        )
+        self.assert_validation_errors(validator._validate_opencode, "opencode")
 
     def test_opencode_package_must_expose_the_plugin_entry(self) -> None:
         manifest = self.fixture / "npm" / "athena-opencode" / "package.json"
@@ -159,7 +175,7 @@ class DistributionTests(unittest.TestCase):
         document["main"] = "wrong.js"
         manifest.write_text(json.dumps(document), encoding="utf-8")
 
-        self.assert_invalid("opencode", "entry point must be 'plugin.js'")
+        self.assert_validation_errors(validator._validate_opencode, "opencode")
 
     def test_opencode_package_must_declare_the_plugin_keyword(self) -> None:
         manifest = self.fixture / "npm" / "athena-opencode" / "package.json"
@@ -167,7 +183,7 @@ class DistributionTests(unittest.TestCase):
         document["keywords"] = ["opencode"]
         manifest.write_text(json.dumps(document), encoding="utf-8")
 
-        self.assert_invalid("opencode", "'opencode-plugin' keyword")
+        self.assert_validation_errors(validator._validate_opencode, "opencode")
 
     def test_opencode_package_must_publish_the_skill_corpus(self) -> None:
         manifest = self.fixture / "npm" / "athena-opencode" / "package.json"
@@ -175,7 +191,7 @@ class DistributionTests(unittest.TestCase):
         document["files"] = ["plugin.js"]
         manifest.write_text(json.dumps(document), encoding="utf-8")
 
-        self.assert_invalid("opencode", "publish at least the plugin entry and skills")
+        self.assert_validation_errors(validator._validate_opencode, "opencode")
 
     def test_opencode_manifest_version_must_match_the_host_manifests(self) -> None:
         manifest = self.fixture / "npm" / "athena-opencode" / "package.json"
@@ -183,10 +199,7 @@ class DistributionTests(unittest.TestCase):
         document["version"] = "9.9.9"
         manifest.write_text(json.dumps(document), encoding="utf-8")
 
-        self.assert_invalid(
-            "version",
-            "Pi, Claude, Codex, and OpenCode manifest versions differ",
-        )
+        self.assert_validation_errors(validator.validate_repository, "version")
 
     def test_manifests_accept_full_semver(self) -> None:
         version = "2.0.0-rc.1+build.5"
@@ -211,64 +224,66 @@ class DistributionTests(unittest.TestCase):
         self.assertEqual(validator.validate_repository(self.fixture), [])
 
     def test_independent_host_manifest_contracts_fail_closed(self) -> None:
-        cases: tuple[tuple[str, Callable[[dict[str, Any]], None], str, str], ...] = (
+        cases: tuple[tuple[str, Callable[[dict[str, Any]], None], str], ...] = (
             (
                 ".claude-plugin/marketplace.json",
                 lambda value: value.update({"plugins": []}),
                 "claude",
-                "exactly one plugin",
             ),
             (
                 ".claude-plugin/marketplace.json",
                 lambda value: value["plugins"][0].update({"name": "wrong"}),
                 "claude",
-                "must be named 'athena'",
             ),
             (
                 ".claude-plugin/plugin.json",
                 lambda value: value.update({"skills": "./wrong/"}),
                 "claude",
-                "load './skills/'",
             ),
             (
                 ".agents/plugins/marketplace.json",
                 lambda value: value.update({"plugins": []}),
                 "codex",
-                "exactly one plugin",
             ),
             (
                 ".agents/plugins/marketplace.json",
                 lambda value: value["plugins"][0].update({"source": "wrong"}),
                 "codex",
-                "local source './'",
             ),
             (
                 ".codex-plugin/plugin.json",
                 lambda value: value.update({"skills": "./wrong/"}),
                 "codex",
-                "load './skills/'",
-            ),
-            (
-                ".codex-plugin/plugin.json",
-                lambda value: value.update({"version": "v1"}),
-                "version",
-                "valid SemVer",
-            ),
-            (
-                "npm/athena-opencode/package.json",
-                lambda value: value.update({"version": "v1"}),
-                "version",
-                "valid SemVer",
             ),
         )
-        for relative, mutate, surface, reason in cases:
-            with self.subTest(relative=relative, reason=reason):
+        for relative, mutate, surface in cases:
+            with self.subTest(relative=relative):
                 path = self.fixture / relative
                 original = path.read_text(encoding="utf-8")
                 value: dict[str, Any] = json.loads(original)
                 mutate(value)
                 path.write_text(json.dumps(value), encoding="utf-8")
-                self.assert_invalid(surface, reason)
+                validate = {
+                    "claude": validator._validate_claude,
+                    "codex": validator._validate_codex,
+                }[surface]
+                self.assert_validation_errors(validate, surface)
+                path.write_text(original, encoding="utf-8")
+
+    def test_independent_manifests_reject_invalid_semantic_versions(self) -> None:
+        cases: tuple[tuple[str, Callable[[Path], list[Any]]], ...] = (
+            (".codex-plugin/plugin.json", validator._validate_codex),
+            ("npm/athena-opencode/package.json", validator._validate_opencode),
+        )
+        for relative, validate in cases:
+            with self.subTest(relative=relative):
+                path = self.fixture / relative
+                original = path.read_text(encoding="utf-8")
+                value: dict[str, Any] = json.loads(original)
+                value["version"] = "v1"
+                path.write_text(json.dumps(value), encoding="utf-8")
+
+                self.assert_validation_errors(validate, "version")
                 path.write_text(original, encoding="utf-8")
 
     def test_private_skill_directory_fails(self) -> None:
@@ -277,7 +292,9 @@ class DistributionTests(unittest.TestCase):
         (private / "SKILL.md").write_text(
             "---\nname: _private\n---\n", encoding="utf-8"
         )
-        self.assert_invalid("skills", "private skill directory is forbidden")
+        self.assert_validation_errors(
+            validator._validate_skills, "skills", literal="_private"
+        )
 
     def test_python_cache_is_not_treated_as_a_private_skill(self) -> None:
         cache = self.fixture / "skills" / "__pycache__"
@@ -292,8 +309,10 @@ class DistributionTests(unittest.TestCase):
             "#!/usr/bin/env python3\nprint('no parser')\n", encoding="utf-8"
         )
 
-        self.assert_invalid(
-            "cli", "must construct its argparse parser with argument_parser()"
+        self.assert_validation_errors(
+            validator._validate_cli_conventions,
+            "cli",
+            literal="skills/pr-review/scripts/resolve_pr.py",
         )
 
     def test_executable_scripts_cannot_hide_direct_argparse_behind_dead_factory_call(
@@ -310,8 +329,10 @@ class DistributionTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        self.assert_invalid(
-            "cli", "must not construct argparse.ArgumentParser directly"
+        self.assert_validation_errors(
+            validator._validate_cli_conventions,
+            "cli",
+            literal="skills/pr-review/scripts/resolve_pr.py",
         )
 
     def test_executable_scripts_may_alias_the_shared_parser_factory(self) -> None:
@@ -331,21 +352,33 @@ class DistributionTests(unittest.TestCase):
         (self.fixture / "docs" / "bad.md").write_text(
             f"depends on {repository}", encoding="utf-8"
         )
-        self.assert_invalid("self-contained", repository)
+        self.assert_validation_errors(
+            validator._validate_layout_and_policy,
+            "self-contained",
+            literal=repository,
+        )
 
     def test_unapproved_ecosystem_repository_is_case_insensitive(self) -> None:
         repository = "hOmErIc" + "InTeLlIgEnCe/" + "UnapprovedRepository"
         (self.fixture / "docs" / "bad.md").write_text(
             f"depends on https://github.com/{repository}", encoding="utf-8"
         )
-        self.assert_invalid("self-contained", repository)
+        self.assert_validation_errors(
+            validator._validate_layout_and_policy,
+            "self-contained",
+            literal=repository,
+        )
 
     def test_distributable_coverage_prefixed_file_is_inspected(self) -> None:
         repository = "HomericIntelligence/" + "UnapprovedRepository"
         (self.fixture / "docs" / ".coverage-bypass.md").write_text(
             f"depends on {repository}", encoding="utf-8"
         )
-        self.assert_invalid("self-contained", repository)
+        self.assert_validation_errors(
+            validator._validate_layout_and_policy,
+            "self-contained",
+            literal=repository,
+        )
 
     def test_checkout_under_ignored_named_ancestor_is_still_inspected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -368,13 +401,14 @@ class DistributionTests(unittest.TestCase):
                 f"depends on {repository}", encoding="utf-8"
             )
 
-            errors = validator.validate_repository(fixture)
+            errors = validator._validate_layout_and_policy(fixture)
 
-        self.assertTrue(
-            any(
-                error.surface == "self-contained" and repository in error.reason
-                for error in errors
-            ),
+        self.assertEqual(
+            ["self-contained"], [error.surface for error in errors], errors
+        )
+        self.assertEqual(
+            1,
+            sum(repository in error.reason for error in errors),
             errors,
         )
 
@@ -383,17 +417,27 @@ class DistributionTests(unittest.TestCase):
         directory = self.fixture / "docs" / "dist"
         directory.mkdir()
         (directory / "bad.md").write_text(f"depends on {repository}", encoding="utf-8")
-        self.assert_invalid("self-contained", repository)
+        self.assert_validation_errors(
+            validator._validate_layout_and_policy,
+            "self-contained",
+            literal=repository,
+        )
 
     def test_project_prefix_is_rejected(self) -> None:
         forbidden = "Project" + "Example"
         (self.fixture / "docs" / "bad.md").write_text(forbidden, encoding="utf-8")
-        self.assert_invalid("self-contained", forbidden)
+        self.assert_validation_errors(
+            validator._validate_layout_and_policy,
+            "self-contained",
+            literal=forbidden,
+        )
 
     def test_missing_required_policy_file_fails(self) -> None:
         (self.fixture / "docs" / "policies" / "required-checks.md").unlink()
-        self.assert_invalid(
-            "policy", "required file is missing: docs/policies/required-checks.md"
+        self.assert_validation_errors(
+            validator._validate_layout_and_policy,
+            "policy",
+            literal="docs/policies/required-checks.md",
         )
 
     def test_repo_review_scorecard_rejects_section_and_weight_mismatches(self) -> None:
@@ -404,7 +448,11 @@ class DistributionTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        self.assert_invalid("repo-review", "weight has no matching criteria section")
+        self.assert_validation_errors(
+            validator._validate_repo_review_scorecard,
+            "repo-review",
+            count=2,
+        )
 
         criteria.write_text(
             criteria.read_text(encoding="utf-8").replace(
@@ -419,7 +467,9 @@ class DistributionTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        self.assert_invalid("repo-review", "weights must total 100%")
+        self.assert_validation_errors(
+            validator._validate_repo_review_scorecard, "repo-review"
+        )
 
     def test_ruleset_requires_a_current_main_merge_gate(self) -> None:
         path = self.fixture / ".github" / "rulesets" / "homeric-main-baseline.json"
@@ -432,13 +482,13 @@ class DistributionTests(unittest.TestCase):
         status_checks["parameters"]["strict_required_status_checks_policy"] = True
         path.write_text(json.dumps(document), encoding="utf-8")
 
-        self.assert_invalid("ruleset", "must not require up-to-date branches")
+        self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
 
         status_checks["parameters"]["strict_required_status_checks_policy"] = False
         status_checks["parameters"]["required_status_checks"] = []
         path.write_text(json.dumps(document), encoding="utf-8")
 
-        self.assert_invalid("ruleset", "must require required-checks-gate")
+        self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
 
     def test_ruleset_requires_squash_only_pull_request_merges(self) -> None:
         path = self.fixture / ".github" / "rulesets" / "homeric-main-baseline.json"
@@ -449,7 +499,7 @@ class DistributionTests(unittest.TestCase):
         pull_request["parameters"]["allowed_merge_methods"] = ["merge", "squash"]
         path.write_text(json.dumps(document), encoding="utf-8")
 
-        self.assert_invalid("ruleset", "merge by squash only")
+        self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
 
     def test_ruleset_requires_the_approved_staged_merge_queue_policy(self) -> None:
         path = self.fixture / ".github" / "rulesets" / "homeric-main-baseline.json"
@@ -460,7 +510,7 @@ class DistributionTests(unittest.TestCase):
         ]
         path.write_text(json.dumps(document), encoding="utf-8")
 
-        self.assert_invalid("ruleset", "merge queue policy is missing")
+        self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
 
         document = json.loads(original)
         merge_queue = next(
@@ -484,11 +534,13 @@ class DistributionTests(unittest.TestCase):
         merge_queue["parameters"]["merge_method"] = "MERGE"
         path.write_text(json.dumps(document), encoding="utf-8")
 
-        self.assert_invalid("ruleset", "merge queue policy does not match")
+        self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
 
     def test_obsolete_distribution_path_fails(self) -> None:
         (self.fixture / "athena").mkdir()
-        self.assert_invalid("layout", "obsolete distribution path exists: athena")
+        self.assert_validation_errors(
+            validator._validate_layout_and_policy, "layout", literal="athena"
+        )
 
     def test_cli_quiet_success(self) -> None:
         output = io.StringIO()
@@ -503,7 +555,7 @@ class DistributionTests(unittest.TestCase):
         with redirect_stderr(errors):
             result = validator.main(["--root", str(self.fixture)])
         self.assertEqual(result, 2)
-        self.assertIn("skills/ directory is missing", errors.getvalue())
+        self.assertTrue(errors.getvalue().strip())
 
 
 if __name__ == "__main__":

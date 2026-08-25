@@ -27,11 +27,15 @@ from skills._cli import (
 
 SNAPSHOT_COMMAND_TIMEOUT_SECONDS = 30.0
 BOUNDED_MATERIALIZE_TIMEOUT_SECONDS = 600.0
+MATERIALIZE_ERROR = "The helper cannot materialize the immutable pull-request snapshot."
+QUOTA_ERROR = "The host cannot enforce the immutable pull-request snapshot size limit."
+REMOVE_ERROR = "The helper cannot remove the immutable pull-request snapshot."
+UNMANAGED_ROOT_ERROR = "The helper does not permit snapshot operations outside the managed temporary directory."
 
 
 @dataclass(frozen=True)
 class MaterializedSnapshot:
-    """A detached source tree bound to one reviewed GitHub pull request."""
+    """This record binds a detached source tree to one reviewed GitHub pull request."""
 
     root: Path
     source_path: Path
@@ -78,11 +82,9 @@ def _git(
             ["git", *git_read_arguments(), *arguments], **command_options
         )
     except subprocess.SubprocessError as error:
-        raise RuntimeError(
-            "cannot materialize the immutable pull-request snapshot"
-        ) from error
+        raise RuntimeError(MATERIALIZE_ERROR) from error
     if result.returncode not in accepted_codes:
-        raise RuntimeError("cannot materialize the immutable pull-request snapshot")
+        raise RuntimeError(MATERIALIZE_ERROR)
     return result.stdout.strip() if isinstance(result.stdout, str) else ""
 
 
@@ -97,32 +99,31 @@ def _hdiutil(*arguments: str) -> None:
             check=False,
         )
     except (OSError, RuntimeError, subprocess.SubprocessError) as error:
-        raise RuntimeError(
-            "host cannot enforce the immutable pull-request snapshot size limit"
-        ) from error
+        raise RuntimeError(QUOTA_ERROR) from error
     if result.returncode != 0:
-        raise RuntimeError(
-            "host cannot enforce the immutable pull-request snapshot size limit"
-        )
+        raise RuntimeError(QUOTA_ERROR)
 
 
 def _mount_tmpfs(source: Path, maximum_bytes: int) -> bool:
     """Mount a Linux tmpfs whose total capacity is the snapshot quota.
 
-    Returns True only when the mount is actually enforced; the caller must
-    verify ``source.is_mount()`` is not relied on elsewhere. On any failure
-    (no ``mount`` binary, no privilege, mount rejection) the caller uses the
-    bounded user/mount-namespace fallback or fails closed.
+    Return True only when the mount enforces the quota. Do not use
+    ``source.is_mount()`` elsewhere to infer this result. If the host cannot
+    find or run ``mount``, return False. If the host rejects the mount, return
+    False. The caller then uses the bounded user and mount namespace or fails
+    closed.
     """
     if sys.platform != "linux" or shutil.which("mount") is None:
         return False
     maximum_kibibytes = maximum_bytes // 1024
     if maximum_kibibytes < 1:
-        raise RuntimeError("immutable pull-request snapshot has no usable disk space")
+        raise RuntimeError(
+            "The immutable pull-request snapshot has no usable disk space."
+        )
     try:
         source.mkdir()
     except FileExistsError:
-        # Directory already exists from a prior materialization; reuse it.
+        # If a prior materialization created the directory, use it again.
         pass
     except OSError:
         return False
@@ -150,15 +151,17 @@ def _mount_tmpfs(source: Path, maximum_bytes: int) -> bool:
 def _create_quota_volume(root: Path, maximum_bytes: int) -> Path | None:
     """Return a bounded source directory, or None for the Linux bounded fallback.
 
-    darwin: attach a sparse HFS+ volume whose total capacity is the quota.
-    linux:  mount a tmpfs whose total capacity is the quota when the host is
-            privileged; otherwise return None so the caller materializes the
-            snapshot inside a bounded user/mount namespace.
-    other:  fail closed — the host cannot enforce the snapshot size limit.
+    On macOS, attach a sparse HFS+ volume whose total capacity is the quota.
+    On Linux, mount a tmpfs when the host has the required authority. Otherwise,
+    return None so the caller can materialize the snapshot inside a bounded user
+    and mount namespace. On other systems, fail closed because the host cannot
+    enforce the snapshot size limit.
     """
     maximum_kibibytes = maximum_bytes // 1024
     if maximum_kibibytes < 1:
-        raise RuntimeError("immutable pull-request snapshot has no usable disk space")
+        raise RuntimeError(
+            "The immutable pull-request snapshot has no usable disk space."
+        )
     if sys.platform == "darwin":
         image = root / "snapshot.sparseimage"
         source = root / "source"
@@ -173,7 +176,7 @@ def _create_quota_volume(root: Path, maximum_bytes: int) -> Path | None:
             "-fs",
             "Case-sensitive HFS+",
             "-volname",
-            "Athena PR Review",
+            "Athena pull-request review",
             "-nospotlight",
             str(image),
         )
@@ -186,9 +189,7 @@ def _create_quota_volume(root: Path, maximum_bytes: int) -> Path | None:
             str(image),
         )
         if not source.is_mount():
-            raise RuntimeError(
-                "host cannot enforce the immutable pull-request snapshot size limit"
-            )
+            raise RuntimeError(QUOTA_ERROR)
         return source
     if sys.platform.startswith("linux"):
         source = root / "source"
@@ -197,13 +198,11 @@ def _create_quota_volume(root: Path, maximum_bytes: int) -> Path | None:
         try:
             source.rmdir()
         except OSError:
-            # The mount may have partially created the directory; a failed
-            # rmdir is not fatal - the caller treats None as a fallback.
+            # The mount can create the directory before it fails.
+            # If rmdir fails, the caller uses None to select the other method.
             pass
         return None
-    raise RuntimeError(
-        "host cannot enforce the immutable pull-request snapshot size limit"
-    )
+    raise RuntimeError(QUOTA_ERROR)
 
 
 def _detach_volume(source: Path) -> None:
@@ -229,41 +228,38 @@ def _detach_volume(source: Path) -> None:
                     check=False,
                 )
             if result.returncode != 0:
-                raise RuntimeError("cannot remove the immutable pull-request snapshot")
+                raise RuntimeError(REMOVE_ERROR)
         except (OSError, RuntimeError, subprocess.SubprocessError) as error:
-            raise RuntimeError(
-                "cannot remove the immutable pull-request snapshot"
-            ) from error
+            raise RuntimeError(REMOVE_ERROR) from error
         return
-    raise RuntimeError("cannot remove the immutable pull-request snapshot")
+    raise RuntimeError(REMOVE_ERROR)
 
 
 def _detach_best_effort(source: Path) -> None:
-    """Detach a quota volume without masking a prior failure."""
+    """Detach the quota volume. Do not let a detach failure hide an earlier failure."""
     try:
         _detach_volume(source)
     except RuntimeError:
-        # Detach is best-effort; a prior failure must not be masked by a
-        # secondary cleanup error.
+        # Do not let this cleanup error hide an earlier failure.
         pass
 
 
 def _require_base_ref(base_ref: str) -> str:
     """Validate the GitHub base branch before it becomes a fetch refspec."""
     if not base_ref or base_ref.startswith("-") or ".." in base_ref:
-        raise RuntimeError("GitHub returned an invalid pull-request base ref")
+        raise RuntimeError("GitHub returned a pull-request base ref that is not valid.")
     _git("check-ref-format", "--branch", base_ref)
     return base_ref
 
 
 def _repository_size(path: Path, *, maximum_bytes: int | None = None) -> int:
-    """Return the size of a repository within 90 percent of free disk space."""
+    """Return the repository size and enforce the applicable size limit."""
     if maximum_bytes is None:
         try:
             maximum_bytes = (shutil.disk_usage(path).free * 9) // 10
         except OSError as error:
             raise RuntimeError(
-                "cannot inspect the immutable pull-request snapshot"
+                "The helper cannot inspect the immutable pull-request snapshot."
             ) from error
     total = 0
     for entry in path.rglob("*"):
@@ -271,13 +267,13 @@ def _repository_size(path: Path, *, maximum_bytes: int | None = None) -> int:
             details = entry.lstat()
         except OSError as error:
             raise RuntimeError(
-                "cannot inspect the immutable pull-request snapshot"
+                "The helper cannot inspect the immutable pull-request snapshot."
             ) from error
         if stat.S_ISREG(details.st_mode):
             total += details.st_size
             if total > maximum_bytes:
                 raise RuntimeError(
-                    "immutable pull-request snapshot exceeds the safe size limit"
+                    "The immutable pull-request snapshot exceeds the safe size limit."
                 )
     return total
 
@@ -296,7 +292,7 @@ def _verify_no_promisor_configuration(repository: Path) -> None:
         )
         if value:
             raise RuntimeError(
-                "immutable pull-request snapshot must not use partial clone configuration"
+                "The immutable pull-request snapshot must not use partial-clone configuration."
             )
     promisor = _git(
         "config",
@@ -309,12 +305,12 @@ def _verify_no_promisor_configuration(repository: Path) -> None:
     )
     if promisor:
         raise RuntimeError(
-            "immutable pull-request snapshot must not use promisor configuration"
+            "The immutable pull-request snapshot must not use promisor configuration."
         )
 
 
 def _require_commit(repository: Path, revision: str, label: str) -> str:
-    """Verify one fetched ref resolves exactly to its captured commit OID."""
+    """Verify that one fetched ref resolves to its captured commit object identifier."""
     resolved = _git(
         "rev-parse",
         "--verify",
@@ -326,7 +322,7 @@ def _require_commit(repository: Path, revision: str, label: str) -> str:
 
 
 def _make_read_only(root: Path) -> None:
-    """Remove write bits from the completed snapshot without following symlinks."""
+    """Remove write bits from the completed snapshot without following symbolic links."""
     entries = sorted(root.rglob("*"), key=lambda entry: len(entry.parts), reverse=True)
     for entry in entries:
         if entry.is_symlink():
@@ -339,7 +335,7 @@ def _make_read_only(root: Path) -> None:
                 entry.chmod(0o555 if mode & stat.S_IXUSR else 0o444)
         except OSError as error:
             raise RuntimeError(
-                "cannot make the immutable pull-request snapshot read-only"
+                "The helper cannot make the immutable pull-request snapshot read-only."
             ) from error
     root.chmod(0o555)
 
@@ -356,11 +352,11 @@ def _acquire_into(
     template: Path,
     maximum_bytes: int,
 ) -> tuple[str, str]:
-    """Fetch only the captured base branch and PR head into a source directory.
+    """Fetch only the captured base branch and pull-request head.
 
-    The source directory is provided by the caller (a quota volume or a
-    bounded tmpfs). Returns ``(merge_base, tree_oid)`` after verifying every
-    immutable binding against the captured OIDs.
+    The caller provides a source directory in a quota volume or bounded tmpfs.
+    Verify each immutable binding against the captured object identifiers.
+    Then, return ``(merge_base, tree_oid)``.
     """
     _git(
         "-c",
@@ -405,15 +401,26 @@ def _acquire_into(
         _git("rev-parse", "--is-shallow-repository", cwd=source, capture_output=True)
         != "false"
     ):
-        raise RuntimeError("immutable pull-request snapshot requires complete history")
-    if _require_commit(source, "refs/athena/base", "fetched base OID") != base_oid:
-        raise RuntimeError("fetched base ref does not match the captured base OID")
+        raise RuntimeError(
+            "The immutable pull-request snapshot requires complete history."
+        )
     if (
-        _require_commit(source, f"refs/athena/pr/{number}/head", "fetched head OID")
+        _require_commit(source, "refs/athena/base", "fetched base object identifier")
+        != base_oid
+    ):
+        raise RuntimeError(
+            "The fetched base ref does not match the captured base object identifier."
+        )
+    if (
+        _require_commit(
+            source,
+            f"refs/athena/pr/{number}/head",
+            "fetched head object identifier",
+        )
         != head_oid
     ):
         raise RuntimeError(
-            "fetched pull-request ref does not match the captured head OID"
+            "The fetched pull-request ref does not match the captured head object identifier."
         )
     merge_bases = _git(
         "merge-base",
@@ -425,15 +432,15 @@ def _acquire_into(
     ).splitlines()
     if len(merge_bases) != 1:
         raise RuntimeError(
-            "immutable pull-request snapshot requires one unambiguous merge base"
+            "The immutable pull-request snapshot requires one unambiguous merge base."
         )
     merge_base = require_commit_oid(merge_bases[0], "immutable merge base")
-    tree_oid = _require_commit(source, head_oid, "fetched head OID")
+    tree_oid = _require_commit(source, head_oid, "fetched head object identifier")
     tree_oid = _git(
         "rev-parse", f"{tree_oid}^{{tree}}", cwd=source, capture_output=True
     )
     if COMMIT_OID.fullmatch(tree_oid) is None:
-        raise RuntimeError("Git returned an invalid immutable head tree")
+        raise RuntimeError("Git returned an immutable head tree that is not valid.")
     _git(
         "-c",
         f"core.hooksPath={hooks}",
@@ -450,15 +457,16 @@ def _acquire_into(
 
 
 def _bounded_materialize_main(arguments: Sequence[str]) -> int:
-    """Materialize inside a bounded user/mount namespace (internal entry).
+    """Materialize inside a bounded user and mount namespace.
 
-    This runs as the child of ``unshare -rm`` on Linux. It mounts a tmpfs
-    whose total capacity is the snapshot quota, acquires the snapshot inside
-    that bound, copies the verified read-only tree to a host-visible path, and
-    prints the result as JSON. Exit 2 means the quota boundary itself could
-    not be established; exit 1 means materialization failed.
+    This helper runs as the child of ``unshare -rm`` on Linux. The helper mounts
+    a tmpfs whose total capacity is the snapshot quota. It materializes the
+    snapshot in the size-limited file system. Then, it copies the verified
+    read-only tree to a path that the host can read. Exit 2 means that the helper
+    could not establish the quota boundary. Exit 1 means that materialization
+    failed.
     """
-    parser = argument_parser(description="Bounded snapshot materialization.")
+    parser = argument_parser(description="Materialize a bounded pull-request snapshot.")
     parser.add_argument("--root", required=True, metavar="ROOT")
     parser.add_argument("--repository-url", required=True, metavar="URL")
     parser.add_argument("--pr-number", required=True, type=int, metavar="NUMBER")
@@ -470,22 +478,20 @@ def _bounded_materialize_main(arguments: Sequence[str]) -> int:
     root = Path(parsed.root).resolve()
     temporary_root = Path(tempfile.gettempdir()).resolve()
     if root.parent != temporary_root or not root.name.startswith("athena-pr-review-"):
-        print(
-            "refusing to materialize outside the managed temporary directory",
-            file=sys.stderr,
-        )
+        print(UNMANAGED_ROOT_ERROR, file=sys.stderr)
         return 1
     try:
-        canonical_base = require_commit_oid(parsed.base_oid, "captured base OID")
-        canonical_head = require_commit_oid(parsed.head_oid, "captured head OID")
+        canonical_base = require_commit_oid(
+            parsed.base_oid, "captured base object identifier"
+        )
+        canonical_head = require_commit_oid(
+            parsed.head_oid, "captured head object identifier"
+        )
         canonical_base_ref = _require_base_ref(parsed.base_ref)
         bounded = root / "bounded"
         bounded.mkdir()
         if not _mount_tmpfs(bounded, parsed.maximum_bytes):
-            print(
-                "host cannot enforce the immutable pull-request snapshot size limit",
-                file=sys.stderr,
-            )
+            print(QUOTA_ERROR, file=sys.stderr)
             return 2
         merge_base, tree_oid = _acquire_into(
             bounded,
@@ -528,20 +534,18 @@ def _bounded_materialize(
     base_oid: str,
     head_oid: str,
 ) -> MaterializedSnapshot:
-    """Materialize a snapshot inside a bounded Linux user/mount namespace.
+    """Materialize a snapshot inside a bounded Linux user and mount namespace.
 
-    Spawns this helper under ``unshare -rm`` (rootful within the new namespace
-    but unprivileged on the host), where the child mounts a tmpfs whose total
-    capacity is the snapshot quota. Every fetch/checkout write is bounded by
-    that filesystem; the verified tree is copied to a host-visible read-only
-    path before the namespace exits. Fails closed when ``unshare`` or a tmpfs
-    mount is unavailable.
+    Run this helper under ``unshare -rm``. The child has root authority only in
+    the new namespace. The child mounts a tmpfs whose total capacity is the
+    snapshot quota. The file system bounds each fetch and checkout write. Before
+    the namespace exits, the child copies the verified tree to a read-only path
+    that the host can read. If ``unshare`` or a tmpfs mount is not available,
+    the helper fails closed.
     """
     unshare = shutil.which("unshare")
     if unshare is None:
-        raise RuntimeError(
-            "host cannot enforce the immutable pull-request snapshot size limit"
-        )
+        raise RuntimeError(QUOTA_ERROR)
     command = [
         unshare,
         "-rm",
@@ -573,26 +577,20 @@ def _bounded_materialize(
             timeout=BOUNDED_MATERIALIZE_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired as error:
-        raise RuntimeError(
-            "cannot materialize the immutable pull-request snapshot"
-        ) from error
+        raise RuntimeError(MATERIALIZE_ERROR) from error
     except (OSError, RuntimeError, subprocess.SubprocessError) as error:
-        raise RuntimeError(
-            "host cannot enforce the immutable pull-request snapshot size limit"
-        ) from error
+        raise RuntimeError(QUOTA_ERROR) from error
     if result.returncode == 2:
-        raise RuntimeError(
-            "host cannot enforce the immutable pull-request snapshot size limit"
-        )
+        raise RuntimeError(QUOTA_ERROR)
     if result.returncode != 0:
-        raise RuntimeError("cannot materialize the immutable pull-request snapshot")
+        raise RuntimeError(MATERIALIZE_ERROR)
     try:
         lines = [line for line in result.stdout.splitlines() if line.strip()]
         if not lines:
-            raise RuntimeError("cannot materialize the immutable pull-request snapshot")
+            raise RuntimeError(MATERIALIZE_ERROR)
         record = json.loads(lines[-1])
         if not isinstance(record, dict):
-            raise TypeError("cannot materialize the immutable pull-request snapshot")
+            raise TypeError(MATERIALIZE_ERROR)
         source_path = Path(str(record["source_path"]))
         merge_base = require_commit_oid(record["merge_base"], "immutable merge base")
         tree_oid = require_commit_oid(record["tree_oid"], "immutable head tree")
@@ -603,11 +601,9 @@ def _bounded_materialize(
         json.JSONDecodeError,
         RuntimeError,
     ) as error:
-        raise RuntimeError(
-            "cannot materialize the immutable pull-request snapshot"
-        ) from error
+        raise RuntimeError(MATERIALIZE_ERROR) from error
     if source_path != root / "source" or not source_path.is_dir():
-        raise RuntimeError("cannot materialize the immutable pull-request snapshot")
+        raise RuntimeError(MATERIALIZE_ERROR)
     return MaterializedSnapshot(
         root=root, source_path=source_path, merge_base=merge_base, tree_oid=tree_oid
     )
@@ -616,12 +612,12 @@ def _bounded_materialize(
 def materialize_snapshot(
     *, repository: str, number: int, base_ref: str, base_oid: str, head_oid: str
 ) -> MaterializedSnapshot:
-    """Fetch only a captured base branch and PR head into a fresh repository."""
+    """Materialize a captured base branch and pull-request head in a new repository."""
     canonical_repository = require_github_repository(repository, "GitHub repository")
     if isinstance(number, bool) or not isinstance(number, int) or number < 1:
-        raise RuntimeError("pull-request number must be positive")
-    canonical_base = require_commit_oid(base_oid, "captured base OID")
-    canonical_head = require_commit_oid(head_oid, "captured head OID")
+        raise RuntimeError("The pull-request number must be positive.")
+    canonical_base = require_commit_oid(base_oid, "captured base object identifier")
+    canonical_head = require_commit_oid(head_oid, "captured head object identifier")
     canonical_base_ref = _require_base_ref(base_ref)
     root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
     template = root / "empty-template"
@@ -632,7 +628,7 @@ def materialize_snapshot(
         maximum_snapshot_bytes = (shutil.disk_usage(root).free * 9) // 10
         if maximum_snapshot_bytes < 1:
             raise RuntimeError(
-                "immutable pull-request snapshot has no usable disk space"
+                "The immutable pull-request snapshot has no usable disk space."
             )
         source = _create_quota_volume(root, maximum_snapshot_bytes)
         if source is None:
@@ -659,9 +655,7 @@ def materialize_snapshot(
         _make_read_only(root)
     except (OSError, subprocess.TimeoutExpired):
         remove_snapshot(root)
-        raise RuntimeError(
-            "cannot materialize the immutable pull-request snapshot"
-        ) from None
+        raise RuntimeError(MATERIALIZE_ERROR) from None
     except BaseException:
         remove_snapshot(root)
         raise
@@ -671,15 +665,13 @@ def materialize_snapshot(
 
 
 def remove_snapshot(root: Path) -> None:
-    """Remove a snapshot that this helper created after host inspection ends."""
+    """After host inspection ends, remove a snapshot that this helper materialized."""
     resolved = root.resolve()
     temporary_root = Path(tempfile.gettempdir()).resolve()
     if resolved.parent != temporary_root or not resolved.name.startswith(
         "athena-pr-review-"
     ):
-        raise RuntimeError(
-            "refusing to remove a snapshot outside the managed temporary directory"
-        )
+        raise RuntimeError(UNMANAGED_ROOT_ERROR)
     source = resolved / "source"
     if source.is_mount():
         _detach_volume(source)
@@ -690,7 +682,7 @@ def remove_snapshot(root: Path) -> None:
         if candidate.exists() and not candidate.is_symlink():
             candidate.chmod(0o700)
         if not callable(function):
-            raise TypeError("cannot remove the immutable pull-request snapshot")
+            raise TypeError(REMOVE_ERROR)
         function(path)
 
     shutil.rmtree(resolved, onexc=make_removable)

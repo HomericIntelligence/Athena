@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Generate deterministic SPDX SBOMs for Athena's plugin and build environment."""
+"""Generate deterministic software bills of materials (SBOMs) for Athena.
+
+Use the Software Package Data Exchange (SPDX) format for the plugin and build environment.
+"""
 
 from __future__ import annotations
 
@@ -38,7 +41,7 @@ ACTION_REFERENCE = re.compile(r"^(?P<name>[^@\s]+)@(?P<sha>[0-9a-f]{40})$")
 
 
 class SbomError(RuntimeError):
-    """Raised when SBOM content cannot satisfy Athena's release contract."""
+    """This error identifies SBOM content that does not satisfy the release contract."""
 
 
 def _spdx_id(prefix: str, value: str) -> str:
@@ -66,13 +69,18 @@ def _run_syft(syft: str, source: Path, output_format: str) -> dict[str, Any]:
     )
     if result.returncode != 0:
         detail = result.stderr.strip() or f"exit status {result.returncode}"
-        raise OSError(f"Syft failed while scanning {source}: {detail}")
+        raise OSError(
+            f"Syft could not scan '{source}'. Syft returned this diagnostic.\n{detail}"
+        )
     try:
         document = json.loads(result.stdout)
     except json.JSONDecodeError as error:
-        raise OSError(f"Syft returned invalid {output_format}: {error}") from error
+        raise OSError(
+            f"Syft returned output that is not valid in the {output_format} format. "
+            f"The parser returned this diagnostic.\n{error}"
+        ) from error
     if not isinstance(document, dict):
-        raise OSError(f"Syft returned a non-object {output_format} document")
+        raise OSError(f"The Syft {output_format} document is not a JSON object.")
     return document
 
 
@@ -105,7 +113,7 @@ def _base_document(
 ) -> dict[str, Any]:
     document = _canonicalize(raw, source_root)
     if not isinstance(document, dict):
-        raise SbomError("normalized SPDX document is not an object")
+        raise SbomError("The normalized SPDX document is not a JSON object.")
     document["spdxVersion"] = SPDX_VERSION
     document["dataLicense"] = "CC0-1.0"
     document["SPDXID"] = "SPDXRef-DOCUMENT"
@@ -158,7 +166,7 @@ def _archive_files(archive_path: Path) -> list[dict[str, Any]]:
                 continue
             source = archive.extractfile(member)
             if source is None:
-                raise SbomError(f"cannot read archive member {member.name}")
+                raise SbomError(f"The tool cannot read archive member '{member.name}'.")
             content = source.read()
             name = PurePosixPath(member.name).as_posix()
             files.append(
@@ -181,7 +189,7 @@ def _archive_files(archive_path: Path) -> list[dict[str, Any]]:
                 }
             )
     if not files:
-        raise SbomError("plugin archive contains no regular files")
+        raise SbomError("The plugin archive does not contain regular files.")
     return files
 
 
@@ -245,15 +253,16 @@ def _package_job_dependencies(
         workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as error:
         raise SbomError(
-            f"cannot read workflow actions from {workflow_path}: {error}"
+            f"The tool cannot read workflow actions from '{workflow_path}'. "
+            f"The operation returned this diagnostic.\n{error}"
         ) from error
     if not isinstance(workflow, dict) or not isinstance(workflow.get("jobs"), dict):
-        raise SbomError(f"workflow has no jobs mapping: {workflow_path}")
+        raise SbomError(f"The workflow does not contain a jobs map: '{workflow_path}'.")
     package_job = workflow["jobs"].get("package")
     if not isinstance(package_job, dict) or not isinstance(
         package_job.get("steps"), list
     ):
-        raise SbomError(f"workflow has no package job steps: {workflow_path}")
+        raise SbomError(f"The package job does not contain steps: '{workflow_path}'.")
     references: set[tuple[str, str]] = set()
     uv_versions: set[str] = set()
     for step in package_job["steps"]:
@@ -262,20 +271,24 @@ def _package_job_dependencies(
         match = ACTION_REFERENCE.fullmatch(step["uses"])
         if match is None:
             raise SbomError(
-                f"package workflow action is not pinned to a commit: {step['uses']}"
+                f"Pin the package-workflow action to a commit: '{step['uses']}'."
             )
         action_name = match.group("name")
         references.add((action_name, match.group("sha")))
         if action_name == "astral-sh/setup-uv":
             inputs = step.get("with")
             if not isinstance(inputs, dict):
-                raise SbomError("package setup-uv action has no inputs mapping")
+                raise SbomError(
+                    "The package setup-uv action does not contain an inputs map."
+                )
             uv_version = inputs.get("version")
             if not isinstance(uv_version, str) or not uv_version.strip():
-                raise SbomError("package setup-uv action has no version")
+                raise SbomError(
+                    "The package setup-uv action does not contain a version."
+                )
             uv_versions.add(uv_version.removeprefix("v"))
     if len(uv_versions) != 1:
-        raise SbomError("package workflow must declare exactly one uv version")
+        raise SbomError("The package workflow must declare exactly one uv version.")
     actions = [
         _package(name, "github-action", version=sha) for name, sha in sorted(references)
     ]
@@ -321,7 +334,7 @@ def build_spdx(
     version: str,
     epoch: int,
 ) -> dict[str, Any]:
-    """Normalize Syft's environment SPDX and add CI build dependencies."""
+    """Normalize the environment SPDX from Syft and add continuous integration dependencies."""
     name = "athena-build-linux-64"
     document = _base_document(
         raw,
@@ -332,12 +345,12 @@ def build_spdx(
     )
     packages = document.get("packages", [])
     if not isinstance(packages, list):
-        raise SbomError("Syft SPDX packages field is not a list")
+        raise SbomError("The Syft SPDX packages field is not a list.")
     raw_relationships = document.get("relationships", [])
     if not isinstance(raw_relationships, list) or not all(
         isinstance(relationship, dict) for relationship in raw_relationships
     ):
-        raise SbomError("Syft SPDX relationships field is not an object list")
+        raise SbomError("The Syft SPDX relationships field is not an object list.")
     preserved_relationships = _stable_syft_relationships(
         [
             relationship
@@ -400,11 +413,14 @@ def generate(
     repo_root: Path,
     platform_name: str,
 ) -> tuple[Path, Path]:
-    """Generate both checksummed release SBOMs and the internal SCA inventory."""
+    """Generate both checksummed release software bills of materials (SBOMs).
+
+    Also generate the internal software composition analysis (SCA) inventory.
+    """
     if platform_name != "linux":
-        raise SbomError("authoritative build SBOM generation requires Linux")
+        raise SbomError("Use Linux to generate the authoritative build SBOM.")
     if epoch < 0:
-        raise SbomError("source date epoch must be non-negative")
+        raise SbomError("The source-date epoch must be zero or positive.")
     version = read_plugin_version(repo_root)
     plugin_raw = _run_syft(syft, archive_path, "spdx-json")
     build_raw = _run_syft(syft, environment_path, "spdx-json")
@@ -445,7 +461,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if archive is None:
             candidates = sorted((root / "dist").glob("athena-plugin-*.tar.gz"))
             if len(candidates) != 1:
-                raise SbomError("dist must contain exactly one plugin archive")
+                raise SbomError(
+                    "The dist directory must contain exactly one plugin archive."
+                )
             archive = candidates[0]
         epoch = arguments.source_date_epoch
         if epoch is None:
@@ -474,7 +492,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (OSError, subprocess.SubprocessError, tarfile.TarError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
-    print("Generated " + " and ".join(str(path) for path in generated))
+    print("The tool generated " + " and ".join(f"'{path}'" for path in generated) + ".")
     return 0
 
 

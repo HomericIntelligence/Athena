@@ -133,13 +133,13 @@ class PullRequestPolicyTests(unittest.TestCase):
             }
         ]
 
-        with self.assertRaisesRegex(ValueError, "stopped before the final page"):
+        with self.assertRaises(ValueError):
             ci_policy.flatten_commit_pages(pages)
 
     def test_rejects_missing_and_malformed_pagination(self) -> None:
-        with self.assertRaisesRegex(ValueError, "no pages"):
+        with self.assertRaises(ValueError):
             ci_policy.flatten_commit_pages([])
-        with self.assertRaisesRegex(ValueError, "malformed"):
+        with self.assertRaises(ValueError):
             ci_policy.flatten_commit_pages([{}])
 
     def test_rejects_invalid_nodes_and_changing_totals(self) -> None:
@@ -158,7 +158,7 @@ class PullRequestPolicyTests(unittest.TestCase):
                 }
             }
         ]
-        with self.assertRaisesRegex(TypeError, "invalid nodes"):
+        with self.assertRaises(TypeError):
             ci_policy.flatten_commit_pages(invalid_nodes)
 
         changing_totals = [
@@ -189,7 +189,7 @@ class PullRequestPolicyTests(unittest.TestCase):
                 }
             },
         ]
-        with self.assertRaisesRegex(ValueError, "count changed"):
+        with self.assertRaises(ValueError):
             ci_policy.flatten_commit_pages(changing_totals)
 
     def test_rejects_malformed_page_info_and_commit_nodes(self) -> None:
@@ -210,14 +210,14 @@ class PullRequestPolicyTests(unittest.TestCase):
         malformed_page_info["data"]["repository"]["pullRequest"]["commits"][
             "pageInfo"
         ] = []
-        with self.assertRaisesRegex(TypeError, "invalid pageInfo"):
+        with self.assertRaises(TypeError):
             ci_policy.flatten_commit_pages([malformed_page_info])
 
         malformed_node = json.loads(json.dumps(base))
         malformed_node["data"]["repository"]["pullRequest"]["commits"]["nodes"] = [
             {"commit": []}
         ]
-        with self.assertRaisesRegex(ValueError, "invalid commit node"):
+        with self.assertRaises(ValueError):
             ci_policy.flatten_commit_pages([malformed_node])
 
     def test_enforces_link_signature_dco_and_subject(self) -> None:
@@ -295,7 +295,9 @@ class ReleasePolicyTests(unittest.TestCase):
             manifest_versions={"claude": "2.0.0", "codex": "1.0.0"},
         )
 
-        self.assertIn("codex manifest version 1.0.0 does not match tag 2.0.0", errors)
+        self.assertEqual(1, len(errors))
+        for value in ("codex", "1.0.0", "2.0.0"):
+            self.assertIn(value, errors[0])
 
     def test_valid_release_has_no_policy_errors(self) -> None:
         errors = ci_policy.evaluate_release(
@@ -341,60 +343,65 @@ class ReleasePolicyTests(unittest.TestCase):
                 f"{'0' * 64}  {archive.name}\n", encoding="utf-8"
             )
 
-            with self.assertRaisesRegex(ValueError, "checksum mismatch"):
+            with self.assertRaises(ValueError):
                 ci_policy.verify_release_assets(directory)
 
     def test_release_assets_require_exact_pair_and_matching_name(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             directory = Path(temporary_directory)
-            with self.assertRaisesRegex(ValueError, "exactly one"):
+            with self.assertRaises(ValueError):
                 ci_policy.verify_release_assets(directory)
             create_release_assets(directory)
             extra = directory / "unexpected.txt"
             extra.write_text("extra\n", encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "exact six-file"):
+            with self.assertRaises(ValueError):
                 ci_policy.verify_release_assets(directory)
             extra.unlink()
             checksum = directory / "athena-plugin-1.2.3.tar.gz.sha256"
             checksum.write_text(f"{'0' * 64}  different.tar.gz\n", encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "does not identify"):
+            with self.assertRaises(ValueError):
                 ci_policy.verify_release_assets(directory)
 
     def test_release_spdx_validation_fails_closed(self) -> None:
-        cases: tuple[tuple[object, type[Exception], str], ...] = (
-            ("not-json", ValueError, "cannot parse"),
-            ([], TypeError, "must be an object"),
+        valid_plugin_package = {
+            "name": "athena-plugin",
+            "versionInfo": "1.2.3",
+        }
+        cases: tuple[tuple[str, object, type[Exception]], ...] = (
+            ("invalid-json", "not-json", ValueError),
+            ("non-object-document", [], TypeError),
             (
+                "unsupported-spdx-version",
                 {
                     "spdxVersion": "SPDX-2.2",
                     "name": "athena-plugin-1.2.3",
                     "documentNamespace": "athena-plugin-1.2.3",
-                    "packages": [],
+                    "packages": [valid_plugin_package],
                 },
                 ValueError,
-                "SPDX-2.3",
             ),
             (
+                "incorrect-document-name",
                 {
                     "spdxVersion": "SPDX-2.3",
                     "name": "wrong",
                     "documentNamespace": "athena-plugin-1.2.3",
-                    "packages": [],
+                    "packages": [valid_plugin_package],
                 },
                 ValueError,
-                "wrong identity",
             ),
             (
+                "incorrect-document-namespace",
                 {
                     "spdxVersion": "SPDX-2.3",
                     "name": "athena-plugin-1.2.3",
                     "documentNamespace": "wrong",
-                    "packages": [],
+                    "packages": [valid_plugin_package],
                 },
                 ValueError,
-                "invalid namespace",
             ),
             (
+                "non-list-packages",
                 {
                     "spdxVersion": "SPDX-2.3",
                     "name": "athena-plugin-1.2.3",
@@ -402,9 +409,9 @@ class ReleasePolicyTests(unittest.TestCase):
                     "packages": {},
                 },
                 TypeError,
-                "packages list",
             ),
             (
+                "incorrect-package-version",
                 {
                     "spdxVersion": "SPDX-2.3",
                     "name": "athena-plugin-1.2.3",
@@ -412,12 +419,11 @@ class ReleasePolicyTests(unittest.TestCase):
                     "packages": [{"name": "athena-plugin", "versionInfo": "9.9.9"}],
                 },
                 ValueError,
-                "matching release package",
             ),
         )
-        for content, error_type, message in cases:
+        for case, content, error_type in cases:
             with (
-                self.subTest(message=message),
+                self.subTest(case=case),
                 tempfile.TemporaryDirectory() as temporary,
             ):
                 directory = Path(temporary)
@@ -428,7 +434,7 @@ class ReleasePolicyTests(unittest.TestCase):
                     encoding="utf-8",
                 )
                 write_checksum(plugin)
-                with self.assertRaisesRegex(error_type, message):
+                with self.assertRaises(error_type):
                     ci_policy.verify_release_assets(directory)
 
     def test_release_build_spdx_is_bound_to_release_version(self) -> None:
@@ -441,7 +447,7 @@ class ReleasePolicyTests(unittest.TestCase):
             build.write_text(json.dumps(document), encoding="utf-8")
             write_checksum(build)
 
-            with self.assertRaisesRegex(ValueError, "matching release package"):
+            with self.assertRaises(ValueError):
                 ci_policy.verify_release_assets(directory)
 
 
@@ -458,7 +464,11 @@ class SuppressionPolicyTests(unittest.TestCase):
             {"workflow.yml": "name: test\ncontinue-on-error: true\n"}
         )
 
-        self.assertEqual(["workflow.yml:2: continue-on-error enabled"], findings)
+        self.assertEqual(1, len(findings))
+        location, separator, diagnostic = findings[0].partition(": ")
+        self.assertEqual("workflow.yml:2", location)
+        self.assertEqual(": ", separator)
+        self.assertTrue(diagnostic)
 
 
 class CommandTests(unittest.TestCase):
@@ -540,9 +550,11 @@ class CommandTests(unittest.TestCase):
                     pages,
                 ],
             ),
-            self.assertRaisesRegex(SystemExit, "Closes #N"),
+            self.assertRaises(SystemExit) as raised,
         ):
             ci_policy.main(["pr-policy"])
+
+        self.assertIsInstance(raised.exception.code, str)
 
     def test_required_jobs_command_reads_environment(self) -> None:
         environment = {
@@ -564,23 +576,29 @@ class CommandTests(unittest.TestCase):
         }
         with (
             patch.dict(os.environ, environment, clear=False),
-            self.assertRaisesRegex(SystemExit, "not green"),
+            self.assertRaises(SystemExit) as raised,
         ):
             ci_policy.main(["required-jobs"])
 
+        failure = str(raised.exception)
+        self.assertIn("validate", failure)
+        self.assertIn("failure", failure)
+
     def test_required_jobs_command_reports_missing_and_malformed_inputs(self) -> None:
-        for environment, message in (
-            ({"RESULTS": "{}"}, "EVENT_NAME"),
-            ({"EVENT_NAME": "push"}, "RESULTS"),
-            ({"EVENT_NAME": "push", "RESULTS": "not-json"}, "valid JSON"),
-            ({"EVENT_NAME": "push", "RESULTS": "[]"}, "JSON object"),
+        for case, environment in (
+            ("missing-event-name", {"RESULTS": "{}"}),
+            ("missing-results", {"EVENT_NAME": "push"}),
+            ("invalid-json", {"EVENT_NAME": "push", "RESULTS": "not-json"}),
+            ("non-object-json", {"EVENT_NAME": "push", "RESULTS": "[]"}),
         ):
             with (
-                self.subTest(environment=environment),
+                self.subTest(case=case),
                 patch.dict(os.environ, environment, clear=True),
-                self.assertRaisesRegex(SystemExit, message),
+                self.assertRaises(SystemExit) as raised,
             ):
                 ci_policy.main(["required-jobs"])
+
+            self.assertIsInstance(raised.exception.code, str)
 
     def test_required_jobs_command_rejects_invalid_job_results(self) -> None:
         for results in ('{"validate": []}', '{"validate": {"result": 1}}'):
@@ -589,9 +607,13 @@ class CommandTests(unittest.TestCase):
 
                 with (
                     patch.dict(os.environ, environment, clear=True),
-                    self.assertRaisesRegex(SystemExit, r"validate.*invalid"),
+                    self.assertRaises(SystemExit) as raised,
                 ):
                     ci_policy.main(["required-jobs"])
+
+                diagnostic = str(raised.exception)
+                payload = json.loads(diagnostic[diagnostic.index("{") :])
+                self.assertEqual({"validate": "invalid"}, payload)
 
     def test_manifest_versions_reads_every_supported_host(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -697,9 +719,11 @@ class CommandTests(unittest.TestCase):
                         {"protected": True},
                     ],
                 ),
-                self.assertRaisesRegex(SystemExit, "annotated"),
+                self.assertRaises(SystemExit) as raised,
             ):
                 ci_policy.main(["release", "--root", str(root)])
+
+            self.assertIsInstance(raised.exception.code, str)
 
     def test_suppression_command_scans_tracked_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

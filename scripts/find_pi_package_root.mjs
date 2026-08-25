@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 const [installRootArgument] = process.argv.slice(2);
 
 if (!installRootArgument) {
-  throw new Error("usage: node find_pi_package_root.mjs PI_INSTALL_ROOT");
+  throw new Error("Usage: node find_pi_package_root.mjs PI_INSTALL_ROOT");
 }
 
 const installRoot = resolve(installRootArgument);
@@ -44,7 +44,7 @@ visit(installRoot);
 
 if (candidates.length !== 1) {
   throw new Error(
-    `expected exactly one Pi package root below ${installRoot}, found ${JSON.stringify(candidates)}`,
+    `The scan expected one Pi package root below '${installRoot}'. The scan found these roots in a JSON array.\n${JSON.stringify(candidates)}`,
   );
 }
 

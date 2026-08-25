@@ -1,4 +1,4 @@
-"""Shared argparse construction for Athena's executable helpers."""
+"""This module provides shared command-line support for Athena helpers."""
 
 from __future__ import annotations
 
@@ -16,26 +16,29 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 def run_command(
     arguments: Sequence[str], **kwargs: Any
 ) -> subprocess.CompletedProcess[str]:
-    """Run an external command or identify a missing required capability."""
+    """Run an external command and report a missing required capability."""
     if not arguments:
-        raise RuntimeError("required command is empty")
+        raise RuntimeError("The required command is empty.")
     try:
         check = kwargs.pop("check", False)
         return subprocess.run(arguments, check=check, **kwargs)
     except FileNotFoundError as error:
         command = error.filename or arguments[0]
-        raise RuntimeError(f"required command unavailable: {command}") from error
+        raise RuntimeError(
+            f"The required command is not available: '{command}'."
+        ) from error
 
 
 def git_read_environment() -> dict[str, str]:
-    """Return a hermetic environment for immutable, non-interactive Git reads."""
+    """Return an isolated environment for immutable, non-interactive Git reads."""
     environment = {
         key: value for key, value in os.environ.items() if not key.startswith("GIT_")
     }
     # `--no-replace-objects` does not disable deprecated graft files. Force Git
-    # to read an empty graft source. Strip every inherited GIT_* setting first:
-    # location, object, index, config, attribute, pathspec, and transport
-    # overrides can otherwise redirect or change a supposedly immutable read.
+    # to read an empty graft source. First, remove each inherited `GIT_*`
+    # setting. These settings can redirect or change an immutable read. They
+    # include location, object, index, configuration, attribute, pathspec, and
+    # transport settings.
     environment.update(
         {
             "GIT_ATTR_NOSYSTEM": "1",
@@ -58,7 +61,7 @@ def git_read_arguments() -> tuple[str, ...]:
 
 
 def require_complete_git_history(*, cwd: Path | None = None) -> None:
-    """Reject shallow history before deriving immutable ancestry evidence."""
+    """Reject shallow history before calculation of immutable ancestry evidence."""
     result = run_command(
         ["git", *git_read_arguments(), "rev-parse", "--is-shallow-repository"],
         capture_output=True,
@@ -69,20 +72,21 @@ def require_complete_git_history(*, cwd: Path | None = None) -> None:
     )
     if result.returncode != 0:
         message = (
-            result.stderr.strip() or "git rev-parse --is-shallow-repository failed"
+            result.stderr.strip()
+            or "The git rev-parse --is-shallow-repository command failed."
         )
         raise RuntimeError(message)
     if result.stdout.strip() != "false":
         raise RuntimeError(
-            "immutable review evidence requires a non-shallow repository; "
-            "use a complete source snapshot"
+            "The immutable review evidence needs a non-shallow repository. "
+            "Use a complete source snapshot."
         )
 
 
 def require_unambiguous_git_merge_base(
     base_oid: str, head_oid: str, *, cwd: Path | None = None
 ) -> str:
-    """Return the sole immutable merge base or reject ambiguous topology."""
+    """Return the only immutable merge base or reject an ambiguous history."""
     result = run_command(
         [
             "git",
@@ -99,12 +103,12 @@ def require_unambiguous_git_merge_base(
         check=False,
     )
     if result.returncode != 0:
-        message = result.stderr.strip() or "git merge-base failed"
+        message = result.stderr.strip() or "The git merge-base command failed."
         raise RuntimeError(message)
     merge_bases = result.stdout.splitlines()
     if len(merge_bases) != 1 or not merge_bases[0]:
         raise RuntimeError(
-            "immutable review evidence requires one unambiguous merge base"
+            "The immutable review evidence requires one unambiguous merge base."
         )
     return merge_bases[0]
 
@@ -115,7 +119,9 @@ def plugin_version() -> str:
     document = json.loads(manifest.read_text(encoding="utf-8"))
     version = document.get("version") if isinstance(document, dict) else None
     if not isinstance(version, str):
-        raise TypeError(f"plugin manifest has no string version: {manifest}")
+        raise TypeError(
+            f"The plugin manifest does not contain a string version: '{manifest}'."
+        )
     return version
 
 
@@ -134,7 +140,9 @@ class _PluginVersionAction(argparse.Action):
             version = plugin_version()
         except (OSError, TypeError, json.JSONDecodeError) as error:
             parser.exit(
-                1, f"{parser.prog}: error: cannot read plugin version: {error}\n"
+                1,
+                f"{parser.prog}: error: The tool cannot read the plugin version: "
+                f"{error}\n",
             )
         print(f"{parser.prog} {version}")
         parser.exit(0)
@@ -147,6 +155,6 @@ def argument_parser(*, description: str | None = None) -> argparse.ArgumentParse
         "--version",
         action=_PluginVersionAction,
         nargs=0,
-        help="show the Athena plugin version and exit",
+        help="Show the Athena plugin version and exit.",
     )
     return parser

@@ -1,60 +1,123 @@
 # Supply-chain security
 
-Athena publishes two checksummed SPDX 2.3 software bills of materials with each plugin archive:
+Apply the [ASD-STE100 technical-English policy](../skills/TECHNICAL_ENGLISH.md) to all English technical prose
+in this document.
 
-- `athena-plugin-<version>.spdx.json` describes every regular file in the portable archive, the
-  required `python`, `git`, and `gh` commands, and the dynamically resolved Mnemosyne and Hephaestus
-  repositories.
-- `athena-build-linux-64-<version>.spdx.json` describes the locked packages installed in the
-  authoritative `ubuntu-24.04`/`linux-64` build environment, uv, and the immutable GitHub Actions
-  used by the package job.
+Athena publishes two checksummed Software Package Data Exchange (SPDX) 2.3 software bills of
+materials (SBOMs) with each plugin archive:
 
-The locked coding-agent runtime comes from the official released `@earendil-works/pi-coding-agent`
-npm artifact, pinned with an integrity hash in `ci/pi-runtime/package-lock.json` and scanned from
-its shipped `npm-shrinkwrap.json`. This replaces the temporary source-commit build pin retired by
-[Issue #63](https://github.com/HomericIntelligence/Athena/issues/63). The package job scans both
-dependency contracts after validating the coding-harness package and
-retains the native inventories for Grype. It does not scan example lockfiles or build-time compiler
-binaries, which are outside the installed runtime surface. These are CI evidence rather than release
-assets, and Athena never bundles those third-party packages. [Issue #74](https://github.com/HomericIntelligence/Athena/issues/74)
-tracks restoring a broader source inventory when the upstream runtime remediates those excluded
-inputs.
+- `athena-plugin-<version>.spdx.json` describes each regular file in the portable archive. It also
+  describes these dependencies:
+
+  - the required `python` and `git` commands and the GitHub CLI (`gh`); and
+  - the dynamically resolved Mnemosyne and Hephaestus repositories.
+
+- `athena-build-linux-64-<version>.spdx.json` describes these build inputs:
+
+  - the locked packages installed in the authoritative `ubuntu-24.04` and `linux-64` build
+    environment;
+  - uv; and
+  - the immutable GitHub Actions that the package job uses.
+
+The locked coding-agent runtime comes from the official released
+`@earendil-works/pi-coding-agent` npm artifact. An integrity hash in
+`ci/pi-runtime/package-lock.json` pins the artifact. Athena scans its shipped
+`npm-shrinkwrap.json`.
+
+[Issue #63](https://github.com/HomericIntelligence/Athena/issues/63) retired the temporary
+source-commit build pin. The locked runtime replaces that pin. The package job first validates the
+coding-harness package. It then scans both dependency contracts. The job retains the native
+inventories for Grype.
+
+The job does not scan example lockfiles or build-time compiler binaries. These items are not in the
+installed runtime surface. The native inventories are continuous integration (CI) evidence and not
+release assets. Athena never includes those third-party packages in its archive.
+[Issue #74](https://github.com/HomericIntelligence/Athena/issues/74) tracks restoration of a broader
+source inventory. This restoration can occur when the upstream runtime corrects the excluded inputs.
 
 Host capabilities, the runner operating system, and commands used only in examples are outside the
-dependency scope. Athena remains a plugin distribution and does not add a Python package or runtime
+dependency scope. Athena remains a plugin distribution. It does not add a Python package or runtime
 dependency for SBOM generation.
 
-The package job generates both documents with the locked Syft version, replaces volatile timestamps
-and namespaces with commit- and content-derived values, sorts the SPDX content, verifies complete
-archive-file coverage, and emits SHA-256 checksum files. Native Syft JSON is retained only as an
-internal CI artifact because it preserves the package metadata Grype needs; it is not a release
-asset. The build SPDX preserves Syft's package-to-file evidence and unambiguous dependency
-relationships. When multiple installed packages share a name, Athena omits Syft's nondeterministic
-dependency guess for that name instead of publishing an arbitrary version relationship; every
-installed package remains represented as a build-environment dependency.
+The package job uses the locked Syft version to generate both documents. It then does these actions:
+
+- It replaces volatile timestamps and namespaces with values derived from the commit and content.
+- It sorts the SPDX content.
+- It verifies complete coverage of archive files.
+- It emits SHA-256 checksum files.
+
+The job retains native Syft JavaScript Object Notation (JSON) only as an internal CI artifact. This
+format keeps the package metadata that Grype requires. It is not a release asset. The build SPDX
+keeps the Syft evidence that links packages to files. It also keeps unambiguous dependency
+relationships.
+
+Multiple installed packages can have the same name. In this condition, Athena omits the
+nondeterministic Syft dependency guess for that name. It does not publish an arbitrary version
+relationship. Each installed package remains a build-environment dependency.
 
 ## Vulnerability policy
 
-The required `security/dependency-scan` job scans both native inventories—the Linux build environment
-and the isolated coding-harness runtime—with the locked Grype version. Scanner, database, configuration, or
-report failures block the gate. The database must pass its hash check, be no more than 120 hours old,
-and complete an update check.
+The required `security/dependency-scan` job scans both native inventories:
 
-Fixable Critical and High findings block the gate. Unfixed Critical and High findings and all lower
-severities remain visible in the retained full JSON report but are non-blocking. Vulnerability
-matching relies on cross-ecosystem identifiers and can be incomplete; the scheduled weekly run
-keeps the same policy visible between repository changes.
+- the Linux build environment; and
+- the isolated coding-harness runtime.
 
-Exceptions in `security/vulnerability-exceptions.yaml` must identify one vulnerability, package,
-installed version, and severity, plus a reason, owner, open Athena GitHub issue, approval date, and
-expiry date. The scan verifies the linked issue through GitHub and fails closed when it is missing,
-inaccessible, closed, or outside Athena. Critical exceptions may last at most 7 days from approval
-and High exceptions at most 30 days from approval. Broad, malformed, expired, future-approved, or
-version-mismatched exceptions fail closed. Extending an exception requires a new recorded approval
-rather than moving its expiry relative to the current scan date.
+It uses the locked Grype version. A scanner, database, configuration, or report failure blocks the
+gate. The database must meet these requirements:
 
-Run `just sbom` on Linux after `uv sync --locked` and installing the CI-pinned Syft binary on
-`PATH`; the generator fails on other hosts rather than mislabeling their environment as the
-authoritative `linux-64` build. Run `just sca` after installing the CI-pinned Grype binary on
-`PATH` to scan the resulting internal inventory with the current vulnerability database. The
-latter is an explicit network-backed security operation and is therefore not part of `just all`.
+- Its hash check passes.
+- It is not more than 120 hours old.
+- It completes an update check.
+
+Fixable Critical and High findings block the gate. Unfixed Critical and High findings remain in the
+retained full JSON report. All lower-severity findings also remain in that report. These findings do
+not block the gate.
+
+Vulnerability matching uses identifiers from different ecosystems. Thus, the matches can be
+incomplete. The scheduled weekly run keeps the same policy visible between repository changes.
+
+Each entry in `security/vulnerability-exceptions.yaml` must identify these values:
+
+- one vulnerability;
+- one package;
+- one installed version;
+- one severity;
+- a reason;
+- an owner;
+- an open Athena GitHub issue;
+- an approval date; and
+- an expiry date.
+
+The scan verifies the linked issue through GitHub. It fails closed if the issue is missing,
+inaccessible, closed, or outside Athena. A Critical exception can last for a maximum of 7 days from
+approval. A High exception can last for a maximum of 30 days from approval.
+
+The scan fails closed for these exception conditions:
+
+- broad scope;
+- malformed content;
+- an expired date;
+- a future approval date; or
+- an installed version that does not agree with the exception.
+
+To extend an exception, get a new recorded approval. Do not move its expiry relative to the current
+scan date.
+
+To run `just sbom`, use these steps:
+
+1. Use Linux.
+2. Run `uv sync --locked`.
+3. Install the CI-pinned Syft binary on `PATH`.
+4. Run `just sbom`.
+
+On other hosts, the generator stops. Thus, it does not incorrectly label another environment as the
+authoritative `linux-64` build.
+
+To run software composition analysis (SCA) with `just sca`, use these steps:
+
+1. Install the CI-pinned Grype binary on `PATH`.
+2. Make sure that the vulnerability database is current.
+3. Run `just sca` to scan the resultant internal inventory.
+
+The `just sca` command is an explicit network-backed security operation. Thus, it is not part of
+`just all`.

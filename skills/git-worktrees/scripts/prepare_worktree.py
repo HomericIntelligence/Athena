@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Select, validate, and optionally create an isolated Git worktree."""
+"""Prepare an isolated Git worktree."""
 
 from __future__ import annotations
 
@@ -22,23 +22,27 @@ def git(
         ["git", *arguments], cwd=cwd, capture_output=True, text=True, check=False
     )
     if check and result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or f"git {' '.join(arguments)} failed")
+        raise RuntimeError(
+            result.stderr.strip() or f"The git {' '.join(arguments)} command failed."
+        )
     return result
 
 
 def reject_symlinks_below(trust_root: Path, target: Path) -> None:
-    """Reject symlinks in the caller-controlled path below a trusted root."""
+    """Reject symbolic links in a caller-controlled path below a trusted root."""
     lexical_root = trust_root.absolute()
     lexical_target = target.absolute()
     try:
         lexical_target.relative_to(lexical_root)
     except ValueError as error:
         raise RuntimeError(
-            f"worktree path escapes trusted root {lexical_root}"
+            f"The worktree path is outside the trusted root: '{lexical_root}'."
         ) from error
     for component in (*reversed(lexical_target.parents), lexical_target):
         if component.is_symlink():
-            raise RuntimeError(f"worktree path component is a symlink: {component}")
+            raise RuntimeError(
+                f"A component of the worktree path is a symbolic link: '{component}'."
+            )
 
 
 def select_path(
@@ -66,7 +70,8 @@ def select_path(
         if directory.is_dir():
             if directory.is_symlink():
                 raise RuntimeError(
-                    f"project-local worktree directory is a symlink: {directory}"
+                    "The project-local worktree directory is a symbolic link: "
+                    f"'{directory}'."
                 )
             return (directory / branch).resolve(), True
     project = root.name
@@ -82,7 +87,8 @@ def verify_ignored(root: Path, path: Path) -> None:
     result = git(root, "check-ignore", "-q", "--", str(probe), check=False)
     if result.returncode != 0:
         raise RuntimeError(
-            f"project-local worktree directory {relative.parent} is not ignored"
+            "Git did not confirm that it ignores the project-local worktree directory: "
+            f"'{relative.parent}'."
         )
 
 
@@ -102,9 +108,9 @@ def main() -> int:
             root, "check-ref-format", "--branch", arguments.branch, check=False
         )
         if branch_check.returncode != 0:
-            raise RuntimeError(f"invalid branch name: {arguments.branch}")
+            raise RuntimeError(f"The branch name is not valid: '{arguments.branch}'.")
         if (arguments.path is None) != (arguments.path_root is None):
-            raise RuntimeError("--path and --path-root must be provided together")
+            raise RuntimeError("Specify '--path' and '--path-root' together.")
         path, project_local = select_path(
             root,
             arguments.branch,
@@ -121,7 +127,7 @@ def main() -> int:
         if project_local:
             verify_ignored(root, path)
         if path.exists():
-            raise RuntimeError(f"worktree path already exists: {path}")
+            raise RuntimeError(f"The worktree path already exists: '{path}'.")
         if not arguments.dry_run:
             git(
                 root,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compute the two required pull-request diff lenses."""
+"""Calculate the two Git ranges for a pull-request review."""
 
 from __future__ import annotations
 
@@ -32,7 +32,9 @@ def git(*arguments: str) -> str:
         check=False,
     )
     if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or f"git {' '.join(arguments)} failed")
+        raise RuntimeError(
+            result.stderr.strip() or f"The git {' '.join(arguments)} command failed."
+        )
     return result.stdout.strip()
 
 
@@ -42,8 +44,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("head_ref", metavar="HEAD_OID")
     arguments = parser.parse_args(argv)
     try:
-        base_ref = require_commit_oid(arguments.base_ref, "base OID")
-        head_ref = require_commit_oid(arguments.head_ref, "head OID")
+        base_ref = require_commit_oid(arguments.base_ref, "base object identifier")
+        head_ref = require_commit_oid(arguments.head_ref, "head object identifier")
         require_complete_git_history()
         git("rev-parse", "--verify", f"{base_ref}^{{commit}}")
         git("rev-parse", "--verify", f"{head_ref}^{{commit}}")

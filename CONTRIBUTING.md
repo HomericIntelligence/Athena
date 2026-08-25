@@ -1,14 +1,19 @@
 # Contributing to Athena
 
-Athena is a plugin-only distribution. Contributions change canonical skills, host manifests,
-documentation, policies, validation scripts, or release automation—not a Python package.
+Athena is a plugin-only distribution. Contributions can change canonical skills, host manifests,
+documentation, policies, validation scripts, or release automation. They do not change a Python
+package.
 
-Read [`AGENTS.md`](AGENTS.md) and the local [`development policy`](docs/policies/development.md)
-before changing the repository.
+Before you change the repository:
+
+1. Read [`AGENTS.md`](AGENTS.md).
+2. Read the [`development policy`](docs/policies/development.md).
+3. Follow the [ASD-STE100 technical-English policy](skills/TECHNICAL_ENGLISH.md) for English technical
+   prose.
 
 ## Environment setup
 
-Prerequisites are Git, uv, Just, and Python 3.13 for repository validation only.
+Install Git, uv, Just, and Python 3.13. Athena uses these tools only for repository validation.
 
 ```bash
 git clone https://github.com/HomericIntelligence/Athena
@@ -17,31 +22,43 @@ just bootstrap
 just all
 ```
 
-`just all` validates skills and manifests, runs executable unit tests, enforces at least 80% branch
-coverage for every repository and skill-local executable script, runs Ruff and strict mypy over the
-same tooling, lints public documentation and workflows, and builds a deterministic plugin archive
-with a SHA-256 checksum. It never builds Python distribution artifacts.
+`just all` does these checks:
+
+- It validates skills and manifests.
+- It runs executable unit tests.
+- It requires at least 80% branch coverage for each executable repository script and skill-local
+  script.
+- It runs Ruff and strict mypy on the same tools.
+- It lints public documents and workflows.
+- It builds a deterministic plugin archive with a SHA-256 checksum.
+
+It does not build Python distribution artifacts.
 
 ## Add or change a skill
 
 1. File or identify a tracking issue with example invocations and an output contract.
 2. Create a short-lived branch from `main`.
-3. Edit `skills/<name>/SKILL.md`; do not create host-specific copies or marketplace entries.
-4. Put target-repository-specific examples in `references/`, keeping the executable workflow
-   portable.
-5. Apply the [`AGENTS.md` principle-routing rule](AGENTS.md#authoring-a-skill) against the canonical
+3. Edit `skills/<name>/SKILL.md`.
+4. Do not create host-specific copies or marketplace entries.
+5. Put target-repository-specific examples in `references/`.
+6. Keep the executable workflow portable.
+7. Apply the [`AGENTS.md` principle-routing rule](AGENTS.md#authoring-a-skill) against the canonical
    [`engineering principles catalog`](docs/principles/README.md).
-6. Run `just all`.
-7. Commit with a signed, DCO-attested Conventional Commit.
-8. Open a PR. Include `Closes #N` on its own line when a tracking issue exists.
+8. Apply the [ASD-STE100 technical-English policy](skills/TECHNICAL_ENGLISH.md) to all English
+   technical prose.
+9. Run `just all`.
+10. Commit with a signed Conventional Commit that includes a Developer Certificate of Origin (DCO)
+   attestation.
+11. Open a pull request.
+12. If a tracking issue exists, include `Closes #N` on its own line.
 
 Do not enable auto-merge or merge without explicit maintainer authority.
 
 ## Required dependency changes
 
-Mnemosyne and Hephaestus are Athena's only hard repository dependencies. Changes to their owner
-resolution, fork verification, checkout paths, or failure behavior modify a trust boundary and
-require focused maintainer review and validator coverage.
+Mnemosyne and Hephaestus are Athena's only required repositories. A change to owner resolution,
+fork verification, checkout paths, or failure behavior changes a trust boundary. This change
+requires focused maintainer review and validator coverage.
 
 ## Release process
 
@@ -51,6 +68,12 @@ Python wheel or source distribution is produced.
 
 ## Rejection criteria
 
-Pull requests are rejected when they introduce duplicated skill trees, optionalize the knowledge
-backend, silently fall back from an invalid dependency override, fabricate evidence, bypass checks,
-weaken permissions, or reintroduce a Python distribution.
+Athena rejects a pull request that does one or more of these actions:
+
+- It introduces a duplicate skill tree.
+- It makes the knowledge backend optional.
+- It silently uses a fallback after an invalid dependency override.
+- It fabricates evidence.
+- It bypasses checks.
+- It weakens permissions.
+- It adds a Python distribution again.

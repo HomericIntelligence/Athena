@@ -1,14 +1,14 @@
-# Default ownership routing; the baseline ruleset does not require approvals.
+# Route default ownership to @mvillmow. The baseline ruleset does not require approvals.
 * @mvillmow
 
-# Plugin distribution surfaces.
+# Assign the plugin-distribution files.
 /skills/ @mvillmow
 /.claude-plugin/ @mvillmow
 /.codex-plugin/ @mvillmow
 /.agents/plugins/ @mvillmow
 /assets/ @mvillmow
 
-# Policy, validation, and CI/CD.
+# Assign the policy, validation, continuous integration, and delivery files.
 /.github/ @mvillmow
 /docs/ @mvillmow
 /scripts/ @mvillmow

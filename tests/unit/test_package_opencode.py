@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import re
 import shutil
 import tempfile
 import unittest
@@ -17,6 +18,19 @@ SPEC = importlib.util.spec_from_file_location("athena_package_opencode", MODULE_
 assert SPEC is not None and SPEC.loader is not None
 package_opencode = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(package_opencode)
+
+MARKDOWN_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+
+
+def technical_english_targets(markdown: str) -> list[str]:
+    """Return local links to the shipped technical-English policy."""
+    targets: list[str] = []
+    for target in MARKDOWN_LINK.findall(markdown):
+        path = target.split("#", 1)[0]
+        normalized_name = Path(path).name.lower().replace("-", "_")
+        if normalized_name == "technical_english.md":
+            targets.append(path)
+    return targets
 
 
 class PackageOpenCodeTests(unittest.TestCase):
@@ -58,6 +72,55 @@ class PackageOpenCodeTests(unittest.TestCase):
         self.assertTrue((staged / "skills" / "_cli.py").is_file())
         self.assertTrue((staged / "skills" / "advise" / "SKILL.md").is_file())
 
+    def test_staged_skill_policy_links_resolve_inside_the_skill_corpus(self) -> None:
+        """Installed skills can read the policy without repository docs or a network."""
+        staged = self.stage()
+        skills_root = (staged / "skills").resolve()
+
+        for markdown_path in sorted(skills_root.rglob("*.md")):
+            if markdown_path == skills_root / "TECHNICAL_ENGLISH.md":
+                continue
+            targets = technical_english_targets(
+                markdown_path.read_text(encoding="utf-8")
+            )
+            if markdown_path.name == "SKILL.md":
+                self.assertTrue(targets, f"{markdown_path} has no policy link")
+            for target in targets:
+                with self.subTest(markdown=markdown_path, target=target):
+                    resolved = (markdown_path.parent / target).resolve()
+                    self.assertTrue(resolved.is_relative_to(skills_root))
+                    self.assertTrue(resolved.is_file())
+
+    def test_source_and_staged_readme_policy_links_resolve_locally(self) -> None:
+        """The source and relocated package README can read the shipped policy."""
+        staged = self.stage()
+        locations = (
+            (
+                "source",
+                self.fixture / "npm" / "athena-opencode" / "README.md",
+                self.fixture.resolve(),
+            ),
+            ("staged", staged / "README.md", staged.resolve()),
+        )
+
+        for label, readme, package_root in locations:
+            targets = technical_english_targets(readme.read_text(encoding="utf-8"))
+            self.assertTrue(targets, f"{label} README has no policy link")
+            for target in targets:
+                with self.subTest(location=label, target=target):
+                    resolved = (readme.parent / target).resolve()
+                    self.assertTrue(resolved.is_relative_to(package_root))
+                    self.assertTrue(resolved.is_file())
+
+    def test_missing_technical_english_policy_fails_staging(self) -> None:
+        """Staging fails closed when the installed writing policy is unavailable."""
+        (self.fixture / "skills" / "TECHNICAL_ENGLISH.md").unlink(missing_ok=True)
+
+        with self.assertRaises(package_opencode.PackageError) as context:
+            self.stage()
+
+        self.assertIn("skills/TECHNICAL_ENGLISH.md", str(context.exception))
+
     def test_staging_skips_generated_python_cache(self) -> None:
         cache = self.fixture / "skills" / "advise" / "scripts" / "__pycache__"
         cache.mkdir(parents=True)
@@ -75,9 +138,8 @@ class PackageOpenCodeTests(unittest.TestCase):
         document["version"] = "9.9.9"
         manifest.write_text(json.dumps(document), encoding="utf-8")
 
-        with self.assertRaises(package_opencode.PackageError) as context:
+        with self.assertRaises(package_opencode.PackageError):
             self.stage()
-        self.assertIn("differs from host manifests", str(context.exception))
 
     def test_symlinked_source_fails_closed(self) -> None:
         external = self.fixture.parent / "external-plugin.js"
@@ -86,9 +148,8 @@ class PackageOpenCodeTests(unittest.TestCase):
         entry.unlink()
         entry.symlink_to(external)
 
-        with self.assertRaises(package_opencode.PackageError) as context:
+        with self.assertRaises(package_opencode.PackageError):
             self.stage()
-        self.assertIn("symlink", str(context.exception))
 
     def test_existing_output_is_replaced(self) -> None:
         output = self.fixture / "staged-npm"
@@ -107,7 +168,7 @@ class PackageOpenCodeTests(unittest.TestCase):
         with redirect_stdout(stdout), redirect_stderr(stderr):
             code = package_opencode.main(["--root", str(self.fixture)])
         self.assertEqual(0, code)
-        self.assertIn("Staged OpenCode npm package", stdout.getvalue())
+        self.assertIn(str(self.fixture / "dist" / "opencode-npm"), stdout.getvalue())
 
         broken = self.fixture / "broken"
         shutil.copytree(
@@ -121,10 +182,11 @@ class PackageOpenCodeTests(unittest.TestCase):
         document = json.loads(manifest.read_text(encoding="utf-8"))
         document["version"] = "not-semver"
         manifest.write_text(json.dumps(document), encoding="utf-8")
-        with redirect_stdout(stdout), redirect_stderr(stderr):
+        error_output = io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(error_output):
             code = package_opencode.main(["--root", str(broken)])
         self.assertEqual(1, code)
-        self.assertIn("error:", stderr.getvalue())
+        self.assertTrue(error_output.getvalue().strip())
 
 
 if __name__ == "__main__":

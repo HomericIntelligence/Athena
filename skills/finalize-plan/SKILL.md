@@ -1,15 +1,18 @@
 ---
 name: finalize-plan
 license: BSD-3-Clause
-description: Materialize one exact, actor-owned, GO-reviewed issue-planning epoch into its implementation-facing issue body. Use after plan-issue and issue-review approve a plan; `--draft` is read-only and every missing, foreign, stale, ambiguous, or unverifiable input fails closed.
+description: Create an issue body after `plan-issue` and `issue-review` approve one exact actor-owned epoch with `GO`. `--draft` is read-only. Stop if an input is missing, foreign, stale, ambiguous, or not verifiable.
 argument-hint: "[--draft] ISSUE_NUMBER_OR_URL"
 allowed-tools: [Read, Bash, Grep, Glob]
 ---
 
 # Finalize an approved issue plan
 
-Why: an approved plan should be the readable implementation entry point without
-turning review history, suggestions, or a generated body into new requirements.
+Purpose: Make the approved plan the implementation entry point. Do not convert review history,
+suggestions, or generated text into requirements.
+
+Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to all
+prose that it produces.
 
 Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 [review contract](../../docs/review/common.md),
@@ -40,139 +43,193 @@ finalization decisions:
 
 ## Scope and delivery
 
-`--draft` is read-only. Without it, after the immediate authority and target revalidation required by
-[P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061), this skill
-may replace the resolved issue
-body once and, only after exact body readback, delete the two sealed,
-actor-owned plan and review comments. It must not update the title, labels,
-assignment, milestone, project fields, state, branches, pull requests, or
-repository files. The finalized body retains the required provenance after
-those intermediate comments are removed.
+`--draft` is read-only. If you do not use `--draft`, first revalidate the authority and target under
+[P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061). This skill
+can then replace the resolved issue body one time. Only after an exact body readback, it can delete
+the two sealed, actor-owned plan and review comments. Do not update these items:
 
-Use the forge's native issue-body mechanism. If the host cannot authenticate the
-actor, enumerate and delete exact comments, read the issue body, compare
-identities, or make and read back one exact body update, return a
-ready-to-publish draft and identify the capability gap. Never create, adopt,
-edit, or replace plan or review comments to make finalization possible.
+- title;
+- labels;
+- assignment;
+- milestone;
+- project fields;
+- state;
+- branches;
+- pull requests; or
+- repository files.
+
+After the skill removes the intermediate comments, the finalized body must retain the required
+provenance.
+
+Use the forge's native issue-body mechanism. The host must have these capabilities:
+
+- authenticate the actor;
+- enumerate exact comments;
+- delete exact comments;
+- read the issue body;
+- compare identities;
+- make one exact body update; and
+- read back that body update.
+
+If one capability is not available, return a ready-to-publish draft. Identify the capability gap.
+Do not create plan or review comments to make finalization possible. Do not adopt plan or review
+comments for this purpose. Do not edit plan or review comments for this purpose. Do not replace plan
+or review comments for this purpose.
 
 ## Finalized planning epoch
 
-An epoch has these sealed source identities:
+A planning epoch is one set of these sealed source identities:
 
-- `R`: the canonical digest of the original issue requirements: exact issue ID,
-  title, body, and acceptance criteria before finalization;
-- `P`: one actor-owned `<!-- athena:plan-issue -->` comment ID and canonical
-  plan-content digest; and
-- `V`: one actor-owned `<!-- athena:issue-review -->` comment ID and
-  review-content digest.
+- `R` is the canonical digest of the original issue requirements. It contains the exact issue ID,
+  title, body, and acceptance criteria before finalization.
+- `P` identifies one actor-owned `<!-- athena:plan-issue -->` comment ID and its canonical plan-content
+  digest.
+- `V` identifies one actor-owned `<!-- athena:issue-review -->` comment ID and its review-content
+  digest.
 
-The review must embed and exactly match the same issue, `R`, plan-comment ID,
-and `P`. It must have an exact `GO` disposition with no unresolved `critical`,
-`major`, or other `required` finding. A conditional, partial, malformed, stale,
-foreign, duplicated, absent, or unverifiable artifact is not authorization.
+The review must contain the same issue, `R`, plan-comment ID, and `P`. These values must match
+exactly. The review must have the exact `GO` disposition. It must not have an unresolved `critical`,
+`major`, or other `required` finding. Do not write if an artifact is conditional, partial,
+malformed, stale, foreign, duplicated, absent, or not verifiable.
 
-The rendered body records exactly one marker:
-`<!-- athena:finalize-plan R=<R> P=<P> V=<V> F=<F> -->`. Define `F` by hashing
-the final body after replacing that marker's `F` value with the literal
-`<F>` placeholder; do not hash a marker containing its own digest. The marker
-lets a host distinguish sealed source identities from the generated body and
-verify later readback without recursion.
+Record exactly one marker in the rendered body:
+`<!-- athena:finalize-plan R=<R> P=<P> V=<V> F=<F> -->`. Before you calculate `F`, use the literal
+`<F>` placeholder as the marker's `F` value. Calculate `F` from the final body. Do not calculate a
+digest from a marker that contains its own digest. The marker identifies the sealed source
+identities separately from the generated body. It also permits later readback verification without
+recursion.
 
 ## Finalize
 
-1. Resolve one exact issue, including node or URL, title, body, state, and
-   authenticated actor. Enumerate every current comment before interpreting a
-   marker.
-2. Resolve exactly one actor-owned plan marker and one actor-owned review marker.
-   Compute `R`, `P`, and `V`, then verify the review's embedded bindings and
-   clean GO result. Any ownership, multiplicity, binding, disposition, or
-   required-finding failure returns no write.
-3. Build a compact, lossless synthesis. Apply
-   [P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001) only
-   within the sealed content: simplify presentation without dropping requirements or reinterpreting
-   the approved architecture. Lead with **Why** (the preserved
-   original problem, outcome, and non-negotiable requirements), then include a
-   compact system-shape diagram only when it makes at least three relationships,
-   boundaries, or state transitions materially clearer. Follow with architecture
-   breakdown, implementation plan, operations, and provenance.
-4. Preserve every acceptance criterion, implementation boundary, validation,
-   migration or cutover step, rollback condition, dependency, residual risk, and
-   out-of-scope decision. Record review suggestions as optional residual context
-   unless the reviewed canonical plan already adopted them. Do not invent files,
-   commands, requirements, architecture, implementation results, or validation
-   evidence; do not copy historical revision transcripts or duplicate the plan
-   and review verbatim when a smaller lossless synthesis suffices.
-5. Add the finalized marker and compute `F` over its non-self-referential
-   canonical representation. In `--draft`, return the complete body, `R/P/V/F`,
-   source links, and all withheld-write reasons without invoking a forge write.
-6. Immediately before publication, revalidate authority under
-   [P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061), then
-   resolve the issue, actor, every comment and
-   marker, `R/P/V`, review disposition, and target body again. If any input
-   drifted, return the ready-to-publish body as stale; do not write.
-7. Publish exactly one issue-body replacement under
-   [P044 Atomicity Where Possible](../../docs/principles/README.md#p044). Read the issue back
-   immediately and verify the exact body, marker, `R/P/V`, and `F` under
-   [P065 Verify Before Claiming Completion](../../docs/principles/README.md#p065). A timeout,
-   indeterminate
-   response, or mismatched readback is an unknown outcome: do not retry or make
-   another mutation.
-8. Under [P083 Irreversible Actions Last](../../docs/principles/README.md#p083), only after successful
-   body readback, re-read each sealed comment by its exact ID,
-   actor, marker, and digest, then delete the plan comment and review comment.
-   Delete no foreign, replacement, or drifted comment. A failed, timed-out, or
-   indeterminate deletion is a partial-cleanup unknown outcome: do not retry,
-   compensate, or remove the finalized body; report the surviving identities.
+1. Resolve one exact issue with its node or URL, title, body, state, and authenticated actor.
+2. Before you interpret a marker, enumerate each current comment.
+3. Resolve exactly one actor-owned plan marker.
+4. Resolve exactly one actor-owned review marker.
+5. Calculate `R/P/V`.
+6. Verify the review bindings and the clean `GO` result.
+7. If ownership, multiplicity, binding, disposition, or required-finding verification fails, do not
+   write.
+8. Build a compact and lossless final body.
+9. Apply [P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001) only to the
+   sealed content.
+10. Make the presentation simple.
+11. Do not remove a requirement.
+12. Do not change the meaning of the approved architecture.
+13. Start the final body with **Why**.
+14. Preserve the original problem, outcome, and requirements that cannot change.
+15. If a system diagram makes at least three relationships, boundaries, or state transitions
+    clearer, include it.
+16. Include the architecture description, implementation plan, operations, and provenance.
+17. Preserve all items in this list:
 
-When the finalized material contains architecture, test, error, or security decisions, preserve the
-already-reviewed applications of [P015 Architecture Conformance](../../docs/principles/README.md#p015),
-[P022 Test Behavior, Not Implementation](../../docs/principles/README.md#p022),
-[P029 Generalize Error Policy; Preserve Specific Cause](../../docs/principles/README.md#p029), and
-[P048 Secure by Design](../../docs/principles/README.md#p048); finalization does not reopen those
-decisions or invent new ones.
+   - acceptance criteria;
+   - implementation boundaries;
+   - validation;
+   - migration or cutover steps;
+   - rollback conditions;
+   - dependencies;
+   - residual risks; and
+   - out-of-scope decisions.
 
-## Re-finalization and restart
+18. Unless the reviewed canonical plan adopted a review suggestion, record the suggestion as optional
+    residual context.
+19. Do not invent files, commands, requirements, architecture, implementation results, or validation
+    evidence.
+20. If a smaller lossless result is sufficient, do not copy historical revision transcripts.
+21. If a smaller lossless result is sufficient, do not duplicate the plan and review verbatim.
+22. Add the finalized marker.
+23. Calculate `F` from its canonical representation that does not contain its own value.
+24. If the user selects `--draft`, return the complete body, `R`, `P`, `V`, `F`, and source links.
+25. For `--draft`, return all reasons for withheld writes.
+26. For `--draft`, do not make a forge write.
+27. Immediately before publication, apply
+    [P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061).
+28. For this check, resolve the issue, actor, each comment and marker, `R`, `P`, `V`, review
+    disposition, and target body again.
+29. If an input changed, return the ready-to-publish body with the `stale` status.
+30. After an input changes, do not write.
+31. Under [P044 Atomicity Where Possible](../../docs/principles/README.md#p044), publish exactly one
+    issue-body replacement.
+32. Immediately read the issue again.
+33. Under [P065 Verify Before Claiming Completion](../../docs/principles/README.md#p065), verify the
+    exact body, marker, `R`, `P`, `V`, and `F`.
+34. If a timeout, indeterminate response, or readback mismatch occurs, report `unknown-outcome`.
+35. After a timeout, indeterminate response, or readback mismatch, do not retry.
+36. After a timeout, indeterminate response, or readback mismatch, do not make another mutation.
+37. Only after a successful body readback, use
+    [P083 Irreversible Actions Last](../../docs/principles/README.md#p083) to read each sealed comment
+    again.
+38. Verify the exact ID, actor, marker, and digest of each sealed comment.
+39. Delete the plan comment only after its exact verification.
+40. Delete the review comment only after its exact verification.
+41. Do not delete a foreign, replacement, or changed comment.
+42. If deletion fails, times out, or has an indeterminate result, report `partial-cleanup`.
+43. State that an indeterminate deletion result is unknown.
+44. After a deletion failure, timeout, or indeterminate result, do not retry.
+45. After a deletion failure, timeout, or indeterminate result, do not compensate.
+46. After a deletion failure, timeout, or indeterminate result, do not remove the finalized body.
+47. After a deletion failure, timeout, or indeterminate result, report the identities of the comments
+    that remain.
 
-If the live body exactly verifies its finalized marker and both sealed comments
-are absent, re-running for that epoch returns a documented no-change result. A
-surviving sealed comment is partial cleanup, not authorization to retry a prior
-deletion. If the marker is absent, malformed, foreign, or its canonical `F` does
-not match, the epoch is not valid evidence. A later material human edit is a new
-requirements state and must pass a fresh `plan-issue` plus `issue-review` cycle
-before another finalization. Do not treat generated plan text or provenance
-fields as newly authored requirements.
+If the final material contains architecture, test, error, or security decisions, preserve the
+reviewed use of these principles:
+
+- [P015 Architecture Conformance](../../docs/principles/README.md#p015);
+- [P022 Test Behavior, Not Implementation](../../docs/principles/README.md#p022);
+- [P029 Generalize Error Policy; Preserve Specific Cause](../../docs/principles/README.md#p029); and
+- [P048 Secure by Design](../../docs/principles/README.md#p048).
+
+Finalization does not reopen these decisions. Do not make new decisions.
+
+## Finalize again or restart
+
+If the live body verifies its finalized marker exactly and both sealed comments are absent, a second
+run returns a documented `no-change` result. If a sealed comment remains, report
+`partial-cleanup`. Its presence does not authorize another deletion attempt. If the marker is absent,
+malformed, foreign, or has a canonical `F` mismatch, do not use the epoch as evidence. A later
+substantive edit by a person creates a new requirements state. Before another finalization, this new
+state must pass a new `plan-issue` and `issue-review` cycle. Do not treat generated plan text or
+provenance fields as new requirements from a person.
 
 ## Behavior-first verification
 
-Use controlled issue, comment, actor, and forge fixtures to demonstrate:
+Use controlled issue, comment, actor, and forge fixtures to demonstrate these behaviors:
 
-- one clean GO plan/review epoch preserves requirements and operational details;
-- `--draft` returns the body without a forge mutation;
-- publish performs one body update, verifies its exact readback, then deletes
-  only the two sealed actor-owned comments;
-- an unchanged sealed epoch is idempotent; and
-- every absent, foreign, duplicate, mismatched, stale, NO-GO, required-finding,
-  drift, unsupported-write, timeout, readback-mismatch, or deletion-uncertainty
-  case fails before an unsafe mutation or retry.
+- A clean `GO` plan and review epoch preserves requirements and operational details.
+- `--draft` returns the body without a forge mutation.
+- Publication makes one body update. It verifies the exact readback. Then it deletes only the two
+  sealed actor-owned comments.
+- A sealed epoch that did not change is idempotent.
+- Each absent, foreign, duplicate, mismatched, stale, `NO-GO`, required-finding, drift,
+  unsupported-write, timeout, readback-mismatch, or deletion-uncertainty case stops before an unsafe
+  mutation or retry.
 
-Assert identities, ordering classes, preservation, mutation count and scope, and
-failure-before-write behavior. Do not freeze editorial wording, headings,
-paragraph counts, or an example issue body.
+Verify the identities and order classes. Verify content preservation and the number and scope of
+mutations. Verify that failures occur before a write. Do not make tests depend on editorial wording,
+headings, paragraph counts, or an example issue body.
 
 ## Failed approaches
 
-- Re-finalizing an epoch without a fresh request or a new requirements state.
-- Treating generated plan text or sealed provenance fields as newly authored, executable
-  requirements.
-- Bypassing behavior-first verification for wording checks, or inventing files, commands, or
+- Do not finalize an epoch again without a new request or a new requirements state.
+- Do not treat generated plan text or sealed provenance fields as new executable requirements from
+  a person.
+- Do not replace behavior-first verification with wording checks. Do not invent files, commands, or
   validation evidence during synthesis.
-- Retrying after a timeout, readback mismatch, or indeterminate deletion instead of reporting the
-  unknown outcome.
+- After a timeout or readback mismatch, do not retry. Report `unknown-outcome`.
+- After an indeterminate deletion, do not retry. Report `partial-cleanup`. State that the deletion
+  result is unknown.
 
 ## Result
 
-Return the issue and actor identities; `R/P/V/F`; GO decision and finding
-summary; requirement-preservation map; draft, no-change, published, stale,
-partial-cleanup, or unknown-outcome status; body-update receipt, readback
-evidence, deleted-comment receipts when present; and every unresolved capability
-or residual risk.
+Return these items:
+
+- issue and actor identities;
+- `R/P/V/F`;
+- the `GO` decision and finding summary;
+- the requirement-preservation map;
+- the exact `draft`, `no-change`, `published`, `stale`, `partial-cleanup`, or `unknown-outcome`
+  status;
+- the body-update receipt;
+- readback evidence;
+- deleted-comment receipts, if present; and
+- each unresolved capability or residual risk.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scan a Syft inventory with Grype and enforce Athena's vulnerability policy."""
+"""Scan a Syft inventory with Grype. Apply the Athena vulnerability policy."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def verify_open_exception_issues(exceptions: list[dict[str, str]]) -> None:
         match = ATHENA_ISSUE_URL.fullmatch(issue)
         if match is None:
             raise VulnerabilityPolicyError(
-                "exception issue must be an Athena GitHub issue URL"
+                "The exception issue must be an Athena GitHub issue URL."
             )
         issue_number = issue.rsplit("/", maxsplit=1)[-1]
         try:
@@ -46,26 +46,35 @@ def verify_open_exception_issues(exceptions: list[dict[str, str]]) -> None:
                 text=True,
             )
         except FileNotFoundError as error:
-            raise OSError("required command unavailable: gh") from error
+            raise OSError("The required gh command is not available.") from error
         if result.returncode != 0:
             detail = result.stderr.strip() or f"exit status {result.returncode}"
-            raise OSError(f"cannot verify exception issue {issue}: {detail}")
+            raise OSError(
+                f"The tool cannot verify exception issue '{issue}'. "
+                f"The command returned this diagnostic.\n{detail}"
+            )
         try:
             issue_document = json.loads(result.stdout)
         except json.JSONDecodeError as error:
             raise OSError(
-                f"cannot verify exception issue {issue}: GitHub returned malformed issue JSON"
+                f"The tool cannot verify exception issue '{issue}'. "
+                "GitHub returned issue data that is not valid JSON."
             ) from error
         if not isinstance(issue_document, dict):
             raise OSError(
-                f"cannot verify exception issue {issue}: GitHub returned invalid issue JSON"
+                f"The tool cannot verify exception issue '{issue}'. "
+                "GitHub returned issue JSON that is not an object."
             )
         if "pull_request" in issue_document:
-            raise OSError(f"exception issue {issue} is not an issue")
+            raise OSError(
+                f"The exception URL identifies a pull request, not an issue: '{issue}'."
+            )
         state = issue_document.get("state")
         if state != "open":
             description = state if isinstance(state, str) else "unknown"
-            raise OSError(f"exception issue {issue} is not open: {description}")
+            raise OSError(
+                f"The exception issue '{issue}' is not open. Its state is '{description}'."
+            )
 
 
 def scan(
@@ -92,7 +101,7 @@ def scan(
         check=False,
     )
     if result.returncode != 0:
-        raise OSError(f"Grype failed with exit status {result.returncode}")
+        raise OSError(f"Grype failed with exit status '{result.returncode}'.")
     exceptions = load_exceptions(exceptions_path, today=datetime.now(UTC).date())
     verify_open_exception_issues(exceptions)
     return evaluate_report(load_report(report_path), exceptions)
@@ -127,7 +136,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if blocking:
         print("\n".join(blocking), file=sys.stderr)
         return 1
-    print(f"Vulnerability policy passed; full report: {arguments.report}")
+    print(
+        f"The vulnerability policy passed. The full report is at '{arguments.report}'."
+    )
     return 0
 
 
