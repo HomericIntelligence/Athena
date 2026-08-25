@@ -38,16 +38,19 @@ It does not build Python distribution artifacts.
 
 1. File or identify a tracking issue with example invocations and an output contract.
 2. Create a short-lived branch from `main`.
-3. Edit `skills/<name>/SKILL.md`. Do not create host-specific copies or marketplace entries.
-4. Put target-repository-specific examples in `references/`. Keep the executable workflow portable.
-5. Apply the [`AGENTS.md` principle-routing rule](AGENTS.md#authoring-a-skill) against the canonical
+3. Edit `skills/<name>/SKILL.md`.
+4. Do not create host-specific copies or marketplace entries.
+5. Put target-repository-specific examples in `references/`.
+6. Keep the executable workflow portable.
+7. Apply the [`AGENTS.md` principle-routing rule](AGENTS.md#authoring-a-skill) against the canonical
    [`engineering principles catalog`](docs/principles/README.md).
-6. Apply the [ASD-STE100 technical-English policy](skills/TECHNICAL_ENGLISH.md) to all English
+8. Apply the [ASD-STE100 technical-English policy](skills/TECHNICAL_ENGLISH.md) to all English
    technical prose.
-7. Run `just all`.
-8. Commit with a signed Conventional Commit that includes a Developer Certificate of Origin (DCO)
+9. Run `just all`.
+10. Commit with a signed Conventional Commit that includes a Developer Certificate of Origin (DCO)
    attestation.
-9. Open a pull request. If a tracking issue exists, include `Closes #N` on its own line.
+11. Open a pull request.
+12. If a tracking issue exists, include `Closes #N` on its own line.
 
 Do not enable auto-merge or merge without explicit maintainer authority.
 

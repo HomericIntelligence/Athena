@@ -116,25 +116,26 @@ create that work without a request that includes it.
 
 1. Resolve exactly one open pull request or merge request.
 2. If the user supplies a number or URL, preserve it.
-3. If there is no target and branch discovery is empty or ambiguous, stop. Do not guess a target.
-4. Establish the immutable identity, scope, linked-requirement bindings, and changed-path bindings
+3. If there is no target and branch discovery is empty or ambiguous, stop.
+4. Do not guess a target.
+5. Establish the immutable identity, scope, linked-requirement bindings, and changed-path bindings
    that the selected profile requires.
-5. Treat a missing, stale, ambiguous, malformed, or mismatched binding as a coverage failure.
-6. Read repository guidance before you grade the implementation.
-7. Establish architecture alignment before you grade the implementation.
-8. Treat a material unexplained architecture violation as a required finding. It blocks a positive
+6. Treat a missing, stale, ambiguous, malformed, or mismatched binding as a coverage failure.
+7. Read repository guidance before you grade the implementation.
+8. Establish architecture alignment before you grade the implementation.
+9. Treat a material unexplained architecture violation as a required finding. It blocks a positive
    verdict for all check results and scores.
-9. Classify the changed surfaces.
-10. Select only the applicable language routes and review routes.
-11. Read each changed file in its full context.
-12. Record each excluded route as N/A and give its classifier reason.
-13. Review issue intent, behavior, tests, safety, source history, and applicable validation evidence.
-14. Use both immutable diff lenses.
-15. Before you calculate the score, complete each failed or sampled dimension.
-16. Calculate the score from earned evidence.
-17. Decide GO, CONDITIONAL GO, or NO-GO.
-18. Immediately before a requested write, bind the exact artifact and source again.
-19. Deliver the result only through the channel for the selected scope.
+10. Classify the changed surfaces.
+11. Select only the applicable language routes and review routes.
+12. Read each changed file in its full context.
+13. Record each excluded route as N/A and give its classifier reason.
+14. Review issue intent, behavior, tests, safety, source history, and applicable validation evidence.
+15. Use both immutable diff lenses.
+16. Before you calculate the score, complete each failed or sampled dimension.
+17. Calculate the score from earned evidence.
+18. Decide GO, CONDITIONAL GO, or NO-GO.
+19. Immediately before a requested write, bind the exact artifact and source again.
+20. Deliver the result only through the channel for the selected scope.
 
 If native subagents are available, use them for independent dimensions. If they are not available,
 run the dimensions sequentially. Give every dimension full coverage. If failed or sampled work can

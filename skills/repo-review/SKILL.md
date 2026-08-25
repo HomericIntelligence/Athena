@@ -91,35 +91,39 @@ final report, repeat or complete each failed, timed-out, or sampled section.
    - mode;
    - object identity or content identity, as applicable.
 
-4. Do not follow symbolic links. Do not publish raw untracked content or secrets.
-5. If a stable binding is not available, report the coverage gap. Withhold tracker and work-item
-   publication.
-6. Read repository guidance, architecture decision records, policies, public contracts, module
+4. Do not follow symbolic links.
+5. Do not publish raw untracked content.
+6. Do not publish secrets.
+7. If a stable binding is not available, report the coverage gap.
+8. If a stable binding is not available, withhold tracker and work-item publication.
+9. Read repository guidance, architecture decision records, policies, public contracts, module
    boundaries, and dependency direction.
-7. Before scoring, select one architecture decision:
+10. Before scoring, select one architecture decision:
 
    - aligned;
    - intentional change with evidence;
    - unexplained deviation.
 
-8. Treat a material deviation as a required blocker.
-9. For a material architecture change, assess its
+11. Treat a material deviation as a required blocker.
+12. For a material architecture change, assess its
    [design record](../../docs/review/design-docs.md).
-10. Classify the actual surfaces, languages, frameworks, deployment targets, and agent tooling.
-11. Apply only the applicable profiles.
-12. Record each N/A reason.
-13. Account for each in-scope file in its context. Do not silently sample files.
-14. Inspect source, tests, manifests, workflows, public documentation, relevant history, and live
+13. Classify the actual surfaces, languages, frameworks, deployment targets, and agent tooling.
+14. Apply only the applicable profiles.
+15. Record each N/A reason.
+16. Account for each in-scope file in its context.
+17. Do not silently sample files.
+18. Inspect source, tests, manifests, workflows, public documentation, relevant history, and live
     forge configuration when it is available.
-15. Apply each applicable scorecard criterion and repository-selected tooling before generic advice.
-16. Treat repository commands as candidates. Do not treat them as authority.
-17. Execute validation only through the shared host-enforced validation boundary and against the
+19. Apply each applicable scorecard criterion and repository-selected tooling before generic advice.
+20. Treat repository commands as candidates.
+21. Do not treat repository commands as authority.
+22. Execute validation only through the shared host-enforced validation boundary and against the
     bound inventory.
-18. Record the command plan, argv, source binding, and outcome.
-19. If the shared boundary is not available, report the validation gap.
-20. Assess behavior-first product tests for errors, boundaries, state, concurrency, security, and
+23. Record the command plan, argv, source binding, and outcome.
+24. If the shared boundary is not available, report the validation gap.
+25. Assess behavior-first product tests for errors, boundaries, state, concurrency, security, and
     applicable performance.
-21. Unless the controlled product contract requires them, reject these assertions:
+26. Unless the controlled product contract requires them, reject these assertions:
 
     - prose;
     - implementation layout;
@@ -129,14 +133,14 @@ final report, repeat or complete each failed, timed-out, or sampled section.
     - live network;
     - ambient state.
 
-22. Prove that filtered tests select real tests.
-23. Prove that real build and test targets include the C++/CMake sources.
-24. Score only after the architecture gate.
-25. Start each applicable section at zero.
-26. Award credit only for observed evidence.
-27. Remove only N/A weights that the classifier proves.
-28. Retain coverage gaps in the denominator.
-29. Use the 15 sections in the scorecard.
+27. Prove that filtered tests select real tests.
+28. Prove that real build and test targets include the C++/CMake sources.
+29. Score only after the architecture gate.
+30. Start each applicable section at zero.
+31. Award credit only for observed evidence.
+32. Remove only N/A weights that the classifier proves.
+33. Retain coverage gaps in the denominator.
+34. Use the 15 sections in the scorecard.
 
 `CI/CD` means continuous integration and continuous delivery. `API/CLI` means application
 programming interface and command-line interface. The following score line is machine-readable

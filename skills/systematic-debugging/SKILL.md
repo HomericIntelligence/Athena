@@ -90,9 +90,10 @@ Before you attempt a repair, complete these steps:
 2. Do not skip an error or warning. An error message can identify the cause.
 3. Reproduce the failure consistently.
 4. Record the exact conditions, steps, and frequency of the failure.
-5. If you cannot reproduce the failure, collect more data. Do not guess the cause.
-6. Compare the failed state with recent repository history.
-7. Inspect these possible sources of the failure:
+5. If you cannot reproduce the failure, collect more data.
+6. Do not guess the cause.
+7. Compare the failed state with recent repository history.
+8. Inspect these possible sources of the failure:
 
    - `git diff`;
    - recent commits;
@@ -100,32 +101,34 @@ Before you attempt a repair, complete these steps:
    - configuration changes;
    - environment differences.
 
-8. If the system has multiple components, isolate the failed boundary.
-9. Before you propose a repair, add only the minimum non-sensitive diagnostic instrumentation that
+9. If the system has multiple components, isolate the failed boundary.
+10. Before you propose a repair, add only the minimum non-sensitive diagnostic instrumentation that
    [P047 — Observability Is Part of Correctness](../../docs/principles/README.md#p047) requires.
-10. At each component boundary:
+11. At each component boundary:
 
     - log the input data;
     - log the output data;
     - verify the transfer of environment and configuration data;
     - examine the state at each layer.
 
-11. Run the instrumented reproduction one time to collect evidence.
-12. Use the evidence to identify the failed component.
-13. Investigate that component.
-14. If an incorrect value is deep in the call stack, trace the value back to its source.
-15. Identify where the incorrect value starts and which caller supplied it.
-16. Continue the trace until you find the source.
-17. Repair the source. Do not repair only the symptom.
+12. Run the instrumented reproduction one time to collect evidence.
+13. Use the evidence to identify the failed component.
+14. Investigate that component.
+15. If an incorrect value is deep in the call stack, trace the value back to its source.
+16. Identify where the incorrect value starts and which caller supplied it.
+17. Continue the trace until you find the source.
+18. Repair the source.
+19. Do not repair only the symptom.
 
 ### Phase 2: Pattern analysis
 
 Identify the pattern before you make a repair:
 
 1. Find correct examples of similar code in the same repository.
-2. Read each applicable reference implementation completely. Do not read only a sample.
-3. List each difference between the correct code and the code that fails.
-4. Identify all dependencies and all configuration and environment assumptions.
+2. Read each applicable reference implementation completely.
+3. Do not read only a sample.
+4. List each difference between the correct code and the code that fails.
+5. Identify all dependencies and all configuration and environment assumptions.
 
 ### Phase 3: Hypothesis and test
 
@@ -136,11 +139,14 @@ Use this method to test a hypothesis:
 3. Change only one variable in each test.
 4. If the result supports the hypothesis, continue to phase 4.
 5. If the result does not support the hypothesis, state a new hypothesis.
-6. If you do not understand X, state `I do not understand X.` Do not claim that you understand it.
+6. If you do not understand X, state `I do not understand X.`
+7. Do not claim that you understand X.
 
 ### Phase 4: Implementation
 
-Repair the root cause. Do not repair only the symptom.
+Repair the root cause.
+
+Do not repair only the symptom.
 
 1. Use the `test-driven-development` skill to create a regression test.
 2. Under [P026 — Regression Before Repair](../../docs/principles/README.md#p026), create the test
@@ -167,12 +173,15 @@ If the repair changes failure behavior, complete these steps:
 5. Under [P033](../../docs/principles/README.md#p033), preserve valid state.
 6. Select [fail-fast](../../docs/principles/README.md#p034),
    [fail-closed](../../docs/principles/README.md#p035), or
-   [graceful degradation](../../docs/principles/README.md#p036). Base this selection on the
-   correctness and security importance of the failed capability.
+   [graceful degradation](../../docs/principles/README.md#p036).
+7. Base this selection on the correctness and security importance of the failed capability.
 
-If the repair does not correct the issue, stop and count the repair attempts. If fewer than three
-repairs failed, return to phase 1 with the new information. After three failed repairs, stop and
-start an architecture review.
+If the repair does not correct the issue, complete these steps:
+
+1. Stop the current repair attempt.
+2. Count the failed repair attempts.
+3. If fewer than three repairs failed, return to phase 1 with the new information.
+4. After three failed repairs, start an architecture review.
 
 ### After three failed repairs
 

@@ -91,7 +91,8 @@ the actor-owned plan, return a ready-to-publish draft. Explain the capability or
     [P008 Understand Before Subtracting](../../docs/principles/README.md#p008).
 17. Follow the canonical-plan content, ownership, and identity rules in the issue-planning contract.
 18. Preserve all content that another actor owns.
-19. If ownership or identity is ambiguous, return the draft. Do not overwrite the content.
+19. If ownership or identity is ambiguous, return the draft.
+20. Do not overwrite content with ambiguous ownership or identity.
 
 Activate these shared profiles only for the specified surface:
 
