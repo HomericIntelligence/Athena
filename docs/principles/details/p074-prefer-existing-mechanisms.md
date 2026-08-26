@@ -47,32 +47,23 @@ flowchart TD
 
 ## Language examples
 
-The two examples use an established parser to return a host only for a valid HTTP or HTTPS URL with
-a valid port.
+The two examples use an established SHA-256 implementation. They return the same lowercase
+hexadecimal digest for the same bytes.
 
 ```python
-from urllib.parse import urlparse
+from hashlib import sha256
 
-def host(value: str) -> str:
-    try:
-        parsed = urlparse(value)
-        hostname, _port = parsed.hostname, parsed.port
-    except ValueError as error:
-        raise ValueError("invalid URL") from error
-    if parsed.scheme not in {"http", "https"} or not hostname:
-        raise ValueError("invalid URL")
-    return hostname
+def digest(payload: bytes) -> str:
+    value = sha256(payload)
+    return value.hexdigest()
 ```
 
 ```rust
-use url::Url;
+use sha2::{Digest, Sha256};
 
-fn host(value: &str) -> Result<String, &'static str> {
-    let parsed = Url::parse(value).map_err(|_| "invalid URL")?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return Err("invalid URL");
-    }
-    parsed.host_str().map(str::to_owned).ok_or("invalid URL")
+fn digest(payload: &[u8]) -> String {
+    let value = Sha256::digest(payload);
+    format!("{value:x}")
 }
 ```
 

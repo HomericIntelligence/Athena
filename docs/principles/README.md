@@ -150,8 +150,9 @@ interfaces, defaults, behavior, and failures agree with user expectations that e
 
 ### P015
 
-[Architecture Conformance](details/p015-architecture-conformance.md) — Unless the requirement gives
-a revision, keep established boundaries, dependency direction, ownership, and extension patterns.
+[Architecture Conformance](details/p015-architecture-conformance.md) — If the requirement does not
+change the architecture, keep established boundaries, dependency direction, ownership, and extension
+patterns.
 
 ### P016
 

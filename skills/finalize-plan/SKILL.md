@@ -25,8 +25,8 @@ Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 Use the canonical [engineering-principles catalog](../../docs/principles/README.md) to make these
 finalization decisions:
 
-- [P010 Scope Fidelity](../../docs/principles/README.md#p010): Change only the issue body for the
-  verified epoch.
+- [P010 Scope Fidelity](../../docs/principles/README.md#p010): Change only the issue body and the two
+  sealed, actor-owned comments for the verified epoch.
 - [P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061): Before a
   write, make sure that the epoch and authority agree with this skill's delivery contract.
 - [P062 Human Approval for Irreversible or High-Risk Actions](../../docs/principles/README.md#p062):

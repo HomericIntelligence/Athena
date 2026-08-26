@@ -35,7 +35,7 @@ decisions:
 - [P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001):
   - Select the minimum solution that obeys all current requirements.
 - [P002 YAGNI — You Ain't Gonna Need It](../../docs/principles/README.md#p002):
-  - If the issue has no current requirement, do not add a capability.
+  - If a capability has no specified current requirement, do not add it.
 - [P074 Prefer Existing Mechanisms](../../docs/principles/README.md#p074):
   - If an applicable existing mechanism is available, use it.
 - [P008 Understand Before Subtracting](../../docs/principles/README.md#p008):
