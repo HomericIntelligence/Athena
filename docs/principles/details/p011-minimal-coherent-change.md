@@ -18,7 +18,7 @@ system operate safely.
 
 Select the narrowest boundary that keeps the specified behavior correct and that evidence shows is necessary.
 Put parts with different purposes in different changes. If separation causes an incorrect state
-after a step or a state that has no applicable test, keep the parts together.
+after one step or prevents an applicable test, keep the parts together.
 
 ## How to apply
 

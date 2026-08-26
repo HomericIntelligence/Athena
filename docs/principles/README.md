@@ -62,7 +62,8 @@ examine a safe removal, combination, simplification, or reuse alternative.
 ### P008
 
 [Understand Before Subtracting](details/p008-understand-before-subtracting.md) — Before you delete a
-mechanism because you think it has no purpose, examine its purpose, history, consumers, tests, and contracts.
+mechanism, examine its purpose, history, consumers, tests, and contracts. Do not delete it only
+because you think it has no purpose.
 
 ### P009
 

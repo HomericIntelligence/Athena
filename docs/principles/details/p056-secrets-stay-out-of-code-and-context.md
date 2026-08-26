@@ -2,10 +2,10 @@
 
 ## Definition
 
-Do not include credentials, private keys, tokens, production secrets, or sensitive customer data in
-source code or context that has no protection. This context includes fixtures, prompts, logs,
-generated artifacts, and agent memory. If sensitive data is necessary for a task, use a protected
-channel.
+Do not include credentials, private keys, tokens, or production secrets in source code or context
+that has no protection. Do not include sensitive customer data in source code or context that has
+no protection. This context includes fixtures, prompts, logs, generated artifacts, and agent memory.
+If sensitive data is necessary for a task, use a protected channel.
 
 Classify exposure as a security event without a requirement for evidence of abuse.
 

@@ -20,8 +20,8 @@ before the software pattern.
 
 ## Decision rule
 
-If calls can use resources without a result for the caller or overload a dependency, stop calls for
-a finite interval. If calls can cause system failure, use the same control. Do a recovery test with
+If calls use resources without a caller result or overload a dependency, stop calls for a finite
+interval. If calls can cause system failure, use the same control. Do a recovery test with
 a finite probe set.
 
 ## How to apply
