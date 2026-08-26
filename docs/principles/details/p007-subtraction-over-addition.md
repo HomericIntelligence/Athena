@@ -2,47 +2,48 @@
 
 ## Definition
 
-**Subtraction Over Addition** requires an evaluation of removal, consolidation, or reuse before an
-addition. Possible additions include code, state, dependencies, configuration, services, and
-processes. Prefer an existing mechanism when it meets the requirement.
+For **Subtraction Over Addition**, an author must examine removal, consolidation, or reuse
+before an addition. Possible additions include code, state, dependencies, configuration, services, and
+processes. When a current mechanism obeys the requirement, select that mechanism.
 
 ## Provenance
 
 **Classification:** Athena synthesis.
 
-Athena created this name from empirical research and established simplicity heuristics. Research
-by Adams and colleagues found that people often overlook useful subtractive changes. This result
-supports an explicit subtraction prompt. The research does not prove that subtraction is always
-the correct engineering choice.
+Athena gives this name to an idea from empirical research and established simplicity heuristics. Adams et al.
+found that persons frequently do not examine subtractive changes that have value. The result
+gives evidence for an explicit subtraction prompt. The research does not show that subtraction is always
+the correct engineering decision.
 
 ## Decision rule
 
-Before you add a component, evaluate at least one full subtractive or reuse alternative. Prefer
-that alternative when it preserves required behavior, safety, clarity, and compatibility.
+Before you add a component, examine all applicable subtractive or reuse alternatives. When an
+alternative keeps necessary behavior, safety, clarity, and compatibility, select that alternative.
 
 ## How to apply
 
-- State the outcome independently from the proposed new mechanism.
-- Identify obsolete branches, redundant state, duplicate authorities, and current capabilities.
-- Compare lifecycle, failure, security, and operational costs, not only implementation effort.
-- Verify consumers and contracts before removal.
-- Delete associated tests or documentation only when the associated product behavior is obsolete.
+- Write the outcome without the proposed new mechanism.
+- Find obsolete branches, redundant state, duplicate authorities, and current capabilities.
+- Compare lifecycle, failure, security, and operation costs, not only implementation work.
+- Before removal, record consumers and contracts.
+- Only when the artifacts are not necessary for current product behavior, delete related tests or
+  documentation.
 
 ## Diagram
 
 ```mermaid
 flowchart TD
-    A["State the required outcome"] --> B["Identify removal, consolidation, and reuse options"]
-    B --> C{"Does an option preserve all contracts?"}
+    A["Write the necessary outcome"] --> B["Find removal, consolidation, and reuse alternatives"]
+    B --> C{"Does an alternative keep all contracts?"}
     C -->|No| D["Add the necessary mechanism"]
-    C -->|Yes| E["Select the subtractive option"]
-    D --> F["Verify total system cost"]
+    C -->|Yes| E["Select the subtractive alternative"]
+    D --> F["Record total system cost"]
     E --> F
 ```
 
 ## Language examples
 
-The two examples derive the count from records and avoid duplicate state.
+The two examples derive the count from records and do not use duplicate state.
 
 ```python
 def active_count(users: list[User]) -> int:
@@ -63,22 +64,22 @@ fn active_count(users: &[User]) -> usize {
 
 ## Boundaries and tensions
 
-Subtraction is a prompt, not a presumption of safety. It must not remove an implicit requirement,
-compatibility guarantee, security control, observability, or recovery path. First apply
+Subtraction is a prompt, not proof of safety. It must not remove an implicit requirement,
+compatibility guarantee, security control, observability, or recovery path. First obey
 [P008 Understand Before Subtracting](p008-understand-before-subtracting.md) and
 [P014 Preserve Unrequested Behavior](p014-preserve-unrequested-behavior.md). A necessary new control
-can increase code and reduce system risk.
+can increase code and decrease system risk.
 
 ## Examples
 
-**Positive:** A contributor deletes a redundant mode and uses the repository's configuration
-authority. This choice removes the need for a new option.
+**Positive:** A product requirement specifies a mode. A contributor keeps the mode but deletes its
+duplicate configuration state. The command derives the mode from the repository's configuration authority.
 
-**Misuse:** A contributor removes a security check because tests still pass. The contributor does
-not examine the trust boundary that the check protects.
+**Misuse:** A contributor removes a security check because tests give correct results. The contributor
+does not examine the trust boundary that the check gives protection to.
 
-**Athena/agent workflow:** Before an agent proposes a documentation generator, the agent checks the
-runtime package for the canonical docs tree. The agent also tests ordinary links for discovery.
+**Athena/agent workflow:** Before an agent adds a documentation generator, the agent examines the
+runtime package for the canonical docs tree. The agent also does a test of standard links for discovery.
 
 ## Related principles
 
@@ -91,21 +92,22 @@ runtime package for the canonical docs tree. The agent also tests ordinary links
 
 ## References
 
-### Origin/history
+### Source information
 
 - [Adams et al.: People systematically overlook subtractive changes](https://www.nature.com/articles/s41586-021-03380-y)
-  reports controlled studies about the human preference for additive solutions.
-- [PEP 20 — The Zen of Python](https://peps.python.org/pep-0020/) records a related preference for
-  simple over complex designs.
+  gives results from controlled studies about the human preference for additive solutions.
+- [PEP 20 — The Zen of Python](https://peps.python.org/pep-0020/) records a related rule that shows
+  simple designs are better than complex designs.
 
-### Current guidance
+### Applicable information
 
 - [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-  tells reviewers to assess unnecessary code complexity.
+  tells reviewers to examine code complexity that is not necessary.
 
-### Further reading
+### More information
 
 - [Google Engineering Practices: Small CLs](https://google.github.io/eng-practices/review/developer/small-cls.html)
-  explains why smaller coherent changes are easier to understand, review, and reverse.
+  shows why small self-contained changes are easier to examine. It also shows why
+  change reversal becomes safer.
 
 [Back to the engineering principles catalog](../README.md#p007)

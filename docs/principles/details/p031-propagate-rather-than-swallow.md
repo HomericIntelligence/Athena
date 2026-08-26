@@ -2,12 +2,12 @@
 
 ## Definition
 
-A layer that cannot recover fully and correctly must propagate the failure to a boundary that
-can decide the outcome. The layer can return, throw, or signal the failure through its documented
-interface.
+If a layer cannot satisfy all specified postconditions after recovery, it must propagate the
+failure to a responsible boundary. The layer can use its specified interface to return, throw, or
+signal the failure.
 
-The layer must not replace a real failure with apparent success, an empty value, or continued work.
-The contract must distinguish success from a failure that requires a caller decision.
+The layer must not give a success result, return an empty value, or continue work after a failure.
+The contract must show the difference between success and a failure that the caller must handle.
 
 **Aliases:** error propagation, no silent catch, surface unrecovered failures
 
@@ -15,38 +15,38 @@ The contract must distinguish success from a failure that requires a caller deci
 
 **Classification:** established principle.
 
-Published work has described structured exception handling for decades. This exact phrase has no
-single verified origin. Athena uses it as a language-neutral decision rule.
+Authors wrote about structured exception handling for many years. Athena cannot identify one source
+for this phrase. Athena uses it as a language-neutral decision rule.
 
 ## Decision rule
 
-Handle a failure only when the current boundary can restore its promised postconditions or produce
-a documented alternate result. Otherwise, preserve and propagate the failure.
+If this boundary can satisfy its specified postconditions or give a specified alternative
+result, handle the failure. If the boundary cannot do this, propagate the failure and keep its cause.
 
 ## How to apply
 
-- Define failure behavior through return types, exceptions, result objects, exit statuses, or
+- Give failure behavior in return types, exceptions, result objects, exit statuses, or
   protocol responses.
-- Handle a failure only when the layer can retry, compensate, translate, or terminate with the
-  necessary policy context.
-- Preserve the original cause during error translation. Add stable context that helps the caller.
-- Define fallback values in the interface. Treat a fallback as success only when the contract
-  defines an alternate outcome.
-- Verify that dependency failures produce a failed public outcome and preserve valid state.
+- When the layer has the necessary policy context, it can retry, compensate, translate, or stop
+  after a failure.
+- Keep the initial cause during error translation. Add stable context that helps the caller.
+- Give fallback values in the interface. When the contract includes an alternative outcome, give
+  its fallback as a success result.
+- Make sure that dependency failures give a public failure outcome and keep correct state.
 
 ## Diagram
 
 ```mermaid
 flowchart TD
     A["An operation detects a failure"] --> B{"Can this boundary satisfy the contract?"}
-    B -- "Yes" --> C["Recover or return a documented alternate result"]
-    B -- "No" --> D["Add safe context and preserve the cause"]
+    B -- "Yes" --> C["Recover or return a specified alternative result"]
+    B -- "No" --> D["Add safe context and keep the cause"]
     D --> E["Propagate the failure to a responsible boundary"]
 ```
 
 ## Language examples
 
-Each example adds caller-relevant context and preserves a failed outcome.
+Each example adds caller context and keeps a failure outcome.
 
 ### Python
 
@@ -70,34 +70,34 @@ fn load_record(store: &Store, key: &str) -> Result<Record, RecordLoadError> {
 
 ## Boundaries and tensions
 
-Propagation does not require every internal error to escape unchanged. A boundary can translate an
-error into a stable taxonomy. It must preserve causality under
-[P032](p032-handle-once-preserve-causality.md).
+A boundary can translate an internal error into a stable taxonomy. It must keep the causal chain.
+Use [P032](p032-handle-once-preserve-causality.md) for cause preservation.
 
-[P036](p036-graceful-degradation.md) permits a documented and safe reduced mode. The reduced mode
-is valid only when the contract defines it as an alternate outcome.
+[P036](p036-graceful-degradation.md) gives conditions for a safe reduced mode. The mode is
+applicable only when the contract includes it as an alternative outcome.
 
-Security uncertainty follows [P035](p035-fail-secure-fail-closed.md). Do not expose secrets,
-credentials, or unnecessary internal details. Preserve required cause data in protected
-diagnostics.
+Use [P035](p035-fail-secure-fail-closed.md) for security uncertainty. Do not show secrets or
+credentials. If the caller contract does not include internal information, do not show it. Keep
+necessary cause data in protected diagnostics.
 
 ## Examples
 
 ### Positive application
 
-A repository adapter cannot read a required record. It attaches the record identifier to the
-storage error and returns the error. The service boundary maps the failure to its documented API
-error. Protected diagnostics retain the original cause.
+A repository adapter cannot read a necessary record. It attaches the record identifier to the
+storage error and returns the error. The service boundary maps the failure to its specified API
+error. Protected diagnostics keep the initial cause.
 
 ### Misuse or counterexample
 
-A configuration loader catches every parse error and returns an empty configuration. Startup
-reports success. The service later operates with invalid values, and the original failure is lost.
+A configuration loader catches each parse error and returns an empty configuration. Startup gives
+a success result. The service operates with invalid values. Engineers cannot find the initial
+failure.
 
 ### Athena or agent workflow
 
-If a required validation command returns a nonzero status, an Athena workflow reports the command
-and its evidence. The workflow does not declare completion because earlier checks passed.
+If a necessary validation command returns a nonzero status, an Athena workflow records the command
+and its results. The workflow does not give a success result because other checks had correct results.
 
 ## Related principles
 
@@ -108,24 +108,24 @@ and its evidence. The workflow does not declare completion because earlier check
 
 ## References
 
-### Origin and history
+### Source information
 
 - [John B. Goodenough, “Structured Exception Handling” (1975)](https://doi.org/10.1145/512976.512997)
-  — an early primary analysis of exception conditions and control transfer to an appropriate
-  handler. Athena does not claim this source as the origin of its phrase.
+  — a 1975 analysis of exception conditions and control transfer to a handler with the necessary
+  context. This source is not the source of Athena's phrase.
 
-### Current guidance
+### Applicable information
 
 - [The Rust Programming Language: Propagating Errors](https://doc.rust-lang.org/book/ch09-02-recoverable-errors-with-result.html#propagating-errors)
-  — official guidance for a callee that returns an error when its caller has the required decision
+  — official guidance for a callee that returns an error when its caller has the necessary decision
   context.
 - [C++ Core Guidelines, Error Handling](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#S-errors)
-  — current guidance that recommends a deliberate error strategy. It advises against a handler in
-  every function.
+  — guidance that recommends a specified error strategy. It recommends no handler in each
+  function.
 
-### Further reading
+### More information
 
-- [P029 — Generalize Error Policy; Preserve Specific Cause](../README.md#p029) — the companion
-  catalog rule for error translation that preserves diagnostic specificity.
+- [P029 — Generalize Error Policy; Preserve Specific Cause](../README.md#p029) — the catalog rule
+  for error translation that keeps diagnostic specificity.
 
 [Back to the engineering principles catalog](../README.md#p031)

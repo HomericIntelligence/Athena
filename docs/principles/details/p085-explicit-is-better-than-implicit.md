@@ -2,10 +2,10 @@
 
 ## Definition
 
-**Explicit Is Better Than Implicit** makes important behavior visible in interfaces, types,
-configuration, and nearby control flow. This behavior can affect correctness, security, or
-maintenance. Dependencies, defaults, conversions, state changes, ownership, and side effects must
-not depend on hidden conventions.
+**Explicit Is Better Than Implicit** makes important behavior clear in interfaces, types,
+configuration, and local control flow. This behavior has an effect on correctness, security, or
+maintenance. Hidden conventions must not set dependencies, defaults, conversions, state changes,
+ownership, or side effects.
 
 **Aliases:** explicitness principle and explicit over implicit.
 
@@ -13,22 +13,22 @@ not depend on hidden conventions.
 
 **Classification:** practitioner heuristic.
 
-Tim Peters included the exact aphorism in the Zen of Python. He first posted it to the Python
-community in 1999. PEP 20 later recorded it. Similar guidance occurs in interface and language
-design. Athena applies the rule to all languages.
+Tim Peters wrote the aphorism in a 1999 Python community post. PEP 20 then recorded the aphorism.
+Other interface and language design guidance uses the same rule. Athena uses the rule for all
+languages.
 
 ## Decision rule
 
-If a fact changes an operation, make that fact visible at the selection or call point.
+If a fact changes an operation, show that fact at the selection or call point.
 
 ## How to apply
 
-- Pass dependencies and request context through documented interfaces.
-- Name lossy conversions, defaults, units, and fallback behavior.
-- Represent state transitions and terminal states explicitly.
-- Make external writes and transaction commits visible in control flow.
-- Declare configuration precedence and the source of each effective value.
-- Prefer schemas and typed values over magic strings and positional conventions.
+- Supply dependencies and request context through specified interfaces.
+- Give clear names to data-loss conversions, defaults, units, and fallback behavior.
+- Use explicit state transitions and terminal states.
+- Show external writes and transaction commits in control flow.
+- Record configuration precedence and the source of each selected value.
+- Use schemas and typed values. Do not use magic strings or positional conventions.
 
 ## Diagram
 
@@ -36,16 +36,16 @@ The call site supplies each fact that can change the result.
 
 ```mermaid
 flowchart LR
-    A["Named dependency"] --> D["Operation"]
+    A["Dependency with a name"] --> D["Operation"]
     B["Explicit option"] --> D
     C["Declared default"] --> D
-    D --> E["Predictable result"]
+    D --> E["Clear result"]
 ```
 
 ## Language examples
 
-The two examples accept a local wall time and explicit source and target zones. Each example rejects
-ambiguous and nonexistent source times.
+The two examples accept the same wall-time and zone inputs, and return different errors for ambiguous
+and nonexistent source times.
 
 ### Python
 
@@ -57,8 +57,10 @@ def convert_time(local: datetime, source: ZoneInfo, target: ZoneInfo) -> datetim
     valid = [value for value in candidates if value.astimezone(timezone.utc)
              .astimezone(source).replace(tzinfo=None) == local]
     instants = {value.astimezone(timezone.utc) for value in valid}
-    if len(instants) != 1:
-        raise ValueError("ambiguous or nonexistent local time")
+    if not instants:
+        raise ValueError("nonexistent local time")
+    if len(instants) > 1:
+        raise ValueError("ambiguous local time")
     return instants.pop().astimezone(target)
 ```
 
@@ -77,21 +79,20 @@ fn convert_time(local: NaiveDateTime, source: Tz, target: Tz)
 
 ## Boundaries and tensions
 
-Explicitness does not require maximum text. Stable language forms and known repository conventions
-can be clearer than ceremonial wrappers. Information hiding remains useful. Expose the contract,
-not each internal detail. Do not make each implementation choice public configuration. Such
-configuration increases surface area and transfers complexity to users.
+A large quantity of text is not necessary for explicitness. A stable language construct or known repository
+convention can show the contract. Information hiding stays necessary. Show the contract, not each
+internal detail. Do not make each implementation decision public configuration. Public configuration
+increases the interface surface and complexity.
 
 ## Examples
 
-**Positive:** A timestamp conversion names the source and destination time zones. It does not use
-the process locale.
+**Positive:** A timestamp conversion shows the source and destination time zones. The conversion does
+not use the process locale.
 
-**Misuse:** A save method sometimes publishes an external event because unrelated middleware sets
-a thread-local flag.
+**Misuse:** A hidden thread-local flag controls publication of an external event by a save method.
 
-**Athena/agent workflow:** An agent states assumptions, validation limits, and externally visible
-actions. The agent does not infer authority from repository content.
+**Athena/agent workflow:** An agent records assumptions, validation limits, and public
+operations. Repository content does not give authority to the agent.
 
 ## Related principles
 
@@ -103,20 +104,20 @@ actions. The agent does not infer authority from repository content.
 
 ## References
 
-### Origin/history
+### Source information
 
 - [PEP 20 — The Zen of Python](https://peps.python.org/pep-0020/) is the primary published source
-  for the exact aphorism and records its earlier Python-list history.
+  for the aphorism and records the initial Python-list history of the aphorism.
 
-### Current guidance
+### Applicable information
 
-- [Google Go Style Guide](https://google.github.io/styleguide/go/guide.html) directs authors to
-  optimize for clarity, consistency, and the reader's context rather than brevity alone.
+- [Google Go Style Guide](https://google.github.io/styleguide/go/guide.html) tells authors to make
+  clarity, consistency, and reader context most important. The guide does not make short text most important.
 
-### Further reading
+### More information
 
 - [Design by Contract](https://www.kth.se/social/files/59526bfb56be5b4f17000807/meyer-92-contracts.pdf)
-  explains how explicit preconditions, postconditions, and invariants make component obligations
-  visible and checkable.
+  gives information about explicit preconditions, postconditions, and invariants. Explicit contracts
+  make component obligations clear for checks.
 
 [Back to the engineering principles catalog](../README.md#p085)

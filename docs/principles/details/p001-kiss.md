@@ -2,46 +2,46 @@
 
 ## Definition
 
-**KISS** (commonly expanded as *Keep It Simple, Stupid*) requires the least complexity that
-satisfies demonstrated requirements. Indirection, abstraction, configuration, concurrency,
-infrastructure, and process have costs. Each element must provide clear value.
+For **KISS** (also *Keep It Simple, Stupid*), a design must have only the minimum complexity
+necessary to obey specified requirements. Indirection, abstraction, configuration, concurrency,
+infrastructure, and process have costs. Each element must give clear value.
 
 ## Provenance
 
 **Classification:** practitioner heuristic.
 
-Many sources associate the phrase with aircraft engineer Kelly Johnson. No definitive contemporary
-source confirms the exact words or attribution. The broader idea predates software. Athena
-therefore treats KISS as a common heuristic with no verified single author.
+Many sources connect the phrase to aircraft engineer Kelly Johnson. No source from the same time
+shows the wording or attribution. The idea was in engineering before software. Athena puts KISS in the
+practitioner-heuristic category because no evidence shows one author.
 
 ## Decision rule
 
-Choose the simplest design that meets current requirements. The design must remain correct, secure,
-and operable for all required behavior. For each more complex design, identify the requirement or
-measured constraint that requires the extra mechanism.
+Select the simplest design that obeys current requirements. The design must be correct and keep
+security. It must operate correctly for all necessary behavior. For each more complex design, find the
+requirement or measured constraint that makes its complexity necessary.
 
 ## How to apply
 
-- Start with the direct path from input to required outcome.
-- Count concepts and operational duties, not only lines of code.
-- Prefer existing language and repository mechanisms over custom frameworks.
-- Remove layers that only relay data or policy without a useful boundary.
-- Reassess simplicity after tests expose the real behavioral cases.
+- Start with the shortest path from input to the necessary outcome.
+- Count concepts and duties in operation, not only lines of code.
+- Use current language and repository mechanisms. Do not use a custom framework without a requirement.
+- Remove layers that only send data or policy without a boundary that gives value.
+- After tests show the behavioral cases, examine simplicity again.
 
 ## Diagram
 
 ```mermaid
 flowchart TD
-    A["List current requirements"] --> B["Choose a direct design"]
-    B --> C{"Does the design meet all requirements and remain correct, secure, and operable?"}
-    C -->|No| D["Add one required mechanism"]
+    A["Write current requirements"] --> B["Select a simple design"]
+    B --> C{"Does the design include all behavior, keep security, and operate correctly?"}
+    C -->|No| D["Add one necessary mechanism"]
     D --> C
-    C -->|Yes| E["Use the simplest valid design"]
+    C -->|Yes| E["Use the simplest correct design"]
 ```
 
 ## Language examples
 
-The two examples use one direct branch for the full requirement.
+The two examples use one simple branch for all parts of the requirement.
 
 ```python
 def status_label(active: bool) -> str:
@@ -62,24 +62,27 @@ fn status_label(active: bool) -> &'static str {
 
 ## Boundaries and tensions
 
-Simple does not mean short, familiar, or expedient. A compact implementation can hide state,
-weaken validation, or transfer complexity to callers. Such an implementation does not simplify the
-system. Required compatibility, security, reliability, and explicit contracts take priority over
-KISS. [P002 YAGNI](p002-yagni.md) and
-[P007 Subtraction Over Addition](p007-subtraction-over-addition.md) support KISS.
-[P008 Understand Before Subtracting](p008-understand-before-subtracting.md) prevents careless
-deletion.
+Simplicity does not mean short or temporarily easy. A simple design can be new to personnel. A short implementation can hide state,
+remove validation, decrease the protection from validation, decrease validation coverage, or move
+complexity to callers. Such an implementation does not decrease system
+complexity. Necessary compatibility, security, reliability, and explicit contracts are more important than
+KISS.
+
+[P002 YAGNI](p002-yagni.md) and
+[P007 Subtraction Over Addition](p007-subtraction-over-addition.md) give related rules for KISS.
+[P008 Understand Before Subtracting](p008-understand-before-subtracting.md) prevents deletion
+without sufficient evidence.
 
 ## Examples
 
-**Positive:** A command with two fixed modes uses a small explicit branch instead of a plug-in
-framework whose only consumers are those modes.
+**Positive:** A command with two specified modes uses a small explicit branch and does not use a plug-in
+framework. The only consumers of such a framework are those modes.
 
 **Misuse:** A contributor removes validation and error context. The function becomes shorter, but
-each caller must reconstruct its failure semantics.
+failure semantics move to each caller.
 
-**Athena/agent workflow:** An agent proposes the narrow documentation edit and current validation
-commands. The agent does not add a generator or registry only to manage the edit.
+**Athena/agent workflow:** An agent selects the narrow documentation edit and current validation
+commands. The agent does not add a generator or registry only for the edit.
 
 ## Related principles
 
@@ -91,21 +94,21 @@ commands. The agent does not add a generator or registry only to manage the edit
 
 ## References
 
-### Origin/history
+### Source information
 
-- No definitive contemporary source confirms the exact phrase or its Kelly Johnson attribution.
-  Athena records the common attribution as uncertain.
+- No source from the same time shows the phrase or its Kelly Johnson attribution.
+  Athena records that this attribution is unknown.
 - [PEP 20 — The Zen of Python](https://peps.python.org/pep-0020/) is a primary language-design
-  source for the related preference for simple designs over complex designs.
+  source that shows simple designs are better than complex designs.
 
-### Current guidance
+### Applicable information
 
 - [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-  tells reviewers to challenge unnecessary complexity and prefer clear code.
+  tells reviewers to find complexity that is not necessary and select clear code.
 
-### Further reading
+### More information
 
 - [Google Engineering Practices: Small CLs](https://google.github.io/eng-practices/review/developer/small-cls.html)
-  explains how narrow changes improve review quality and reduce risk.
+  shows that narrow changes make review easier and decrease risk.
 
 [Back to the engineering principles catalog](../README.md#p001)

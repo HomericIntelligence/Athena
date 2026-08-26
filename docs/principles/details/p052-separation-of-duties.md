@@ -2,9 +2,9 @@
 
 ## Definition
 
-Separation of Duties divides a high-impact process among independent roles, actors, conditions, or
-components. One compromised or mistaken actor cannot complete the process alone. Independence must
-apply to identity, authority, and control path.
+Separation of Duties assigns parts of a high-impact process to independent roles, actors,
+conditions, or components. A compromised or mistaken actor cannot complete the process without an
+independent condition. Independence must apply to identity, authority, and control path.
 
 **Aliases:** segregation of duties, dual control, two-person rule.
 
@@ -12,46 +12,51 @@ apply to identity, authority, and control path.
 
 **Classification:** established principle.
 
-The principle has long-established organizational roots. Computer security models, such as
-Clark-Wilson, formalized it. No single paper originated the broader organizational practice.
+The principle has a long organizational history. Computer security models, for example Clark-Wilson,
+include the principle in a formal model. No one paper is the source of the organizational practice.
 
 ## Decision rule
 
-Require another independent condition or role when one actor could cause unacceptable impact through
-error or compromise. Select the number and type of divisions from the risk. Do not apply the same
-process to all actions.
+If error or compromise by one actor can cause impact above policy limits, use a second independent
+condition or role. Select the number and type of divisions from the risk. Do not use the same
+process for all actions.
 
 ## How to apply
 
-- Identify actions with confidentiality, integrity, safety, or availability risks that require a
-  division of duties.
-- Split request, approval, execution, custody, and audit roles where their independence reduces risk.
-- Bind approvals to the exact operation, target, parameters, and current revision.
-- Prevent one identity from silent control of all separate roles through inherited privilege.
-- Preserve an auditable record of which condition each independent actor satisfied.
-- Define controlled emergency access with a later review. Do not use informal bypass paths.
+- Find actions with confidentiality, integrity, safety, or availability risks for which a division
+  of duties is necessary.
+- If role independence decreases risk, divide request, approval, execution, custody, and audit
+  roles.
+- Bind approvals to the specified operation, target, parameters, and applicable revision.
+- Prevent one identity from control of all roles without detection through inherited privilege.
+- Keep an auditable record of the condition that each independent actor satisfied.
+- Give rules for controlled emergency access and a subsequent review. Do not use informal bypass
+  paths.
 
 ## Diagram
 
 ```mermaid
 flowchart LR
-    A["Requester proposes exact action"] --> B["Independent approver verifies action"]
-    B --> C{"Approval valid for target and revision?"}
+    A["Requester submits specified action"] --> B["Compare controlling principal, credentials, and authority domain"]
+    B --> C{"Does policy verify independent control?"}
     C -- "No" --> D["Reject the request"]
-    C -- "Yes" --> E["Separate executor performs action"]
-    E --> F["Independent audit records evidence"]
+    C -- "Yes" --> E["Independent approver verifies action"]
+    E --> F["Independent executor does action"]
+    F --> G["Independent audit records evidence"]
 ```
 
 ## Language examples
 
-The two examples require different identities for the proposal and approval before release.
+Before release, the two examples use policy to verify different controlling principals, credential
+sets, and authority domains.
 
 ### Python
 
 ```python
 def release(change, approver):
-    if change.author == approver.id:
-        raise DutyConflict()
+    authority_policy.require_independent_control(
+        change.authority, approver.authority
+    )
     approver.verify(change.digest, change.target)
     deploy(change.artifact, change.target)
 ```
@@ -60,9 +65,9 @@ def release(change, approver):
 
 ```rust
 fn release(change: &Change, approver: &Approver) -> Result<(), Error> {
-    if change.author == approver.id {
-        return Err(Error::DutyConflict);
-    }
+    authority_policy::require_independent_control(
+        &change.authority, &approver.authority,
+    )?;
     approver.verify(change.digest, &change.target)?;
     deploy(&change.artifact, &change.target)
 }
@@ -70,29 +75,30 @@ fn release(change: &Change, approver: &Approver) -> Result<(), Error> {
 
 ## Boundaries and tensions
 
-Separation of Duties differs from Saltzer and Schroeder's **separation of privilege**. Separation of
-Duties divides responsibilities among actors or roles. Separation of privilege makes one access
-depend on multiple conditions or keys.
+Separation of Duties is different from Saltzer and Schroeder's **separation of privilege**.
+Separation of Duties assigns responsibilities to actors or roles. For one access, separation of
+privilege makes two or more conditions or keys necessary.
 
-The two principles can support each other, but neither one implies the other. Routine low-risk work
-does not need approval from multiple parties. Two roles under one credential are not independent.
+The two principles can help each other, but one does not include the other. Low-risk work can use
+one-party approval. Two roles with one credential do not have independent control.
 
 ## Examples
 
 ### Positive
 
-A developer proposes a production release. A separate release identity verifies the approved
-artifact digest and deployment target before it permits deployment.
+A developer submits a production release. A different release identity verifies the approved
+artifact digest and deployment target. The release identity then authorizes deployment.
 
 ### Misuse
 
-A system labels one account “requester” and another “approver.” One automation credential controls
-the passwords and recovery channels for the two accounts.
+A system gives one account the “requester” role. The system gives a second account the
+“approver” role. One automation credential controls the passwords and recovery channels for the
+two accounts.
 
 ### Athena and agent workflows
 
-One agent implements a high-risk security change. An independent reviewer uses separate evidence.
-The reviewer cannot execute a deployment only because it approved the change.
+One agent implements a high-risk security change. An independent reviewer uses evidence from a
+different source. Approval does not authorize the reviewer to deploy.
 
 ## Related principles
 
@@ -103,19 +109,20 @@ The reviewer cannot execute a deployment only because it approved the change.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Clark and Wilson, *A Comparison of Commercial and Military Computer Security Policies*](https://doi.org/10.1109/SP.1987.10001)
-  formalizes separation of duty in an influential integrity model.
+  includes separation of duty in a formal integrity model.
 
-### Current guidance
+### Applicable information
 
 - [NIST SP 800-53 Release 5.2.0, control AC-5](https://csrc.nist.gov/Pubs/sp/800/53/r5/upd1/Final)
-  requires organizations to identify separate duties and define related access authorizations.
+  makes different duties and related access authorizations necessary.
 
-### Further reading
+### More information
 
 - [Saltzer and Schroeder, *The Protection of Information in Computer Systems*](https://doi.org/10.1109/PROC.1975.9939)
-  defines the distinct separation-of-privilege principle, which requires multiple conditions or keys.
+  gives the different separation-of-privilege principle, which makes two or more conditions or keys
+  necessary.
 
 [Back to the principles catalog](../README.md#p052)

@@ -2,10 +2,10 @@
 
 ## Definition
 
-Assert the observable contract of the tested system. Do not assert private methods, incidental data
-structures, exact internal call sequences, or other replaceable mechanics.
+Assert the observable contract of the tested system. Do not assert private methods, data structures,
+or interactions that the contract does not make necessary.
 
-If a refactor preserves behavior, its behavior tests usually remain unchanged.
+If a refactor preserves system behavior, the system behavior tests usually do not change.
 
 **Aliases:** black-box-oriented testing, implementation-agnostic testing.
 
@@ -13,33 +13,35 @@ If a refactor preserves behavior, its behavior tests usually remain unchanged.
 
 **Classification:** practitioner heuristic.
 
-Consumer and provider contract testing is a related but distinct technique. It is not an alias for
-this broader heuristic.
+Consumer and provider contract testing is a related but different method. It is not an alias for
+this heuristic.
 
-Black-box testing predates modern unit test frameworks. Many test communities developed advice
-against implementation-detail tests. No single origin defines this formulation.
+Black-box testing began before unit test frameworks. Many test communities gave rules against
+implementation-detail tests. No one source gives this formulation.
 
 ## Decision rule
 
-Assert what a caller or user can observe under the contract. Assert an internal interaction only
-when the contract requires that interaction.
+Assert what a caller or user can observe in the contract. When an internal interaction is part of
+the contract, assert that interaction.
 
 ## How to apply
 
-- Name the scenario and expected result before you select an assertion.
-- Exercise a public or supported boundary at the narrowest useful level.
+- Before you select an assertion, give a name to the scenario and specified result.
+- Exercise a public or approved boundary at the smallest applicable level.
 - Observe return values, durable state, emitted events, or specified side effects.
-- Use fakes or stubs to control dependencies. Do not specify irrelevant call sequences.
-- Retain structural tests only for real constraints such as dependency direction or security.
+- Use fakes or stubs to control dependencies.
+- Do not put call sequences that do not change contract behavior in the test.
+- Keep structural tests only for specified constraints, for example dependency direction or
+  security.
 
 ## Diagram
 
 ```mermaid
 flowchart LR
-    Contract["Consumer contract"] --> Scenario["Define scenario"]
+    Contract["Consumer contract"] --> Scenario["Give scenario"]
     Scenario --> Boundary["Exercise supported boundary"]
     Boundary --> Observe["Observe result or side effect"]
-    Observe --> Assert["Assert required behavior"]
+    Observe --> Assert["Assert necessary behavior"]
     Refactor["Replace internal mechanics"] --> Assert
 ```
 
@@ -75,28 +77,28 @@ fn order_is_stable() {
 
 ## Boundaries and tensions
 
-A consumer defines observable behavior. An audit event, transaction boundary, or idempotency key
-can be an observable obligation. An end user does not need direct access to that obligation.
+A consumer contract gives observable behavior. An audit event, transaction boundary, or idempotency key
+can be an observable obligation. A user can observe the result without access to that obligation.
 
-Black-box system tests alone can be slow and imprecise. Combine test levels. Preserve exact output
-assertions when the output format is the contract.
+Black-box system tests can be slow and have low diagnostic precision. Use more than one test level.
+When the output format is the contract, keep assertions for the full output.
 
 ## Examples
 
 ### Positive application
 
-A sort test supplies records and asserts documented order and stability. It does not inspect the
-sort algorithm or its temporary collection.
+A sort test supplies records and asserts specified order and stability. The test does not use sort
+algorithm details or the temporary collection.
 
 ### Misuse or counterexample
 
-A test mocks every collaborator and requires an exact sequence of private calls. A safe refactor
-combines two internal steps, and the test fails.
+A test asserts a private call sequence that is not part of the contract. A safe refactor puts two
+internal steps in one step, and the test fails.
 
 ### Athena or agent workflow
 
-A helper test asserts exit status, structured output, and file effects. It does not require exact
-log sentences or private function names.
+A helper test asserts exit status, structured output, and file effects. It does not use private
+function names or log sentences that are not part of the contract.
 
 ## Related principles
 
@@ -106,22 +108,22 @@ log sentences or private function names.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Fowler, "Mocks Aren't Stubs" (2007)](https://martinfowler.com/articles/mocksArentStubs.html)
-  analyzes state verification, interaction verification, and refactor costs from coupled
+  gives an analysis of state verification, interaction verification, and refactor costs from coupled
   expectations.
 
-### Current guidance
+### Applicable information
 
 - [Microsoft, ".NET unit testing best practices"](https://learn.microsoft.com/en-us/dotnet/core/testing/unit-testing-best-practices)
-  recommends tests of public behavior and resilient tests that treat private methods as details.
+  recommends tests that use public methods only.
 - [Testing Library, "Guiding Principles"](https://testing-library.com/docs/guiding-principles/)
-  bases UI tests on actual software use instead of component internals.
+  recommends UI tests that follow software operation, not component internals.
 
-### Further reading
+### More information
 
 - [Google Engineering Practices, "What to look for in a code review"](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-  asks reviewers to confirm that tests detect broken behavior and remain simple.
+  tells reviewers to make sure that tests detect broken behavior and stay simple.
 
 [Back to the engineering principles catalog](../README.md#p022)

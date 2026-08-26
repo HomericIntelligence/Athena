@@ -2,53 +2,53 @@
 
 ## Definition
 
-**AHA** (*Avoid Hasty Abstractions*) permits generalization only after concrete cases reveal a
-stable, shared concept. A temporary duplicate can be safer than a wrong abstraction that connects
-unrelated behavior.
+**AHA** (*Avoid Hasty Abstractions*) lets authors generalize only after cases in operation show the
+same stable concept. A temporary duplicate can be safer than an incorrect abstraction that
+connects unrelated behavior.
 
 ## Provenance
 
 **Classification:** practitioner heuristic.
 
-Kent C. Dodds popularized the name and credits Cher Scarlett with the AHA acronym. The warning uses
-Sandi Metz's account of the “wrong abstraction.” It also uses earlier guidance against premature
-generalization.
+Kent C. Dodds gave the principle its name and records Cher Scarlett as the source of the AHA acronym. Sandi Metz's
+“wrong abstraction” source and previous guidance that rejects generalization before evidence are sources
+for the principle.
 
 ## Decision rule
 
-Extract an abstraction when multiple real consumers share the same responsibility, contract, and
-reason for change. Keep cases explicit when only surface syntax matches or future consumers are
-hypothetical.
+When evidence shows that two or more consumers share the same responsibility, contract, and cause of
+change, make an abstraction. When only surface syntax is the same or no evidence shows future
+consumers, do not put the cases together.
 
 ## How to apply
 
-- Permit a small amount of duplication until the domain boundary becomes clear.
-- Compare why cases change, not merely how their current code looks.
-- Name the shared invariant and intended owner before extraction.
-- Design the narrowest abstraction required by actual consumers.
-- Remove a wrong abstraction before you add flags and exceptions.
+- Let small duplication stay until the domain boundary becomes clear.
+- Compare why cases change, not only their current code structure.
+- Before extraction, give the shared invariant and intended owner.
+- Select the narrowest abstraction necessary for the consumers that evidence shows.
+- Before you add flags and exceptions, remove an incorrect abstraction.
 
 ## Diagram
 
 ```mermaid
 flowchart TD
-    A["Observe concrete cases"] --> B["Compare contracts and reasons for change"]
-    B --> C{"Is one stable invariant present?"}
-    C -->|No| D["Keep the cases explicit"]
-    C -->|Yes| E["Create the narrowest abstraction"]
-    E --> F["Verify all real consumers"]
+    A["Examine cases in operation"] --> B["Compare contracts and causes of change"]
+    B --> C{"Is there one stable invariant?"}
+    C -->|No| D["Keep the cases in different functions"]
+    C -->|Yes| E["Make the narrowest abstraction"]
+    E --> F["Record all consumers"]
 ```
 
 ## Language examples
 
-The two examples keep an at-sign check separate from a username-character check.
+The two examples use different functions for an at-sign check and a username-character check.
 
 ```python
 def contains_at_sign(value: str) -> bool:
     return "@" in value
 
 def valid_username(value: str) -> bool:
-    return bool(value) and all(ch.isalnum() or ch == "_" for ch in value)
+    return bool(value) and all(ch.isascii() and (ch.isalnum() or ch == "_") for ch in value)
 ```
 
 ```rust
@@ -57,27 +57,28 @@ fn contains_at_sign(value: &str) -> bool {
 }
 
 fn valid_username(value: &str) -> bool {
-    !value.is_empty() && value.chars().all(|ch| ch.is_alphanumeric() || ch == '_')
+    !value.is_empty() && value.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
 ```
 
 ## Boundaries and tensions
 
-AHA does not permit indefinite copies. When duplicate knowledge must stay synchronized,
-[P003 DRY](p003-dry.md) requires one authority. The required evidence must match the cost of later
-change. Stable protocols and repository-mandated boundaries can justify an abstraction before
-several repository implementations exist.
+AHA does not let copies stay without a specified removal condition. When duplicate knowledge must stay synchronized,
+one authority is necessary for [P003 DRY](p003-dry.md). The necessary evidence must increase with the cost of subsequent
+change. Stable protocols and boundaries that repository rules specify can make an abstraction necessary before the
+repository has two implementations.
 
 ## Examples
 
-**Positive:** Two validation paths stay separate. A third case reveals that the two paths enforce
+**Positive:** Two validation paths stay isolated. A new condition shows that the two paths have
 the same domain invariant. That invariant then receives one owner.
 
-**Misuse:** One configurable engine combines similar billing and access-control workflows. The
-engine then accumulates switches because billing and access-control policies differ.
+**Misuse:** One configurable engine puts billing and access-control workflows together with almost the
+same structure. The engine then adds switches because billing and access-control policies
+are different.
 
-**Athena/agent workflow:** An agent links skills to one canonical principles catalog. Each skill
-keeps the skill-specific workflow policy local without a universal generated template.
+**Athena/agent workflow:** An agent gives skills links to one canonical principles catalog. Each skill
+keeps the workflow policy for each skill local without a generated template for all workflows.
 
 ## Related principles
 
@@ -89,22 +90,23 @@ keeps the skill-specific workflow policy local without a universal generated tem
 
 ## References
 
-### Origin/history
+### Source information
 
-- [Kent C. Dodds: AHA Programming](https://kentcdodds.com/blog/aha-programming) introduces and
-  attributes the acronym and describes the correct time for abstraction.
+- [Kent C. Dodds: AHA Programming](https://kentcdodds.com/blog/aha-programming) gives the acronym and
+  gives Cher Scarlett as the source of the acronym. The source shows the correct time for abstraction.
 - [Sandi Metz: The Wrong Abstraction](https://sandimetz.com/blog/2016/1/20/the-wrong-abstraction)
-  provides the influential earlier account of duplication as a cheaper choice than a false shared
+  shows that duplication is a less expensive alternative than an incorrect shared
   abstraction.
 
-### Current guidance
+### Applicable information
 
-- [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-  asks reviewers to assess design, complexity, and excess architecture against current needs.
+- [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html).
+  When there is no current requirement, the guidance makes review of design, complexity, and
+  architecture necessary.
 
-### Further reading
+### More information
 
-- [Martin Fowler: Yagni](https://martinfowler.com/bliki/Yagni.html) explains the related economic
-  case against speculative flexibility.
+- [Martin Fowler: Yagni](https://martinfowler.com/bliki/Yagni.html) shows the related cost of
+  extension points that have no evidence.
 
 [Back to the engineering principles catalog](../README.md#p013)

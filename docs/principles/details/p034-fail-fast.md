@@ -2,9 +2,9 @@
 
 ## Definition
 
-When a required invariant, configuration, dependency, or precondition is absent or invalid, stop
-the affected operation near the detection point. Report a specific failure before invalid state
-causes corruption, false output, or a symptom far from the defect.
+When a necessary invariant, configuration, dependency, or precondition is missing or incorrect, stop
+the applicable operation near the detection point. Before incorrect state causes corruption, incorrect
+output, or a symptom far from the defect, give a clear failure.
 
 **Aliases:** early failure, immediate visible failure, detect invalid state near its source
 
@@ -12,39 +12,41 @@ causes corruption, false output, or a symptom far from the defect.
 
 **Classification:** practitioner heuristic.
 
-Jim Shore's 2004 IEEE Software article is an influential primary explanation. It does not prove
-that the phrase or idea originated there.
+Jim Shore gives information about the rule in IEEE Software (2004). That source is not the source
+of the phrase or rule.
 
 ## Decision rule
 
-If continuation cannot satisfy the correctness and safety contract, fail at the earliest boundary
-that can identify the real defect and preserve safe state.
+If continuation cannot satisfy the correctness and safety contract, fail at the nearest applicable
+boundary. That boundary must identify the defect and keep safe state.
 
 ## How to apply
 
-- Validate required configuration and schemas during startup or at the relevant entry boundary.
-- Check invariants before state use. Report the violated condition with safe context.
-- Reject malformed or impossible inputs before expensive or irreversible work.
-- Prefer explicit result types and precise error statuses. Use assertions for true programmer
-  invariants. Avoid sentinel defaults that delay discovery.
-- Ensure that early termination releases resources and produces one actionable diagnostic.
-- Test startup, boundary, and invariant failures. Do not test only successful execution.
+- During startup or at the applicable entry boundary, validate necessary configuration and schemas.
+- Before the operation uses state, examine invariants. Record the violated condition with safe context.
+- Before irreversible work or work with high cost, reject malformed inputs and inputs that cannot be correct.
+- Select specified result types and error statuses that identify the defect. Use assertions only for
+  programmer invariants. Do not use sentinel defaults. They prevent detection near the source.
+- Make sure that termination releases resources. Give one diagnostic that tells the user how to
+  correct the defect.
+- Do tests of startup, boundary, and invariant failures. Do not limit tests to correct
+  execution.
 
 ## Diagram
 
 ```mermaid
 flowchart TD
-    A["Check a required condition"] --> B{"Is the condition valid?"}
-    B -- "Yes" --> C["Continue the affected operation"]
-    B -- "No" --> D["Identify the smallest unsafe scope"]
-    D --> E["Preserve valid state and release resources"]
-    E --> F["Report the specific defect"]
-    F --> G["Stop the affected operation"]
+    A["Examine a necessary condition"] --> B{"Is the condition correct?"}
+    B -- "Yes" --> C["Continue the operation"]
+    B -- "No" --> D["Find the smallest applicable scope"]
+    D --> E["Keep correct state and release resources"]
+    E --> F["Show the defect clearly"]
+    F --> G["Stop the operation"]
 ```
 
 ## Language examples
 
-Each example rejects an absent endpoint before client creation.
+Each example rejects a missing endpoint before client creation.
 
 ### Python
 
@@ -69,35 +71,35 @@ fn connect(config: &Config) -> Result<Client, ConfigError> {
 
 ## Boundaries and tensions
 
-Fail fast defines **when and where** to stop. [P035](p035-fail-secure-fail-closed.md) defines the safe
-authorization or security state after uncertainty. [P036](p036-graceful-degradation.md) permits
-reduced service for a noncritical capability with a documented safe fallback.
+This principle gives the conditions and location for a stop.
+[P035](p035-fail-secure-fail-closed.md) gives the safe authorization or security state after
+uncertainty. [P036](p036-graceful-degradation.md) gives reduced service for a noncritical
+capability with a specified safe fallback.
 
-A required capability must not become “optional” only to keep a process active.
+A necessary capability must not become “optional” only to keep a process active.
 
-Fail fast does not require termination of the largest possible scope. Isolate the affected
-operation under [P042](p042-fault-isolation-bulkheads.md). Preserve state under
-[P033](p033-state-safe-failure-semantics.md). Terminate only the scope that cannot operate
-correctly.
+Use this principle only for the applicable scope. Isolate the operation with
+[P042](p042-fault-isolation-bulkheads.md). Use [P033](p033-state-safe-failure-semantics.md) to
+keep state. Stop only the scope that cannot operate correctly.
 
 ## Examples
 
 ### Positive application
 
-A service validates its required signing key before it accepts traffic. An absent key causes
-startup to fail with the configuration field name. Requests cannot reach a later ambiguous
-signature error.
+Before a service accepts traffic, it validates its necessary signing key. A missing key causes
+startup to fail with the configuration field name. Requests do not cause a signature error that
+fails to identify the source.
 
 ### Misuse or counterexample
 
-A parser replaces an absent required identifier with an empty string. A database constraint fails
-several layers later and hides the input defect.
+A parser replaces a missing necessary identifier with an empty string. A database constraint fails
+after many layers. The result does not show the input defect.
 
 ### Athena or agent workflow
 
-An Athena skill checks its declared hard dependency before it plans external actions. If the
-dependency is unavailable, the skill reports that prerequisite immediately. It does not invent
-results or make a false completion claim.
+An Athena skill examines its declared hard dependency before it plans external steps. If the
+skill cannot use or get the dependency, it immediately gives a prerequisite-failure result. It does
+not give results that it did not receive. It does not give an incorrect success report.
 
 ## Related principles
 
@@ -108,22 +110,22 @@ results or make a false completion claim.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Jim Shore, “Fail Fast,” IEEE Software (2004)](https://martinfowler.com/ieeeSoftware/failFast.pdf)
-  — an influential primary article that defines immediate, visible failure as a diagnostic aid.
+  — a 2004 source that shows how failure at the detection point helps diagnostics.
 
-### Current guidance
+### Applicable information
 
 - [C++ Core Guidelines P.7](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#p7-catch-run-time-errors-early)
-  — current language guidance that recommends early detection of runtime errors.
+  — applicable language guidance that recommends runtime-error detection near the source.
 - [Microsoft Azure, Design for self-healing](https://learn.microsoft.com/en-us/azure/architecture/guide/design-principles/self-healing)
-  — applies fast failure to persistently unhealthy remote dependencies through circuit breakers.
+  — applies circuit breakers to remote dependencies with continuous failures.
 
-### Further reading
+### More information
 
 - [Microsoft Azure, Circuit Breaker pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/circuit-breaker)
-  — shows how early rejection can protect the caller and the dependency during persistent
+  — shows how rejection at the caller boundary can prevent damage to the caller and dependency during continuous
   failure.
 
 [Back to the engineering principles catalog](../README.md#p034)

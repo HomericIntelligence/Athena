@@ -2,12 +2,12 @@
 
 ## Definition
 
-When a logical operation spans independent systems or exceeds safe transaction duration, record
-each completed step and its recovery meaning.
+If an operation uses different systems or cannot complete in one safe transaction, record each
+completed step. Record its recovery data.
 
-If forward progress cannot continue, use domain-specific compensation to reach a documented valid
-state. Make forward steps and compensation steps idempotent and resumable. Identify irreversible
-effects.
+If forward work cannot continue, use domain-specific compensation until the system has a
+specified correct state. Use idempotent forward steps. Each compensation step must be a safe step,
+a resumable step, and an idempotent step. Find irreversible effects.
 
 **Aliases:** compensating transaction, saga recovery, semantic undo
 
@@ -15,44 +15,49 @@ effects.
 
 **Classification:** established principle.
 
-Garcia-Molina and Salem introduced sagas for long-duration transactions in 1987. Compensation also
-occurs in broader workflow practice. Not every compensation workflow is a formal saga.
+Garcia-Molina and Salem wrote the 1987 paper that gives the saga model for long-duration
+transactions. Compensation also occurs in other workflow practices. Not all compensation workflows are formal sagas.
 
 ## Decision rule
 
-Use a real atomic boundary when it safely contains the operation. Otherwise, define durable forward,
-compensation, reconciliation, and manual recovery paths before the first side effect.
+When a supported atomic boundary safely contains the operation, use it. If no boundary can contain
+the operation, use durable forward, compensation, reconciliation, and manual recovery paths.
+Before the first side effect, record these paths.
 
 ## How to apply
 
 - Model the workflow as named steps with durable status, correlation, and ownership.
-- Define the success evidence, idempotency key, compensation action, and retry policy for each step.
-- Record sufficient context before or with each effect. This context must support recovery after a
-  process failure or lost response.
-- Order compensation according to business invariants. Reverse order is common but not universal.
-- Make each compensation action resumable, observable, and safe after repetition.
-- Mark each point of no return. Place irreversible actions after validation and reversible work.
-- Escalate ambiguous or failed compensation. Include exact state and a supported manual procedure.
+- Record the success criteria, idempotency key, compensation step, and retry policy for each step.
+- Before or with each effect, record sufficient context. This context must contain data for recovery
+  after a process failure or a response that the system did not receive.
+- Use business invariants to set the compensation sequence. Many workflows use the opposite
+  sequence. Some workflows use a different sequence.
+- When the system does compensation again, use a safe compensation step that is also a resumable
+  step. Record an observable result.
+- Find each irreversible point. After validation and reversible work, do irreversible steps.
+- Escalate compensation that is not clear or that fails. Include state information and a supported
+  manual procedure.
 
 ## Diagram
 
 ```mermaid
 flowchart TD
-    A["Record workflow context"] --> B["Execute one idempotent forward step"]
+    A["Record workflow context"] --> B["Do one idempotent forward step"]
     B --> C["Record the completed step"]
     C --> D{"Did the workflow complete all forward steps?"}
-    D -- Yes --> E["Record confirmed success"]
-    D -- No --> F{"Can forward progress continue?"}
+    D -- Yes --> E["Record success"]
+    D -- No --> F{"Can forward work continue?"}
     F -- Yes --> B
     F -- No --> G["Select compensation from durable state"]
-    G --> H["Execute idempotent compensation"]
-    H --> I["Record a valid business-equivalent state"]
+    G --> H["Do idempotent compensation"]
+    H --> I{"Did compensation succeed?"}
+    I -- Yes --> J["Record a correct business-equivalent state"]
+    I -- No --> K["Record recovery-required state and error context"]
 ```
 
 ## Language examples
 
-Each example returns confirmed, failed, canceled, or recovery-required outcomes under the same
-failure policy.
+The examples use equivalent confirmation, failure, cancellation, and recovery-required outcomes.
 
 ### Python
 
@@ -62,66 +67,69 @@ def book_trip(workflow) -> Outcome:
     if flight.is_error:
         return Outcome.failed(flight.error)
     hotel = workflow.step("hotel", reserve_hotel, cancel_hotel)
-    if hotel.is_error:
-        if workflow.compensate().is_error:
-            return Outcome.recovery_required(hotel.error)
-        return Outcome.canceled(hotel.error)
-    return Outcome.confirmed()
+    if not hotel.is_error:
+        return Outcome.confirmed()
+    compensation = workflow.compensate()
+    if compensation.is_error:
+        context = workflow.recovery_context()
+        return Outcome.recovery_required(hotel.error, compensation.error, context)
+    return Outcome.canceled(hotel.error)
 ```
 
 ### Rust
 
 ```rust
 fn book_trip(workflow: &mut Workflow) -> Outcome {
-    if let Err(error) = workflow.step("flight", reserve_flight, cancel_flight) {
+    let flight = workflow.step("flight", reserve_flight, cancel_flight);
+    if let Err(error) = flight {
         return Outcome::failed(error);
     }
-    if let Err(error) = workflow.step("hotel", reserve_hotel, cancel_hotel) {
-        if workflow.compensate().is_err() {
-            return Outcome::recovery_required(error);
-        }
-        return Outcome::canceled(error);
+    let hotel = workflow.step("hotel", reserve_hotel, cancel_hotel);
+    let Err(original) = hotel else { return Outcome::confirmed() };
+    match workflow.compensate() {
+        Ok(()) => Outcome::canceled(original),
+        Err(error) => Outcome::recovery_required(original, error, workflow.recovery_context()),
     }
-    Outcome::confirmed()
 }
 ```
 
 ## Boundaries and tensions
 
-Compensation is not an exact state reversal. Concurrent work can make the original state invalid.
-The correct result is a defined business-equivalent state.
+After compensation, the state can be different from the previous state. Concurrent work can cause
+an incorrect state before compensation. The correct result is a specified business-equivalent state.
 
-For example, a refund does not erase the historical charge.
+For example, a refund does not remove the historical charge from records.
 
-Do not use compensation when [P044](p044-atomicity-where-possible.md) provides a simpler reliable
-transaction. Do not claim atomicity across independent effects.
+When [P044](p044-atomicity-where-possible.md) gives a supported transaction with less complexity,
+do not use compensation. If effects operate independently, do not identify them as one atomic operation.
 
-Each retry must satisfy [P037](p037-idempotency-before-retry.md). Each intermediate workflow state
+Each retry must satisfy [P037](p037-idempotency-before-retry.md). Each between-step workflow state
 must satisfy [P033](p033-state-safe-failure-semantics.md).
 
 ## Examples
 
 ### Positive application
 
-A travel workflow records flight and hotel reservations as separate durable steps. The hotel
-reservation fails, and no approved alternative exists.
+A travel workflow records flight and hotel reservations as two durable steps. The hotel
+reservation fails, and there is no approved alternative.
 
 The workflow sends idempotent cancellation commands for completed reservations. It records each
-compensation result for later resumption.
+compensation result for resumption.
 
 ### Misuse or counterexample
 
-A workflow calls three services. After the third call fails, it sends best-effort “undo” calls from
-memory. A process failure loses the completed-step record.
+A workflow calls three services. After the third call fails, it sends non-durable “undo” calls from
+memory. After a process failure, the workflow has no completed-step record.
 
-Repeated undo calls can create new side effects.
+More than one compensation call can cause new side effects.
 
 ### Athena or agent workflow
 
-Before a multistep public workflow, Athena records reversible actions and actions that require
-explicit approval. If a later action fails, Athena reports completed effects.
+Before a multistep public workflow, Athena records reversible steps and steps with specified
+approval requirements. If a step fails after approved effects occur, Athena records completed effects.
 
-It uses only predefined authorized compensation. It does not improvise destructive cleanup.
+It uses only approved compensation that it specified before failure. It does not add a destructive
+cleanup step during the failure.
 
 ## Related principles
 
@@ -132,21 +140,22 @@ It uses only predefined authorized compensation. It does not improvise destructi
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Garcia-Molina and Salem, “Sagas” (1987)](https://doi.org/10.1145/38714.38742)
-  — primary paper that defines a long-duration transaction as a sequence. Compensation transactions
-  correct partial execution.
+  — a paper that models a long-duration transaction as a sequence. Compensation transactions
+  repair execution of only some steps.
 
-### Current guidance
+### Applicable information
 
 - [Microsoft Azure, Compensating Transaction pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/compensating-transaction)
-  — current guidance for durable progress, application-specific reversal, idempotent compensation,
-  concurrency, and points of no return.
+  — applicable guidance for durable completed-step data, application-specific reversal, idempotent
+  compensation, concurrency, and irreversible points.
 - [AWS Prescriptive Guidance, Saga patterns](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/saga-patterns.html)
-  — current guidance for forward recovery, reverse recovery, choreography, and orchestration.
+  — applicable guidance for forward recovery, recovery in the opposite sequence, choreography,
+  and orchestration.
 
-### Further reading
+### More information
 
 - [Microsoft Azure, Design for self-healing](https://learn.microsoft.com/en-us/azure/architecture/guide/design-principles/self-healing)
   — connects compensation with checkpoints, recovery, and resumable long-duration work.

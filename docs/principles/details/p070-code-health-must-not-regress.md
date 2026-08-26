@@ -2,9 +2,10 @@
 
 ## Definition
 
-A correct local result does not make a change acceptable. The change must not cause an unnecessary
-loss of system clarity, maintenance quality, test quality, operation quality, adaptability, or
-security. Prefer incremental improvement to gradual decay or impossible perfection.
+A correct local result does not prove the quality of the full change. Without a necessary technical
+basis, a change must not decrease clarity, maintenance quality, test quality, operation
+quality, adaptability, or security. Use incremental improvement. Prevent code decay. Do not make
+perfection necessary.
 
 **Aliases:** leave the codebase no worse, continuous code-health improvement.
 
@@ -12,31 +13,33 @@ security. Prefer incremental improvement to gradual decay or impossible perfecti
 
 **Classification:** practitioner heuristic.
 
-This rule closely aligns with Google's published code-review standard. Related "leave it better"
-heuristics are common. No verified source has exclusive ownership of the broader heuristic.
+This rule agrees with Google's published code-review standard. Many practitioners use related
+"leave it better" heuristics. No verified source has exclusive ownership of the full heuristic.
 
 ## Decision rule
 
-Accept an imperfect change when it makes required progress without a material loss of code health.
-Reject or revise a shortcut when its avoidable cost exceeds its scoped benefit. Assess maintenance,
+When a change completes necessary work without a material loss of code health, accept it although
+it is not perfect. When a design has an unnecessary code-health cost that is more than its scoped
+benefit, revise it. If a revision cannot remove that cost, reject the design. Examine maintenance,
 complexity, test quality, operation, and security costs.
 
 ## How to apply
 
-- Evaluate design, complexity, tests, naming, documentation, operation, and security in context.
-- Prevent systemic decay from a sequence of small local compromises.
-- Distinguish required corrections from optional polish. Label optional suggestions clearly.
-- Prefer small, coherent changes that are easy to review, revert, and improve further.
-- Document accepted debt only when its need, owner, risk, and repair trigger are concrete.
+- Examine design, complexity, tests, naming, documentation, operation, and security in context.
+- Prevent a system-wide decrease in code health from a sequence of small local compromises.
+- Distinguish necessary corrections from optional style changes. Identify optional suggestions
+  clearly.
+- Use small, coherent changes that are easy to review, revert, and make better.
+- When you accept debt, document its necessity, owner, risk, and repair trigger.
 
 ## Diagram
 
 ```mermaid
 flowchart TD
-    A["Define required change"] --> B["Select narrow design"]
-    B --> C["Assess system-wide code health"]
-    C --> D{"Material avoidable regression?"}
-    D -- "Yes" --> E["Revise design or reduce scope"]
+    A["Specify necessary change"] --> B["Select narrow design"]
+    B --> C["Examine system-wide code health"]
+    C --> D{"Material regression without a necessary basis?"}
+    D -- "Yes" --> E["Revise design or decrease scope"]
     E --> C
     D -- "No" --> F{"Temporary debt necessary?"}
     F -- "Yes" --> G["Record owner, risk, and repair trigger"]
@@ -46,7 +49,7 @@ flowchart TD
 
 ## Language examples
 
-The two examples add one clear data transformation with explicit names and no new framework.
+The two examples add one clear data transformation with clear names and no new framework.
 
 ```python
 def visible_tasks(tasks):
@@ -65,20 +68,21 @@ fn visible_tasks(tasks: &[Task]) -> Vec<&str> {
 
 ## Boundaries and tensions
 
-This principle does not permit unrelated cleanup, excess polish, or a demand for perfect code before
-delivery. [P010 Scope Fidelity](p010-scope-fidelity.md) still limits the change. An emergency can
-require an explicit temporary compromise. A local convention does not justify extension of a known
-defect. Repository-wide repair can belong to a separate task.
+This principle does not authorize cleanup that is not part of the task or style changes that are not
+necessary. It does not make perfect code necessary before delivery.
+[P010 Scope Fidelity](p010-scope-fidelity.md) continues to limit the change. An emergency can make a
+recorded temporary compromise necessary. A local convention does not authorize extension of a known
+defect. Repository-wide repair can belong to a different task.
 
 ## Examples
 
 **Positive:** A small feature uses the established interface and adds focused tests. It also makes
-one nearby name clearer without a broad refactor.
+one name in the changed area clearer without a large refactor.
 
-**Misuse:** A shortcut duplicates security policy in a second location because a change to the
-canonical component needs more time.
+**Misuse:** A second copy duplicates security policy because a change to the canonical component has
+a larger scope.
 
-**Athena/agent workflow:** A reviewer separates a required contract-drift finding from an optional
+**Athena/agent workflow:** A reviewer separates a necessary contract-drift finding from an optional
 preference. This distinction protects the skill corpus without an expansion of task scope.
 
 ## Related principles
@@ -91,21 +95,22 @@ preference. This distinction protects the skill corpus without an expansion of t
 
 ## References
 
-### Origin/history
+### Source information
 
 - [Google Engineering Practices: The standard of code review](https://google.github.io/eng-practices/review/reviewer/standard.html)
-  is the direct practitioner source for overall code health as the primary review purpose. This page
-  does not assign broader antecedents to one origin.
+  is the primary practitioner source for code health as the primary review purpose. This page
+  does not identify all earlier sources.
 
-### Current guidance
+### Applicable information
 
 - [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
   applies code health to design, function, complexity, tests, names, comments, style, and
   documentation.
 
-### Further reading
+### More information
 
 - [Google Engineering Practices: Small CLs](https://google.github.io/eng-practices/review/developer/small-cls.html)
-  explains how narrow changes improve review depth, design quality, reversal, and maintenance.
+  shows that narrow changes increase review depth and design quality. Narrow changes also make
+  reversal and maintenance easier.
 
 [Back to the engineering principles catalog](../README.md#p070)

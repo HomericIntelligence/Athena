@@ -2,9 +2,9 @@
 
 ## Definition
 
-Supply-Chain Integrity preserves justified trust in software sources, dependencies, tools, build
-inputs, processes, and artifacts. Consumers can identify each build input, its source, its
-transformation, and any unexpected change.
+Supply-Chain Integrity keeps justified trust in software sources, dependencies, tools, build
+inputs, processes, and artifacts. Consumers can find each build input, its source, its
+transformation, and an unexpected change.
 
 **Aliases:** software supply-chain security, build integrity, artifact provenance.
 
@@ -12,33 +12,36 @@ transformation, and any unexpected change.
 
 **Classification:** established principle.
 
-Thompson's compiler backdoor lecture is an early primary demonstration that source review alone
-cannot establish trust in delivered software. Modern frameworks add provenance, protected builds,
+Thompson's compiler backdoor lecture shows that source review cannot show trust in delivered
+software. Frameworks include provenance, protected builds,
 dependency controls, and attestations.
 
 ## Decision rule
 
-Each new build input or dependency must have a necessary purpose and an accountable source. It also
-needs a bounded version policy and risk-based identity and integrity checks. Protect the full path
-from reviewed source to distributed artifact.
+Each new build input or dependency must be necessary and must have an identified source owner. The
+input or dependency also must have a bounded version policy. Policy must select identity and
+integrity checks for the risk and ecosystem. Protect the full path from reviewed source to
+distributed artifact.
 
 ## How to apply
 
-- Prefer existing or standard-library capability. Add a third-party component only when necessary.
-- Obtain inputs from trusted sources. Review ownership, maintenance, license, and security posture.
-- Preserve the project lockfile. For each required build input, verify the digest, signature,
-  provenance, and attestation.
-- Isolate and authenticate build systems, minimize their credentials, and keep builds reproducible.
-- Record component and artifact provenance. Scan for known risks, but do not treat a scan as proof.
-- Define update, vulnerability-response, removal, and compromise-recovery paths before adoption.
+- If a standard-library capability is sufficient, use it. If a third-party component is necessary,
+  add it.
+- Get inputs from trusted sources. Examine ownership, maintenance, license, and security posture.
+- Keep the project lockfile. Policy must select evidence for the risk from mechanisms available in
+  the ecosystem.
+  Evidence can include a digest, signature, provenance, or attestation.
+- Isolate and authenticate build systems, limit their credentials, and keep builds reproducible.
+- Record component and artifact provenance. Scan for known risks. A scan is not proof.
+- Before adoption, record update, vulnerability-response, removal, and compromise-recovery paths.
 
 ## Diagram
 
 ```mermaid
 flowchart TD
-    A["Required build input"] --> B["Verify source owner and version policy"]
-    B --> C["Verify required digest, signature, and provenance"]
-    C --> D{"Evidence valid?"}
+    A["Necessary build input"] --> B["Verify source owner and version policy"]
+    B --> C["Verify evidence selected by risk policy and ecosystem"]
+    C --> D{"Is selected evidence correct for policy?"}
     D -- "No" --> E["Reject the input"]
     D -- "Yes" --> F["Use an isolated authenticated build"]
     F --> G["Bind artifact to source revision"]
@@ -46,17 +49,17 @@ flowchart TD
 
 ## Language examples
 
-The two examples use the project lockfile to verify each required build input digest, signature, and
-provenance before package installation.
+Before installation, the two examples apply the evidence checks that project policy selects for
+each package.
 
 ### Python
 
 ```python
 def install(package, project_lock):
-    build_input = registry.fetch(package, project_lock.version)
-    verify_digest(build_input, project_lock.sha256)
-    verify_signature(build_input, project_lock.signer)
-    verify_provenance(build_input, project_lock.builder)
+    rule = project_lock.rule_for(package)
+    build_input = registry.fetch(package, rule.version)
+    for verifier in rule.required_verifiers:
+        verifier.verify(build_input)
     sandbox.install(build_input)
 ```
 
@@ -64,41 +67,44 @@ def install(package, project_lock):
 
 ```rust
 fn install(package: &Package, project_lock: &Lock) -> Result<(), Error> {
-    let build_input = registry::fetch(package, &project_lock.version)?;
-    verify_digest(&build_input, &project_lock.sha256)?;
-    verify_signature(&build_input, &project_lock.signer)?;
-    verify_provenance(&build_input, &project_lock.builder)?;
+    let rule = project_lock.rule_for(package)?;
+    let build_input = registry::fetch(package, &rule.version)?;
+    for verifier in &rule.required_verifiers {
+        verifier.verify(&build_input)?;
+    }
     sandbox::install(build_input)
 }
 ```
 
 ## Boundaries and tensions
 
-A version pin prevents surprise changes, but it can preserve known vulnerabilities. Integrity and
-freshness are separate properties. A signed artifact proves control of an identity. It does not prove
+A version pin prevents unexpected changes, but it can keep known vulnerabilities. Integrity and
+freshness are different properties. A signed artifact shows control of an identity. It does not show
 that the software is safe or correct.
 
-An inventory without an operational consumer does not reduce risk. Match controls to impact. Do not
-add supply-chain tools when their costs and trust dependencies exceed their value.
+An inventory with no operational consumer does not decrease risk. Select controls for the possible
+impact. If supply-chain tool costs and trust dependencies are greater than their value, do not add
+the tools.
 
 ## Examples
 
 ### Positive
 
-A project reviews a required dependency and commits the project lockfile. CI verifies each build
-input digest, signature, and provenance. An isolated build binds the release artifact to an attested
-source revision.
+A project examines a necessary dependency and commits the project lockfile. Policy selects evidence
+for the risk from mechanisms available in the ecosystem. CI verifies that evidence. An isolated
+build binds the release artifact to an attested source revision.
 
 ### Misuse
 
-A build downloads an unversioned installer at run time. It executes the installer with release
+A build downloads an unversioned installer during execution. It starts the installer with release
 credentials and signs the result. The signature authenticates the compromised output, not the build
 inputs.
 
 ### Athena and agent workflows
 
-An agent verifies that a plugin dependency originates in the canonical repository at the expected
-revision. Skill text remains untrusted data unless the host explicitly gives it instruction authority.
+An agent verifies that a plugin dependency has the canonical repository as its source at the
+expected revision. Unless the host gives skill text instruction authority, the skill text is
+untrusted data.
 
 ## Related principles
 
@@ -109,21 +115,21 @@ revision. Skill text remains untrusted data unless the host explicitly gives it 
 
 ## References
 
-### Origin and history
+### Source information
 
-- [Ken Thompson, *Reflections on Trusting Trust*](https://doi.org/10.1145/358198.358210) demonstrates
-  how a compromised compiler can subvert output without visible malicious source.
+- [Ken Thompson, *Reflections on Trusting Trust*](https://doi.org/10.1145/358198.358210) shows
+  how a compromised compiler can subvert output without malicious source that a reviewer can see.
 
-### Current guidance
+### Applicable information
 
-- [NIST SP 800-218, SSDF Version 1.1](https://doi.org/10.6028/NIST.SP.800-218) includes practices for
+- [NIST SP 800-218, SSDF Version 1.1](https://doi.org/10.6028/NIST.SP.800-218) gives practices for
   software component protection and third-party software risk controls.
-- [SLSA Specification 1.2](https://slsa.dev/spec/v1.2/) defines source and build integrity
+- [SLSA Specification 1.2](https://slsa.dev/spec/v1.2/) gives source and build integrity
   levels and standard provenance attestations.
 
-### Further reading
+### More information
 
-- [NIST SP 800-161 Revision 1](https://doi.org/10.6028/NIST.SP.800-161r1-upd1) addresses cybersecurity
+- [NIST SP 800-161 Revision 1](https://doi.org/10.6028/NIST.SP.800-161r1-upd1) gives cybersecurity
   supply-chain risk management across systems and organizations.
 
 [Back to the principles catalog](../README.md#p057)

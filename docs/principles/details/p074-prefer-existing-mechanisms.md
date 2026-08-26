@@ -2,9 +2,10 @@
 
 ## Definition
 
-Before creation of a utility, abstraction, parser, serializer, retry framework, cache,
-synchronization primitive, security mechanism, dependency, or service, search for an appropriate
-mechanism. The repository, language, framework, platform, or standard library can already supply it.
+Before you make a utility, abstraction, parser, serializer, retry framework, cache, or
+synchronization primitive, search for an applicable mechanism. Before you make a security
+mechanism, dependency, or service, search for an applicable mechanism. The repository, language,
+framework, platform, or standard library can supply it.
 
 **Aliases:** reuse before a new build, use established mechanisms first.
 
@@ -12,49 +13,49 @@ mechanism. The repository, language, framework, platform, or standard library ca
 
 **Classification:** practitioner heuristic.
 
-Reuse of established components is a long-standing software practice. No verified source owns the
-practice. This rule gives priority to local and standard mechanisms. It still requires a fitness and
-security assessment because reuse does not always help.
+Reuse of established components is a software practice with a long history. No verified source owns
+the practice. This rule gives priority to local and standard mechanisms. The rule continues to
+make a fitness and security assessment necessary because reuse does not always decrease risk.
 
 ## Decision rule
 
-Use an established mechanism when it satisfies the contract and has support in the target
-environment. Its total correctness, security, maintenance, and operation cost must be lower than a
-new mechanism. By default, create only the absent capability instead of a rival framework.
+When the target environment supports an established mechanism and the mechanism satisfies the
+contract, use it. Its total correctness, security, maintenance, and operation cost must be lower
+than a new mechanism. By default, make only the missing capability, not a second framework.
 
 ## How to apply
 
 - Search repository code, documentation, dependency manifests, and architecture decisions first.
-- Check the language and framework standard facilities next.
+- Then, examine the language and framework standard facilities.
 - Compare semantics, failure behavior, maintenance, provenance, licensing, and migration cost.
-- Add a small, coherent extension at the interface that the established mechanism provides.
-- Document why a new mechanism is necessary when available options do not meet the contract.
+- Add a small, coherent extension at the interface that the established mechanism supplies.
+- When available mechanisms do not satisfy the contract, document why a new mechanism is necessary.
 
 ## Diagram
 
 ```mermaid
 flowchart TD
-    A["Define required capability"] --> B["Search repository mechanisms"]
+    A["Specify necessary capability"] --> B["Search repository mechanisms"]
     B --> C["Search language and platform mechanisms"]
-    C --> D{"Established mechanism fits contract?"}
-    D -- "Yes" --> E["Assess support, security, and total cost"]
+    C --> D{"Does established mechanism satisfy contract?"}
+    D -- "Yes" --> E["Examine support, security, and total cost"]
     E --> F{"Reuse has lower total risk?"}
     F -- "Yes" --> G["Use or extend established mechanism"]
-    D -- "No" --> H["Create only absent capability"]
+    D -- "No" --> H["Make only missing capability"]
     F -- "No" --> H
 ```
 
 ## Language examples
 
-The two examples use an established URL parser and reject a URL without a host.
+The two examples use an established URL parser and reject a URL without a scheme or host.
 
 ```python
 from urllib.parse import urlparse
 
 def host(value):
     parsed = urlparse(value)
-    if not parsed.hostname:
-        raise ValueError("URL has no host")
+    if not parsed.scheme or not parsed.hostname:
+        raise ValueError("URL must have a scheme and host")
     return parsed.hostname
 ```
 
@@ -63,22 +64,24 @@ use url::Url;
 
 fn host(value: &str) -> Result<String, &'static str> {
     let parsed = Url::parse(value).map_err(|_| "invalid URL")?;
-    parsed.host_str().map(str::to_owned).ok_or("URL has no host")
+    parsed.host_str().map(str::to_owned).ok_or("URL must have a host")
 }
 ```
 
 ## Boundaries and tensions
 
-An established mechanism is not always correct, secure, maintained, or suitable. Do not force a
-mechanism beyond its contract. Do not depend on private internals or retain a known vulnerability
-only to avoid new code. A third-party dependency can enlarge the supply-chain and attack surfaces.
-A small local implementation can therefore be safer. Reuse must preserve local analysis and explicit
+An established mechanism does not always satisfy the task contract or security requirements. Its
+owner can stop maintenance. If its contract does not include the work, do not use the mechanism. Do
+not use private internals. Do not keep a known vulnerability only to prevent new code. A third-party
+dependency can increase the supply-chain and attack surfaces.
+
+Thus, a small local implementation can be safer. Reuse must keep local analysis and clear
 ownership.
 
 ## Examples
 
-**Positive:** A command uses the standard library URL parser and the repository error envelope. It
-does not create two replacements with small differences.
+**Positive:** A command uses the URL parser from the standard library and the repository error envelope. It
+does not make two replacements with small differences.
 
 **Misuse:** A custom retry loop duplicates the bounded retry in the repository client. The duplicate
 causes nested attempts and inconsistent delay intervals.
@@ -96,23 +99,24 @@ The author does not add a second parser to a Markdown code block.
 
 ## References
 
-### Origin/history
+### Source information
 
 - [Python tutorial: Batteries included](https://docs.python.org/3/tutorial/stdlib.html#batteries-included)
-  documents one influential language philosophy for robust common mechanisms. This page does not
-  claim that it originated the broader reuse heuristic.
+  documents one important language philosophy for standard-library mechanisms. This page does not
+  claim that it is the initial source for the full reuse heuristic.
 
-### Current guidance
+### Applicable information
 
 - [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-  asks whether the codebase or a library must own a change. It also asks whether the change fits the
-  system.
-- [NIST SSDF 1.1](https://csrc.nist.gov/pubs/sp/800/218/final) requires organizations to manage and
-  protect internal and third-party software components.
+  states that reviewers must identify the correct owner for a change. Reviewers must also verify
+  that the change agrees with the system.
+- [NIST SSDF 1.1](https://csrc.nist.gov/pubs/sp/800/218/final) states that organizations must manage
+  and protect internal and third-party software components.
 
-### Further reading
+### More information
 
 - [Google Engineering Practices: Small CLs](https://google.github.io/eng-practices/review/developer/small-cls.html)
-  explains how unused APIs and unrelated framework work can reduce the focus of a change.
+  shows how APIs that no code uses can decrease change focus. Framework work that is not part of the
+  task can have the same effect.
 
 [Back to the engineering principles catalog](../README.md#p074)

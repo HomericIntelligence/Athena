@@ -2,9 +2,8 @@
 
 ## Definition
 
-Inspect the final change before any completion claim. Run the relevant checks that the repository
-defines. Report the command, revision, environment, result, and any unavailable material
-verification.
+Before a completion claim, examine the last change. Run the applicable checks that the repository
+specifies. Report the command, revision, environment, result, and important verification gaps.
 
 **Aliases:** evidence-backed completion, validation before a success claim.
 
@@ -12,31 +11,32 @@ verification.
 
 **Classification:** Athena synthesis.
 
-This rule combines established verification practice with reproducible software-delivery evidence.
-No verified source establishes one historical origin. Athena's evidence-integrity policy requires
-truthful and reproducible reports.
+This rule uses established verification practice and evidence from software delivery. No verified
+source owns this rule. Athena's evidence-integrity policy specifies accurate reports with recorded
+commands, revisions, and environments.
 
 ## Decision rule
 
-Do not convert an expectation into a completion claim. Inspect the delivered state and obtain fresh,
-risk-appropriate evidence. Limit the claim to facts that the evidence proves.
+Do not report an expectation as a completion claim. Examine the delivered state. Use current,
+risk-based evidence. Limit the claim to facts that the evidence proves.
 
 ## How to apply
 
-- Review the final diff and all generated, staged, and untracked artifacts in scope.
-- Run the required tests, build checks, type checks, lint checks, static checks, security checks, and
-  package checks.
-- Use the final revision and relevant environment. Do not use stale results.
-- Record commands, exit status, revision, environment, and meaningful limitations.
-- Report failures, skips, unavailable dependencies, and timeouts. Do not invent a substitute success.
+- Review the last diff and all generated, staged, and untracked artifacts in scope.
+- Run the necessary tests, build checks, type checks, lint checks, static checks, security checks,
+  and package checks.
+- Use the last revision and applicable environment. Do not use stale results.
+- Record commands, exit status, revision, environment, and important limitations.
+- Report failures, skips, unavailable dependencies, and timeouts. Do not report a pass result
+  without evidence.
 
 ## Diagram
 
 ```mermaid
 flowchart TD
-    A["Inspect final change"] --> B["Select required checks for risk"]
-    B --> C["Run checks on final revision"]
-    C --> D{"Required evidence passes?"}
+    A["Examine last change"] --> B["Select necessary checks for risk"]
+    B --> C["Run checks on last revision"]
+    C --> D{"Necessary evidence passes?"}
     D -- "No" --> E["Report failure or evidence gap"]
     D -- "Yes" --> F["Record command, revision, and environment"]
     F --> G["Make evidence-bound completion claim"]
@@ -44,7 +44,7 @@ flowchart TD
 
 ## Language examples
 
-The two examples issue a completion result only after they evaluate every recorded check.
+The two examples issue a completion result only after they examine each recorded check.
 
 ```python
 def completion_report(revision, checks):
@@ -69,25 +69,26 @@ fn completion_report(revision: &str, checks: &[Check]) -> Report {
 
 ## Boundaries and tensions
 
-Use evidence that is proportional to the risk. Documentation, configuration, and production changes
-need different evidence. Successful checks cannot prove requirements that the checks do not
+Use risk-based evidence. Documentation, configuration, and production changes use different
+evidence. Checks that pass cannot prove requirements that the checks do not
 exercise.
 
-Cost does not make an unverified claim true. If a required check cannot run, report the gap. Also
-report the command or environment that can provide the absent evidence. Never bypass the gate under
-[P068 No Validation Bypass](p068-no-validation-bypass.md).
+Cost does not supply evidence for an unverified claim. If a necessary check cannot run, report the
+gap. Also report the command or environment that can give the missing evidence. Do not bypass the
+gate.
+[P068 No Validation Bypass](p068-no-validation-bypass.md) specifies this rule.
 
 ## Examples
 
-**Positive:** An author inspects the final diff and runs the required gate at the current commit. The
-report identifies one unavailable platform test and does not claim that all tests pass.
+**Positive:** An author examines the last diff and runs the necessary gate at the current commit.
+The report identifies one unavailable platform test and does not claim that all tests pass.
 
-**Misuse:** A developer changes code after a successful test. The developer cites that stale result
+**Misuse:** A developer changes code after a test passes. The developer cites that stale result
 as proof for the new revision.
 
 **Athena/agent workflow:** Before completion, an agent runs `just all` and reports the command
 result.
-If the full gate cannot finish, the agent identifies each narrower check.
+If the full gate cannot complete, the agent identifies each narrower check.
 
 ## Related principles
 
@@ -99,22 +100,23 @@ If the full gate cannot finish, the agent identifies each narrower check.
 
 ## References
 
-### Origin/history
+### Source information
 
 - [NIST IR 8397, Guidelines on Minimum Standards for Developer Verification of Software](https://doi.org/10.6028/NIST.IR.8397)
-  records a modern consensus set of broad verification techniques. Athena does not treat it as the
-  single origin of this rule.
+  records a current consensus set of verification techniques. Athena does not identify it as the
+  initial source for this rule.
 
-### Current guidance
+### Applicable information
 
-- [NIST SSDF 1.1](https://csrc.nist.gov/pubs/sp/800/218/final) defines review, analysis, and testing
+- [NIST SSDF 1.1](https://csrc.nist.gov/pubs/sp/800/218/final) specifies review, analysis, and testing
   practices for software verification before release.
 - [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-  requires reviewers to assess function, tests, design, and the full change context.
+  states that reviewers must examine function, tests, design, and the full change context.
 
-### Further reading
+### More information
 
-- [Athena evidence integrity policy](../../policies/evidence-integrity.md) defines the repository's
-  reproducibility and truthful report contract for completion evidence.
+- [Athena evidence integrity policy](../../policies/evidence-integrity.md) specifies the
+  repository's contract for accurate completion-evidence reports with recorded commands, revisions,
+  and environments.
 
 [Back to the engineering principles catalog](../README.md#p065)

@@ -3,8 +3,8 @@
 ## Definition
 
 **Single Source of Truth** (SSOT) gives each authoritative mutable fact or policy one declared owner
-and one write path. Other representations are derived views, caches, replicas, or exports. Their
-source and synchronization rules are explicit.
+and one write path. Other representations are derived views, caches, replicas, or exports. The
+source and synchronization rules for each representation are explicit.
 
 **Aliases:** SSOT, authoritative source, canonical owner.
 
@@ -12,23 +12,23 @@ source and synchronization rules are explicit.
 
 **Classification:** practitioner heuristic.
 
-The phrase is common in data, configuration, and software design. No reliable single origin is
-known. The rule relates to database normalization and DRY. It applies specifically to authority and
-divergence, not to all duplication.
+The phrase occurs in data, configuration, and software design. No source records where the phrase
+first occurred. The rule uses concepts from database normalization and DRY. The rule is only about
+authority and divergence, not all duplication.
 
 ## Decision rule
 
-For each mutable fact, identify the authoritative representation and its approved writers. Define
-how each other representation becomes consistent with it.
+For each mutable fact, record the authoritative representation and the permitted writers. Record how
+all other representations receive the same data from the authoritative representation.
 
 ## How to apply
 
-- Assign an authoritative owner and supported write interface for each domain fact.
-- Generate or project secondary representations when practical.
-- Mark caches and replicas as non-authoritative and define freshness expectations.
+- Give each domain fact an authoritative owner and specified write interface.
+- If policy accepts the cost, make secondary representations from authoritative data.
+- Give caches and replicas a non-authoritative status. Record freshness limits.
 - Record the source, version, and reconciliation rules across asynchronous boundaries.
-- Move authority explicitly. Do not permit two writers to disagree without a signal.
-- Detect drift when independent copies are unavoidable.
+- Use an explicit operation to move authority. Do not let two writers give different values without a signal.
+- When authors can change copies independently, find differences.
 
 ## Diagram
 
@@ -36,57 +36,67 @@ The authoritative source supplies each derived representation.
 
 ```mermaid
 flowchart LR
-    A["Approved writer"] --> B["Authoritative source"]
+    A["Permitted writer"] --> B["Authoritative source"]
     B --> C["Read-only derived view"]
-    B --> D["Refreshable cache"]
-    B --> E["Reconciled replica"]
+    B --> D["Cache"]
+    B --> E["Replica"]
 ```
 
 ## Language examples
 
-The two examples derive a client timeout from one authoritative configuration value.
+The two examples derive one timeout from the authoritative configuration and reject values that are
+not in the `u64` domain.
 
 ### Python
 
 ```python
 @dataclass(frozen=True)
 class Config:
-    timeout_seconds: int
+    timeout_seconds: str
 
-
-def client_timeout(config: Config) -> timedelta:
-    return timedelta(seconds=config.timeout_seconds)
+def client_timeout(config: Config) -> int:
+    text = config.timeout_seconds
+    if not text.isascii() or not text.isdecimal():
+        raise ValueError("timeout must be a u64")
+    seconds = int(text)
+    if seconds > 2**64 - 1:
+        raise ValueError("timeout must be a u64")
+    return seconds
 ```
 
 ### Rust
 
 ```rust
 struct Config {
-    timeout_seconds: u64,
+    timeout_seconds: String,
 }
 
-fn client_timeout(config: &Config) -> Duration {
-    Duration::from_secs(config.timeout_seconds)
+fn client_timeout(config: &Config) -> Result<u64, &'static str> {
+    let text = &config.timeout_seconds;
+    if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("timeout must be a u64");
+    }
+    text.parse::<u64>().map_err(|_| "timeout must be a u64")
 }
 ```
 
 ## Boundaries and tensions
 
-SSOT does not mean one database, one service, or one global system owner. Different bounded contexts
-can own different facts. Distributed replicas can support availability. Derived copies are valid
-when their authority and consistency model are clear. Central control is not useful if it causes a
-bottleneck or false agreement.
+SSOT is not a rule for one database, one service, or one global system owner. Different bounded contexts
+can own different facts. Distributed replicas can increase availability. When the authority and
+consistency model of each copy are clear, derived copies are correct. When control causes a bottleneck
+or incorrect agreement, central control is incorrect.
 
 ## Examples
 
-**Positive:** One schema owns an API shape. Generated clients and documentation identify their
-schema version. Authors do not edit these derived artifacts independently.
+**Positive:** One schema owns an API shape. Generated clients and documentation show the schema
+version. Authors do not change derived artifacts independently.
 
-**Misuse:** A timeout default appears separately in code, deployment configuration, and a runbook,
-with no precedence rule when the values diverge.
+**Misuse:** Code, deployment configuration, and a runbook give timeout defaults that authors can
+change independently. No precedence rule selects one of the different values.
 
-**Athena/agent workflow:** The principles catalog owns IDs and decision rules. Detail pages explain
-them. Skills link to the catalog and do not keep duplicate definitions.
+**Athena/agent workflow:** The principles catalog owns IDs and decision rules. Detail pages give more
+information. Skills refer to the catalog and do not keep duplicate definitions.
 
 ## Related principles
 
@@ -98,24 +108,24 @@ them. Skills link to the catalog and do not keep duplicate definitions.
 
 ## References
 
-### Origin/history
+### Source information
 
-- No primary source identifies one original coinage. Treat the term as a practitioner label without
+- No primary source records the first occurrence of the phrase. Use the phrase as a practitioner term without
   attribution to one author.
 - [On the Criteria To Be Used in Decomposing Systems into Modules](https://doi.org/10.1145/361598.361623)
-  supplies the related historical foundation for authoritative module boundaries.
+  gives a historical foundation for authoritative module boundaries.
 
-### Current guidance
+### Applicable information
 
 - [Microsoft Azure Architecture Center: Data considerations for microservices](https://learn.microsoft.com/en-us/azure/architecture/microservices/design/data-considerations)
-  recommends one authoritative service when a system requires strong consistency. It permits explicit
-  non-authoritative eventual copies.
+  tells architects to use one authoritative service for necessary strong consistency. The guidance
+  lets a system use non-authoritative copies with explicit eventual consistency.
 
-### Further reading
+### More information
 
 - [NASA: A PPE Use Case on Configuration Management Approach for MBSE](https://ntrs.nasa.gov/citations/20230000079)
-  describes a model that serves as the controlled source for derived engineering artifacts.
+  gives a model that is the controlled source for derived engineering artifacts.
 - [USENIX SREcon: There Is No Single Source of Truth](https://www.usenix.org/conference/srecon24emea/presentation/burke)
-  provides a useful counterpoint about ambiguity and domain-specific authority in real systems.
+  gives information about ambiguity and authority for each domain in production systems.
 
 [Back to the engineering principles catalog](../README.md#p078)

@@ -2,10 +2,10 @@
 
 ## Definition
 
-When practical, create an automated test that reproduces a reported defect before you repair the
-implementation. Confirm that the test fails for the reported reason.
+If safe defect reproduction is possible before implementation repair, add an automated test.
+Make sure that the test fails for the reported cause.
 
-After the repair, confirm that the test passes. Keep the test in the suite to detect recurrence.
+After the repair, make sure that the test passes. Keep the test in the suite to detect recurrence.
 
 **Aliases:** bug-reproduction test, failing regression test.
 
@@ -13,34 +13,35 @@ After the repair, confirm that the test passes. Keep the test in the suite to de
 
 **Classification:** practitioner heuristic.
 
-Regression tests predate automated unit test frameworks. Test-first defect repair is an established
-technique in TDD and maintenance practice. This exact formulation has no verified single origin.
+Automated unit test frameworks followed regression tests. Test-first defect repair is a method in
+TDD and maintenance practice. No one source first gave this formulation.
 
 ## Decision rule
 
-Before a repair, capture the smallest supported behavior that reproduces the defect. Demonstrate
+Before a repair, capture the smallest contract behavior that reproduces the defect. Make sure
 that the test fails against the unrepaired revision.
 
 ## How to apply
 
-- Reproduce the symptom at the closest reliable test level.
-- Run the new test before implementation work. Confirm the reason for its failure.
-- Minimize the fixture, but preserve the defect condition.
-- Repair the root cause. Then run the focused test and the relevant suite.
-- Name the test for behavior so it remains useful after implementation changes.
+- Reproduce the symptom at the nearest stable test level.
+- Before implementation work, run the new test. Make sure that it fails for the reported cause.
+- Use the smallest fixture that reproduces the defect.
+- Preserve the defect condition.
+- Repair the root cause. Then run the specified test and the applicable suite.
+- Give the test a behavior name that continues to help after implementation changes.
 
 ## Diagram
 
 ```mermaid
 flowchart LR
-    Report["Defect report"] --> Test["Create focused behavior test"]
-    Test --> Red{"Fails for reported reason?"}
+    Report["Defect report"] --> Test["Create small behavior test"]
+    Test --> Red{"Fails for reported cause?"}
     Red -->|No| Refine["Refine reproduction"]
     Refine --> Test
     Red -->|Yes| Repair["Repair root cause"]
-    Repair --> Green{"Focused test passes?"}
+    Repair --> Green{"Specified test passes?"}
     Green -->|No| Repair
-    Green -->|Yes| Suite["Run relevant suite"]
+    Green -->|Yes| Suite["Run applicable suite"]
 ```
 
 ## Language examples
@@ -77,29 +78,29 @@ fn empty_input_returns_none() {
 
 ## Boundaries and tensions
 
-"When practical" matters. Production containment, destructive failures, nondeterministic races,
-or unavailable dependencies can require immediate safe mitigation. Use a model-based reproduction
-when direct reproduction is unsafe.
+Safe reproduction is not possible in each case. Production containment, destructive failures,
+nondeterministic races, or unavailable dependencies can make safe mitigation necessary before reproduction.
+When reproduction with the production dependency is not safe, use a model-based reproduction.
 
-Do not write a test that copies the defective implementation or requires an accidental symptom. A
-test that exists only after repair gives weaker evidence. Its sensitivity to the original defect
-remains unverified.
+Do not write a test that copies the defective implementation or depends on an accidental symptom. A
+test added only after repair gives weaker evidence. No evidence shows its sensitivity to the
+reported defect.
 
 A regression test is RED on the unrepaired revision and GREEN after repair. A characterization
-test starts GREEN and records existing behavior before a behavior-preserving refactor. These tests
-have related but distinct purposes.
+test starts GREEN and records behavior before a behavior-preserving refactor. These tests have
+related but different objectives.
 
 ## Examples
 
 ### Positive application
 
-A parser report includes one malformed input. A focused public API test first reproduces the
-exception. The test passes after the parser returns the documented structured error.
+A parser report includes one malformed input. A small public API test first reproduces the
+exception. The test passes after the parser returns the specified structured error.
 
 ### Misuse or counterexample
 
-A developer adds a test after the code change. The test passes on each revision. It does not prove
-regression sensitivity.
+A developer adds a test after the code change. The test passes on each revision. It does not give
+evidence of regression sensitivity.
 
 ### Athena or agent workflow
 
@@ -115,19 +116,19 @@ test. Then the agent runs the repository gate.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Beck, *Test-Driven Development: By Example* (2002)](https://www.pearson.com/en-us/subject-catalog/p/Beck-Test-Driven-Development-By-Example/P200000009421/9780321146533)
-  established a widely used test-first cycle that also applies to defect repair.
+  gives a widely used test-first cycle that also applies to defect repair.
 
-### Current guidance
+### Applicable information
 
 - [Google Engineering Practices, "Small CLs"](https://google.github.io/eng-practices/review/developer/small-cls.html)
-  recommends tests for behavior changes and missing behavioral coverage before a refactor.
+  gives pre-refactor guidance for tests of behavior changes and missing behavioral coverage.
 
-### Further reading
+### More information
 
 - [Microsoft, ".NET unit testing best practices"](https://learn.microsoft.com/en-us/dotnet/core/testing/unit-testing-best-practices)
-  explains regression protection and repeatable, self-checking tests.
+  gives information about regression protection and repeatable, self-checking tests.
 
 [Back to the engineering principles catalog](../README.md#p026)

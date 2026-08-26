@@ -2,9 +2,9 @@
 
 ## Definition
 
-**Delete Dead Code** removes unreachable, unused, superseded, commented-out, or obsolete code. First,
-verify that no required consumer or contract depends on it. Version control preserves history.
-Dormant alternatives increase maintenance cost and mental load.
+**Delete Dead Code** removes code that is unreachable, superseded, commented-out, obsolete, or without a consumer. First,
+do a verification that no necessary consumer or contract uses the code. Version control keeps history.
+Alternatives without a consumer increase maintenance cost and inspection load.
 
 **Aliases:** dead-code removal and obsolete-code cleanup.
 
@@ -12,49 +12,52 @@ Dormant alternatives increase maintenance cost and mental load.
 
 **Classification:** practitioner heuristic.
 
-No verified single origin exists for the rule. Compilers have long removed dead code. Maintainers
-apply the broader practice to reachable source that has no product purpose. Athena requires evidence
-before deletion.
+No source records an initial author of the rule. Compilers remove dead code during optimization.
+Maintainers also remove reachable source that has no product function. Athena removes code only
+after an inspection finds no product function.
 
 ## Decision rule
 
-Remove code that has no supported consumer in runtime, build, test, migration, compatibility, or
-documentation. Verify the affected behavior. Do not keep speculative backup code.
+Remove code that has no necessary consumer in runtime, build, test, migration, compatibility, or
+documentation. After the removal, do tests of behavior. Do not keep a code copy without a specified
+consumer.
 
 ## How to apply
 
-- Search direct and indirect call sites, entry points, registrations, and generated references.
-- Check reflection, dynamic loading, feature flags, serialization, and external API compatibility.
-- Inspect history and tests to understand why the code exists.
-- Delete associated tests and documentation that only describe the obsolete behavior.
-- Keep the removal focused and reviewable.
-- Run the repository's relevant static, behavioral, packaging, and integration checks.
+- Examine direct and indirect call sites, entry points, registrations, and generated references.
+- Examine reflection, dynamic loading, feature flags, serialization, and external API compatibility.
+- Examine history and tests for the code rationale.
+- Delete tests and documentation for the obsolete behavior only.
+- Keep the removal in one specified scope.
+- Do the repository's applicable static, behavioral, packaging, and integration checks.
 
 ## Diagram
 
-The deletion starts only after evidence shows that no required consumer remains.
+After an inspection finds zero necessary consumers, the deletion starts.
 
 ```mermaid
 flowchart LR
-    A["Candidate dead code"] --> B["Search all consumers"]
-    B --> C{"Required consumer?"}
+    A["Candidate dead code"] --> B["Examine all consumers"]
+    B --> C{"Necessary consumer?"}
     C -->|Yes| D["Keep or migrate"]
     C -->|No| E["Delete all obsolete code"]
-    E --> F["Verify affected behavior"]
+    E --> F["Do behavior tests"]
 ```
 
 ## Language examples
 
-The two examples show the supported path after removal of an obsolete fallback.
+After removal of an obsolete fallback, the two examples show the remaining path.
 
 ### Python
 
 ```python
-HANDLERS: dict[str, Callable[[], None]] = {"serve": serve}
+class Command(Enum):
+    SERVE = "serve"
 
-def dispatch(name: str) -> None:
-    handler = HANDLERS[name]
-    handler()
+def dispatch(command: Command) -> None:
+    match command:
+        case Command.SERVE:
+            serve()
 ```
 
 ### Rust
@@ -73,23 +76,23 @@ fn dispatch(command: Command) {
 
 ## Boundaries and tensions
 
-A local search cannot prove that a public interface or plug-in hook is unused. A removal can require
-deprecation and migration. Historical rationale is not dead when it still limits current code.
-Remove generated source through its canonical input. Do not edit its output independently. Scope
-fidelity still limits unrelated cleanup.
+A local inspection does not give proof that a public interface or plug-in hook has no consumer. A removal can make
+deprecation and migration necessary. If historical rationale controls code at this time, the rationale is active.
+Remove generated source through the canonical input. Do not edit the generated output independently. Scope
+fidelity limits cleanup to the specified scope.
 
 ## Examples
 
-**Positive:** A maintainer retires a command with no external compatibility obligation. The
-maintainer removes its handler, registration, tests, and command-specific help, then rebuilds the
-package.
+**Positive:** A maintainer removes a command with no external compatibility obligation. The
+maintainer removes the handler, registration, tests, and help for the command. The maintainer then
+makes the package again.
 
-**Misuse:** A reviewer deletes an apparently unused callback without a check for its configuration
-name. A framework loads the callback by that name.
+**Misuse:** A reviewer deletes a callback with no clear caller. The reviewer does not examine the
+configuration name. A framework loads the callback by that name.
 
-**Athena/agent workflow:** An agent first verifies manifests, references, tests, and repository
-history. The agent removes the helper only after this review and does not use a text-search miss as
-proof.
+**Athena/agent workflow:** An agent first does verification of manifests, references, tests, and
+repository history. After this inspection, the agent removes the helper. Text inspection is not
+sufficient proof.
 
 ## Related principles
 
@@ -101,21 +104,22 @@ proof.
 
 ## References
 
-### Origin/history
+### Source information
 
-- No primary source for one coinage was found. The source-level rule is best treated as a
-  maintenance heuristic related to, but broader than, compiler dead-code elimination.
+- No primary source records one coinage. The source-level rule changes compiler dead-code
+  elimination into a maintenance rule.
 
-### Current guidance
+### Applicable information
 
-- [Google SRE: Operational Simplicity](https://sre.google/sre-book/simplicity/) recommends routine
-  dead-code removal. It requires an essential purpose for operational code.
+- [Google SRE: Operational Simplicity](https://sre.google/sre-book/simplicity/) gives usual
+  dead-code removal as a practice. Code for operations must have a necessary function.
 - [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-  asks reviewers to examine existing comments and TODOs that a change may make obsolete.
+  gives reviewers a check of comments and TODOs in the change. A change can make comments and TODOs obsolete.
 
-### Further reading
+### More information
 
 - [Google Engineering Practices: Small CLs](https://google.github.io/eng-practices/review/developer/small-cls.html)
-  explains why self-contained deletions and small changes are easier to review and reverse.
+  gives information about self-contained deletions and small changes. Small self-contained changes
+  make inspection and reversal easy.
 
 [Back to the engineering principles catalog](../README.md#p088)

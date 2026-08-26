@@ -2,11 +2,12 @@
 
 ## Definition
 
-Do not put credentials, private keys, tokens, production secrets, or sensitive customer data in source
-code or ordinary context. This context includes fixtures, prompts, logs, generated artifacts, and
-agent memory. Use sensitive data only when the task requires it and a protected channel exists.
+Do not include credentials, private keys, tokens, production secrets, or sensitive customer data in
+source code or context that has no protection. This context includes fixtures, prompts, logs,
+generated artifacts, and agent memory. If sensitive data is necessary for a task, use a protected
+channel.
 
-Treat exposure as a security event even without evidence of abuse.
+Classify exposure as a security event without a requirement for evidence of abuse.
 
 **Aliases:** secret hygiene, credential isolation, context minimization.
 
@@ -14,41 +15,48 @@ Treat exposure as a security event even without evidence of abuse.
 
 **Classification:** Athena synthesis.
 
-This synthesis extends established security practice to agent context. Secret isolation and
-credential management have diffuse histories. No single source defines this combined rule for code,
-telemetry, artifacts, and AI context.
+This synthesis applies security practice to agent context. Secret isolation and credential
+management have many sources. No one source gives this rule for code, telemetry, artifacts, and AI
+context.
 
 ## Decision rule
 
-Do not expose a secret when a reference, narrow identity, derived value, or redacted record can support
-the task. When secret use is necessary, reveal the minimum value to the fewest principals for the
-shortest time. Prevent secondary copies.
+If a reference, narrow identity, derived value, or redacted record is sufficient, do not show a
+secret.
+If a secret is necessary for the task, give the minimum necessary value to the minimum number of
+principals.
+Limit the exposure time. Prevent secondary copies.
 
 ## How to apply
 
-- Store secrets in a managed secret facility, not repository or ordinary configuration files.
-- Prefer short-lived, task-specific identities and access at use time over static shared credentials.
-- Keep secret values out of command arguments, prompts, exceptions, telemetry, diffs, and test output.
-- Redact sensitive fields before context transfer to models, tools, sub-agents, or external services.
-- Scan source and artifacts. Use the scan as a backstop, not as permission to embed secrets.
-- Revoke or rotate a secret promptly after suspected exposure. Deletion of the visible copy is not
-  sufficient.
+- Keep secrets in a managed secret facility, not repository or configuration files that have no
+  protection.
+- When the operation starts, get short-lived, task-specific identities and access. Do not use static
+  shared credentials.
+- Do not include secret values in command arguments, prompts, exceptions, telemetry, diffs, or test
+  output.
+- Redact sensitive fields before context transfer to models, tools, sub-agents, or external
+  services.
+- Scan source and artifacts. Use the scan as a secondary control, not as permission to embed
+  secrets.
+- If exposure is possible, revoke or rotate the secret. Deletion of the copy that users can see is
+  not sufficient.
 
 ## Diagram
 
 ```mermaid
 flowchart TD
-    A["Operation needs protected access"] --> B{"Can a reference or scoped identity work?"}
-    B -- "Yes" --> C["Pass the reference to a protected tool"]
-    B -- "No" --> D["Reveal the minimum secret through a protected channel"]
+    A["Protected operation starts"] --> B{"Is a reference or scoped identity sufficient?"}
+    B -- "Yes" --> C["Give the reference to a protected tool"]
+    B -- "No" --> D["Give the minimum secret through a protected channel"]
     C --> E["Return only the operation result"]
     D --> E
-    E --> F["Revoke access and remove transient copies"]
+    E --> F["Revoke access and remove temporary copies"]
 ```
 
 ## Language examples
 
-The two examples pass a secret reference to a protected signer and log only a safe request ID.
+The two examples give a secret reference to a protected signer and log only a safe request ID.
 
 ### Python
 
@@ -74,30 +82,29 @@ fn sign_release(request_id: &str, artifact: &Artifact) -> Result<Signature, Erro
 ## Boundaries and tensions
 
 Environment variables are transport, not a full secret management system. Process inspection or
-debug tools can expose them. Encoding cannot protect a secret. Encryption with a committed key also
-cannot protect it.
+debug tools can show them. Encoding cannot protect a secret. Encryption with a committed key also
+cannot protect the secret.
 
-Some authorized operations require sensitive values. Prefer a protected tool boundary that performs
-the operation without disclosure of the value. Diagnostic value does not justify logs that contain
-secrets.
+For an authorized operation, a sensitive value can be necessary. Use a protected tool boundary that
+does the operation with no disclosure of the value. Do not log secrets for diagnosis.
 
 ## Examples
 
 ### Positive
 
-A deployment runner obtains a short-lived credential from the platform identity service. It uses the
-credential inside the deployment boundary and masks output. The credential expires after the task.
+A deployment runner gets a short-lived credential from the platform identity service. It uses the
+credential only at the deployment boundary and masks output. The credential expires after the task.
 
 ### Misuse
 
-A test puts a production-like access token in a fixture because the repository is private. The same
-fixture then enters a prompt and CI artifact.
+A fixture contains a production-like access token because the repository is private. A prompt and
+CI artifact then contain the same fixture.
 
 ### Athena and agent workflows
 
-An agent asks a credential-aware tool to perform an authorized operation without token disclosure.
-Before delegation, it removes unrelated file content, identifiers, and tool output from the child
-context.
+An agent uses a credential-aware tool to do an authorized operation without token disclosure.
+Before delegation, it removes file content, identifiers, and tool output that do not apply to the
+child task.
 
 ## Related principles
 
@@ -108,21 +115,22 @@ context.
 
 ## References
 
-### Origin and history
+### Source information
 
-- No single historical source defines this principle. This principle combines established credential
-  management practice with risks from telemetry, build artifacts, model context, and persistent memory.
+- No one historical source gives this principle. This principle applies credential management
+  practice to risks from telemetry, build artifacts, model context, and persistent memory.
 
-### Current guidance
+### Applicable information
 
 - [OWASP Secrets Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html)
-  covers central storage, short lifetimes, rotation, audits, source exposure, and log redaction.
-- [NIST SP 800-218, SSDF Version 1.1](https://doi.org/10.6028/NIST.SP.800-218) requires protection of
+  gives information about central storage, short lifetimes, rotation, audits, source exposure, and
+  log redaction.
+- [NIST SP 800-218, SSDF Version 1.1](https://doi.org/10.6028/NIST.SP.800-218) gives requirements for
   software, credentials, and development environments across the secure development life cycle.
 
-### Further reading
+### More information
 
 - [OWASP AI Agent Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/AI_Agent_Security_Cheat_Sheet.html)
-  applies data classification, redaction, memory isolation, and non-sensitive logs to agent systems.
+  uses data classification, redaction, memory isolation, and non-sensitive logs for agent systems.
 
 [Back to the principles catalog](../README.md#p056)

@@ -2,11 +2,11 @@
 
 ## Definition
 
-One responsible boundary must own the final policy for a failure. Intermediate layers can add safe
-context or telemetry. They must not present the same incident as multiple final failures.
+One boundary must have responsibility for the outcome policy for a failure. Other layers can add safe
+context or telemetry. They must record only one incident for the failure.
 
-Any error translation must retain the causal chain, stack data, and structured context that help
-diagnose the original failure.
+Each error translation must keep the causal chain, stack data, and structured context. These data
+help engineers find the initial failure cause.
 
 **Aliases:** single-owner error handling, log-or-propagate, exception chaining
 
@@ -14,42 +14,42 @@ diagnose the original failure.
 
 **Classification:** practitioner heuristic.
 
-Several languages define exception chaining. The combined “handle once” rule is a cross-language
-engineering synthesis. No verified source uniquely owns this maxim.
+Many languages include exception chaining. The full “handle once” rule is a cross-language
+engineering synthesis. Athena cannot identify one source for this rule.
 
 ## Decision rule
 
-For each failure, identify the boundary that decides the outcome. Other layers must propagate the
-failure. They can add unique context that the responsible boundary cannot reconstruct.
+For each failure, find the boundary that selects the outcome. Other layers must propagate the
+failure. They can add context that is available only at their layer.
 
 ## How to apply
 
-- Assign final recovery, presentation, and error-level records to a clear API, process, job, or
+- Give ownership of recovery, user output, and error-level records to a clear API, process, job, or
   workflow boundary.
-- Use native cause links or structured error wrappers. Do not replace an error with an unrelated
-  message.
-- Add each operation, safe identifier, or dependency name once at the layer that knows it.
-- Correlate retry telemetry with the final outcome. Do not report each attempt as a separate,
+- Use native cause links or structured error wrappers. Do not replace an error with a message that
+  has no relation.
+- Add an operation, safe identifier, or dependency name only at the layer that knows it.
+- Correlate retry telemetry with the last outcome. Do not record each try as a different,
   uncorrelated incident.
-- Preserve stack and cause fields in structured telemetry. Remove sensitive data from those fields.
-- Verify the stable public category and the retained internal cause of each translated error.
+- Keep stack and cause fields in structured telemetry. Remove sensitive data from those fields.
+- Make sure that each translated error has the stable public category and internal cause.
 
 ## Diagram
 
 ```mermaid
 flowchart TD
-    A["A layer receives a failure"] --> B{"Does this layer own final policy?"}
-    B -- "Yes" --> C["Decide the outcome and report one final incident"]
-    B -- "No" --> D{"Does this layer have unique safe context?"}
-    D -- "Yes" --> E["Add context and preserve the cause"]
-    D -- "No" --> F["Preserve the failure unchanged"]
+    A["A layer receives a failure"] --> B{"Does this layer have responsibility for outcome policy?"}
+    B -- "Yes" --> C["Select the outcome and record one incident"]
+    B -- "No" --> D{"Does this layer have safe context available only here?"}
+    D -- "Yes" --> E["Add context and keep the cause"]
+    D -- "No" --> F["Keep the failure unchanged"]
     E --> G["Propagate to the responsible boundary"]
     F --> G
 ```
 
 ## Language examples
 
-Each example adds one artifact identifier and retains the original storage error as the cause.
+Each example adds one artifact identifier and keeps the initial storage error as the cause.
 
 ### Python
 
@@ -74,14 +74,14 @@ fn load_artifact(store: &Store, key: &str) -> Result<Artifact, ArtifactLoadError
 
 ## Boundaries and tensions
 
-“Handle once” permits metrics or low-severity attempt records at multiple layers. It prohibits the
-presentation of one failure as independent final incidents. A library can record
-diagnostic events when its observability contract requires them. Ownership and correlation must
-remain explicit.
+“Handle once” lets teams record metrics or low-severity tries at more than one layer. It does not
+let them record one failure as more than one incident. A library can record
+diagnostic events if its observability contract includes them. Ownership and correlation must
+stay clearly specified.
 
-The rule complements [P031](p031-propagate-rather-than-swallow.md). Propagation preserves failure,
-and cause preservation makes the final outcome understandable. Security and privacy controls can
-restrict public details. These controls must preserve the protected internal chain.
+Use this rule with [P031](p031-propagate-rather-than-swallow.md). Propagation keeps the failure available.
+Cause preservation gives the responsible boundary sufficient diagnostic data. Security and privacy
+controls can prevent public access to some information. These controls must keep the protected internal chain.
 
 ## Examples
 
@@ -94,12 +94,13 @@ error event and returns the stable public code.
 ### Misuse or counterexample
 
 Four nested functions each record the same exception at error level. Each function throws a new
-exception without its cause. One incident produces four alerts, and the original stack disappears.
+exception without its cause. One incident causes four alerts. Engineers cannot get the initial
+stack.
 
 ### Athena or agent workflow
 
-A delegated reviewer reports a tool failure with its command and exit status. The coordinator adds
-the affected review phase. It reports one failure to the user.
+A delegated reviewer records a tool failure with its command and exit status. The coordinator adds
+the inspection phase. It records one failure for the user.
 
 ## Related principles
 
@@ -110,26 +111,27 @@ the affected review phase. It reports one failure to the user.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [PEP 3134 — Exception Chaining and Embedded Tracebacks](https://peps.python.org/pep-3134/)
-  — records the history and rationale for implicit and explicit cause retention during Python
-  exception translation.
+  — records information about automatic and specified cause retention during Python exception
+  translation.
 - [John B. Goodenough, “Structured Exception Handling” (1975)](https://doi.org/10.1145/512976.512997)
-  — an early primary analysis of orderly exception handling. It does not prescribe Athena's exact
+  — a 1975 analysis of structured exception handling. It does not give Athena's specified
   record policy.
 
-### Current guidance
+### Applicable information
 
 - [OpenTelemetry Semantic Conventions 1.44.0: exceptions in logs](https://opentelemetry.io/docs/specs/semconv/exceptions/exceptions-logs/)
-  — current conventions for correlated exception records, stack traces, and duplicate prevention
+  — applicable conventions for correlated exception records, stack traces, and duplicate prevention
   in instrumentation.
 - [C++ Core Guidelines E.17 and E.18](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#e17-dont-try-to-catch-every-exception-in-every-function)
-  — advises against a catch operation in every function and recommends few explicit handlers.
+  — recommends no catch operation in each function and recommends a small number of specified
+  handlers.
 
-### Further reading
+### More information
 
-- [P029 — Generalize Error Policy; Preserve Specific Cause](../README.md#p029) — explains stable
-  boundary taxonomies and precise internal diagnostics.
+- [P029 — Generalize Error Policy; Preserve Specific Cause](../README.md#p029) — shows stable
+  boundary taxonomies and internal diagnostics that keep the cause.
 
 [Back to the engineering principles catalog](../README.md#p032)

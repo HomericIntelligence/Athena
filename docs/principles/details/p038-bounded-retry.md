@@ -2,11 +2,11 @@
 
 ## Definition
 
-Retry only a failure that the dependency contract classifies as transient. Stop when an explicit
-attempt limit, elapsed-time limit, or shared deadline expires.
+Retry only a transient failure from a category in the dependency contract. If a specified try
+limit, elapsed-time limit, or shared deadline expires, stop.
 
-Space attempts and add random delay when callers can synchronize. Follow authoritative server
-guidance. A retry policy must not cause unlimited delay or load amplification.
+When callers can retry at the same time, put time between tries and wait for a random time. Obey
+server guidance that controls retry. A retry policy must not cause an unlimited wait or load amplification.
 
 **Aliases:** retry budget, limited retry, backoff and jitter
 
@@ -14,42 +14,45 @@ guidance. A retry policy must not cause unlimited delay or load amplification.
 
 **Classification:** established principle.
 
-Finite retry and random backoff developed across network and production systems. Athena does not
-assert one origin for this combined rule.
+Network and production systems have used finite retry and random backoff for many years. Athena
+cannot identify one source for this rule.
 
 ## Decision rule
 
-Retry only when another attempt is safe and likely to succeed within the caller budget. Otherwise,
-return the failure.
+If the contract classifies the result as a transient failure and the operation is safe, retry. The caller
+budget must also have capacity for a new try. If not, return the failure.
 
 ## How to apply
 
-- Derive retryable error categories from the dependency contract. Do not use a broad catch-all.
-- Give one layer ownership of one total retry budget across nested calls.
-- Use a finite attempt count or deadline. Use exponential delay and random variation when many
-  callers can synchronize.
-- Obey protocol signals such as `Retry-After` within the caller deadline.
-- Require [P037](p037-idempotency-before-retry.md) for operations with side effects.
-- Stop after cancellation, permanent failure, budget exhaustion, or insufficient residual time.
-- Record attempt count and final outcome as correlated telemetry. Test the policy under overload.
+- Use the dependency contract to select retryable error categories. Do not use a catch-all error
+  category.
+- Give one layer ownership of one total retry budget for nested calls.
+- Use a finite try count or deadline. When many callers can retry at the same time, use an
+  exponential wait and random variation.
+- Before the caller deadline, obey protocol signals such as `Retry-After`.
+- Apply [P037](p037-idempotency-before-retry.md) to operations with side effects.
+- After cancellation, permanent failure, or budget exhaustion, stop. If the next try cannot complete
+  in the remaining time, stop.
+- Record try count and last outcome as correlated telemetry. Do tests of the policy during
+  overload.
 
 ## Diagram
 
 ```mermaid
 flowchart TD
-    A["Make an attempt"] --> B{"Did the attempt succeed?"}
+    A["Try the operation"] --> B{"Did the operation succeed?"}
     B -- Yes --> C["Return success"]
-    B -- No --> D{"Is the failure transient and the operation safe?"}
+    B -- No --> D{"Is this a transient failure, and is the operation safe?"}
     D -- No --> E["Return the failure"]
-    D -- Yes --> F{"Does the shared budget permit another attempt?"}
+    D -- Yes --> F{"Does the shared budget have capacity for a new try?"}
     F -- No --> E
-    F -- Yes --> G["Wait for bounded random delay"]
+    F -- Yes --> G["Wait for a bounded random time"]
     G --> A
 ```
 
 ## Language examples
 
-Each example permits at most three attempts for a transient read failure.
+Each example limits a transient read failure to three tries.
 
 ### Python
 
@@ -80,25 +83,25 @@ fn fetch(client: &Client) -> Result<Data, Error> {
 
 ## Boundaries and tensions
 
-A circuit breaker under [P043](p043-circuit-breakers.md) protects against persistent dependency
-failure. Retry addresses isolated transient failure. Their combination needs a clear order and one
-budget.
+A circuit breaker from [P043](p043-circuit-breakers.md) prevents more calls during continuous
+dependency failure. Use retry for an isolated transient failure. A clear sequence and one budget are necessary for
+the combination.
 
-Retries at every stack layer multiply attempts and violate the single-owner error policy. One
-immediate retry can correct a rare connection race. Repeated immediate retries create synchronized
-load.
+Retries at each stack layer increase the number of tries and violate the single-owner error policy. The first
+retry can occur immediately and correct a connection race. If more retries occur immediately, they
+can add load at the same time.
 
-Retry delay must remain within [P039](p039-bounded-waiting.md). A retry queue remains subject to
+Retry wait must obey [P039](p039-bounded-waiting.md). A retry queue stays subject to
 [P040](p040-bounded-resources.md).
 
 ## Examples
 
 ### Positive application
 
-An idempotent read receives a documented transient status. The client makes at most three attempts
-within the request deadline. It uses random exponential delay and obeys `Retry-After`.
+An idempotent read receives a specified transient status. The client makes at most three tries
+before the request deadline. It uses a random exponential wait and obeys `Retry-After`.
 
-The client returns the final failure after budget exhaustion.
+The client returns the last failure after budget exhaustion.
 
 ### Misuse or counterexample
 
@@ -107,8 +110,8 @@ retries without a limit. One request causes a retry storm.
 
 ### Athena or agent workflow
 
-A coordinator retries a transient subagent transport failure only within its iteration and time
-budget. It reports a validation failure or permission denial immediately.
+A coordinator retries a transient transport failure from a subagent only before its iteration and
+time budget. It immediately gives a validation-failure or permission-denial result.
 
 ## Related principles
 
@@ -119,23 +122,23 @@ budget. It reports a validation failure or permission denial immediately.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Marc Brooker, “Exponential Backoff and Jitter” (2015)](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/)
-  — influential practitioner analysis of synchronized contention and random retry delay. Athena
-  does not claim it as the origin of retry limits.
+  — practitioner analysis of contention from retries at the same time and random retry wait. Athena
+  is not the source of retry limits.
 
-### Current guidance
+### Applicable information
 
 - [AWS Builders' Library, Timeouts, retries, and backoff with jitter](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/)
-  — production guidance for timeouts, retry multiplication, token budgets, delay, and random
+  — production guidance for timeouts, retry multiplication, token budgets, wait, and random
   variation.
 - [Microsoft Azure Well-Architected Framework, transient faults](https://learn.microsoft.com/en-us/azure/well-architected/design-guides/handle-transient-faults)
-  — current guidance that requires finite retries and random exponential delay.
+  — applicable guidance that gives finite retries and random exponential wait.
 
-### Further reading
+### More information
 
 - [Google SRE, Addressing Cascading Failures](https://sre.google/sre-book/addressing-cascading-failures/)
-  — explains how retries amplify overload and contribute to cascade failure.
+  — shows how retries increase overload and cause cascade failure.
 
 [Back to the engineering principles catalog](../README.md#p038)

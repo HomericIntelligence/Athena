@@ -2,11 +2,11 @@
 
 ## Definition
 
-Exercise values at and near transitions, limits, and equivalence partition edges. Defects often
+Exercise values at and near transitions, limits, and equivalence partition edges. Defects frequently
 occur where behavior changes.
 
-Relevant cases include values below, at, and above a threshold. Also consider zero, one, empty,
-full, minimum, maximum, overflow, and invalid states.
+Applicable cases include values below, at, and above a threshold. Also include zero, one, empty,
+full, minimum, maximum, overflow, and rejected states.
 
 **Aliases:** boundary value analysis, limit testing, edge testing.
 
@@ -15,7 +15,7 @@ full, minimum, maximum, overflow, and invalid states.
 **Classification:** established principle.
 
 Boundary value analysis has a long history in software test literature and certification syllabi.
-Evidence does not attribute its first use to one author. Athena makes no origin claim.
+Evidence does not give one author as the first person to apply this analysis. Athena gives no first author.
 
 ## Decision rule
 
@@ -24,17 +24,17 @@ at the edge. Include representations that can overflow or become empty.
 
 ## How to apply
 
-- Derive boundaries from contracts, types, protocols, resource limits, and state transitions.
-- Test the last accepted, first rejected, and exact transition values when they exist.
-- Include adjacent boundary combinations when their interaction is plausible.
-- Verify returned behavior and state preservation after rejection.
-- Use generated or combinatorial methods when examples cannot cover the boundary space.
+- Use contracts, types, protocols, resource limits, and state transitions to find boundaries.
+- When the contract has last accepted, first rejected, and transition values, test them.
+- When evidence shows an interaction, include adjacent boundary combinations.
+- After rejection, verify returned behavior and state preservation.
+- When examples cannot include the boundary space, use generated or combinatorial methods.
 
 ## Diagram
 
 ```mermaid
 flowchart LR
-    Contract["Contract or state transition"] --> Edge["Identify material edge"]
+    Contract["Contract or state transition"] --> Edge["Find material edge"]
     Edge --> Below["Select value below edge"]
     Edge --> At["Select value at edge"]
     Edge --> Above["Select value above edge"]
@@ -77,28 +77,29 @@ fn batch_boundaries() {
 
 ## Boundaries and tensions
 
-Correct partitions determine the value of boundary tests. Boundary tests do not replace
-representative interior cases, semantic invariants, failure injection, or security abuse cases.
+Tests must use boundary values from correct partitions. Boundary tests do not replace
+usual values between boundaries, semantic invariants, failure injection, or security
+abuse cases.
 
 Do not apply `n - 1`, `n`, and `n + 1` without domain analysis. A continuous, wrapped, or encoded
-domain can require another definition of adjacency.
+domain can make a different definition of adjacency necessary.
 
 ## Examples
 
 ### Positive application
 
-A batch limit permits 100 items. Tests cover 0, 1, 99, 100, and 101 items. The rejection test
-confirms that 101 items cause no partial write.
+A batch limit lets a request contain 100 items. Tests include 0, 1, 99, 100, and 101 items. The rejection test
+shows that rejection cannot write only part of the batch.
 
 ### Misuse or counterexample
 
-A test covers the maximum integer but ignores the API unit. The API applies its limit after UTF-8
-encoding. Character count and byte count can differ.
+A test includes the maximum integer but ignores the API unit. The API applies its limit after UTF-8
+encoding. Character count and byte count can be different.
 
 ### Athena or agent workflow
 
-A bounded workflow test covers zero iterations, one iteration, the configured maximum, and one
-excess iteration. The excess case must produce a clear terminal failure.
+A bounded workflow test includes zero iterations, one iteration, the configured maximum, and one
+iteration above the maximum. The case above the maximum must give a clear terminal failure.
 
 ## Related principles
 
@@ -108,19 +109,19 @@ excess iteration. The excess case must produce a clear terminal failure.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [NIST, "Fault Classes and Error Detection in Specification Based Testing" (1998)](https://www.nist.gov/publications/fault-classes-and-error-detection-specification-based-testing)
-  examines specification conditions that can expose specific fault classes.
+  examines specification conditions that can show specified fault classes.
 
-### Current guidance
+### Applicable information
 
 - [ISTQB Certified Tester Foundation Level Syllabus v4.0.1](https://istqb.org/wp-content/uploads/2024/11/ISTQB_CTFL_Syllabus_v4.0.1.pdf)
-  defines two-value and three-value analysis around equivalence partition boundaries.
+  gives two-value and three-value analysis around equivalence partition boundaries.
 
-### Further reading
+### More information
 
 - [NIST, "Software Fault Complexity and Implications for Software Testing"](https://www.nist.gov/publications/software-fault-complexity-and-implications-software-testing)
-  provides evidence for systematic coverage of interactions among a small number of conditions.
+  gives evidence for coverage of interactions in a small group of conditions.
 
 [Back to the engineering principles catalog](../README.md#p024)

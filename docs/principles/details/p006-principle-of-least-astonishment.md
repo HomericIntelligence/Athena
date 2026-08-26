@@ -2,60 +2,61 @@
 
 ## Definition
 
-The **Principle of Least Astonishment** (**POLA**, also called the principle of least surprise)
-requires behavior that matches reasonable user expectations. It applies to interfaces, defaults,
-state changes, and failures. The surrounding system and stated contract provide evidence for those
+For the **Principle of Least Astonishment** (**POLA**, also the principle of least surprise),
+behavior must agree with user expectations that evidence shows. POLA is applicable to interfaces, defaults,
+state changes, and failures. The system context and specified contract give evidence for those
 expectations.
 
 ## Provenance
 
 **Classification:** practitioner heuristic.
 
-The phrase has a long history in language and interface design. No reliable source establishes one
-origin. POLA also depends on context. One audience can expect behavior that surprises another.
-Repository precedent and explicit user research provide stronger evidence than designer intuition.
+The phrase has a long history in language and interface design. No source supplies sufficient
+evidence for the source of the phrase. Context also changes POLA. User expectations are not the
+same for all audiences.
+Repository precedent and research with users have more value as evidence than a design that personnel select without evidence.
 
 ## Decision rule
 
-When several correct designs exist, choose the design that best matches the public contract, local
-conventions, and established user model. Make each necessary difference explicit and safe for
-migration.
+When there are two or more correct designs, examine the public contract, local conventions, and evidence
+about user expectations. Select the design that agrees with this evidence. Make each necessary
+difference clear. Give a safe migration.
 
 ## How to apply
 
-- Identify the actual audience and its established conventions.
-- Make names, defaults, units, mutability, side effects, and errors consistent across the surface.
-- Use explicit confirmation or clear names for destructive and unusually expensive behavior.
-- Preserve ordinary expectations across related CLI, API, and configuration operations.
-- Test defaults and failure behavior as part of the public contract.
+- Find the intended audience and its conventions that evidence shows.
+- Make sure names, defaults, units, mutability, side effects, and errors agree with related conventions.
+- Use clear confirmation or clear names for destructive behavior and behavior not in user expectations.
+- Keep expectations that evidence shows for related CLI, API, and configuration operations.
+- Do a test of defaults and failure behavior in the public contract.
 
 ## Diagram
 
 ```mermaid
 flowchart TD
-    A["Identify the intended audience"] --> B["Inspect contracts and conventions"]
-    B --> C["Select a consistent design"]
-    C --> D{"Will users predict the behavior?"}
-    D -->|No| E["Make the difference explicit"]
+    A["Find the intended audience"] --> B["Examine contracts and conventions"]
+    B --> C["Select a design that agrees with conventions"]
+    C --> D{"Does behavior agree with user expectations?"}
+    D -->|No| E["Make the difference clear"]
     E --> C
-    D -->|Yes| F["Test defaults and failures"]
+    D -->|Yes| F["Do a test of defaults and failures"]
 ```
 
 ## Language examples
 
-The two examples require explicit confirmation before the destructive action.
+Explicit confirmation is necessary before the destructive step in the two examples.
 
 ```python
 def delete_user(user_id: str, confirmed: bool) -> None:
     if not confirmed:
-        raise ValueError("confirmation required")
+        raise ValueError("confirmation is necessary")
     database.delete(user_id)
 ```
 
 ```rust
 fn delete_user(user_id: &str, confirmed: bool) -> Result<(), &'static str> {
     if !confirmed {
-        return Err("confirmation required");
+        return Err("confirmation is necessary");
     }
     database_delete(user_id);
     Ok(())
@@ -64,23 +65,23 @@ fn delete_user(user_id: &str, confirmed: bool) -> Result<(), &'static str> {
 
 ## Boundaries and tensions
 
-POLA does not support familiar but unsafe behavior. Security, correctness, accessibility, or an
-explicit specification can require a deliberate change from precedent. In that case, explain the
-difference and provide a suitable migration.
-[P014 Preserve Unrequested Behavior](p014-preserve-unrequested-behavior.md) protects established
-contracts. [P019 Explicit Contracts](p019-explicit-contracts.md) reduces ambiguity when expectations
-differ.
+POLA is not applicable when personnel know that behavior is dangerous. Security controls, correct behavior, accessibility, or an
+explicit specification can make an explicit change from precedent necessary. Make the difference clear.
+Give a migration that is safe.
+[P014 Preserve Unrequested Behavior](p014-preserve-unrequested-behavior.md) gives protection to established
+contracts. [P019 Explicit Contracts](p019-explicit-contracts.md) decreases ambiguity when expectations
+are not the same.
 
 ## Examples
 
-**Positive:** A `--dry-run` flag performs no external writes and reports the planned actions for a
-normal run.
+**Positive:** A `--dry-run` flag does no external writes and gives the planned actions for a
+usual operation.
 
-**Misuse:** A command named `list` silently repairs and deletes stale resources because cleanup is
-convenient during enumeration.
+**Misuse:** A command with the name `list` repairs and deletes stale resources without notice because cleanup
+is easy during enumeration.
 
-**Athena/agent workflow:** A skill uses its documented fallback when a required capability is
-absent. It does not select a workflow with broader authority without notice.
+**Athena/agent workflow:** A skill uses its documented fallback when a necessary capability is
+missing. It does not select a workflow with more authority without notice.
 
 ## Related principles
 
@@ -92,22 +93,23 @@ absent. It does not select a workflow with broader authority without notice.
 
 ## References
 
-### Origin/history
+### Source information
 
 - [The Open Group Base Specifications, Utility Syntax Guidelines](https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap12.html)
-  document established consistency rules for command interfaces. They illustrate POLA but do not
-  claim the origin of the phrase.
+  give established consistency rules for command interfaces. They show POLA but do not
+  give a source for the phrase.
 
-### Current guidance
+### Applicable information
 
-- [Google Cloud API Design Guide](https://cloud.google.com/apis/design) treats consistency and
-  predictable resource-oriented conventions as primary API design goals.
-- [Google API Improvement Proposals: General principles](https://google.aip.dev/general) defines
-  conventions for coherent related APIs.
+- [Google Cloud API Design Guide](https://cloud.google.com/apis/design) shows that resource-oriented
+  conventions are important properties of API design. Related APIs that use the conventions have
+  the same behavior.
+- [Google API Improvement Proposals: General principles](https://google.aip.dev/general) gives
+  conventions that agree for related APIs.
 
-### Further reading
+### More information
 
-- [PEP 20 — The Zen of Python](https://peps.python.org/pep-0020/) provides a compact example of how
-  a language community records expectations for explicit and unsurprising design.
+- [PEP 20 — The Zen of Python](https://peps.python.org/pep-0020/) gives a short example of how
+  a language community records expectations for clear design in which related properties agree.
 
 [Back to the engineering principles catalog](../README.md#p006)

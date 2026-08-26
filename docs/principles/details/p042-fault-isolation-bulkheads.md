@@ -3,9 +3,9 @@
 ## Definition
 
 Partition workloads, dependencies, tenants, and resource pools. Failure or exhaustion in one
-partition must not consume capacity or corrupt state that another partition requires.
+partition must not use capacity or corrupt state for a different partition.
 
-Isolation converts a system-wide failure into a finite local failure.
+Isolation limits a system-wide failure to a finite local failure.
 
 **Aliases:** bulkhead pattern, failure domains, cell-based isolation, blast-radius containment
 
@@ -13,42 +13,43 @@ Isolation converts a system-wide failure into a finite local failure.
 
 **Classification:** established principle.
 
-The name uses a nautical analogy. Michael Nygard's *Release It!* popularized the bulkhead pattern
-in modern software. Fault isolation predates this pattern name.
+Ship design is the source of the name. Michael Nygard's *Release It!* made the bulkhead pattern
+known to many software engineers. Fault isolation was available before this pattern name.
 
 ## Decision rule
 
 Before components share resources, compare their failure risks, criticality, owners, and consumers.
-Use independent capacity and state boundaries if shared failure can violate an objective.
+If shared failure can violate an objective, use isolated capacity and state boundaries.
 
 ## How to apply
 
-- Define failure domains from business criticality and actual dependency paths. Do not use only
+- Set failure domains from business criticality and dependency paths. Do not use only
   deployment topology.
-- Use separate concurrency pools, queues, connection pools, quotas, processes, accounts, regions,
-  or credentials if shared exhaustion can violate objectives.
-- Reserve sufficient capacity for health, recovery, and critical traffic in each relevant
+- If shared exhaustion can violate objectives, use different concurrency pools, queues, connection
+  pools, quotas, processes, accounts, regions, or credentials.
+- Reserve sufficient capacity for health, recovery, and very important traffic in each applicable
   partition.
-- Protect the data plane from control-plane failure. Prevent one tenant from excess use of shared
+- Isolate the data plane from control-plane failure. Do not let one tenant use all shared
   capacity.
-- Monitor each partition independently. Retain an aggregate view of system health.
-- Test exhaustion and failure within one partition. Verify that unrelated partitions continue.
+- Monitor each partition independently. Keep an aggregate view of system health.
+- Do tests of exhaustion and failure in one partition. Make sure that different partitions continue.
 
 ## Diagram
 
 ```mermaid
 flowchart TD
-    A["Classify workloads by failure risk"] --> B["Assign an independent finite resource pool"]
+    A["Classify the failure risk of each workload"] --> B["Give each workload an isolated resource pool with finite capacity"]
     B --> C1["Partition A serves its workload"]
     B --> C2["Partition B serves its workload"]
-    C1 --> D{"Does Partition A fail or exhaust its pool?"}
+    C1 --> D{"Does Partition A have a failure or use all pool capacity?"}
     D -- Yes --> E["Contain the failure in Partition A"]
-    E --> F["Partition B retains capacity and state"]
+    D -- No --> G["Continue service in Partition A"]
+    E --> F["Partition B keeps capacity and state"]
 ```
 
 ## Language examples
 
-Each example uses a distinct concurrency pool for each dependency.
+Each example uses a different concurrency pool for each dependency.
 
 ### Python
 
@@ -82,32 +83,32 @@ fn call(kind: Kind, services: &Services, request: Request) -> Result<Response, E
 
 ## Boundaries and tensions
 
-Isolation costs capacity, operational complexity, and sometimes use efficiency. Create a partition
-only for a concrete failure mode or service objective.
+Isolation decreases available capacity and adds work to system operation. It can also decrease efficiency. If there is
+no specified failure mode or service objective, do not make a partition.
 
 A logical label is not a bulkhead when all partitions share one unlimited queue, connection pool,
 or credential.
 
-[P040](p040-bounded-resources.md) bounds each pool, [P041](p041-backpressure-and-load-shedding.md)
-controls admission at capacity, and [P043](p043-circuit-breakers.md) stops calls to a failed
-dependency. These controls reinforce one another. They do not replace one another.
+[P040](p040-bounded-resources.md) sets a limit for each pool. [P041](p041-backpressure-and-load-shedding.md)
+controls admission at capacity, and [P043](p043-circuit-breakers.md) stops calls to a dependency that failed.
+Use these controls together. They do not replace each other.
 
 ## Examples
 
 ### Positive application
 
-Calls to three downstream services use separate connection pools and concurrency pools. One service
-stalls and exhausts only its pool. Health checks and calls to other services remain available.
+Calls to three downstream services use different connection pools and concurrency pools. One service
+stalls and uses all capacity in its pool. Health checks and calls to other services stay available.
 
 ### Misuse or counterexample
 
-Nominally independent tenants share one executor and an unlimited queue. One tenant submits
-expensive work and consumes all capacity. The labels provide no fault isolation.
+Tenants have different labels but share one executor and an unlimited queue. One tenant sends
+work with high cost and uses all capacity. The labels give no fault isolation.
 
 ### Athena or agent workflow
 
-Independent subagents receive finite task scopes and separate write targets. One failed specialist
-does not consume every delegation slot or corrupt another specialist result.
+Different subagents receive finite task scopes and different write targets. One specialist that fails
+does not use all delegation slots or corrupt a different specialist result.
 
 ## Related principles
 
@@ -118,22 +119,22 @@ does not consume every delegation slot or corrupt another specialist result.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Michael T. Nygard, *Release It!*, second edition](https://pragprog.com/titles/mnee2/release-it-second-edition/)
-  — influential source that popularized bulkheads and other stability patterns in software. The
-  physical bulkhead analogy predates computers.
+  — a source that made bulkheads and other stability patterns known to many software engineers. Physical
+  bulkheads are older than computers.
 
-### Current guidance
+### Applicable information
 
 - [Microsoft Azure, Bulkhead pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/bulkhead)
-  — current guidance for separate service instances and resource pools that isolate failure
+  — applicable guidance for different service instances and resource pools that isolate failure
   cascades.
 
-### Further reading
+### More information
 
 - [Microsoft Azure Well-Architected reliability patterns](https://learn.microsoft.com/en-us/azure/well-architected/reliability/design-patterns)
-  — presents bulkheads, throttles, retries, and circuit breakers as complementary reliability
+  — includes bulkheads, throttles, retries, and circuit breakers as related reliability
   controls.
 
 [Back to the engineering principles catalog](../README.md#p042)

@@ -2,47 +2,47 @@
 
 ## Definition
 
-**Forward Progress With Safety** requires bounded and visible progress toward a valid result. If
-progress stops, the operation terminates in a clear recoverable state. The rule combines safety and
-liveness properties.
+With **Forward Progress With Safety**, an operation must have bounded and clear progress to a
+correct result. If progress stops, the operation terminates in a clear recoverable state. The rule
+includes safety and liveness properties.
 
-**Aliases:** none in common use.
+**Aliases:** none.
 
 ## Provenance
 
 **Classification:** Athena synthesis.
 
-Athena's operational wording is not a named theorem. Leslie Lamport's 1977 work defined the modern
-difference between safety and liveness properties. Reliability practice adds deadlines, retry
+Athena gives this rule for operations. The rule is not a theorem with a specified name. Leslie Lamport's 1977
+research gives the difference between safety and liveness properties. Reliability practice includes deadlines, retry
 budgets, cancellation, and recovery states for production workflows.
 
 ## Decision rule
 
-For each loop, wait, retry, queue, and multistep workflow, define a progress measure and a bound.
-Define the required invariants. Define a recoverable result for stopped progress.
+For each loop, wait, retry, queue, and multistep workflow, give a progress measure and a bound.
+Record the necessary invariants. Give a recoverable result for stopped progress.
 
 ## How to apply
 
-- Make terminal success, failure, cancellation, and paused states distinguishable.
-- Bound retries, waits, queues, and internal iteration.
-- Detect and report stagnation. Do not reset a watchdog without real progress.
-- Preserve invariants at every checkpoint and failure exit.
-- Persist enough state to resume long work safely when required.
-- Test deadlock, timeout, starvation, cancellation, and dependency-loss scenarios.
+- Use different results for terminal success, failure, cancellation, and paused states.
+- Set limits for retries, waits, queues, and internal iteration.
+- Monitor progress and record each stagnation event. Do not reset a watchdog without measured progress.
+- Keep invariants at all checkpoints and failure exits.
+- When necessary, record sufficient state to resume long work safely.
+- Do tests of deadlock, timeout, starvation, cancellation, and dependency-loss scenarios.
 
 ## Diagram
 
-The workflow either makes measured progress or enters a recoverable terminal state.
+The workflow makes measured progress or has a recoverable terminal state.
 
 ```mermaid
 flowchart LR
-    A["Start bounded work"] --> H["Run next bounded work unit"]
+    A["Start bounded work"] --> H["Do next bounded work unit"]
     H --> B{"Progress?"}
     B -->|Yes| C{"Work completed?"}
     C -->|No| H
-    C -->|Yes| D["Valid success"]
-    B -->|No| E{"Retry budget available?"}
-    E -->|Yes| F["Apply recovery step"]
+    C -->|Yes| D["Correct result"]
+    B -->|No| E{"Retry budget has capacity?"}
+    E -->|Yes| F["Do recovery step"]
     F --> H
     E -->|No| G["Recoverable failure"]
 ```
@@ -78,21 +78,21 @@ fn complete(job: &mut Job) -> Result<Outcome, ProgressError> {
 
 ## Boundaries and tensions
 
-The principle does not require a wait-free algorithm or a short duration. Some safe work is slow or
-depends on external events. It still needs visible state, cancellation, or an explicit resume state.
-Safety can require a stop. A timeout is a failure result. It does not prove that a side effect did
-not occur.
+A wait-free algorithm and a short duration are not necessary. Some safe work is slow or
+waits for external events. Clear state, cancellation, or an explicit resume state is necessary.
+Safety can make the operation stop. A timeout is a failure result. The timeout does not give proof
+that a side effect did not occur.
 
 ## Examples
 
-**Positive:** A migration records each completed batch and enforces a time budget. It preserves
-schema invariants and exits as `paused` with a resume token.
+**Positive:** A migration records each completed batch and sets a time budget. The migration keeps schema
+invariants and stops with a `paused` status and resume token.
 
-**Misuse:** A worker catches every error and retries forever. It retains a queue slot while callers
-see neither completion nor failure.
+**Misuse:** A worker catches each error and retries without a limit. The worker keeps a queue slot. Callers
+see no completion or failure.
 
-**Athena/agent workflow:** A delegated task has a bounded iteration budget. It produces success,
-blocked, or failed status with evidence. It does not stay active without a limit.
+**Athena/agent workflow:** A delegated task has a bounded iteration budget. The task gives success,
+blocked, or failure status with evidence. The task does not stay active without a limit.
 
 ## Related principles
 
@@ -104,21 +104,22 @@ blocked, or failed status with evidence. It does not stay active without a limit
 
 ## References
 
-### Origin/history
+### Source information
 
 - [Proving the Correctness of Multiprocess Programs](https://doi.org/10.1109/TSE.1977.229904)
-  is Lamport's 1977 primary work that defines safety and liveness as distinct correctness concerns.
+  is Lamport's 1977 primary paper that gives safety and liveness as different correctness concerns.
 
-### Current guidance
+### Applicable information
 
-- [gRPC Deadlines](https://grpc.io/docs/guides/deadlines/) explains why calls need realistic
-  deadlines and why servers must stop work after cancellation.
+- [gRPC Deadlines](https://grpc.io/docs/guides/deadlines/) gives information about call deadlines.
+  Call deadlines must agree with the specified duration. Servers must stop work after cancellation.
 - [AWS Well-Architected: Control and limit retry calls](https://docs.aws.amazon.com/wellarchitected/latest/framework/rel_mitigate_interaction_failure_limit_retries.html)
-  requires retry limits, backoff, and tested stop conditions.
+  gives retry limits, backoff, and tested stop conditions.
 
-### Further reading
+### More information
 
 - [Exponential Backoff and Jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/)
-  shows how bounded randomized retry can preserve progress without synchronized contention.
+  gives a bounded randomized retry method. The method decreases synchronized contention and helps
+  progress.
 
 [Back to the engineering principles catalog](../README.md#p081)

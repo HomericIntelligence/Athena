@@ -2,9 +2,9 @@
 
 ## Definition
 
-Secure by Default means that the initial configuration and easiest supported path provide suitable
-protection. Users do not need to find and enable essential controls. A weaker configuration requires
-a deliberate, visible choice.
+Secure by Default means that the initial configuration and easiest supported path give sufficient
+protection. Users can use necessary controls without an activation step. A user must make a clear
+selection to use a weaker configuration.
 
 **Aliases:** safe defaults, security out of the box, default-deny configuration.
 
@@ -12,39 +12,41 @@ a deliberate, visible choice.
 
 **Classification:** established principle.
 
-Fail-safe defaults provide historical roots for this principle. CISA guidance defines the broader
-product-level formulation. These formulations are related, but they are not identical.
+Fail-safe defaults came before this principle. CISA guidance gives a product-level formulation. The
+two formulations are related, but they are different.
 
 ## Decision rule
 
-Choose defaults that minimize likely harm for an ordinary installation. Apply these defaults to
-authentication, authorization, network exposure, data protection, and telemetry. Permit an insecure
-compatibility mode only when it has justification, a clear label, and deliberate activation.
+Select defaults that decrease possible damage for a new installation. Apply these defaults to
+authentication, authorization, network exposure, data protection, and telemetry. If an insecure
+compatibility mode is necessary, give clear risk information and a different activation step.
 
 ## How to apply
 
-- Require explicit grants. Do not ship broad access that users must remove.
-- Disable unnecessary endpoints, accounts, tools, and network listeners initially.
+- After a user or policy records permissions, grant the permissions. Do not ship access that users
+  must remove.
+- Disable endpoints, accounts, tools, and network listeners that are not necessary.
 - Use secure protocol, cryptographic, privacy, and update settings by default.
-- Make dangerous configuration changes visible, auditable, and reversible where practical.
-- Test a clean installation and the common initial path. Do not test only an expert configuration.
-- Provide migration guidance for stronger defaults in existing installations.
+- Make high-risk configuration changes clear, auditable, and reversible.
+- Do tests with a clean installation and the primary initial path. Do not do tests only with an
+  expert configuration.
+- Give migration guidance for stronger defaults in installed systems.
 
 ## Diagram
 
 ```mermaid
 flowchart TD
     A["Clean installation"] --> B["Apply secure initial configuration"]
-    B --> C["Limit exposure and require identity"]
-    C --> D{"User requests a weaker mode?"}
-    D -- "No" --> E["Retain secure configuration"]
-    D -- "Yes" --> F["Show risk and require deliberate consent"]
+    B --> C["Limit exposure and use identity checks"]
+    C --> D{"User selects a weaker mode?"}
+    D -- "No" --> E["Keep secure configuration"]
+    D -- "Yes" --> F["Show risk and get clear user consent"]
     F --> G["Record the configuration change"]
 ```
 
 ## Language examples
 
-The two examples default to local access, required authentication, and no administrative interface.
+The two examples default to local access, authentication on, and no administrative interface.
 
 ### Python
 
@@ -72,29 +74,29 @@ impl Default for Config {
 
 ## Boundaries and tensions
 
-A default must be usable in its intended context. A control that all users disable does not provide
-effective security.
+A default must work in its specified context. A control that all users disable does not give
+sufficient security.
 
-Existing deployments can have compatibility constraints. Those constraints do not justify insecure
-defaults for new deployments. Secure by Default concerns the initial configuration. Fail Closed
-concerns an incomplete runtime security decision.
+Deployed systems can have compatibility constraints. Those constraints do not make insecure
+defaults correct for new deployments. Secure by Default applies to the initial configuration. Fail
+Closed applies to a runtime security decision that is not completed.
 
 ## Examples
 
 ### Positive
 
-A service listens only on loopback and requires authentication. It creates no shared default
-password. An operator must deliberately configure administrative access.
+A service listens only on loopback and uses authentication. It creates no shared default
+password. An operator must select and configure administrative access.
 
 ### Misuse
 
-A dashboard binds to a public interface with anonymous administrator access. Its guide defers
-authentication to a later user action.
+A dashboard binds to a public interface with anonymous administrator access. The documentation
+tells users to add authentication subsequently.
 
 ### Athena and agent workflows
 
 A new tool starts with read-only repository scope. It gets write access only for a task that grants
-that access. Installation alone does not expand agent authority.
+that access. Installation does not expand agent authority.
 
 ## Related principles
 
@@ -105,20 +107,20 @@ that access. Installation alone does not expand agent authority.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Saltzer and Schroeder, *The Protection of Information in Computer Systems*](https://doi.org/10.1109/PROC.1975.9939)
-  describes access decisions that use permission instead of exclusion. This fail-safe default is an
-  ancestor of the modern product-configuration principle.
+  gives information about access decisions that use permission, not exclusion. This fail-safe
+  default is a historical source for this product-configuration principle.
 
-### Current guidance
+### Applicable information
 
 - [CISA, *Shifting the Balance of Cybersecurity Risk*](https://www.cisa.gov/sites/default/files/2023-06/principles_approaches_for_security-by-design-default_508c.pdf)
   makes security part of the default product experience and gives producers responsibility.
 
-### Further reading
+### More information
 
 - [OWASP Authorization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html)
-  applies denial by default to authorization policy and explains its tests.
+  applies denial by default to authorization policy and gives authorization-policy tests.
 
 [Back to the principles catalog](../README.md#p049)

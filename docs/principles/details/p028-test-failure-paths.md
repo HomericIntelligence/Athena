@@ -2,11 +2,11 @@
 
 ## Definition
 
-Verify system behavior for malformed inputs, failed dependencies, and failed operations. Cover
-realistic cancellation, timeout, partial progress, unavailability, retry, cleanup, authorization,
-and resource exhaustion.
+Verify system behavior for malformed inputs, failed dependencies, and failed operations. Include
+cancellation, timeout, progress before failure, unavailability, retry, cleanup,
+authorization, and resource exhaustion.
 
-Verify success behavior as a separate baseline.
+Verify success behavior with its own baseline.
 
 **Aliases:** negative testing, robustness testing, error-path testing.
 
@@ -14,27 +14,28 @@ Verify success behavior as a separate baseline.
 
 **Classification:** established principle.
 
-Negative tests and robustness tests have many roots in reliability, security, and protocol work.
-No single origin covers the full modern set of failure conditions in this principle.
+Sources for negative tests and robustness tests include reliability, security, and protocol work.
+No one source gives all failure conditions in this principle.
 
 ## Decision rule
 
-Identify plausible failures for every material dependency or state transition. Verify the contract
+Find failures that can occur for each material dependency or state transition. Verify the contract
 result, preserved invariants, cleanup, and diagnostic evidence.
 
 ## How to apply
 
-- Derive failures from contracts and architecture instead of coverage percentages.
-- Inject dependency errors, timeouts, cancellations, and partial completion deterministically.
-- Assert caller-visible error semantics and the resultant durable state.
-- Verify resource release. Keep retries and compensation within their budgets.
-- Include authorization denial and malformed untrusted input without unsafe live actions.
+- Use contracts and architecture to find failures. Do not use coverage percentages.
+- Inject dependency errors, timeouts, and cancellations.
+- After an operation makes progress, inject a stop.
+- After failure, assert caller-visible error semantics and durable state.
+- Verify resource release. Keep retries and compensation in their budgets.
+- Include authorization denial and malformed untrusted input without live operations that are not safe.
 
 ## Diagram
 
 ```mermaid
 flowchart LR
-    Boundary["Dependency or state transition"] --> Failures["Identify plausible failures"]
+    Boundary["Dependency or state transition"] --> Failures["Find possible failures"]
     Failures --> Inject["Inject controlled fault"]
     Inject --> Result["Assert error contract"]
     Result --> State["Verify state and cleanup"]
@@ -43,7 +44,7 @@ flowchart LR
 
 ## Language examples
 
-The two examples simulate a write failure, preserve the current data, and return the cause.
+The two examples simulate a write failure, preserve the previous data, and return the cause.
 
 Python:
 
@@ -55,10 +56,11 @@ def replace(current: str, write: Callable[[], str]) -> tuple[str, Exception | No
     except OSError as cause:
         return current, cause
 def test_failure_preserves_current() -> None:
+    cause = OSError("disk full")
     def fail() -> str:
-        raise OSError("disk full")
+        raise cause
     value, error = replace("old", fail)
-    assert value == "old" and isinstance(error, OSError)
+    assert value == "old" and error is cause
 ```
 
 Rust:
@@ -80,18 +82,18 @@ fn failure_preserves_current() {
 
 ## Boundaries and tensions
 
-Do not cause destructive production failures to prove a test. Use controlled substitutes,
-sandboxes, fault injection, or staged environments that match the risk.
+Do not cause destructive production failures for test evidence. Use controlled substitutes,
+sandboxes, fault injection, or staged environments that the approved risk policy specifies.
 
-Mock failures can differ from real dependency behavior. Add contract or integration evidence when
-necessary. Do not expose sensitive internal details in caller-visible errors.
+Mock failures can be different from dependency behavior in production. When mock behavior changes
+the contract, add contract or integration evidence. Do not show sensitive internal details in caller-visible errors.
 
 ## Examples
 
 ### Positive application
 
-A file replacement test injects a write failure after completion of temporary output. It verifies
-that the old file remains valid. It also verifies cleanup and cause preservation.
+A file replacement test injects a write failure after the write operation creates temporary output. It verifies that
+the previous file is correct. It also verifies cleanup and cause preservation.
 
 ### Misuse or counterexample
 
@@ -100,8 +102,8 @@ retry can duplicate the operation.
 
 ### Athena or agent workflow
 
-A skill test simulates a missing required capability. It verifies a clear, safe failure response.
-The skill does not skip work or fabricate success evidence.
+A skill test simulates a missing necessary capability. It verifies a clear, safe failure response.
+The test verifies that the skill does not skip work or return success without evidence.
 
 ## Related principles
 
@@ -111,21 +113,21 @@ The skill does not skip work or fabricate success evidence.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [NIST, "An Approach for Analyzing the Robustness of Windows NT Software" (1998)](https://csrc.nist.gov/files/pubs/conference/1998/10/08/proceedings-of-the-21st-nissc-1998/final/docs/paperf8.pdf)
-  describes robustness tests with valid inputs, invalid inputs, and exception conditions.
+  gives robustness tests with accepted inputs, rejected inputs, and exception conditions.
 
-### Current guidance
+### Applicable information
 
 - [Google Engineering Practices, "What to look for in a code review"](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-  requires useful tests that detect broken behavior.
+  says tests must detect broken behavior.
 - [OWASP Web Security Testing Guide, "Testing for Error Handling"](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/08-Testing_for_Error_Handling/README)
-  provides security tests for improper error responses and stack disclosure.
+  gives security tests for incorrect error responses and stack disclosure.
 
-### Further reading
+### More information
 
 - [OWASP, "Business Logic Security Cheat Sheet"](https://cheatsheetseries.owasp.org/cheatsheets/Business_Logic_Security_Cheat_Sheet.html)
-  adds adversarial cases for invalid order, repeated steps, concurrency, and rule bypass.
+  adds adversarial cases for incorrect order, steps that occur again, concurrency, and rule bypass.
 
 [Back to the engineering principles catalog](../README.md#p028)

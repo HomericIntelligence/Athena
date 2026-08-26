@@ -3,51 +3,51 @@
 ## Definition
 
 **Irreversible Actions Last** completes validation, reversible preparation, authorization, and
-evidence collection before an irreversible external effect. A multistep workflow identifies its
-point of no return. It puts that point as late as practical.
+evidence collection before an irreversible external effect. A multistep workflow can have more than
+one irreversible step. Put each irreversible step near the end of the workflow.
 
-**Aliases:** none in common use.
+**Aliases:** none.
 
 ## Provenance
 
 **Classification:** Athena synthesis.
 
-No verified source establishes this exact wording. The rule combines change control, transaction
-authorization, staged release, and rollback practice. It applies this order to software and agent
+No source gives this text. The rule includes change control, transaction
+authorization, staged release, and rollback practice. The rule uses this order for software and agent
 workflows.
 
 ## Decision rule
 
-Complete all checks and reversible preparation before an irreversible step. Revalidate the
-mutable target and authority immediately before the exact action.
+Before an irreversible step, complete all checks and reversible preparation. Immediately before the
+specified operation, revalidate the mutable target and authority.
 
 ## How to apply
 
-- Classify steps as read-only, reversible, compensatable, or irreversible.
-- Validate inputs and targets first. Then allocate or modify external state.
-- Use previews, staging, backups, canaries, and dry runs when they provide real evidence.
-- Bind approval and authorization to the final target and parameters.
-- Recheck facts that may have changed during preparation.
-- Make the commit step atomic or idempotent where possible.
-- Record the outcome and any side effects that cannot be reversed.
+- Put steps in four groups: read-only, reversible, compensatable, and irreversible.
+- Validate inputs and targets first. Then make or change external state.
+- With correct evidence, use previews, staging, backups, canaries, and dry runs.
+- Bind approval and authorization to the publication target and parameters.
+- After preparation, examine mutable facts again.
+- Where possible, make the commit step atomic or idempotent.
+- Record the outcome and all irreversible side effects.
 
 ## Diagram
 
-The workflow completes each reversible gate before the point of no return.
+Before the irreversible step, the workflow completes each reversible gate.
 
 ```mermaid
 flowchart LR
     A["Validate input"] --> B["Prepare reversible state"]
-    B --> C["Preview exact action"]
+    B --> C["Preview specified operation"]
     C --> D["Revalidate target and authority"]
-    D --> E{"All gates pass?"}
+    D --> E{"All checks satisfactory?"}
     E -->|No| F["Stop without external effect"]
-    E -->|Yes| G["Irreversible action"]
+    E -->|Yes| G["Irreversible operation"]
 ```
 
 ## Language examples
 
-The two examples revalidate the target immediately before publication.
+Immediately before publication, the two examples revalidate the artifact target.
 
 ### Python
 
@@ -55,8 +55,8 @@ The two examples revalidate the target immediately before publication.
 def publish(request: Request) -> Receipt:
     artifact = prepare(request)
     preview(artifact)
-    verify_target(request.target)
-    verify_authority(request.actor, request.target)
+    verify_target(artifact.target)
+    verify_authority(request.actor, artifact.target)
     return publisher.publish(artifact)
 ```
 
@@ -66,31 +66,31 @@ def publish(request: Request) -> Receipt:
 fn publish(request: &Request) -> Result<Receipt, Error> {
     let artifact = prepare(request)?;
     preview(&artifact)?;
-    verify_target(&request.target)?;
-    verify_authority(&request.actor, &request.target)?;
+    verify_target(&artifact.target)?;
+    verify_authority(&request.actor, &artifact.target)?;
     publisher::publish(artifact)
 }
 ```
 
 ## Boundaries and tensions
 
-An irreversible action can be the required result. The principle delays the action and does not
-prohibit it. Long preparation can make decisions stale. Thus, the final gate checks mutable state
-again.
+An irreversible operation can be the necessary result. The principle puts validation before the
+operation but does not prevent the operation. Long preparation can make decisions incorrect. The last
+gate examines mutable state again.
 
-Compensation is not true reversal. Messages, charges, deletions, and public releases can already
-have external effects. Emergency paths still need their defined authorization.
+Compensation is not a reversal. Messages, charges, deletions, and public releases can have
+external effects before compensation. Specified authorization is necessary for emergency paths.
 
 ## Examples
 
-**Positive:** A release builds, tests, stages, and verifies the target revision. It receives bound
-authorization. It then switches production traffic.
+**Positive:** A release process assembles the artifact and does tests, staging, and target-revision
+verification. The release process receives bound authorization and then moves production traffic.
 
-**Misuse:** A checkout charges a payment method first. It validates inventory and delivery details
-later. It assumes a refund will erase every consequence.
+**Misuse:** A checkout charges a payment method first. The checkout then validates inventory and delivery
+details. The workflow has the incorrect assumption that a refund removes all effects.
 
-**Athena/agent workflow:** An agent resolves the repository and issue body. It previews the exact
-request and verifies authority. It then creates the externally visible GitHub issue.
+**Athena/agent workflow:** An agent resolves the repository and issue body. The agent previews the
+specified request and does an authority verification. The agent then creates the public GitHub issue.
 
 ## Related principles
 
@@ -102,22 +102,23 @@ request and verifies authority. It then creates the externally visible GitHub is
 
 ## References
 
-### Origin/history
+### Source information
 
-- No single primary source defines the general order. Athena uses a synthesis of transaction,
+- No one primary source gives the general order. Athena uses a synthesis of transaction,
   change-control, and release-safety practice.
 
-### Current guidance
+### Applicable information
 
 - [OWASP Transaction Authorization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Transaction_Authorization_Cheat_Sheet.html)
-  requires ordered state transitions and a final authorization gate tied to transaction execution.
+  gives ordered state transitions and an authorization gate immediately before transaction
+  execution.
 - [Google SRE Workbook: Canarying Releases](https://sre.google/workbook/canarying-releases/)
-  presents staged exposure, evaluation, and rollback as release safety mechanisms.
+  gives information about staged exposure, evaluation, and rollback as release safety mechanisms.
 
-### Further reading
+### More information
 
 - [NIST SP 800-53 Revision 5](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final) includes
   configuration change control, impact analysis, authorization, testing, and documentation controls
-  for governed changes.
+  for changes with governance.
 
 [Back to the engineering principles catalog](../README.md#p083)

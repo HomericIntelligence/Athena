@@ -2,50 +2,53 @@
 
 ## Definition
 
-Minimize Attack Surface exposes only the capabilities that supported behavior requires. These
-capabilities include entry points, exit paths, protocols, identities, permissions, tools,
-interpreters, dependencies, and features. Each exposed capability can let an attacker influence the
-system or extract value.
+Minimize Attack Surface makes available only the capabilities that are necessary for product
+behavior. These capabilities include entry points, exit paths, protocols, identities, permissions,
+tools, interpreters, dependencies, and features. Each available capability can let an attacker
+control the system or get value.
 
-**Aliases:** attack-surface reduction, exposure minimization, remove unnecessary entry points.
+**Aliases:** attack-surface reduction, exposure minimization, removal of entry points that are not
+necessary.
 
 ## Provenance
 
 **Classification:** established principle.
 
-Attack-surface analysis developed across security engineering. Manadhata and Wing provided an
-influential formal metric. The broader practice has no single uncontested origin.
+Attack-surface analysis has sources in security engineering. Manadhata and Wing gave an important
+formal metric. The general practice has no one verified source.
 
 ## Decision rule
 
-Before a capability becomes externally accessible, identify its required consumer and security
-controls. Remove or disable the capability when no current requirement justifies its exposure. Assess
-the threat model again after each surface change.
+Before a capability becomes available to external users or systems, find its necessary consumer and
+security controls. If it is not necessary for specified product behavior, remove or disable the
+capability. After each surface change, examine the threat model again.
 
 ## How to apply
 
-- List all data and command paths that enter or leave the system. Include internal privileged paths.
-- Remove unused endpoints, listeners, tools, plugins, protocols, dependencies, and administrative paths.
+- Record all input and output data paths and command paths. Include internal privileged paths.
+- Remove endpoints, listeners, tools, plugins, protocols, dependencies, and administrative paths
+  that no consumer uses.
 - Narrow accepted formats, methods, destinations, identities, and permissions.
-- Keep privileged management surfaces isolated from routine product interfaces.
-- Track surface changes during design and code review. Apply focused security tests.
-- Preserve required compatibility until evidence shows removal is safe.
+- Keep privileged management surfaces isolated from standard product interfaces.
+- Record surface changes during design and code review. Do security tests for changed surfaces.
+- Until evidence shows that removal is safe, keep necessary compatibility.
 
 ## Diagram
 
 ```mermaid
 flowchart TD
-    A["Inventory exposed capabilities"] --> B{"Current requirement exists?"}
+    A["Make an inventory of exposed capabilities"] --> B{"Is capability necessary for the product?"}
     B -- "No" --> C["Remove or disable capability"]
     B -- "Yes" --> D["Narrow formats, methods, identities, and privileges"]
     C --> E["Update threat model"]
     D --> E
-    E --> F["Test the remaining surface"]
+    E --> F["Do tests of the remaining surface"]
 ```
 
 ## Language examples
 
-The two examples expose only the required health and report routes and reject all other routes.
+The two examples make available only the necessary health and report routes and reject all other
+routes.
 
 ### Python
 
@@ -76,29 +79,31 @@ fn dispatch(method: Method, path: &str) -> Result<Response, Error> {
 
 ## Boundaries and tensions
 
-Attack surface is not source line count. A small interpreter or broad privileged endpoint can expose
-more capability than a large pure library. Do not remove a necessary defense only to reduce component
-count.
+Attack surface is not source line count. A small interpreter or high-privilege endpoint can make
+more capability available than a large pure library. Do not remove a necessary defense only to
+decrease component count.
 
-Saltzer and Schroeder's **economy of mechanism** favors security mechanisms that are small and simple
-enough to inspect. It supports attack-surface reduction, but the two principles are not equivalent.
+Saltzer and Schroeder's **economy of mechanism** makes small and simple security mechanisms
+necessary for inspection. It helps attack-surface reduction, but the two principles are not
+equivalent.
 
 ## Examples
 
 ### Positive
 
-A service removes an unused administration protocol and restricts supported API methods. It places
-the required administrative endpoint behind a separate authenticated network boundary.
+A service removes an administration protocol that no consumer uses. It accepts only supported API
+methods. It keeps the necessary administrative endpoint in a different authenticated network
+boundary.
 
 ### Misuse
 
-A team deletes input validation to reduce code size. It retains the public endpoint and dangerous
+A team deletes input validation to decrease code size. It keeps the public endpoint and dangerous
 operation. Complexity decreases, but exploitable exposure increases.
 
 ### Athena and agent workflows
 
-A documentation task receives file read and link check capabilities. It receives no arbitrary shell,
-message, deployment, or credential tools. The task must demonstrate a need for each new capability.
+A documentation task receives file read and link check capabilities. It receives no shell, message,
+deployment, or credential tools. Evidence must show that each new capability is necessary.
 
 ## Related principles
 
@@ -109,19 +114,20 @@ message, deployment, or credential tools. The task must demonstrate a need for e
 
 ## References
 
-### Origin and history
+### Source information
 
-- [Manadhata and Wing, *An Attack Surface Metric*](https://doi.org/10.1109/TSE.2010.60) formalizes
-  attack surface through system methods, channels, data, and related privileges.
+- [Manadhata and Wing, *An Attack Surface Metric*](https://doi.org/10.1109/TSE.2010.60) gives
+  information about an attack-surface metric for system methods, channels, data, and related
+  privileges.
 
-### Current guidance
+### Applicable information
 
 - [OWASP Attack Surface Analysis Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Attack_Surface_Analysis_Cheat_Sheet.html)
-  provides a practical process to map, review, reduce, and monitor surface changes.
+  gives a process to map, review, decrease, and monitor surface changes.
 
-### Further reading
+### More information
 
 - [Saltzer and Schroeder, *The Protection of Information in Computer Systems*](https://doi.org/10.1109/PROC.1975.9939)
-  defines economy of mechanism, a related but distinct requirement for simple protection design.
+  gives economy of mechanism, a related requirement for simple protection design.
 
 [Back to the principles catalog](../README.md#p055)

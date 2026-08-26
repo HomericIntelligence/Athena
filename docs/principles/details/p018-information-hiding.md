@@ -2,9 +2,9 @@
 
 ## Definition
 
-Expose a stable contract and conceal implementation decisions that are likely to change. Consumers
-need only the component guarantees. They do not need its representation, algorithm, dependency, or
-operational details.
+Give consumers a stable contract and hide implementation decisions that can change.
+Consumers use only the component guarantees. They do not use the component representation, algorithm,
+dependency, or operational details.
 
 **Aliases:** encapsulation of design decisions, implementation hiding.
 
@@ -12,20 +12,23 @@ operational details.
 
 **Classification:** established principle.
 
-David Parnas defined information hiding as a module decomposition criterion in 1972. Encapsulation
-is closely related. Language-level access control alone does not hide every volatile decision.
+David Parnas used information hiding as a module decomposition criterion in 1972. Encapsulation
+is a related principle. Language-level access control does not hide each implementation
+decision that can change.
 
 ## Decision rule
 
-Expose only the facts that consumers must use. Keep each volatile choice behind the boundary.
+Give consumers only the facts that they must use. Keep each implementation decision that can change
+behind the boundary.
 
 ## How to apply
 
-- Identify probable change points such as storage formats, vendors, algorithms, and cache policy.
-- Publish operations and semantic guarantees instead of internal fields or dependency objects.
+- Find possible change points, for example storage formats, vendors, algorithms, and cache
+  policy.
+- Publish operations and semantic guarantees. Do not publish internal fields or dependency objects.
 - Prevent access to private representations through shared tables or mutable aliases.
-- Protect implementation changes with contract tests before you change a public contract.
-- Document each intentional escape path and its compatibility cost.
+- Before you change an implementation, do tests of the public contract.
+- Record each specified escape path and its compatibility cost.
 
 ## Diagram
 
@@ -33,14 +36,14 @@ Expose only the facts that consumers must use. Keep each volatile choice behind 
 flowchart LR
     Consumer["Consumer"] --> Contract["Stable contract"]
     Contract --> Component["Component"]
-    Component --> Choice["Hidden volatile choice"]
+    Component --> Choice["Hidden implementation decision"]
     Choice --> Replace["Replace implementation"]
     Replace --> Contract
 ```
 
 ## Language examples
 
-The two examples expose store operations and conceal the map representation.
+The two examples give store operations to consumers and hide the map representation.
 
 Python:
 
@@ -75,29 +78,29 @@ impl TokenStore {
 
 ## Boundaries and tensions
 
-Information hiding must expose behavior that callers need for correct use. This behavior includes
+Information hiding must show behavior that is necessary for correct operation. This behavior includes
 side effects, ownership, latency, failure modes, and consistency guarantees.
 
-The principle does not justify a speculative abstraction for every possible implementation.
-Observability can expose safe diagnostic facts. It must not expose mutable internals or sensitive
+Without evidence for more than one possible implementation, do not make an abstraction.
+Observability can show safe diagnostic facts. It must not show mutable internals or sensitive
 data.
 
 ## Examples
 
 ### Positive application
 
-A repository exposes `save` and `load` operations. The repository owns its schema and migration
-details. Callers do not construct SQL or use table names.
+A repository publishes `save` and `load` operations. The repository owns its schema and migration
+details. Callers do not write SQL or use table names.
 
 ### Misuse or counterexample
 
-A wrapper marks its fields as private and returns its mutable collection. Consumers can still use
-that representation and corrupt it.
+A wrapper makes its fields private and returns its mutable collection. Consumers can use that
+representation and corrupt it.
 
 ### Athena or agent workflow
 
-A skill invokes a documented helper command and interprets its exit contract. It does not import
-private helper modules or use incidental log text.
+A skill invokes a specified helper command and interprets its exit contract. It does not import
+private helper modules or use log text that is not part of the exit contract.
 
 ## Related principles
 
@@ -107,19 +110,19 @@ private helper modules or use incidental log text.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Parnas, "On the Criteria To Be Used in Decomposing Systems into Modules" (1972)](https://doi.org/10.1145/361598.361623)
-  favors modules that conceal design decisions rather than process-step modules.
+  recommends modules that hide design decisions, not process-step modules.
 
-### Current guidance
+### Applicable information
 
 - [Oracle, "Strong Encapsulation in the JDK"](https://docs.oracle.com/en/java/javase/25/migrate/migrating-jdk-8-later-jdk-releases.html)
-  documents a platform boundary that protects unsupported internals from consumers.
+  gives a platform boundary that hides unsupported internals from consumers.
 
-### Further reading
+### More information
 
 - [SEI, "Software Architecture"](https://www.sei.cmu.edu/software-architecture/)
-  describes explicit structural decisions and conformance during system evolution.
+  gives explicit structural decisions and conformance during system evolution.
 
 [Back to the engineering principles catalog](../README.md#p018)

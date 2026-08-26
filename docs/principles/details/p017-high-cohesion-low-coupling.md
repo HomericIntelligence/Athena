@@ -2,8 +2,8 @@
 
 ## Definition
 
-Place related responsibilities and data in one component. Minimize the number and strength of
-dependencies between components.
+Put related responsibilities and related state in one component. Use the smallest number of weak
+dependencies necessary for system operation.
 
 Cohesion measures internal relation. Coupling measures dependence across a boundary.
 
@@ -13,21 +13,21 @@ Cohesion measures internal relation. Coupling measures dependence across a bound
 
 **Classification:** established principle.
 
-Stevens, Myers, and Constantine formalized coupling and cohesion in structured design during the
-1970s. The compact maxim is later practitioner language. The maxim has no single source.
+Stevens, Myers, and Constantine gave definitions for coupling and cohesion in structured design
+during the 1970s. Practitioners then gave the short maxim. No one source contains the maxim.
 
 ## Decision rule
 
-Group elements that change for the same reason. Connect groups through the smallest stable
-contract that preserves required behavior.
+Put elements that change for the same reason in one component. Connect components through the smallest stable
+contract that preserves necessary behavior.
 
 ## How to apply
 
-- Use change history and domain ownership to identify cohesive boundaries.
-- Keep each invariant with the state that it governs.
-- Pass only data or capability that a collaborator needs. Avoid shared mutable global data.
-- Inspect repeated cross-module changes, dependency cycles, and wide interfaces.
-- Use coupling metrics only as evidence. Confirm each result with domain knowledge.
+- Use change history and domain ownership to find cohesive boundaries.
+- Keep each invariant with its related state.
+- Pass only data or capability that is necessary for a collaborator. Do not share mutable global data.
+- Examine cross-module change patterns, dependency cycles, and wide interfaces.
+- Coupling metrics give evidence only. Make sure that each result agrees with domain knowledge.
 
 ## Diagram
 
@@ -35,29 +35,30 @@ contract that preserves required behavior.
 flowchart TD
     Change["Requested change"] --> Compare{"Same reason to change?"}
     Compare -->|Yes| Cohesive["Keep responsibilities together"]
-    Compare -->|No| Split["Separate components"]
-    Cohesive --> Contract["Expose a narrow contract"]
+    Compare -->|No| Split["Put in different components"]
+    Cohesive --> Contract["Give consumers a narrow contract"]
     Split --> Contract
-    Contract --> Consumer["Limit consumer dependencies"]
+    Contract --> Consumer["Use only necessary consumer dependencies"]
 ```
 
 ## Language examples
 
-The two examples keep price rules cohesive and restrict checkout to a narrow quote contract.
+The two examples keep price rules cohesive. Checkout depends only on a narrow quote contract.
 
 Python:
 
 ```python
-from typing import Protocol
-
-class Quoter(Protocol):
-    def quote(self, subtotal: int) -> int: ...
-
-class Pricing:
-    def quote(self, subtotal: int) -> int:
-        return subtotal - (10 if subtotal >= 100 else 0)
-
-def checkout_total(quoter: Quoter, subtotal: int) -> int:
+class U32(int):
+    def __new__(cls, value: int):
+        if type(value) is not int or not 0 <= value <= 0xFFFF_FFFF:
+            raise ValueError("value must be u32")
+        return int.__new__(cls, value)
+class Quoter:
+    def quote(self, subtotal: U32) -> U32: raise NotImplementedError
+class Pricing(Quoter):
+    def quote(self, subtotal: U32) -> U32:
+        return U32(subtotal - (10 if subtotal >= 100 else 0))
+def checkout_total(quoter: Quoter, subtotal: U32) -> U32:
     return quoter.quote(subtotal)
 ```
 
@@ -80,27 +81,27 @@ fn checkout_total(quoter: &impl Quoter, subtotal: u32) -> u32 {
 
 ## Boundaries and tensions
 
-Every useful system has some coupling. Event buses, generic data maps, and duplicate state can
-conceal coupling.
+Each system has some coupling. Event buses, generic data maps, and duplicate state can
+hide coupling.
 
-An overly broad definition of related can create a large component. Prefer explicit dependencies
-to implicit coordination. Balance component independence with transaction consistency.
+A definition that puts too many responsibilities together can make a large component. Use explicit
+dependencies, not implicit coordination. Select a design that gives component independence and transaction consistency.
 
 ## Examples
 
 ### Positive application
 
-A pricing component owns discount rules and their required inputs. Checkout uses only a narrow
+A pricing component owns discount rules and their necessary inputs. Checkout uses only a narrow
 quote contract. Checkout does not use pricing tables or cache details.
 
 ### Misuse or counterexample
 
-Two services exchange many events and share a database. The absence of synchronous calls does not
-make these services loosely coupled.
+Two services send many events to each other and share a database. These services do not make synchronous
+calls. This fact does not make the services loosely coupled.
 
 ### Athena or agent workflow
 
-A skill-local helper performs one parsing task and exposes a stable CLI. The skill uses only that
+A skill-local helper does one parsing task and gives a stable CLI. The skill uses only that
 CLI. Other skills do not import private helper code.
 
 ## Related principles
@@ -111,19 +112,19 @@ CLI. Other skills do not import private helper code.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Stevens, Myers, and Constantine, "Structured Design" (1974)](https://doi.org/10.1147/sj.132.0115)
-  presents a systematic treatment of module coupling and cohesion.
+  gives module coupling and cohesion categories.
 
-### Current guidance
+### Applicable information
 
 - [Microsoft Azure Architecture Center, "Design for evolution"](https://learn.microsoft.com/en-us/azure/architecture/guide/design-principles/design-for-evolution)
-  connects cohesion and loose coupling to independent service changes.
+  shows how cohesion and loose coupling let one service change without changes to other services.
 
-### Further reading
+### More information
 
 - [SEI, "Modifiability Tactics" (2007)](https://www.sei.cmu.edu/documents/778/2007_005_001_14858.pdf)
-  analyzes responsibility, coupling, cohesion, and change propagation.
+  gives an analysis of responsibility, coupling, cohesion, and change propagation.
 
 [Back to the engineering principles catalog](../README.md#p017)

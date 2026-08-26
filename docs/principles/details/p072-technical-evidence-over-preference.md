@@ -3,9 +3,9 @@
 ## Definition
 
 Use requirements, specifications, measurements, tests, profiles, architecture, and established
-engineering principles to resolve technical choices. Do not use subjective taste when relevant
-evidence favors one option. Personal preference can select between options that the evidence shows
-as materially equivalent.
+engineering principles to resolve technical decisions. When applicable evidence shows that one
+alternative is better, do not use personal preference. Personal preference can select between
+alternatives that the evidence shows are equivalent for the decision.
 
 **Aliases:** facts over opinions, evidence-based engineering judgment.
 
@@ -13,35 +13,36 @@ as materially equivalent.
 
 **Classification:** practitioner heuristic.
 
-Evidence-based decisions have broad scientific and engineering roots. No verified software source
-owns the idea. Google's code-review guidance states the rule for review disputes. Athena applies the
-rule to plans, implementation, validation, and review.
+Evidence-based decisions have scientific and engineering roots in many fields. No verified software
+source owns the idea. Google's code-review guidance states the rule for review disputes. Athena
+applies the rule to plans, implementation, validation, and review.
 
 ## Decision rule
 
-When approaches conflict, identify relevant evidence and assess its quality. Choose the option that
-trusted requirements and technical evidence support. If equivalent options remain, use established
-convention or the responsible author's preference.
+When approaches conflict, identify applicable evidence. Examine its quality. Select the alternative
+that agrees with trusted requirements and technical evidence. If there are equivalent
+alternatives, use established convention or the responsible author's preference.
 
 ## How to apply
 
-- State the disputed claim and the observation that can distinguish the options.
-- Rank evidence by relevance, trustworthiness, reproducibility, and applicability to the workload.
-- Prefer accepted requirements and specifications over anecdotes or familiarity.
-- Use representative tests, benchmarks, and production data where behavior depends on environment.
-- Record important evidence and uncertainty so a future decision can use them.
+- State the disputed claim and the observation that can distinguish the alternatives.
+- Compare evidence for relevance, trustworthiness, reproducibility, and applicability to the
+  workload.
+- Use accepted requirements and specifications, not reports without evidence or author preference.
+- When the environment changes behavior, use representative tests, benchmarks, and production data.
+- For use in a future decision, record important evidence and uncertainty.
 
 ## Diagram
 
 ```mermaid
 flowchart TD
-    A["State disputed technical claim"] --> B["Identify decisive observation"]
-    B --> C["Collect trusted relevant evidence"]
-    C --> D{"Evidence favors one option?"}
-    D -- "Yes" --> E["Choose supported option"]
-    D -- "No" --> F{"Options materially equivalent?"}
+    A["State disputed technical claim"] --> B["Identify necessary observation"]
+    B --> C["Collect trusted applicable evidence"]
+    C --> D{"Does evidence show that one alternative is better?"}
+    D -- "Yes" --> E["Select supported alternative"]
+    D -- "No" --> F{"Alternatives equivalent for decision?"}
     F -- "Yes" --> G["Use convention or owner preference"]
-    F -- "No" --> H["Record uncertainty and obtain more evidence"]
+    F -- "No" --> H["Record uncertainty and collect more evidence"]
 ```
 
 ## Language examples
@@ -58,32 +59,37 @@ def choose_parser(samples):
 
 ```rust
 fn choose_parser(samples: &[Input]) -> &'static Parser {
-    PARSERS
+    let measured: Vec<_> = PARSERS
         .iter()
-        .min_by_key(|parser| measure(parser, samples))
-        .expect("PARSERS is not empty")
+        .map(|parser| (measure(parser, samples), parser))
+        .collect();
+    measured
+        .into_iter()
+        .min_by_key(|(cost, _)| *cost)
+        .expect("PARSERS is not empty").1
 }
 ```
 
 ## Boundaries and tensions
 
-Measurements and tests can be stale, biased, incomplete, or relevant to the wrong contract. Assess
-evidence quality instead of evidence quantity. Architecture and principles guide judgment but do not
-override an explicit higher-priority requirement. Use
-[P071 Consistency](p071-consistency-over-personal-preference.md) only when stronger evidence does not
-favor one option. Absence of data does not prove absence of risk.
+Measurements and tests can be stale, biased, or applicable to an incorrect contract. Measurements
+can also have missing data. Examine evidence quality, not evidence quantity. Architecture and
+principles give a basis for judgment but do not override a specified higher-priority requirement.
+When stronger evidence does not show that one alternative is better, use
+[P071 Consistency](p071-consistency-over-personal-preference.md). If there is no data, risk is
+possible.
 
 ## Examples
 
 **Positive:** Representative profiles identify serialization as the latency bottleneck. The team
-optimizes that path instead of a low-cost component.
+optimizes that path, not a low-cost component.
 
-**Misuse:** A reviewer blocks a correct, conventional implementation because another syntax "feels
-cleaner." The reviewer provides no contract, measurement, or design consequence.
+**Misuse:** A reviewer blocks a correct, established implementation because a different syntax
+"feels cleaner." The reviewer gives no contract, measurement, or design effect.
 
-**Athena/agent workflow:** Repository prose and executable behavior appear inconsistent. An agent
-inspects history, validators, tests, and current policy before it recommends a change to either
-authority.
+**Athena/agent workflow:** An agent finds a conflict between repository prose and executable
+behavior. Before the agent proposes a change, it examines history, validators, tests, and current
+policy.
 
 ## Related principles
 
@@ -95,22 +101,22 @@ authority.
 
 ## References
 
-### Origin/history
+### Source information
 
 - [Google Engineering Practices: The standard of code review](https://google.github.io/eng-practices/review/reviewer/standard.html)
-  states that technical facts and data have precedence over opinions and personal preferences. This
-  page does not claim it as the first origin.
+  states that technical facts and data have higher priority than opinions and personal preferences.
+  This page does not claim it as the initial source.
 
-### Current guidance
+### Applicable information
 
 - [NASA SWE-194: Delivery Requirements Verification](https://swehb.nasa.gov/spaces/SWEHBVD/pages/102695529/SWE-194%2B-%2BDelivery%2BRequirements%2BVerification)
   links acceptance evidence to requirements, test results, and recorded verification.
-- [NIST SSDF 1.1](https://csrc.nist.gov/pubs/sp/800/218/final) provides risk-based secure-development
-  and verification practices with concrete outcomes.
+- [NIST SSDF 1.1](https://csrc.nist.gov/pubs/sp/800/218/final) gives risk-based secure-development
+  and verification practices with specified outcomes.
 
-### Further reading
+### More information
 
-- [Athena evidence integrity policy](../../policies/evidence-integrity.md) defines how repository
-  evidence claims must identify reproducible commands, revisions, environments, and real output.
+- [Athena evidence integrity policy](../../policies/evidence-integrity.md) specifies how repository
+  evidence claims must identify reproducible commands, revisions, environments, and recorded output.
 
 [Back to the engineering principles catalog](../README.md#p072)

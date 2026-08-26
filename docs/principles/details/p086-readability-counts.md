@@ -2,9 +2,9 @@
 
 ## Definition
 
-**Readability Counts** makes code clear for the people who review, debug, operate, and change it.
-Clear names, direct control flow, focused units, and clear data forms support correctness and
-maintenance. They are not cosmetic features.
+**Readability Counts** makes code clear for the personnel who examine, debug, operate, and change it.
+Clear names, linear control flow, one-function units, and clear data forms help correctness and
+maintenance. Readability is a maintenance property.
 
 **Aliases:** code readability and readable-code principle.
 
@@ -12,38 +12,39 @@ maintenance. They are not cosmetic features.
 
 **Classification:** practitioner heuristic.
 
-The exact aphorism occurs in Tim Peters's Zen of Python, which PEP 20 records. The broader priority
-is older and independent of language. Software needs many reads and changes after its first version.
+The aphorism occurs in Tim Peters's Zen of Python, which PEP 20 records. Before PEP 20, readability
+was important. Readability is applicable to all languages. Personnel read and change software many
+times after the first software version.
 
 ## Decision rule
 
-Among correct designs, select the one that shows its purpose, control flow, data meaning, and
-failure behavior most clearly.
+For correct designs, select the design with the most clear function, control flow, data meaning, and
+failure behavior.
 
 ## How to apply
 
-- Use domain names that communicate role and units.
-- Keep functions and modules focused on coherent behavior.
-- Prefer linear control flow and named intermediate results over clever compression.
-- Make invariants and exceptional branches easy to locate.
-- Follow established formatting and language idioms.
-- Review code in its surrounding context, not only as an isolated diff.
+- Use domain names that give role and units.
+- Give each function or module one behavior.
+- Use linear control flow and results with names between operations. Do not compress control flow.
+- Make invariants and failure branches easy to find.
+- Follow specified formatting and language idioms.
+- Examine code in its local context, not only as an isolated diff.
 
 ## Diagram
 
-The reader follows named decisions through one direct control flow.
+The reader follows decisions with names through one linear control flow.
 
 ```mermaid
 flowchart LR
-    A["Clear inputs"] --> B["Named condition"]
-    B -->|Pass| C["Named action"]
-    B -->|Fail| D["Clear failure"]
-    C --> E["Understandable result"]
+    A["Clear inputs"] --> B["Condition with a name"]
+    B -->|Yes| C["Operation with a name"]
+    B -->|No| D["Clear failure"]
+    C --> E["Clear result"]
 ```
 
 ## Language examples
 
-The two examples use named predicates to show the eligibility rules.
+The two examples use predicates with names that give the eligibility rules.
 
 ### Python
 
@@ -66,21 +67,21 @@ fn is_eligible(user: &User) -> bool {
 
 ## Boundaries and tensions
 
-Readability depends partly on the audience and system conventions. A verbose replacement for a
-standard form can reduce readability. Do not remove useful abstractions or duplicate knowledge to
-keep all code in one file. Performance, security, and interoperability can need complex code.
-Isolate and test that code. Explain its nonobvious limits.
+Readability changes with the audience and system conventions. A long replacement for standard code
+can decrease readability. Do not remove necessary abstractions or duplicate knowledge to
+keep all code in one file. Code with much complexity can be necessary for performance, security, and
+interoperability. Isolate that code and do tests. Record each limit that the code does not show.
 
 ## Examples
 
-**Positive:** Named predicates express a compound eligibility check. The predicates match the domain
-rules and expose which rule failed.
+**Positive:** Predicates with names give a compound eligibility check. The predicates contain the domain
+rules and give the rule that caused the failure.
 
-**Misuse:** A dense expression saves four lines but mixes conversion, validation, mutation, and
+**Misuse:** A short expression removes four lines but mixes conversion, validation, mutation, and
 fallback behavior in one statement.
 
-**Athena/agent workflow:** An agent produces a focused diff and evidence summary whose intent a
-reviewer can verify. The reviewer does not need the full session transcript.
+**Athena/agent workflow:** An agent gives a diff for the task scope only and an evidence
+summary. A reviewer can examine what the change does without the full session transcript.
 
 ## Related principles
 
@@ -92,21 +93,21 @@ reviewer can verify. The reviewer does not need the full session transcript.
 
 ## References
 
-### Origin/history
+### Source information
 
 - [PEP 20 — The Zen of Python](https://peps.python.org/pep-0020/) is the primary published source
-  for the exact wording *Readability counts*.
+  for the phrase *Readability counts*.
 
-### Current guidance
+### Applicable information
 
 - [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-  evaluates naming, complexity, comments, context, and whether a reader can understand the code
-  quickly.
+  examines naming, complexity, comments, and context. The guidance also has a check of reader
+  comprehension.
 
-### Further reading
+### More information
 
 - [Software Engineering at Google: Style Guides and Rules](https://abseil.io/resources/swe-book/html/ch08.html)
-  explains why scalable code standards optimize for readers and consistency over individual
-  preference.
+  gives code standards for large projects. The standards use reader clarity and consistency, not
+  one person's preference.
 
 [Back to the engineering principles catalog](../README.md#p086)

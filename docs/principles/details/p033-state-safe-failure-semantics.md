@@ -2,11 +2,11 @@
 
 ## Definition
 
-After failure, each affected resource and state holder must remain unchanged or enter a documented,
-valid, recoverable state. The failure path must preserve invariants and release resources
-deterministically. It must prevent later work from use of state with unknown validity.
+After failure, each applicable resource and state holder must stay unchanged or change to a
+specified recoverable state. This state must be correct. The failure path must keep invariants and
+use a deterministic procedure to release resources. Work after the failure must not read state that can be incorrect.
 
-This postcondition does not promise that every effect can be reversed.
+This postcondition does not include reversal of all effects.
 
 **Aliases:** exception safety, valid-state guarantee
 
@@ -14,43 +14,44 @@ This postcondition does not promise that every effect can be reversed.
 
 **Classification:** Athena synthesis.
 
-Exception-safety guarantees and transaction theory contain established forms of this idea. The
-broader language-neutral rule has no single verified origin.
+Exception-safety guarantees and transaction theory contain types of this rule. Athena cannot
+identify one source for this language-neutral rule.
 
 ## Decision rule
 
-Before a new mutation, define the valid states after each possible failure point. If prevention of
-a partial effect is impossible, make that effect explicit, durable, detectable, and recoverable.
+Before a new mutation, record the correct states after each possible failure point. If only some
+effects can occur, record those effects in durable data. Make sure that the system can find them
+and recover from them.
 
 ## How to apply
 
-- Define invariants and failure postconditions before implementation of a multistep mutation.
-- Validate inputs and prerequisites before a state change.
-- Stage output in temporary state and publish it only after all required work succeeds.
+- Before implementation of a multistep mutation, record invariants and failure postconditions.
+- Before a state change, validate inputs and prerequisites.
+- Put output in temporary state. After all necessary work succeeds, publish it.
 - Use scoped resource ownership to release locks, files, connections, and temporary resources on
-  every exit path.
-- Use one transaction for changes within one transactional boundary. Otherwise, record durable
-  progress and compensation data.
-- Inject failures between steps. Verify the resultant state, resource release, and recovery path.
+  each exit path.
+- Use one transaction for changes in one transactional boundary. If one transaction cannot contain
+  all changes, record durable completed-step data and compensation data.
+- In tests, put failures between steps. Make sure that the state, resource release, and recovery path are correct.
 
 ## Diagram
 
 ```mermaid
 flowchart TD
-    A["Define invariants and failure postconditions"] --> B["Validate inputs and prerequisites"]
+    A["Record invariants and failure postconditions"] --> B["Validate inputs and prerequisites"]
     B --> C{"Can one transaction contain all effects?"}
-    C -- "Yes" --> D["Stage effects and commit once"]
-    C -- "No" --> E["Record durable progress and compensation data"]
+    C -- "Yes" --> D["Prepare effects and commit in one operation"]
+    C -- "No" --> E["Record durable completed-step data and compensation data"]
     D --> F{"Did the operation fail?"}
     E --> F
-    F -- "No" --> G["Publish the valid result"]
-    F -- "Yes" --> H["Restore or expose a documented recoverable state"]
+    F -- "No" --> G["Publish the correct result"]
+    F -- "Yes" --> H["Repair state or show a specified recoverable state"]
     H --> I["Release resources and propagate the failure"]
 ```
 
 ## Language examples
 
-Each example commits the source and target account changes or preserves the prior state.
+Each example commits the source and target account changes or keeps the previous state.
 
 ### Python
 
@@ -74,18 +75,18 @@ fn transfer(db: &mut Db, source: Id, target: Id, amount: Money) -> Result<(), Er
 
 ## Boundaries and tensions
 
-Failure atomicity is a stronger related guarantee, not an alias. It requires a failed operation to
-leave the original state unchanged. State-safe failure semantics permit a documented, valid,
-recoverable state.
+Failure atomicity is a stronger related guarantee, not an alias. If an operation fails, it must keep
+the initial state unchanged for failure atomicity. State-safe failure semantics can have a specified
+recoverable state as their result. This state must be correct.
 
-[P044](p044-atomicity-where-possible.md) is the preferred mechanism when one transaction can cover
-the logical operation. [P045](p045-compensation-where-atomicity-is-impossible.md) applies when
-effects span independent systems or include work with a long duration. Compensation can produce a
-valid business state without exact restoration of the previous bytes.
+When one transaction can contain the logical operation, use
+[P044](p044-atomicity-where-possible.md) first. When effects occur in different systems or include
+work with a long time, use [P045](p045-compensation-where-atomicity-is-impossible.md). Compensation
+can give a correct business state that does not have all previous bytes.
 
-[P034](p034-fail-fast.md) stops unsafe continuation. Termination alone is insufficient if it leaks
-resources or leaves an ambiguous partial effect. State preservation does not justify failure
-suppression under [P031](p031-propagate-rather-than-swallow.md).
+[P034](p034-fail-fast.md) stops dangerous continuation. Termination does not correct a resource leak
+or an effect that is not clear from only some steps. State preservation does not include failure suppression.
+Use [P031](p031-propagate-rather-than-swallow.md) to propagate the failure.
 
 ## Examples
 
@@ -93,17 +94,17 @@ suppression under [P031](p031-propagate-rather-than-swallow.md).
 
 A file generator writes and validates a temporary file. It flushes the file and uses an atomic
 replacement for the destination. If generation fails, it removes the temporary file. The previous
-artifact remains intact.
+artifact stays unchanged.
 
 ### Misuse or counterexample
 
-A migration updates half of a table, catches a later error, and returns success. No rollback or
-durable checkpoint identifies the changed rows.
+A migration updates some table rows and catches an error after the update of only some rows. It returns
+success. No rollback or durable checkpoint records the changed rows.
 
 ### Athena or agent workflow
 
-An Athena workflow validates a full proposed issue body before issue creation. If creation
-fails, the workflow reports failure. It does not claim success or make unrelated edits.
+An Athena workflow validates all of a proposed issue body before issue creation. If creation
+fails, the workflow gives a failure result. It does not give a success result or edit paths not in task scope.
 
 ## Related principles
 
@@ -114,26 +115,26 @@ fails, the workflow reports failure. It does not claim success or make unrelated
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Härder and Reuter, “Principles of Transaction-Oriented Database Recovery” (1983)](https://doi.org/10.1145/289.291)
-  — a foundational analysis of transaction recovery and the ACID terms for all-or-nothing state
+  — an analysis of transaction recovery and the ACID terms for all-or-nothing state
   changes.
 - [Boost, Exception Safety](https://www.boost.org/doc/user-guide/exception-safety.html) — records
-  the basic and strong exception-safety guarantees for valid state and rollback behavior. These
-  guarantees are narrower than Athena's system-level rule.
+  the basic and strong exception-safety guarantees for correct state and rollback behavior. These
+  guarantees have a smaller scope. Athena's rule also includes system-level effects.
 
-### Current guidance
+### Applicable information
 
 - [C++ Core Guidelines E.4 and E.6](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#e4-design-your-error-handling-strategy-around-invariants)
-  — current guidance for an error strategy based on invariants. It recommends automatic resource
+  — applicable guidance for an error strategy that uses invariants. It recommends automatic resource
   management to prevent leaks.
 - [Microsoft Azure, Compensating Transaction pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/compensating-transaction)
-  — current guidance for recoverability when a multistep operation cannot be atomic.
+  — applicable guidance for recoverability when a multistep operation cannot use one atomic operation.
 
-### Further reading
+### More information
 
 - [PostgreSQL 18 transaction tutorial](https://www.postgresql.org/docs/18/tutorial-transactions.html)
-  — a concrete explanation of all-or-nothing transaction behavior and rollback.
+  — information about all-or-nothing transaction behavior and rollback.
 
 [Back to the engineering principles catalog](../README.md#p033)

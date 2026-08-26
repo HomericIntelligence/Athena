@@ -2,53 +2,52 @@
 
 ## Definition
 
-**Make Concurrency Deliberate** permits parallel or asynchronous execution only for a demonstrated
-requirement. The design defines the full coordination model. The model specifies shared state,
+Measurements must first give proof of a benefit. **Make Concurrency Deliberate** then lets a design
+use parallel or asynchronous execution. The design gives the full coordination model. The model includes shared state,
 synchronization, order, cancellation, deadlines, error collection, and capacity limits.
 
-**Aliases:** none in common use.
+**Aliases:** none.
 
 ## Provenance
 
-**Classification:** established principle.
+**Classification:** principle with source evidence.
 
-No single source established this wording. The rule reflects work on processes, synchronization,
-messages, structured concurrency, and language memory models. This work shows that concurrency
-changes the correctness model and needs explicit analysis.
+No source gives this text. The rule uses research on processes, synchronization, messages,
+structured concurrency, and language memory models. This research gives evidence that concurrency
+changes the correctness model. The design must include explicit analysis.
 
 ## Decision rule
 
-Use sequential execution by default. Use concurrency only for a concrete latency, throughput,
+Use sequential execution by default. Use concurrency only for a measured latency, throughput,
 response, or isolation benefit. Select a model with testable safety and termination properties.
 
 ## How to apply
 
-- Name the expected benefit and measure whether it is material.
-- Minimize shared mutable state. Prefer immutable messages or ownership transfer.
-- Specify ordering guarantees, synchronization, and permitted interleavings.
-- Bound workers, queues, fan-out, and outstanding work.
+- Record the specified benefit. Measure the latency, throughput, response, or isolation change.
+- Use the minimum shared mutable state. Use immutable messages or ownership transfer.
+- Give order guarantees, synchronization, and permitted interleavings.
+- Set limits for workers, queues, fan-out, and active work.
 - Propagate deadlines and cancellation through the task tree.
-- Define how partial failures and multiple concurrent errors combine.
-- Use race detection, stress tests, and deterministic model tests where appropriate.
+- Give one result for failures and concurrent errors.
+- Where applicable, use race detection, stress tests, and deterministic model tests.
 
 ## Diagram
 
-The design adds concurrency only after it identifies a measured benefit.
+After measurements give proof of a benefit, the design adds concurrency.
 
 ```mermaid
 flowchart LR
     A["Sequential design"] --> B{"Measured benefit?"}
     B -->|No| C["Keep sequential flow"]
-    B -->|Yes| D["Define owners and limits"]
-    D --> E["Define order and cancellation"]
-    E --> F["Run bounded concurrent work"]
-    F --> G["Collect every result"]
+    B -->|Yes| D["Owners and limits"]
+    D --> E["Order and cancellation"]
+    E --> F["Do bounded concurrent work"]
+    F --> G["Collect all results"]
 ```
 
 ## Language examples
 
-The two examples await two operations, preserve input order, return each result, and cancel unfinished
-work with the caller.
+The two examples await two ordered operations, return each result, and cancel child operations when the caller stops.
 
 ### Python
 
@@ -75,21 +74,22 @@ async fn fetch_pair(urls: [&str; 2]) -> (FetchResult, FetchResult) {
 
 ## Boundaries and tensions
 
-Sequential code can have races when callers or external systems use it concurrently. Some domains
-need concurrency. The principle requires a deliberate model, not avoidance. Reject measured speed
-benefits when the correctness and operation costs are larger. An asynchronous interface must not
-force unrelated layers to use concurrency.
+When concurrent callers or external systems use sequential code, the code can have races. Concurrency is
+necessary in some domains. The principle gives a specified model and lets a design use concurrency.
+If measured speed benefits increase correctness risk or operation cost, reject the benefits. An asynchronous
+interface must not cause concurrency in other layers.
 
 ## Examples
 
-**Positive:** A bounded operation starts two independent reads with a shared deadline. The reads
-share no mutable state. The result order is deterministic.
+**Positive:** A bounded operation starts two reads that operate independently with a shared deadline. The
+reads have no shared mutable state. The result order is deterministic.
 
 **Misuse:** A loop starts one worker for each input without a limit. The loop discards failures, and
 the caller cannot cancel the work.
 
-**Athena/agent workflow:** A coordinator delegates only independent subtasks and gives each worker
-bounded scope. It reconciles all results before it accepts shared conclusions.
+**Athena/agent workflow:** A coordinator delegates only subtasks that can operate independently. The
+coordinator gives each worker bounded scope. Before the coordinator accepts shared conclusions, the
+coordinator collects and compares all results.
 
 ## Related principles
 
@@ -101,22 +101,22 @@ bounded scope. It reconciles all results before it accepts shared conclusions.
 
 ## References
 
-### Origin/history
+### Source information
 
 - [Communicating Sequential Processes](https://doi.org/10.1145/359576.359585) is C. A. R. Hoare's
-  1978 primary paper that defines a process-and-message model without implicit shared-state
+  1978 primary paper that gives a process-and-message model without implicit shared-state
   coordination.
 
-### Current guidance
+### Applicable information
 
 - [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-  identifies concurrency as a complexity and correctness area that needs careful review.
+  includes concurrency as a complexity and correctness area for careful inspection.
 - [The Rust Programming Language: Fearless Concurrency](https://doc.rust-lang.org/book/ch16-00-concurrency.html)
-  shows how ownership and types make concurrency errors harder to express.
+  gives examples of ownership and types that prevent many concurrency errors.
 
-### Further reading
+### More information
 
-- [Go Concurrency Patterns: Context](https://go.dev/blog/context) explains explicit propagation of
-  deadlines and cancellation across concurrent request work.
+- [Go Concurrency Patterns: Context](https://go.dev/blog/context) gives information about explicit
+  propagation of deadlines and cancellation across concurrent request work.
 
 [Back to the engineering principles catalog](../README.md#p080)

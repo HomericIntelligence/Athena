@@ -2,51 +2,56 @@
 
 ## Definition
 
-Defense in Depth uses independent prevention, detection, limiting, and recovery controls. One control
-failure does not cause immediate compromise of the protected asset. Each layer must address a
+Defense in Depth uses independent controls for prevention, detection, limitation, and recovery. One
+control failure does not compromise the protected asset. Each layer must control a
 different failure mode.
 
-**Aliases:** layered defense, layered security, multiple independent controls.
+**Aliases:** layered defense, layered security, independent layered controls.
 
 ## Provenance
 
 **Classification:** established principle.
 
-The phrase has an older military use and a varied history in computer security. No single software
-source originated it. NIST and related standards provide formal information security definitions.
+The phrase has a military history and different meanings in computer security. No one software
+source is the source of the principle. NIST and related standards give formal information security
+definitions.
 
 ## Decision rule
 
-For an important threat, identify the primary control. Define how the system prevents, detects,
-contains, and recovers from failure of the primary control. Add a layer only when a different
-boundary or mechanism reduces residual risk.
+For an important threat, select the primary control. Give the methods that prevent, detect, contain,
+and recover from a failure of the primary control. If a different boundary or mechanism decreases
+residual risk, add a layer.
 
 ## How to apply
 
-- Start with assets, threats, and trust boundaries rather than a generic control checklist.
-- Combine controls at distinct layers, such as identity, application, data, runtime, and network.
-- Avoid shared credentials, configuration, or libraries that make nominally separate layers fail together.
+- Start with assets, threats, and trust boundaries. Do not start with a general control checklist.
+- Use controls at different layers, for example identity, application, data, runtime, and network.
+- Do not use shared credentials, configuration, or libraries that make different layers fail
+  together.
 - Use detection and recovery, not only prevention.
-- Test bypass of each layer and verify that remaining controls limit the result.
-- Record ownership and maintenance for every control so stale layers do not create false assurance.
+- Do bypass tests of each layer. Verify that the other controls limit the result.
+- Record ownership and maintenance for each control. This record prevents incorrect assurance from
+  stale layers.
 
 ## Diagram
 
 ```mermaid
-flowchart LR
-    A["Threat reaches service"] --> B["Identity control"]
-    B --> C["Application authorization"]
-    C --> D["Data policy"]
-    D --> E["Audit detection"]
-    E --> F["Recovery control"]
-    B -. "failure" .-> C
-    C -. "failure" .-> D
-    D -. "failure" .-> E
+flowchart TD
+    A["Threat at service boundary"] --> B{"Does identity control block the threat?"}
+    B -- "Yes" --> H["Stop the threat"]
+    B -- "No" --> C{"Does application authorization block the threat?"}
+    C -- "Yes" --> H
+    C -- "No" --> D{"Does data policy block the mutation?"}
+    D -- "Yes" --> H
+    D -- "No" --> E["Data mutation"]
+    E --> F["Try audit record"]
+    E --> G["Apply recovery control"]
 ```
 
 ## Language examples
 
-The two examples combine application authorization, an independent data policy, and an audit event.
+The two examples apply application and data controls before mutation, then apply audit and backup
+controls so audit failure does not prevent backup.
 
 ### Python
 
@@ -54,8 +59,9 @@ The two examples combine application authorization, an independent data policy, 
 def update_record(user, record, value):
     policy.authorize(user, "update", record)
     database.update_with_tenant_policy(record, value)
-    audit.append(user.id, "update", record.id)
-    backups.mark_required(record.id)
+    audit_result = audit.try_append(user.id, "update", record.id)
+    backup_result = backups.try_mark_required(record.id)
+    require_success(audit_result, backup_result)
 ```
 
 ### Rust
@@ -64,37 +70,39 @@ def update_record(user, record, value):
 fn update_record(user: &User, record: &Record, value: Value) -> Result<(), Error> {
     policy::authorize(user, Action::Update, record)?;
     database::update_with_tenant_policy(record, value)?;
-    audit::append(user.id, Action::Update, record.id)?;
-    backups::mark_required(record.id)
+    let audit_result = audit::try_append(user.id, Action::Update, record.id);
+    let backup_result = backups::try_mark_required(record.id);
+    require_success(audit_result, backup_result)
 }
 ```
 
 ## Boundaries and tensions
 
-More controls are not always better. Redundant mechanisms increase complexity and attack surface
-when they do not provide independent protection. Defense in Depth does not excuse a weak primary
-control.
+More controls are not always better. If redundant mechanisms do not give independent protection,
+they increase complexity and attack surface. Defense in Depth does not remove the requirement for a
+strong primary control.
 
-Detection without a response does not contain an incident. Use the smallest effective layer set
-that addresses the demonstrated threat model. The full set must remain operable.
+Detection with no response does not contain an incident. Use the minimum layer set for the specified
+threat model. All layers must operate correctly.
 
 ## Examples
 
 ### Positive
 
-A sensitive write requires service authorization, tenant-specific database policy, an append-only
-audit event, and encrypted backups. If a route omits its check, the independent data barrier still
-blocks the write.
+A sensitive write uses service authorization, tenant-specific database policy, an append-only audit
+event, and encrypted backups. If a route has no authorization check, the independent data barrier
+also blocks the write.
 
 ### Misuse
 
-Three gateways use the same copied allowlist and administrator credential. One bad rule or compromised
-credential defeats every nominal layer. The gateways also triple maintenance work.
+Three gateways use the same copied allowlist and administrator credential. One bad rule or
+compromised credential defeats all three layers. The gateways also cause three times the maintenance
+work.
 
 ### Athena and agent workflows
 
-Task instructions, tool allowlists, a filesystem sandbox, parameter checks, and an approval gate limit
-a write-capable agent. The gate covers unauthorized irreversible actions.
+Task instructions, tool allowlists, a filesystem sandbox, parameter checks, and an approval gate
+limit a write-capable agent. The gate prevents unauthorized irreversible actions.
 
 ## Related principles
 
@@ -105,21 +113,22 @@ a write-capable agent. The gate covers unauthorized irreversible actions.
 
 ## References
 
-### Origin and history
+### Source information
 
-- The term has a varied history in computer security and inherits older layered-defense use. This page
-  does not assign it to one inventor or paper.
+- The term has a history with different meanings in computer security. It inherits older
+  layered-defense concepts. This page gives no one inventor or paper as its source.
 
-### Current guidance
+### Applicable information
 
 - [NIST CSRC definition of defense in depth](https://csrc.nist.gov/glossary/term/defense_in_depth)
-  traces formal definitions to NIST, CNSSI, and ISA/IEC security guidance.
-- [NIST SP 800-53 Release 5.2.0](https://csrc.nist.gov/Pubs/sp/800/53/r5/upd1/Final) provides a
+  gives formal definitions from NIST, CNSSI, and ISA/IEC security guidance.
+- [NIST SP 800-53 Release 5.2.0](https://csrc.nist.gov/Pubs/sp/800/53/r5/upd1/Final) gives a
   catalog of complementary organizational, technical, and operational security controls.
 
-### Further reading
+### More information
 
 - [OWASP Secure Cloud Architecture Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Secure_Cloud_Architecture_Cheat_Sheet.html)
-  shows interactions between trust boundaries and multiple controls in application architecture.
+  shows the interactions between trust boundaries and two or more controls in application
+  architecture.
 
 [Back to the principles catalog](../README.md#p054)

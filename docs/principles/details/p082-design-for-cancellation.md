@@ -2,52 +2,56 @@
 
 ## Definition
 
-**Design for Cancellation** requires the interface designer to treat a caller's loss of interest as
-a terminal signal. The designer defines the cancellation request, propagation path, cleanup, and
-final result for long or asynchronous work. Cancellation must not corrupt state or leak resources.
+With **Design for Cancellation**, an interface includes a caller's loss of interest as a terminal
+signal. The designer gives the cancellation request, propagation path, cleanup, and
+terminal result for long or asynchronous work. Cancellation must keep state correct and must not
+cause a resource leak.
 
-**Aliases:** none in common use. Cooperative cancellation is one implementation approach.
+**Aliases:** none. Cooperative cancellation is one implementation method.
 
 ## Provenance
 
 **Classification:** practitioner heuristic.
 
-There is no verified single origin. Operating systems, concurrent programs, and distributed request
-interfaces developed cooperative cancellation. Modern structured concurrency and context interfaces
+No source records an initial author. Operating systems, concurrent programs, and distributed request
+interfaces use cooperative cancellation. Structured concurrency and context interfaces
 make the lifetime relation between callers and child work explicit.
 
 ## Decision rule
 
-If work can outlive the caller's need, define its cancellation contract. State where cancellation
-takes effect. State the cleanup guarantee and the final result.
+If work can continue after the caller request stops, give the work a cancellation contract. Tell the
+cancellation point. Tell the cleanup guarantee and the terminal result.
 
 ## How to apply
 
 - Accept and propagate the host's cancellation or context capability.
-- Check cancellation at bounded, state-safe checkpoints.
-- Do not start downstream work after the cancellation signal.
-- Release resources and join or account for child work. Then return.
-- Distinguish cancellation from timeout, dependency failure, and successful completion.
-- Make cleanup, compensation, and retries idempotent where repeated signals are possible.
-- Test races between cancellation, completion, and partial side effects.
+- Monitor cancellation at bounded, state-safe checkpoints.
+- After the cancellation signal, do not start more work.
+- Release resources and join child work or record each child result. Then return.
+- Use different results for cancellation, timeout, dependency failure, and completion without error.
+- When signals can occur again and again, make cleanup, compensation, and retries idempotent.
+- Do tests of races between cancellation, completion, and side effects that stop before completion.
 
 ## Diagram
 
-The worker observes cancellation at a safe checkpoint and then cleans its resources.
+The worker releases the worker resources after cancellation or completion.
 
 ```mermaid
 flowchart LR
     A["Work in progress"] --> B{"Cancellation signal?"}
-    B -->|No| C["Next bounded unit"]
-    C --> A
-    B -->|Yes| D["Finish safe checkpoint"]
-    D --> E["Clean resources"]
+    B -->|Yes| D["Complete safe checkpoint"]
+    D --> E["Release resources"]
     E --> F["Cancellation result"]
+    B -->|No| C{"Work completed?"}
+    C -->|No| G["Do next bounded unit"]
+    G --> A
+    C -->|Yes| H["Release resources"]
+    H --> I["Success result"]
 ```
 
 ## Language examples
 
-The two examples observe one cancellation signal and always perform cleanup.
+The two examples monitor one cancellation signal and release resources on cancellation and completion.
 
 ### Python
 
@@ -79,21 +83,20 @@ fn import_rows(cancel: &AtomicBool) -> Result<(), Cancelled> {
 
 ## Boundaries and tensions
 
-A cancellation request does not prove rollback. An atomic or irreversible step can finish before
-cancellation takes effect. A small cleanup region can ignore the signal until it restores its
-invariants. Document each such point. Do not discard a cancellation signal and return apparent
-success.
+A cancellation request does not give proof of rollback. Before cancellation occurs, an atomic or
+irreversible step can complete. Until the region has correct invariants, a small cleanup region can
+ignore the signal. Record each point. Do not discard a cancellation signal and return an incorrect
+success result.
 
 ## Examples
 
 **Positive:** An import stops between committed batches, closes its input, records a resume token,
-and returns a distinct cancellation result.
+and returns a clear cancellation result.
 
-**Misuse:** A canceled HTTP request leaves active database work and spawned subprocesses without an
-owner.
+**Misuse:** A canceled HTTP request has active database work and spawned subprocesses with no owner.
 
-**Athena/agent workflow:** A coordinator propagates an interrupted task to its subagents, collects
-their terminal states, and reports any side effects already completed.
+**Athena/agent workflow:** A coordinator propagates an interrupted task to the subagents. The
+coordinator collects the terminal state of each subagent and records all completed side effects.
 
 ## Related principles
 
@@ -105,23 +108,23 @@ their terminal states, and reports any side effects already completed.
 
 ## References
 
-### Origin/history
+### Source information
 
-- No single primary source defines the general pattern. Do not attribute it to one language or
-  framework.
-- [Go Concurrency Patterns: Context](https://go.dev/blog/context) documents an influential 2014
-  model that transmits deadlines and cancellation through request-scoped work.
+- No one primary source gives the general pattern. Do not record one language or framework as the
+  source.
+- [Go Concurrency Patterns: Context](https://go.dev/blog/context) records a 2014 model that
+  transmits deadlines and cancellation through request-scoped work.
 
-### Current guidance
+### Applicable information
 
-- [gRPC Cancellation](https://grpc.io/docs/guides/cancellation/) defines cancellation propagation
-  and makes clear that applications must stop work they started for a canceled RPC.
-- [Go: Canceling in-progress operations](https://go.dev/doc/database/cancel-operations) shows
-  cancellation and cleanup across database calls.
+- [gRPC Cancellation](https://grpc.io/docs/guides/cancellation/) gives cancellation propagation.
+  Applications must stop work for a canceled RPC.
+- [Go: Canceling in-progress operations](https://go.dev/doc/database/cancel-operations) gives
+  a cancellation and cleanup example across database calls.
 
-### Further reading
+### More information
 
-- [gRPC Deadlines](https://grpc.io/docs/guides/deadlines/) connects time bounds to automatic
-  cancellation. It gives the server application responsibility for spawned-work cleanup.
+- [gRPC Deadlines](https://grpc.io/docs/guides/deadlines/) gives the relation between time bounds and
+  automatic cancellation. The guide gives the server application responsibility for spawned-work cleanup.
 
 [Back to the engineering principles catalog](../README.md#p082)

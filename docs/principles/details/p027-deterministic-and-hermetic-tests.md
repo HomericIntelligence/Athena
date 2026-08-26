@@ -6,7 +6,7 @@ Make tests repeatable through controlled inputs and isolation from undeclared ex
 Such influences include time, random values, environment variables, file state, networks, locale,
 concurrency, and shared services.
 
-Tests must produce the same result for every execution order.
+Tests must give the same result for each execution order.
 
 **Aliases:** isolated tests, reproducible tests, hermetic testing.
 
@@ -14,22 +14,23 @@ Tests must produce the same result for every execution order.
 
 **Classification:** established principle.
 
-Determinism and test isolation have long histories. The term "hermetic" became common in large
-build and test systems. No single origin defines this combined formulation.
+Software test guidance includes determinism and isolation. Large build and test systems use the term
+"hermetic." No one source gives this full formulation.
 
 ## Decision rule
 
-A test must declare or control every input that can affect its result. The test must neither require
-nor leak mutable state across executions.
+If an external input can change a result, the test must declare or control that input. The test must
+not leak mutable state across executions.
 
 ## How to apply
 
-- Inject clocks, random generators, environment access, and external clients when necessary.
+- If a clock, random generator, environment, or external client can change a result, inject that input.
 - Use temporary resources for each test and deterministic cleanup.
-- Replace live networks with controlled local substitutes outside explicit integration or
-  acceptance suites.
+- Use controlled local substitutes, not live networks. Use live networks only in specified
+  integration or acceptance suites.
 - Record seeds and schedules for generated or concurrent tests. Preserve each counterexample.
-- Run tests alone, in different orders, and in parallel when the test harness permits it.
+- Run tests individually and in different orders.
+- If the test harness can run tests in parallel, use parallel execution.
 
 ## Diagram
 
@@ -37,16 +38,16 @@ nor leak mutable state across executions.
 flowchart LR
     Test["Test case"] --> Inputs["Declare or control inputs"]
     Inputs --> Isolate["Isolate mutable resources"]
-    Isolate --> Execute["Execute repeatedly"]
+    Isolate --> Execute["Run many times"]
     Execute --> Same{"Same result?"}
     Same -->|Yes| Valid["Repeatable test"]
-    Same -->|No| Influence["Identify undeclared influence"]
+    Same -->|No| Influence["Find undeclared influence"]
     Influence --> Inputs
 ```
 
 ## Language examples
 
-The two examples inject the same clock value and avoid wall-clock dependence.
+The two examples inject the same clock value. They do not use the wall clock.
 
 Python:
 
@@ -75,28 +76,28 @@ fn expiry_with_controlled_time() {
 
 ## Boundaries and tensions
 
-Deterministic and hermetic are related but distinct. A test can be deterministic but require a
-fixed external service. A hermetic test can still use uncontrolled random values.
+Deterministic and hermetic are related but different. If a fixed external service gives the same
+input, a nonhermetic test can be deterministic. A hermetic test can use uncontrolled random values.
 
-Full isolation can conceal real integration failures. Maintain explicit nonhermetic suites in
+Full isolation can hide integration failures. Keep specified nonhermetic suites in
 controlled environments. Retries can diagnose flaky behavior, but they cannot make an unreliable
-test valid.
+test reliable.
 
 ## Examples
 
 ### Positive application
 
-A cache-expiry test receives a fake clock and a fresh temporary directory. The test advances time
-explicitly. Machine time zone and test order cannot affect the result.
+A cache-expiry test receives a fake clock and a new temporary directory. The test controls clock
+changes. Machine time zone and test order cannot change the result.
 
 ### Misuse or counterexample
 
-A test calls a public web service and retries until success. Availability, remote data, DNS, and
-rate limits now control the result.
+A test uses a public web service and retries until success. Availability, remote data, DNS, and
+rate limits control the result.
 
 ### Athena or agent workflow
 
-A repository validator test creates an isolated fixture tree and supplies every environment value.
+A repository validator test creates an isolated fixture tree and supplies each environment value.
 The helper does not use a user checkout or network credentials.
 
 ## Related principles
@@ -107,21 +108,21 @@ The helper does not use a user checkout or network credentials.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Google Testing Blog, "Hermetic Servers" (2012)](https://testing.googleblog.com/2012/10/hermetic-servers.html)
-  explains isolation from live network dependencies in end-to-end tests.
+  gives information about isolation from live network dependencies in end-to-end tests.
 
-### Current guidance
+### Applicable information
 
 - [Bazel, "Hermeticity"](https://bazel.build/basics/hermeticity)
-  documents declared inputs, fixed environment properties, and isolation for deterministic results.
+  gives declared inputs, fixed environment properties, and isolation for deterministic results.
 - [Microsoft, ".NET unit testing best practices"](https://learn.microsoft.com/en-us/dotnet/core/testing/unit-testing-best-practices)
-  identifies isolation and repeatability as core test characteristics.
+  gives isolation and repeatability as core test characteristics.
 
-### Further reading
+### More information
 
 - [Google Testing Blog, "Flaky Tests at Google and How We Mitigate Them" (2016)](https://testing.googleblog.com/2016/05/flaky-tests-at-google-and-how-we.html)
-  reports causes and operational costs of nondeterministic test results.
+  gives causes and operational costs of nondeterministic test results.
 
 [Back to the engineering principles catalog](../README.md#p027)
