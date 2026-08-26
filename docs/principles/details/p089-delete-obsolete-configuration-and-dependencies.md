@@ -2,53 +2,92 @@
 
 ## Definition
 
-**Delete Obsolete Configuration and Dependencies** means completing a removal across its entire
-supporting surface. When a feature, compatibility path, or subsystem is retired, remove the flags,
-packages, lockfile entries, deployment settings, tests, documentation, metrics, and scaffolding that
-have no remaining purpose, after verifying that they have no consumers.
+**Delete Obsolete Configuration and Dependencies** completes a removal in all parts of its support
+surface. First, do a verification that the consumer count is zero. Then, remove obsolete flags,
+packages, lockfile entries, deployment settings, tests, documents, metrics, and support code.
 
-**Aliases:** none in common use.
+**Aliases:** none.
 
 ## Provenance
 
 **Classification:** Athena synthesis.
 
-No single source establishes this exact rule. It combines dependency hygiene, configuration
-management, attack-surface reduction, and the operational lesson that partial removals leave
-misleading or vulnerable artifacts behind.
+No one source gives this rule. The rule includes dependency hygiene, configuration control,
+attack-surface reduction, and evidence from operations. If the maintainer does not complete a
+removal, the removal can cause incorrect artifacts or artifacts with vulnerabilities.
 
 ## Decision rule
 
-A removal is complete only when every supporting artifact either has another demonstrated current
-consumer or is deleted through its canonical management mechanism.
+After the workflow keeps each necessary support artifact, remove each obsolete artifact with its
+canonical control. Then, complete the removal.
 
 ## How to apply
 
-- Trace the removed capability through manifests, lockfiles, images, deploy files, and environment
+- Trace the removed capability in manifests, lockfiles, images, deploy files, and environment
   variables.
-- Inspect optional, transitive, dynamically loaded, build-time, and platform-specific consumers.
+- Examine optional and build-time consumers. Examine consumers in dependency chains, platforms, and runtime loaders.
 - Remove obsolete feature flags, defaults, secrets, dashboards, alerts, and runbook steps.
-- Update the canonical dependency or configuration source, then regenerate derived artifacts.
-- Test clean installation, packaging, startup, supported platforms, and deployment paths.
-- Review the final dependency and configuration diff for unintended upgrades or drift.
+- Change the canonical dependency or configuration source, then make the derived artifacts again.
+- Do tests of clean installation, packaging, startup, specified platforms, and deployment paths.
+- Examine the dependency and configuration diff for upgrades or drift that are not in the specified change.
+
+## Diagram
+
+The removal follows each support artifact to the last consumer that inspection finds.
+
+```mermaid
+flowchart LR
+    A["Retired capability"] --> B["Trace support surface"]
+    B --> C{"Remaining consumer?"}
+    C -->|Yes| D["Keep necessary artifact"]
+    C -->|No| E["Remove canonical input"]
+    E --> F["Update derived state"]
+    F --> G["Clean install and package tests"]
+```
+
+## Language examples
+
+The two examples use only the remaining encoder after removal of the obsolete dependency.
+
+### Python
+
+```python
+from current_encoder import encode
+
+def export(data: Record) -> bytes:
+    payload = encode(data)
+    return payload
+```
+
+### Rust
+
+```rust
+use current_encoder::encode;
+
+fn export(data: &Record) -> Vec<u8> {
+    encode(data)
+}
+```
 
 ## Boundaries and tensions
 
-Configuration and packages may serve external, downstream, migration, or rarely exercised platform
-consumers invisible to a local search. Honor compatibility and deprecation contracts. Do not turn a
-focused cleanup into an unrelated dependency upgrade. Preserve lockfile integrity and supply-chain
-evidence, and never remove a safety control merely because its normal path is quiet.
+Configuration and packages can have external, migration, or platform consumers. Other systems can
+also have consumers. A local inspection can give a result that does not include these consumers.
+
+Obey compatibility and deprecation contracts. Do not add a
+dependency update that is not in the specified cleanup. Keep lockfile integrity and
+supply-chain evidence. A period with no alert does not give sufficient evidence to remove a safety control.
 
 ## Examples
 
-**Positive:** Removing an obsolete exporter also removes its package, lockfile closure, feature
+**Positive:** Removal of an obsolete exporter also removes its package, lockfile closure, feature
 flag, credentials, container layer, metrics, tests, and operator documentation.
 
-**Misuse:** Production code stops reading a flag, but deployment templates still advertise it and
-the unused parser dependency remains in every release image.
+**Misuse:** Production code no longer reads a flag. Deployment templates continue to show the
+flag, and each release image contains the parser dependency with no consumer.
 
-**Athena/agent workflow:** When removing a skill helper, an agent verifies and updates its package
-inclusion, references, tests, and shipped documentation rather than deleting only the script.
+**Athena/agent workflow:** An agent that removes a skill helper also does verification of package
+inclusion, references, tests, and shipped documentation. The agent does not delete only the script.
 
 ## Related principles
 
@@ -61,24 +100,26 @@ inclusion, references, tests, and shipped documentation rather than deleting onl
 
 ## References
 
-### Origin/history
+### Source information
 
-- No primary source for the combined rule is established; Athena treats it as a lifecycle and
-  supply-chain synthesis rather than attributing it to one author.
+- No primary source gives this synthesis. Athena records the rule as a lifecycle and supply-chain
+  synthesis and does not give one author as the source.
 
-### Current guidance
+### Applicable information
 
 - [OpenSSF: Simplifying Software Component Updates](https://best.openssf.org/Simplifying-Software-Component-Updates)
-  explains dependency cost, minimizing unneeded components, lockfiles, and automated verification.
+  gives information about dependency cost, removal of components that are not necessary, lockfiles,
+  and automated verification.
 - [NIST SP 800-218, Secure Software Development Framework 1.1](https://csrc.nist.gov/pubs/sp/800/218/final)
-  defines current practices for protecting and maintaining software components and build inputs.
+  gives applicable practices for protection and maintenance of software components and build inputs.
 
-### Further reading
+### More information
 
 - [CISA: Secure by Design and Default](https://www.cisa.gov/sites/default/files/2023-06/principles_approaches_for_security-by-design-default_508c.pdf)
-  recommends prioritizing protective mechanisms over unnecessary features that enlarge attack
-  surface.
-- [Google SRE: Regaining Simplicity](https://sre.google/workbook/simplicity/) discusses removing
-  unused dependencies, configuration, and operational complexity as staffed engineering work.
+  tells developers to use protection mechanisms and remove features that are not necessary. Features that
+  are not necessary increase the attack surface.
+- [Google SRE: Regaining Simplicity](https://sre.google/workbook/simplicity/) gives information about
+  removal of dependencies with no consumer, configuration, and operation complexity. Personnel have
+  responsibility for this engineering work.
 
 [Back to the engineering principles catalog](../README.md#p089)

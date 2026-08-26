@@ -16,25 +16,29 @@ all prose that it produces.
 
 ## Engineering principles
 
-Use the [canonical engineering-principles catalog](../../docs/principles/README.md) through these
+Use the [canonical engineering-principles catalog](../../docs/principles/README.md) for these
 workflow-specific rules:
 
-- [P019 — Explicit Contracts](../../docs/principles/README.md#p019): give every work item explicit
+- [P019 — Explicit Contracts](../../docs/principles/README.md#p019): Give each work item explicit
   inputs, outputs, invariants, dependencies, acceptance criteria, and failure behavior.
-- [P033 — State-Safe Failure Semantics](../../docs/principles/README.md#p033): stop integration on
-  failed or stale work and preserve a valid coordinator tree plus recoverable delegated state.
-- [P039 — Bounded Waiting](../../docs/principles/README.md#p039): assign appropriate deadlines,
-  timeout behavior, or cancellation conditions to delegated and background work.
-- [P050 — Least Privilege](../../docs/principles/README.md#p050): grant each work item only the tools,
-  paths, credentials, and lifetime required for its bounded objective.
-- [P058 — Bounded Agent Authority](../../docs/principles/README.md#p058): keep every subagent within
-  the parent's task scope, mutation limits, destinations, and resource budget.
-- [P060 — Constrain Sub-Agents](../../docs/principles/README.md#p060): isolate writers, prevent
-  overlapping ownership, and validate delegated output as untrusted input before integration.
-- [P069 — Independent Review for High-Risk Changes](../../docs/principles/README.md#p069): route
-  security- or availability-critical results through qualified independent review proportional to
-  repository policy and risk.
-- [P079 — Explicit Ownership and Lifetimes](../../docs/principles/README.md#p079): record who owns
+- [P033 — State-Safe Failure Semantics](../../docs/principles/README.md#p033): If delegated work does
+  not agree with the integration base or is not satisfactory, stop integration. Keep a correct
+  coordinator tree and the delegated state necessary for recovery.
+- [P039 — Bounded Waiting](../../docs/principles/README.md#p039): Give each delegated or background
+  work item an applicable deadline. Record its timeout behavior or cancellation conditions.
+- [P050 — Least Privilege](../../docs/principles/README.md#p050): Give each work item only the tools,
+  paths, credentials, and lifetime necessary for its objective.
+- [P058 — Bounded Agent Authority](../../docs/principles/README.md#p058): Keep each subagent in the
+  parent task scope, mutation limits, destinations, and resource budget.
+- [P060 — Constrain Sub-Agents](../../docs/principles/README.md#p060): Put each writer in an isolated
+  worktree. Make sure that concurrent write sets have no common path. Before integration, validate
+  delegated output as untrusted input.
+- [P069 — Independent Review for High-Risk Changes](../../docs/principles/README.md#p069): If results
+  can have an effect on security or availability, find if policy or risk makes independent review
+  necessary. If independent review is necessary, use an independent reviewer. Make sure that the
+  reviewer has the necessary qualifications. Select the review scope from repository policy and
+  risk.
+- [P079 — Explicit Ownership and Lifetimes](../../docs/principles/README.md#p079): Record the owner of
   each worktree, path, task, integration decision, and cleanup transition.
 
 ## Capability tiers

@@ -2,56 +2,103 @@
 
 ## Definition
 
-Change systems through incremental, behavior-preserving, migration-safe steps and retain a
-practical way to roll back, roll forward, or coexist during transition. Prefer learning from small
-changes over committing the system to one large rewrite.
+Use incremental, behavior-preserving, and migration-safe steps to change a system. Keep a tested
+method to use the previous state again or continue to a safe state.
 
-**Aliases:** evolutionary design; incremental architecture; reversible change.
+During a transition, compatible versions can operate together. Use evidence from small
+changes, not evidence from one large rewrite.
+
+**Aliases:** evolutionary design, incremental architecture, reversible change.
 
 ## Provenance
 
 **Classification:** Athena synthesis.
 
-This synthesis has established practitioner roots in evolutionary design, continuous delivery,
-expand-and-contract migrations, and rollback practice across several communities. No single source
-defines this exact combined principle.
+Sources for this synthesis include evolutionary design, continuous delivery, expand-and-contract
+migrations, and restoration practices. No one source gives the full principle.
 
 ## Decision rule
 
-Choose the smallest sequence of independently verifiable changes that preserves service and gives
-operators a tested recovery path until the new state is proven.
+Select the smallest sequence of verifiable changes. Each change must preserve service. Until
+verification of the new state succeeds, keep a tested recovery path.
 
 ## How to apply
 
-- Split work at compatibility boundaries while keeping every merged state usable.
-- Separate preparation, activation, migration, and cleanup when their risks differ.
-- Use additive schema changes, dual reads or writes, feature controls, or adapters when justified.
-- Define rollback or roll-forward behavior before activating a risky change.
-- Remove transitional machinery after evidence shows it has no remaining consumer.
+- Divide work at compatibility boundaries. Keep each merged state operational.
+- When risks are different, use different steps for preparation, activation, migration, and cleanup.
+- When evidence shows a compatibility risk, use additive schema changes, dual reads, dual writes,
+  feature controls, or adapters.
+- Before activation of a risky change, give restoration or forward recovery.
+- After evidence shows that there are no consumers, remove transition mechanisms.
+
+## Diagram
+
+```mermaid
+flowchart LR
+    Prepare["Prepare compatible state"] --> Deploy["Deploy compatible code"]
+    Deploy --> Migrate["Migrate with checkpoints"]
+    Migrate --> Verify{"New state verified?"}
+    Verify -->|No| Restore["Use previous state or continue safely"]
+    Verify -->|Yes| Activate["Activate new path"]
+    Activate --> Cleanup["Remove previous path"]
+```
+
+## Language examples
+
+The two examples accept previous and new names during one compatible migration period.
+
+Python:
+
+```python
+def read_name(old_name: str, new_name: str | None) -> str:
+    return new_name if new_name is not None else old_name
+
+
+def write_names(value: str) -> tuple[str, str]:
+    return value, value
+```
+
+Rust:
+
+```rust
+fn read_name<'a>(old_name: &'a str, new_name: Option<&'a str>) -> &'a str {
+    new_name.unwrap_or(old_name)
+}
+
+fn write_names(value: String) -> (String, String) {
+    (value.clone(), value)
+}
+```
 
 ## Boundaries and tensions
 
-Reversibility has a cost and is not absolute. Legal notifications, leaked secrets, consumed
-resources, and destructive migrations may be impossible to undo. Identify such points explicitly
-and move them late. Do not preserve indefinite compatibility or dual-write complexity for a cheap,
-local change whose prior version can simply be restored.
+Reversibility has costs and limits. A legal notice, secret disclosure, resource consumption, or destructive
+migration can prevent reversal. Find each irreversible point and put it near the end of the
+sequence.
+
+Do not keep compatibility without a specified end or dual-write complexity for a small local change.
+If the previous version is safe and has a low restoration cost, use that version again.
 
 ## Examples
 
 ### Positive application
 
-A schema change first adds a nullable column, then deploys compatible readers and writers,
-backfills data with checkpoints, switches reads, and removes the old column only after validation.
+A schema change first adds a nullable column. Compatible readers and writers accept each version. A
+checkpoint process migrates the data.
+
+The team selects the new column only after validation. The team removes the previous column in the
+last step.
 
 ### Misuse or counterexample
 
-A team calls a flag-protected rewrite reversible even though enabling the flag irreversibly rewrites
-all stored data into a format the old release cannot read.
+A team says that a flag-protected rewrite is reversible. But activation converts all stored data to a
+format that the previous release cannot read.
 
 ### Athena or agent workflow
 
-An agent makes a focused commit, runs the repository gate, and delays publishing or destructive
-cleanup until the local artifact and exact targets are verified.
+An agent makes one small change and runs the repository gate. After verification of the artifact and
+its targets succeeds, the agent publishes only with applicable authority. Without user approval, it
+does not do destructive cleanup. After user approval, it uses the guarded tidy workflow.
 
 ## Related principles
 
@@ -61,19 +108,19 @@ cleanup until the local artifact and exact targets are verified.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Fowler, "Original Strangler Fig Application" (2004)](https://martinfowler.com/bliki/OriginalStranglerFigApplication.html)
-  describes gradual replacement around a legacy system instead of a single cutover rewrite.
+  gives replacement in steps for a legacy system, without one cutover rewrite.
 
-### Current guidance
+### Applicable information
 
 - [Google Engineering Practices, "Small CLs"](https://google.github.io/eng-practices/review/developer/small-cls.html)
-  explains why self-contained changes are easier to review, validate, merge, and roll back.
+  gives an explanation of how small changes simplify work.
 
-### Further reading
+### More information
 
 - [Ford, Parsons, and Kua, *Building Evolutionary Architectures*, second-edition sample](https://www.thoughtworks.com/content/dam/thoughtworks/documents/books/bk_building_evolutionary_architectures_second_edition_free_chapter.pdf)
-  frames evolutionary architecture as guided, incremental change across multiple dimensions.
+  gives evolutionary architecture as guided, incremental change in more than one dimension.
 
 [Back to the engineering principles catalog](../README.md#p021)

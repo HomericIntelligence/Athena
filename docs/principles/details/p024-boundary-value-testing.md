@@ -2,56 +2,105 @@
 
 ## Definition
 
-Exercise values at and immediately around transitions, limits, and equivalence-partition edges
-because defects commonly appear where behavior changes. Relevant cases include below, at, and
-above a threshold as well as zero, one, empty, full, minimum, maximum, overflow, and invalid states.
+Exercise values at and near transitions, limits, and equivalence partition edges. Defects frequently
+occur where behavior changes.
 
-**Aliases:** boundary value analysis; limit testing; edge testing.
+Applicable cases include values less than, equal to, and more than a threshold. Also include zero,
+one, empty, full, minimum, maximum, overflow, and rejected states.
+
+**Aliases:** boundary value analysis, limit testing, edge testing.
 
 ## Provenance
 
 **Classification:** established principle.
 
-Boundary value analysis is long-standing in software-testing literature and certification
-syllabi. Its precise first use is not reliably attributable to one author, so Athena makes no
-origin claim.
+Boundary value analysis has a long history in software test literature and certification syllabi.
+Evidence does not give one author as the first person to apply this analysis. Athena gives no first author.
 
 ## Decision rule
 
-For every input partition or state transition with a meaningful edge, select cases on both sides
-and at the edge, including representations that can overflow or become empty.
+For each input partition or state transition with a material edge, select cases on each side and
+at the edge. Include representations that can overflow or become empty.
 
 ## How to apply
 
-- Derive boundaries from contracts, types, protocols, resource limits, and state transitions.
-- Test the last accepted, first rejected, and exact transition values where representable.
-- Include combinations of adjacent boundaries when their interaction is plausible.
-- Verify both returned behavior and state preservation on rejection.
-- Use generated or combinatorial methods when the boundary space is too large for examples alone.
+- Use contracts, types, protocols, resource limits, and state transitions to find boundaries.
+- When the contract has last accepted, first rejected, and transition values, test them.
+- When evidence shows an interaction, include adjacent boundary combinations.
+- After rejection, verify returned behavior and state preservation.
+- When examples cannot include the boundary space, use generated or combinatorial methods.
+
+## Diagram
+
+```mermaid
+flowchart LR
+    Contract["Contract or state transition"] --> Edge["Find material edge"]
+    Edge --> Less["Select a value less than the edge"]
+    Edge --> At["Select a value at the edge"]
+    Edge --> More["Select a value more than the edge"]
+    Less --> Verify["Verify result and state"]
+    At --> Verify
+    More --> Verify
+```
+
+## Language examples
+
+The two examples verify the same values less than the minimum, at the limits, and more than the
+maximum.
+
+Python:
+
+```python
+def accepts_batch(size: int) -> bool:
+    return 0 <= size <= 100
+
+def test_batch_boundaries() -> None:
+    cases = [(-1, False), (0, True), (99, True), (100, True), (101, False)]
+    for size, expected in cases:
+        assert accepts_batch(size) is expected
+```
+
+Rust:
+
+```rust
+fn accepts_batch(size: i32) -> bool {
+    (0..=100).contains(&size)
+}
+
+#[test]
+fn batch_boundaries() {
+    let cases = [(-1, false), (0, true), (99, true), (100, true), (101, false)];
+    for (size, expected) in cases {
+        assert_eq!(accepts_batch(size), expected);
+    }
+}
+```
 
 ## Boundaries and tensions
 
-Boundary tests are only as good as the partitions chosen. They do not replace representative
-interior cases, semantic invariants, failure injection, or security abuse cases. Avoid blindly
-testing `n - 1`, `n`, and `n + 1` when the domain is continuous, wrapped, encoded, or otherwise
-requires a different notion of adjacency.
+Tests must use boundary values from correct partitions. Boundary tests do not replace
+usual values between boundaries, semantic invariants, failure injection, or security
+abuse cases.
+
+Do not apply `n - 1`, `n`, and `n + 1` without domain analysis. A continuous, wrapped, or encoded
+domain can make a different definition of adjacency necessary.
 
 ## Examples
 
 ### Positive application
 
-For a batch limit of 100 items, tests cover 0, 1, 99, 100, and 101 items and verify that rejection
-of 101 leaves no partial write.
+A batch limit lets a request contain 100 items. Tests include 0, 1, 99, 100, and 101 items. The rejection test
+shows that rejection cannot write only part of the batch.
 
 ### Misuse or counterexample
 
-A test covers the maximum integer but ignores that the API limit is measured after UTF-8 encoding,
-where character count and byte count diverge.
+A test includes the maximum integer but ignores the API unit. The API applies its limit after UTF-8
+encoding. Character count and byte count can be different.
 
 ### Athena or agent workflow
 
-A bounded-iteration workflow tests zero allowed iterations, one iteration, the configured maximum,
-and an attempt beyond the maximum, including a clear terminal failure.
+A bounded workflow test includes zero iterations, one iteration, the configured maximum, and one
+iteration more than the maximum. That case must give a clear terminal failure.
 
 ## Related principles
 
@@ -61,20 +110,19 @@ and an attempt beyond the maximum, including a clear terminal failure.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [NIST, "Fault Classes and Error Detection in Specification Based Testing" (1998)](https://www.nist.gov/publications/fault-classes-and-error-detection-specification-based-testing)
-  examines how specification-derived conditions must be covered to expose particular fault classes.
+  examines specification conditions that can show specified fault classes.
 
-### Current guidance
+### Applicable information
 
 - [ISTQB Certified Tester Foundation Level Syllabus v4.0.1](https://istqb.org/wp-content/uploads/2024/11/ISTQB_CTFL_Syllabus_v4.0.1.pdf)
-  defines two-value and three-value boundary value analysis around equivalence partitions.
+  gives two-value and three-value analysis at and near equivalence partition boundaries.
 
-### Further reading
+### More information
 
 - [NIST, "Software Fault Complexity and Implications for Software Testing"](https://www.nist.gov/publications/software-fault-complexity-and-implications-software-testing)
-  provides empirical motivation for systematically covering interactions among a small number of
-  conditions.
+  gives evidence for coverage of interactions in a small group of conditions.
 
 [Back to the engineering principles catalog](../README.md#p024)

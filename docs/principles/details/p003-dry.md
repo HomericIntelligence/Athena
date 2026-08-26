@@ -2,50 +2,98 @@
 
 ## Definition
 
-**DRY** (*Don't Repeat Yourself*) means that each authoritative piece of knowledge should have one
-canonical representation. The target is duplicated rules, schemas, calculations, and policy—not
-every repeated sequence of syntax.
+**DRY** (*Don't Repeat Yourself*) gives each authoritative item of knowledge one canonical
+representation. DRY is for duplicate rules, schemas, calculations, and policies. It is not for
+each syntax sequence that occurs more than one time.
 
 ## Provenance
 
 **Classification:** established principle.
 
-Andrew Hunt and David Thomas named and defined DRY in *The Pragmatic Programmer*. Their formulation
-focuses on duplicated knowledge in a system, a distinction often lost when DRY is reduced to
-eliminating similar-looking code.
+Andrew Hunt and David Thomas gave DRY its name and definition in *The Pragmatic Programmer*. Their definition
+is about duplicate knowledge in a system. Some authors do not keep this distinction and
+include all code that has almost the same text in DRY.
 
 ## Decision rule
 
-When two representations must change together to remain correct, identify one authority and derive,
-reuse, or link the others from it. Do not unify code merely because its current text looks alike.
+When two representations must change together, select one authority. Derive the other representations
+from that authority. Connect each other representation to that authority with a derived form or a
+link. When code has only text that is almost the same, do not put it together.
 
 ## How to apply
 
-- Identify the fact or rule that would become inconsistent if edited in only one place.
-- Assign one owner and make consumers depend on or derive from that authority.
-- Prefer links and generated views over manually synchronized copies when consumers require them.
-- Keep coincidentally similar logic separate until it represents the same stable concept.
-- Test the canonical behavior rather than pinning every textual rendering.
+- Find the fact or rule that must stay the same after one isolated edit.
+- Give one owner.
+- Connect each consumer to that authority with derivation or reference.
+- When different formats are necessary for consumers, use links and derived views. Do not use
+  manual copies.
+- When the same text does not show the same stable concept, do not put the logic together.
+- Do a test of the canonical behavior. Do not write one test for each text representation.
+
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Find representations that must agree"] --> B["Select one authority"]
+    B --> C["Connect each consumer to the authority"]
+    C --> D{"Can one edit cause inconsistency?"}
+    D -->|Yes| B
+    D -->|No| E["Keep one clear authority"]
+```
+
+## Language examples
+
+The two examples accept cents in the unsigned 64-bit domain. Each example uses one 20-percent
+tax-rate authority and rounds half up to the nearest cent.
+
+```python
+TAX_BPS = 2_000
+BASIS_POINTS = 10_000
+
+def tax_cents(subtotal_cents: int) -> int:
+    if type(subtotal_cents) is not int:
+        raise TypeError("subtotal must be an integer")
+    if not 0 <= subtotal_cents <= 2**64 - 1:
+        raise ValueError("subtotal is not in the unsigned 64-bit domain")
+    return (subtotal_cents * TAX_BPS + BASIS_POINTS // 2) // BASIS_POINTS
+
+def total_cents(subtotal_cents: int) -> int:
+    return subtotal_cents + tax_cents(subtotal_cents)
+```
+
+```rust
+const TAX_BPS: u128 = 2_000;
+const BASIS_POINTS: u128 = 10_000;
+
+fn tax_cents(subtotal_cents: u64) -> u128 {
+    let subtotal = u128::from(subtotal_cents);
+    (subtotal * TAX_BPS + BASIS_POINTS / 2) / BASIS_POINTS
+}
+
+fn total_cents(subtotal_cents: u64) -> u128 {
+    u128::from(subtotal_cents) + tax_cents(subtotal_cents)
+}
+```
 
 ## Boundaries and tensions
 
-Some duplication improves local reasoning or keeps unrelated domains independent. Prematurely
-centralizing it can create a misleading abstraction and tighter coupling. Apply
-[P013 AHA](p013-avoid-hasty-abstractions.md) before extracting shared code and
-[P005 Modularity](p005-modularity.md) before sharing mutable state. DRY does not require a registry
-or generator when ordinary discovery answers the question and no product consumer needs the
-artifact.
+Some duplication can help local analysis or keep unrelated domains isolated. Centralization
+before sufficient evidence can make an incorrect abstraction and tighter coupling. Before you
+extract shared code, use [P013 AHA](p013-avoid-hasty-abstractions.md). Before you add shared mutable
+state, use [P005 Modularity](p005-modularity.md). A registry or generator is not
+necessary for DRY when repository discovery supplies the answer. Evidence for a product consumer
+must show that each artifact is necessary.
 
 ## Examples
 
-**Positive:** A schema is canonical, while API documentation and validators are derived from it or
-link to it instead of restating field constraints by hand.
+**Positive:** One schema is the authority. API documentation and validators derive from it or have links to it.
+They do not use a manual restatement of field constraints.
 
-**Misuse:** Two domain workflows happen to contain the same three steps, so they are forced into a
-generic engine even though their policies and reasons to change differ.
+**Misuse:** Two domain workflows contain the same three steps. A generic engine puts them together,
+although their policies and causes of change are different.
 
-**Athena/agent workflow:** The principles catalog owns IDs and definitions; skills link the relevant
-entries and explain only how those principles affect their workflow.
+**Athena/agent workflow:** The principles catalog has authority for IDs and definitions. Skills have links to the
+applicable principles and show only the workflow effects of those principles.
 
 ## Related principles
 
@@ -57,22 +105,22 @@ entries and explain only how those principles affect their workflow.
 
 ## References
 
-### Origin/history
+### Source information
 
-- [The Pragmatic Programmer DRY excerpt](https://media.pragprog.com/titles/tpp20/dry.pdf) provides
-  the authors' definition and examples of duplicated knowledge.
+- [The Pragmatic Programmer DRY excerpt](https://media.pragprog.com/titles/tpp20/dry.pdf) gives
+  the authors' definition and examples of duplicate knowledge.
 - [The Pragmatic Programmer, 20th Anniversary Edition](https://pragprog.com/titles/tpp20/the-pragmatic-programmer-20th-anniversary-edition/)
   is the publisher's current book record.
 
-### Current guidance
+### Applicable information
 
-- [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-  treats duplication as a maintainability concern while also requiring reviewers to assess design
-  and complexity.
+- [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html).
+  The guidance tells reviewers to find if a change belongs in the codebase or a library. It
+  also tells reviewers to find complexity that is not necessary.
 
-### Further reading
+### More information
 
 - [Sandi Metz: The Wrong Abstraction](https://sandimetz.com/blog/2016/1/20/the-wrong-abstraction)
-  explains why removing duplication too early can be more costly than temporarily retaining it.
+  shows that duplicate removal before sufficient evidence can have more cost than a temporary duplicate.
 
 [Back to the engineering principles catalog](../README.md#p003)

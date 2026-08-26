@@ -2,10 +2,11 @@
 
 ## Definition
 
-When authentication, authorization, validation, or security-policy evaluation cannot establish
-that an operation is allowed, leave the system in the secure state: deny the capability, preserve
-confidentiality and integrity, and report the failure. Absence, timeout, parse failure, or exception
-must not silently become permission.
+When a security control does not give permission for an operation, keep the system in its safe
+state. Deny the capability, keep confidentiality and integrity, and give a failure result.
+
+Authentication, authorization, validation, and policy evaluation are security controls. A missing
+result, timeout, parse error, or exception must not become permission.
 
 **Aliases:** fail-safe defaults, deny by default on security failure
 
@@ -13,54 +14,97 @@ must not silently become permission.
 
 **Classification:** established principle.
 
-Saltzer and Schroeder documented “fail-safe defaults” in 1975. “Fail closed” and “fail secure” are
-later common formulations and can mean different things in safety engineering.
+Saltzer and Schroeder included “fail-safe defaults” in their 1975 paper. Practitioners used “fail closed”
+and “fail secure” after 1975. These terms can have different meanings in safety engineering.
 
 ## Decision rule
 
-Grant a protected operation only from an explicit, successfully evaluated authorization result.
-Treat missing, invalid, stale, or indeterminate security state as denial unless a higher trusted
-contract defines a different safe state.
+After a clear authorization result gives permission, grant the protected operation. Classify
+missing, invalid, stale, or indeterminate security state as denial. A higher trusted contract can
+contain a different safe-state requirement.
 
 ## How to apply
 
-- Initialize authorization decisions to denial and transition to allow only after every required
-  check succeeds.
-- Make policy-service timeout and error states distinct from an affirmative decision, even if they
-  share the same external denial response.
-- Keep a protected resource unchanged when request validation or authorization fails.
-- Test missing policy, dependency timeout, corrupt credentials, exception paths, and stale state.
-- Emit protected diagnostics that distinguish denial from infrastructure failure without leaking
-  secrets or sensitive policy detail.
-- Restore service deliberately after the security dependency is healthy; do not auto-bypass it.
+- Set each authorization decision to denial. After all necessary checks succeed, change the
+  decision to permission.
+- Policy-service timeouts and errors are not decisions that give permission. They can share the
+  same external denial response.
+- When request validation or authorization fails, keep the protected resource.
+- Do tests with missing policy, dependency timeout, corrupt credentials, exception paths, and stale
+  state.
+- Record protected diagnostics that show the difference between denial and infrastructure failure. Do not show
+  secrets or sensitive policy information.
+- After the security dependency operates correctly, make service available again. If a higher
+  trusted contract does not give permission, do not operate without the dependency.
+
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Receive a protected operation"] --> B{"Does the security result satisfy the applicable policy?"}
+    B -- "No" --> C["Deny the capability"]
+    B -- "Yes" --> D{"Does the result give permission for the operation?"}
+    D -- "No" --> C
+    D -- "Yes" --> E["Grant the capability"]
+    C --> F["Keep protected state"]
+    F --> G["Record a protected diagnostic"]
+```
+
+## Language examples
+
+After a clear result gives permission, each example grants deletion.
+
+### Python
+
+```python
+def may_delete(policy, actor, record):
+    try:
+        decision = policy.authorize(actor, "delete", record)
+    except PolicyError:
+        return False
+    return decision is Decision.ALLOW
+```
+
+### Rust
+
+```rust
+fn may_delete(policy: &Policy, actor: &Actor, record: &Record) -> bool {
+    matches!(
+        policy.authorize(actor, Action::Delete, record),
+        Ok(Decision::Allow)
+    )
+}
+```
 
 ## Boundaries and tensions
 
-Fail closed is a security choice, not a blanket availability rule. For a non-security-critical
-feature, [P036](p036-graceful-degradation.md) may preserve useful service. Safety-critical systems
-can also require a physically safe state different from “deny”; their domain-specific hazard
-analysis governs.
+Fail closed is a security rule, not a general availability rule. For a feature without security
+risk, [P036](p036-graceful-degradation.md) can keep available service.
 
-[P034](p034-fail-fast.md) says to surface invalid security state near its source. This principle
-says the resulting capability remains denied. [P033](p033-state-safe-failure-semantics.md) still
-requires cleanup and a valid post-failure state.
+A physical safe state other than “deny” can be necessary in a safety-critical system. The domain
+hazard analysis must include that state.
+
+With [P034](p034-fail-fast.md), an invalid security state causes failure near its source. This
+principle denies that capability. Use [P033](p033-state-safe-failure-semantics.md) for resource
+release and the correct failure state.
 
 ## Examples
 
 ### Positive application
 
-An authorization service times out. The API returns an unavailable or denied outcome, leaves the
-record unchanged, and records a protected correlation identifier for operators.
+An authorization service does not give a response before the deadline. The API returns an unavailable or
+denied outcome and keeps the record. It records a protected correlation identifier for
+operators.
 
 ### Misuse or counterexample
 
-Code initializes `is_admin` to true, attempts a role lookup, and catches lookup errors without
-changing the value. A failed security control grants the highest privilege.
+Code sets `is_admin` to `true`. A role query fails, and the error path keeps the value. A security
+control that fails grants the highest privilege.
 
 ### Athena or agent workflow
 
-An agent cannot verify whether a destructive command is authorized for the exact target. It stops
-and requests direction; uncertainty does not become permission to run the command.
+When an agent cannot find authorization for a destructive command on the specified target, it
+stops and requests direction. Uncertainty does not become permission.
 
 ## Related principles
 
@@ -71,23 +115,23 @@ and requests direction; uncertainty does not become permission to run the comman
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Saltzer and Schroeder, “The Protection of Information in Computer Systems” (1975)](https://doi.org/10.1109/PROC.1975.9939)
-  — primary source for the fail-safe-defaults design principle: base access decisions on explicit
-  permission rather than exclusion.
+  — the primary source for the fail-safe-defaults principle. It uses clearly given permission for
+  access decisions, not exclusion.
 
-### Current guidance
+### Applicable information
 
-- [OWASP, Fail Securely](https://owasp.org/www-community/Fail_securely) — current application
-  guidance that security-control exceptions should follow the disallow path.
+- [OWASP, Fail Securely](https://owasp.org/www-community/Fail_securely) — applicable application
+  guidance that puts security control exceptions on the disallow path.
 - [OWASP Developer Guide](https://owasp.org/www-project-developer-guide/assets/exports/OWASP_Developer_Guide.pdf)
-  — current broader secure-development guidance that treats secure failure defaults as part of
-  application design.
+  — guidance for safe development that includes safe failure defaults in application design.
 
-### Further reading
+### More information
 
 - [NIST SP 800-53 Rev. 5, AC-3 Access Enforcement](https://doi.org/10.6028/NIST.SP.800-53r5)
-  — authoritative control catalog for enforcing approved authorizations on system access.
+  — an official control catalog for the enforcement of approved authorizations on system
+  access.
 
 [Back to the engineering principles catalog](../README.md#p035)

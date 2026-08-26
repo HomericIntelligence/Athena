@@ -21,21 +21,26 @@ Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 
 ## Engineering principles
 
-Apply the canonical [engineering-principles catalog](../../docs/principles/README.md) through these
-planning decisions:
+Use the canonical [engineering-principles catalog](../../docs/principles/README.md) for these
+decisions:
 
-- [P010 Scope Fidelity](../../docs/principles/README.md#p010) and
-  [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063) map every plan step to
-  the exact issue requirements and exclude unrelated work.
-- [P012 Evidence Before Modification](../../docs/principles/README.md#p012) and
-  [P015 Architecture Conformance](../../docs/principles/README.md#p015) require repository evidence
-  and established boundaries to shape the plan before files or abstractions are proposed.
-- [P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001),
-  [P002 YAGNI — You Ain't Gonna Need It](../../docs/principles/README.md#p002), and
-  [P074 Prefer Existing Mechanisms](../../docs/principles/README.md#p074) select the smallest current,
-  architecture-aligned solution using an appropriate existing mechanism where possible.
-- [P008 Understand Before Subtracting](../../docs/principles/README.md#p008) requires verified purpose,
-  consumers, and contracts before a plan removes or consolidates an existing mechanism.
+- [P010 Scope Fidelity](../../docs/principles/README.md#p010):
+  - Do not include work that is not in the issue.
+- [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063):
+  - For each plan step, record a link to the applicable issue requirement.
+- [P012 Evidence Before Modification](../../docs/principles/README.md#p012):
+  - Before you put files or abstractions in the plan, examine repository evidence.
+- [P015 Architecture Conformance](../../docs/principles/README.md#p015):
+  - When you make the plan, obey established architecture boundaries and dependency directions.
+- [P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001):
+  - Select the minimum solution that obeys all current requirements.
+- [P002 YAGNI — You Ain't Gonna Need It](../../docs/principles/README.md#p002):
+  - If a capability has no specified current requirement, do not add it.
+- [P074 Prefer Existing Mechanisms](../../docs/principles/README.md#p074):
+  - If an applicable existing mechanism is available, use it.
+- [P008 Understand Before Subtracting](../../docs/principles/README.md#p008):
+  - Before you plan a removal or consolidation, examine the mechanism's purpose, consumers, and
+    contracts.
 
 ## Scope and delivery
 

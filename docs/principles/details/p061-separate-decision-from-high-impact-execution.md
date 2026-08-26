@@ -2,56 +2,102 @@
 
 ## Definition
 
-Separate deciding that a high-impact action is appropriate from the mechanism that performs it.
-At the execution boundary, independently recheck authorization, scope, target, parameters, and any
-required approval before causing a destructive, privileged, persistent, financial, deployment,
-administrative, or externally visible effect.
+Make a decision for a high-impact action independently of the execution mechanism.
+At execution, do a new check of authorization, scope, target, parameters, and necessary approval.
+Before a destructive, privileged, persistent, financial, administrative, or public effect, complete
+these checks.
 
-**Aliases:** decision/execution separation; execution-time authorization; two-stage action.
+**Aliases:** decision/execution separation, execution-time authorization, two-stage action.
 
 ## Provenance
 
 **Classification:** Athena synthesis.
 
-No single historical source for this exact formulation is established. It combines established
-separation-of-duties controls, transaction-authorization practice, and current human-AI oversight
-guidance. It is deliberately narrower than requiring two people for every operation.
+No verified source specifies this rule. The rule uses separation-of-duties controls,
+transaction authorization, and current guidance for human-AI oversight. The rule does not make two
+persons necessary for each operation.
 
 ## Decision rule
 
-The component or agent that proposes a high-impact action must not treat that proposal as sufficient
-authority to execute it. Immediately before execution, resolve the exact action and validate its
-authority and safeguards against current state.
+A proposal does not give sufficient authority for a high-impact action. Immediately before
+execution, resolve the specified action. Validate its authority and safeguards for the current
+state.
 
 ## How to apply
 
-- Produce a reviewable action description before invoking the side effect.
+- Before the side effect, make a reviewable action description.
 - Bind validation to the resolved target, operation, parameters, identity, and current revision.
-- Keep planning and dry-run phases free of the high-impact capability when practical.
-- Detect changes between decision and execution; revalidate rather than relying on stale state.
-- Record the actor, authorization basis, action, and result when an audit trail is appropriate.
+- When possible, remove the high-impact capability from plan and dry-run phases.
+- Find state changes between the decision and execution. After a change, validate the action again.
+- When an audit trail is applicable, record the actor, authorization basis, action, and result.
+
+## Diagram
+
+```mermaid
+flowchart LR
+    A["Propose specified action"] --> B["Resolve current target and state"]
+    B --> C{"Are safeguards correct?"}
+    C -- "No" --> D["Stop"]
+    C -- "Yes" --> E{"Does authority include action?"}
+    E -- "No" --> F["Receive action-bound approval"]
+    F --> G{"Does approval include action?"}
+    G -- "No" --> D
+    G -- "Yes" --> H["Execute high-impact action"]
+    E -- "Yes" --> H
+    H --> I["Record result"]
+```
+
+## Language examples
+
+The two examples validate the resolved target and authorization at the execution boundary.
+
+```python
+def execute(plan, current, authorize):
+    same_action = (
+        plan.target == current.target
+        and plan.revision == current.revision
+        and plan.action_digest == current.action_digest
+    )
+    if not same_action or not authorize(plan, current):
+        raise PermissionError("execution rejected")
+    current.apply(plan)
+```
+
+```rust
+fn execute(plan: &Plan, current: &mut State) -> Result<(), Error> {
+    let same_action = plan.target == current.target
+        && plan.revision == current.revision
+        && plan.action_digest == current.action_digest;
+    if !same_action || !authorize(plan, current) {
+        return Err(Error::Rejected);
+    }
+    current.apply(plan);
+    Ok(())
+}
+```
 
 ## Boundaries and tensions
 
-This principle does not require a second person or repeated confirmation for every reversible action.
-An already-authorized, scoped operation may proceed after execution-time validation unless
-[P062 Human Approval](p062-human-approval-for-irreversible-or-high-risk-actions.md) or repository
-policy requires another gate. For especially sensitive workflows,
-[P052 Separation of Duties](p052-separation-of-duties.md) may require distinct actors. The control
-must not become a ceremonial click that presents incomplete or stale action details.
+This principle does not make a second person or more than one confirmation necessary for each
+reversible action. An authorized operation can continue after execution-time validation unless
+policy specifies a second gate.
+[P062 Human Approval](p062-human-approval-for-irreversible-or-high-risk-actions.md)
+specifies that approval gate. [P052 Separation of Duties](p052-separation-of-duties.md) can specify
+different actors for sensitive work. A ceremonial confirmation with missing or stale details does
+not satisfy this principle.
 
 ## Examples
 
-**Positive:** A deployment planner produces an immutable release digest and target environment. The
-deployment step rechecks the digest, target, caller authority, required checks, and approval before
-changing production.
+**Positive:** A deployment plan specifies an immutable release digest and target environment. The
+deployment step validates the digest, target, caller authority, necessary checks, and approval
+before it changes production.
 
-**Misuse:** An agent decides early in a long session to delete a resource, then executes a stored
-command after the target and repository state have changed.
+**Misuse:** An agent decides to delete a resource. The target and repository state then change. The
+agent uses the stored command.
 
-**Athena/agent workflow:** A skill may analyze a proposed GitHub mutation without write authority.
-The executor resolves the repository and issue or pull request again and checks current authorization
-immediately before making the external change.
+**Athena/agent workflow:** A skill can examine a proposed GitHub change without write authority. The
+executor resolves the repository and target again. It validates current authorization immediately
+before the external change.
 
 ## Related principles
 
@@ -62,23 +108,24 @@ immediately before making the external change.
 
 ## References
 
-### Origin/history
+### Source information
 
-- [NIST SP 800-53 Rev. 5, control AC-5](https://doi.org/10.6028/NIST.SP.800-53r5) establishes
-  separation of duties as a security control; it is a foundation for, but not the complete source
-  of, this Athena formulation.
+- [NIST SP 800-53 Rev. 5, control AC-5](https://doi.org/10.6028/NIST.SP.800-53r5) includes
+  separation of duties as a security control. It agrees with this rule but does not contain the full
+  Athena rule.
 
-### Current guidance
+### Applicable information
 
 - [OWASP Transaction Authorization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Transaction_Authorization_Cheat_Sheet.html)
-  requires significant transaction data to be visible to the authorizer and protects the sequence
-  between authorization and execution.
-- [NIST AI RMF 1.0](https://doi.org/10.6028/NIST.AI.100-1) calls for clearly differentiated roles,
-  responsibilities, and oversight in human-AI configurations.
+  states that the authorizer must see important transaction data. It also protects the sequence from
+  authorization to execution.
+- [NIST AI RMF 1.0](https://doi.org/10.6028/NIST.AI.100-1) recommends clear roles,
+  responsibilities, and oversight for human-AI configurations.
 
-### Further reading
+### More information
 
 - [OWASP LLM06:2025 Excessive Agency](https://genai.owasp.org/llmrisk/llm062025-excessive-agency/)
-  describes transactional safeguards and independent approval for high-impact agent actions.
+  gives information about transaction safeguards and independent approval for high-impact agent
+  actions.
 
 [Back to the engineering principles catalog](../README.md#p061)

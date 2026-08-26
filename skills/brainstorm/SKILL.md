@@ -24,24 +24,27 @@ Stop only for an unresolved requirement or a filesystem-destructive action.
 ## Engineering principles
 
 Use Athena's [canonical engineering-principles catalog](../../docs/principles/README.md) as the
-definition source. Apply these principles to this workflow:
+definition source. Use these principles to make workflow decisions:
 
-- [P001 — KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001): scale the design to
-  the demonstrated problem and choose the least complex complete approach.
-- [P002 — YAGNI — You Ain't Gonna Need It](../../docs/principles/README.md#p002): exclude speculative
-  capabilities, extension points, and infrastructure from the design.
-- [P007 — Subtraction Over Addition](../../docs/principles/README.md#p007): test whether removal,
-  consolidation, or reuse solves the need before proposing a new moving part.
-- [P008 — Understand Before Subtracting](../../docs/principles/README.md#p008): inspect purpose,
-  consumers, and history before recommending deletion.
-- [P012 — Evidence Before Modification](../../docs/principles/README.md#p012): ground alternatives in
-  repository code, contracts, tests, history, and guidance before selecting a design.
-- [P015 — Architecture Conformance](../../docs/principles/README.md#p015): follow established
-  boundaries and dependency direction unless the requirement deliberately changes them.
-- [P071 — Consistency Over Personal Preference](../../docs/principles/README.md#p071): prefer repository
-  conventions over stylistic preference when they satisfy the requirement.
-- [P074 — Prefer Existing Mechanisms](../../docs/principles/README.md#p074): reuse a suitable existing
-  mechanism before inventing another one.
+- [P001 — KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001): Make the design
+  sufficient for the problem that the evidence shows. Select the minimum solution that obeys
+  all requirements.
+- [P002 — YAGNI — You Ain't Gonna Need It](../../docs/principles/README.md#p002): Do not include a
+  capability, extension point, or infrastructure that has no specified current requirement.
+- [P007 — Subtraction Over Addition](../../docs/principles/README.md#p007): Before you recommend a new
+  component, find if removal, consolidation, or an existing mechanism can give the necessary
+  result.
+- [P008 — Understand Before Subtracting](../../docs/principles/README.md#p008): Before you recommend
+  deletion, examine the purpose, consumers, and history of the applicable component.
+- [P012 — Evidence Before Modification](../../docs/principles/README.md#p012): Before you select a
+  design, use repository code, contracts, tests, history, and guidance as evidence.
+- [P015 — Architecture Conformance](../../docs/principles/README.md#p015): If the requirement does
+  not change the architecture, obey the established boundaries and dependency direction.
+- [P071 — Consistency Over Personal Preference](../../docs/principles/README.md#p071): If repository
+  conventions obey the requirement, use them. Do not select a different style because of
+  personal preference.
+- [P074 — Prefer Existing Mechanisms](../../docs/principles/README.md#p074): Before you make a
+  mechanism, find an applicable existing mechanism. If it obeys the requirement, use it.
 
 ## Failed approaches
 

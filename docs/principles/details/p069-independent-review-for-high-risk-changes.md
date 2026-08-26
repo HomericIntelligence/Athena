@@ -2,54 +2,102 @@
 
 ## Definition
 
-Security- or availability-critical changes should receive a risk-appropriate evaluation independent
-of their author. The reviewer must be qualified for the affected domain and must examine the actual
-change and evidence rather than merely endorsing the author's conclusion.
+An independent reviewer must examine each security-critical or availability-critical change. The
+review depth must match the risk. The reviewer must know the affected domain. The reviewer must
+examine the specified change and evidence. Agreement with the author's result is not sufficient.
 
-**Aliases:** independent technical review; qualified second review.
+**Aliases:** independent technical review, qualified second review.
 
 ## Provenance
 
 **Classification:** established principle.
 
-Independent software inspection has a documented lineage in Michael Fagan's 1970s work at IBM.
-Modern code review and secure-development guidance apply independent, domain-qualified scrutiny
-proportionally to risk.
+Michael Fagan documented independent software inspection at IBM during the 1970s. Code-review and
+secure-development guidance specify independent, domain-qualified assessment in proportion to risk.
 
 ## Decision rule
 
-Before accepting a high-risk change, obtain a review from a qualified evaluator who did not produce
-the change and can challenge its assumptions, inspect its evidence, and report findings without
-being required to agree with the author.
+Before acceptance of a high-risk change, receive a review from a qualified reviewer who did not
+author the change. The reviewer must examine assumptions. The reviewer must examine evidence. The
+reviewer must report findings independently. Author agreement is not necessary.
 
 ## How to apply
 
 - Classify risk from the changed trust boundaries, data, concurrency, migration, or operations.
-- Route specialized surfaces to reviewers competent in security, privacy, cryptography,
-  concurrency, infrastructure, or the relevant domain.
-- Give the reviewer the requirements, exact revision, complete diff, tests, and known limitations.
-- Keep author and reviewer conclusions distinguishable and resolve material findings explicitly.
-- Increase independence and depth as consequence and uncertainty increase.
+- Select reviewers for specialized areas such as security, privacy, cryptography, concurrency,
+  infrastructure, or the applicable domain.
+- Give the reviewer the requirements, specified revision, full diff, tests, and known limitations.
+- Record the author and reviewer conclusions independently.
+- Clearly record the resolution of material findings.
+- When impact and uncertainty increase, increase review independence and depth.
+
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Classify change risk"] --> B{"High-risk change?"}
+    B -- "No" --> C["Use standard review path"]
+    B -- "Yes" --> D["Select qualified non-author reviewer"]
+    D --> E["Examine specified change and evidence"]
+    E --> F{"Material finding?"}
+    F -- "Yes" --> G["Resolve finding and revise change"]
+    G --> I["Examine specified revised change and evidence"]
+    I --> F
+    F -- "No" --> H["Record independent result"]
+```
+
+## Language examples
+
+The two examples use one immutable digest of the same change, author independence, and domain
+qualification before acceptance.
+
+```python
+def accept(change, review):
+    if review.change_digest != change.digest:
+        raise ValueError("review does not match change")
+    if review.author == change.author:
+        raise ValueError("reviewer is not independent")
+    if change.domain not in review.qualifications:
+        raise ValueError("reviewer is not qualified")
+    return review.approved
+```
+
+```rust
+fn accept(change: &Change, review: &Review) -> Result<bool, Error> {
+    if review.change_digest != change.digest {
+        return Err(Error::StaleReview);
+    }
+    if review.author == change.author {
+        return Err(Error::SameAuthor);
+    }
+    if !review.qualifications.contains(&change.domain) {
+        return Err(Error::UnqualifiedReviewer);
+    }
+    Ok(review.approved)
+}
+```
 
 ## Boundaries and tensions
 
-Independent does not necessarily mean human. A separate qualified agent or specialist with a fresh,
-bounded review task can satisfy this principle unless repository policy requires a human, Code
-Owner, regulated role, or approval count. Automated analysis can support review but rarely supplies
-all contextual judgment by itself. A non-author rubber stamp is not independent review, while low-
-risk routine work need not acquire heavyweight ceremony.
+A human reviewer is not always necessary for independent review. A qualified agent or specialist
+can do a new, bounded review. Repository policy can specify a human, Code Owner, regulated role, or
+approval count.
+Automated analysis can add evidence to a review but usually does not supply all contextual
+judgment. A non-author agreement without analysis is not an independent review. Low-risk work does
+not make a large review process necessary.
 
 ## Examples
 
-**Positive:** A security specialist who did not author an authorization change reviews the exact
-commit, threat boundary, negative tests, and rollout behavior before acceptance.
+**Positive:** A security specialist did not author an authorization change. The specialist reviews
+the specified commit, threat boundary, negative tests, and release behavior before acceptance.
 
-**Misuse:** A teammate approves cryptographic code without reading it or understanding the primitive,
-solely to satisfy an approval count.
+**Misuse:** A team member approves cryptographic code without an inspection or knowledge of the
+primitive. The approval only satisfies a necessary count.
 
-**Athena/agent workflow:** A coordinator assigns the completed high-risk diff to a separate review
-agent with explicit criteria and no instruction to confirm the implementer's result, then surfaces
-unresolved findings to the user.
+**Athena/agent workflow:** A coordinator assigns a high-risk diff to an independent review agent.
+The task has specified criteria. The criteria do not tell the reviewer to agree with the author's
+result.
+The coordinator reports unresolved findings to the user.
 
 ## Related principles
 
@@ -60,22 +108,22 @@ unresolved findings to the user.
 
 ## References
 
-### Origin/history
+### Source information
 
 - [Fagan, "Design and Code Inspections to Reduce Errors in Program Development" (1976)](https://doi.org/10.1147/sj.153.0182)
-  is a foundational primary account of structured, role-based software inspection.
+  is a primary account of structured software inspection with specified roles.
 
-### Current guidance
+### Applicable information
 
 - [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-  directs authors to involve qualified reviewers for complex areas such as security, privacy, and
-  concurrency.
-- [NIST SSDF 1.1](https://csrc.nist.gov/pubs/sp/800/218/final) includes code review and analysis
-  among the practices for finding vulnerabilities before release.
+  states that authors must involve qualified reviewers for complex areas. Examples include security,
+  privacy, and concurrency.
+- [NIST SSDF 1.1](https://csrc.nist.gov/pubs/sp/800/218/final) lists code review and analysis as
+  practices that identify vulnerabilities before release.
 
-### Further reading
+### More information
 
 - [OWASP Secure Code Review Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Secure_Code_Review_Cheat_Sheet.html)
-  explains risk-based manual review and the contextual weaknesses that automated tools can miss.
+  gives information about risk-based manual review and context that automated tools can miss.
 
 [Back to the engineering principles catalog](../README.md#p069)

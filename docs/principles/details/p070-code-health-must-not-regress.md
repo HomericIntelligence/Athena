@@ -2,50 +2,88 @@
 
 ## Definition
 
-A change is not acceptable merely because its local output is correct. It must not unnecessarily
-make the overall system harder to understand, maintain, test, operate, evolve, or secure. Prefer
-incremental improvement over both gradual degradation and demands for unattainable perfection.
+A correct local result does not prove the quality of the full change. Without a necessary technical
+basis, a change must not decrease clarity, maintenance quality, test quality, operation
+quality, adaptability, or security. Use incremental improvement. Prevent code decay. Do not make
+perfection necessary.
 
-**Aliases:** leave the codebase no worse; continuous code-health improvement.
+**Aliases:** leave the codebase no worse, continuous code-health improvement.
 
 ## Provenance
 
 **Classification:** practitioner heuristic.
 
-The exact formulation is closely aligned with Google's published code-review standard. Related
-"leave it better" heuristics are widespread, but no exclusive historical origin is asserted.
+This rule agrees with Google's published code-review standard. Many practitioners use related
+"leave it better" heuristics. No verified source has exclusive ownership of the full heuristic.
 
 ## Decision rule
 
-Accept an imperfect change when it makes required progress without a material net regression in
-code health. Reject or revise shortcuts whose avoidable maintenance, complexity, testing,
-operability, or security cost exceeds their scoped benefit.
+When a change completes necessary work without a material loss of code health, accept it although
+it is not perfect. When a design has an unnecessary code-health cost that is more than its scoped
+benefit, revise it. If a revision cannot remove that cost, reject the design. Examine maintenance,
+complexity, test quality, operation, and security costs.
 
 ## How to apply
 
-- Evaluate design, complexity, tests, naming, documentation, operation, and security in context.
-- Prevent small local compromises from accumulating into systemic decay.
-- Distinguish blocking regressions from optional polish and label non-blocking suggestions clearly.
-- Prefer small, coherent changes that are easy to review, revert, and improve further.
-- Document accepted debt only when necessity, owner, risk, and follow-up trigger are concrete.
+- Examine design, complexity, tests, naming, documentation, operation, and security in context.
+- Prevent a system-wide decrease in code health from a sequence of small local compromises.
+- Distinguish necessary corrections from optional style changes. Identify optional suggestions
+  clearly.
+- Use small, coherent changes that are easy to review, revert, and make better.
+- When you accept debt, document its necessity, owner, risk, and repair trigger.
+
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Specify necessary change"] --> B["Select narrow design"]
+    B --> C["Examine system-wide code health"]
+    C --> D{"Material regression without a necessary basis?"}
+    D -- "Yes" --> E["Revise design or decrease scope"]
+    E --> C
+    D -- "No" --> F{"Temporary debt necessary?"}
+    F -- "Yes" --> G["Record owner, risk, and repair trigger"]
+    F -- "No" --> H["Accept change"]
+    G --> H
+```
+
+## Language examples
+
+The two examples add one clear data transformation with clear names and no new framework.
+
+```python
+def visible_tasks(tasks):
+    eligible = [task for task in tasks if task.active]
+    ordered = sorted(eligible, key=lambda task: task.priority)
+    return [task.title for task in ordered]
+```
+
+```rust
+fn visible_tasks(tasks: &[Task]) -> Vec<&str> {
+    let mut eligible: Vec<_> = tasks.iter().filter(|task| task.active).collect();
+    eligible.sort_by_key(|task| task.priority);
+    eligible.iter().map(|task| task.title.as_str()).collect()
+}
+```
 
 ## Boundaries and tensions
 
-This principle is not permission for unrelated cleanup, gold-plating, or blocking delivery until code
-is perfect. [P010 Scope Fidelity](p010-scope-fidelity.md) still limits the change, and emergencies may
-require an explicitly managed temporary compromise. Existing conventions do not justify extending a
-known defect, but repository-wide remediation may belong in separate work.
+This principle does not authorize cleanup that is not part of the task or style changes that are not
+necessary. It does not make perfect code necessary before delivery.
+[P010 Scope Fidelity](p010-scope-fidelity.md) continues to limit the change. An emergency can make a
+recorded temporary compromise necessary. A local convention does not authorize extension of a known
+defect. Repository-wide repair can belong to a different task.
 
 ## Examples
 
-**Positive:** A small feature reuses the established interface, adds focused tests, and makes one
-nearby name clearer without broad refactoring.
+**Positive:** A small feature uses the established interface and adds focused tests. It also makes
+one name in the changed area clearer without a large refactor.
 
-**Misuse:** A working shortcut duplicates security policy across a second location because updating
-the canonical component would take longer.
+**Misuse:** A second copy duplicates security policy because a change to the canonical component has
+a larger scope.
 
-**Athena/agent workflow:** A reviewer distinguishes a required finding that prevents contract drift
-from a non-blocking preference, keeping the skill corpus maintainable without expanding the task.
+**Athena/agent workflow:** A reviewer separates a necessary contract-drift finding from an optional
+preference. This distinction protects the skill corpus without an expansion of task scope.
 
 ## Related principles
 
@@ -57,21 +95,22 @@ from a non-blocking preference, keeping the skill corpus maintainable without ex
 
 ## References
 
-### Origin/history
+### Source information
 
 - [Google Engineering Practices: The standard of code review](https://google.github.io/eng-practices/review/reviewer/standard.html)
-  is the direct practitioner source for treating improving overall code health as review's primary
-  purpose; broader antecedents are not assigned to one origin here.
+  is the primary practitioner source for code health as the primary review purpose. This page
+  does not identify all earlier sources.
 
-### Current guidance
+### Applicable information
 
 - [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-  operationalizes code health across design, functionality, complexity, tests, naming, comments,
-  style, and documentation.
+  applies code health to design, function, complexity, tests, names, comments, style, and
+  documentation.
 
-### Further reading
+### More information
 
 - [Google Engineering Practices: Small CLs](https://google.github.io/eng-practices/review/developer/small-cls.html)
-  explains how narrow changes improve review depth, design quality, rollback, and maintainability.
+  shows that narrow changes increase review depth and design quality. Narrow changes also make
+  reversal and maintenance easier.
 
 [Back to the engineering principles catalog](../README.md#p070)

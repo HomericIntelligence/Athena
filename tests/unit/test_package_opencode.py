@@ -5,12 +5,15 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import os
 import re
 import shutil
+import subprocess
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / "scripts" / "package_opencode.py"
@@ -31,6 +34,34 @@ def technical_english_targets(markdown: str) -> list[str]:
         if normalized_name == "technical_english.md":
             targets.append(path)
     return targets
+
+
+def local_markdown_targets(markdown: str) -> list[tuple[str, str]]:
+    """Return paths and fragments from local Markdown links."""
+    targets: list[tuple[str, str]] = []
+    for target in MARKDOWN_LINK.findall(markdown):
+        parsed = urlsplit(target)
+        if parsed.scheme or parsed.netloc or (not parsed.path and not parsed.fragment):
+            continue
+        targets.append((unquote(parsed.path), unquote(parsed.fragment)))
+    return targets
+
+
+def markdown_anchors(markdown: str) -> set[str]:
+    """Return GitHub-style anchors for the headings in a Markdown document."""
+    anchors: set[str] = set()
+    counts: dict[str, int] = {}
+    for line in markdown.splitlines():
+        match = re.match(r"^#{1,6}\s+(.+?)\s*#*\s*$", line)
+        if match is None:
+            continue
+        heading = re.sub(r"\[([^]]+)\]\([^)]+\)", r"\1", match.group(1))
+        heading = heading.replace("`", "")
+        base = re.sub(r"[^\w -]", "", heading.casefold()).replace(" ", "-")
+        occurrence = counts.get(base, 0)
+        counts[base] = occurrence + 1
+        anchors.add(base if occurrence == 0 else f"{base}-{occurrence}")
+    return anchors
 
 
 class PackageOpenCodeTests(unittest.TestCase):
@@ -60,6 +91,36 @@ class PackageOpenCodeTests(unittest.TestCase):
         )
         return staged
 
+    def assert_local_links_resolve(self, artifact_root: Path) -> None:
+        """Require each local Markdown target to exist in the artifact."""
+        artifact_root = artifact_root.resolve()
+        checked = 0
+        unresolved: list[str] = []
+        for markdown_path in sorted(artifact_root.rglob("*.md")):
+            for target, fragment in local_markdown_targets(
+                markdown_path.read_text(encoding="utf-8")
+            ):
+                checked += 1
+                resolved = (
+                    (markdown_path.parent / target).resolve()
+                    if target
+                    else markdown_path
+                )
+                source = markdown_path.relative_to(artifact_root)
+                if not resolved.is_relative_to(artifact_root):
+                    unresolved.append(f"{source} -> {target} (outside artifact)")
+                elif not resolved.exists():
+                    unresolved.append(f"{source} -> {target} (target does not exist)")
+                elif fragment and resolved.suffix.casefold() == ".md":
+                    anchors = markdown_anchors(resolved.read_text(encoding="utf-8"))
+                    if fragment.casefold() not in anchors:
+                        unresolved.append(
+                            f"{source} -> {target}#{fragment} (anchor does not exist)"
+                        )
+
+        self.assertGreater(checked, 0, "The artifact has no local Markdown links.")
+        self.assertEqual([], unresolved)
+
     def test_staging_copies_plugin_legal_files_and_skill_corpus(self) -> None:
         staged = self.stage()
 
@@ -71,6 +132,58 @@ class PackageOpenCodeTests(unittest.TestCase):
         self.assertTrue((staged / "NOTICE").is_file())
         self.assertTrue((staged / "skills" / "_cli.py").is_file())
         self.assertTrue((staged / "skills" / "advise" / "SKILL.md").is_file())
+
+    def test_staged_local_markdown_links_resolve_inside_the_package(self) -> None:
+        """The staged package contains each local Markdown link target."""
+        self.assert_local_links_resolve(self.stage())
+
+    @unittest.skipUnless(shutil.which("node"), "Skill inventory requires Node.js")
+    def test_bundled_skill_inventory_excludes_support_content(self) -> None:
+        """Only directories with a skill entrypoint appear in the plugin inventory."""
+        staged = self.stage()
+        script = (
+            f"import {{ bundledSkillNames }} from "
+            f"{json.dumps((staged / 'plugin.js').as_uri())};"
+            "process.stdout.write(JSON.stringify(bundledSkillNames()));"
+        )
+
+        result = subprocess.run(
+            ["node", "--input-type=module", "--eval", script],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        expected = sorted(
+            path.parent.name for path in (staged / "skills").glob("*/SKILL.md")
+        )
+        self.assertEqual(expected, json.loads(result.stdout))
+
+    @unittest.skipUnless(shutil.which("node"), "Plugin installation requires Node.js")
+    def test_installed_local_markdown_links_resolve_inside_the_package(self) -> None:
+        """The installed package contains each local Markdown link target."""
+        staged = self.stage()
+        config_home = self.fixture.parent / "xdg-config"
+        environment = os.environ.copy()
+        environment["XDG_CONFIG_HOME"] = str(config_home)
+        script = (
+            f"import {{ syncSkills }} from {json.dumps((staged / 'plugin.js').as_uri())};"
+            "process.stdout.write(syncSkills());"
+        )
+
+        result = subprocess.run(
+            ["node", "--input-type=module", "--eval", script],
+            capture_output=True,
+            check=False,
+            env=environment,
+            text=True,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        installed = Path(result.stdout)
+        self.assertTrue(installed.resolve().is_relative_to(config_home.resolve()))
+        self.assert_local_links_resolve(installed)
 
     def test_staged_skill_policy_links_resolve_inside_the_skill_corpus(self) -> None:
         """Installed skills can read the policy without repository docs or a network."""
@@ -145,6 +258,16 @@ class PackageOpenCodeTests(unittest.TestCase):
         external = self.fixture.parent / "external-plugin.js"
         external.write_text("export default () => ({});\n", encoding="utf-8")
         entry = self.fixture / "npm" / "athena-opencode" / "plugin.js"
+        entry.unlink()
+        entry.symlink_to(external)
+
+        with self.assertRaises(package_opencode.PackageError):
+            self.stage()
+
+    def test_symlinked_support_document_fails_closed(self) -> None:
+        external = self.fixture.parent / "external-guidance.md"
+        external.write_text("external guidance\n", encoding="utf-8")
+        entry = self.fixture / "docs" / "dependency-resolution.md"
         entry.unlink()
         entry.symlink_to(external)
 

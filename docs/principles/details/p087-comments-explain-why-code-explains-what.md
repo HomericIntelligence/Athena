@@ -2,54 +2,90 @@
 
 ## Definition
 
-**Comments Explain Why, Code Explains What** means preferring code that communicates its ordinary
-mechanics directly and using comments for rationale, constraints, invariants, provenance,
-surprising tradeoffs, or context the code cannot express. Public API documentation separately
-explains purpose, usage, behavior, parameters, results, and failures.
+**Comments Explain Why, Code Explains What** uses code to show its standard operation. Comments give
+rationale, limits, invariants, sources, unusual tradeoffs, or context that code cannot show.
+Public interface documentation independently gives function, operation, behavior, parameters, results,
+and failures.
 
-**Aliases:** why-comments; rationale comments.
+**Aliases:** why-comments and rationale comments.
 
 ## Provenance
 
 **Classification:** practitioner heuristic.
 
-No verified single origin exists for the phrase. It is a widely repeated code-review heuristic,
-and Google's published review guidance states the same default while documenting important
-exceptions.
+No source records an initial author of the phrase. The phrase is a code-review heuristic. Google's
+published review guidance gives the same default and important exceptions.
 
 ## Decision rule
 
-First ask whether names, structure, or types can make the code clear. Add a comment when important
-information would otherwise be lost, or when a public contract requires documentation that the
-implementation cannot supply.
+First, use names, structure, and types to make the code clear. When code cannot show important
+rationale, add a comment. Also record each necessary public contract.
 
 ## How to apply
 
-- Explain the reason for a workaround, invariant, limit, or compatibility path.
-- Link a specification, issue, or measurement when it is the source of a surprising decision.
-- Document public APIs according to their language and repository contract.
-- Keep comments adjacent to the behavior they constrain.
-- Update or remove comments in the same change that invalidates them.
-- Replace stale TODOs with owned, actionable work or delete them.
+- Record the rationale for a workaround, invariant, limit, or compatibility path.
+- When one source controls an unusual decision, refer to the applicable specification, issue, or measurement.
+- Follow the language and repository contract for public API documentation.
+- Keep comments adjacent to the applicable behavior.
+- Change or remove comments in the same change that makes the comments incorrect.
+- Delete each expired TODO or replace the TODO with specified work that has an owner.
+
+## Diagram
+
+The code shows the operation. The comment supplies rationale that the code cannot show.
+
+```mermaid
+flowchart LR
+    A["Clear code"] --> B["Clear operation"]
+    C["Necessary comment"] --> D["Rationale or invariant"]
+    B --> E["Clear context"]
+    D --> E
+```
+
+## Language examples
+
+The two examples use a comment only because of the external compatibility contract.
+
+### Python
+
+```python
+def decode(message: Message) -> Payload:
+    # Keep version 1 until contract ACME-42 expires in 2027.
+    if message.version == 1:
+        return decode_legacy(message)
+    return decode_current(message)
+```
+
+### Rust
+
+```rust
+fn decode(message: &Message) -> Payload {
+    // Keep version 1 until contract ACME-42 expires in 2027.
+    match message.version {
+        1 => decode_legacy(message),
+        _ => decode_current(message),
+    }
+}
+```
 
 ## Boundaries and tensions
 
-Complex algorithms, regular expressions, protocols, and performance-sensitive code may need
-comments that explain *what* the steps mean because clearer executable notation is unavailable.
-API documentation must describe externally observable behavior even when implementation code is
-clear. Comments are not an excuse for tangled control flow, and they must not expose secrets or
-repeat facts likely to drift.
+Comments can be necessary for algorithms with much complexity, regular expressions, protocols, and performance
+code. Comments can give information about the algorithm steps. Some rationale and algorithm meaning
+cannot be clear in executable notation. When the implementation is clear, interface documentation must include external behavior.
+Comments do not make control flow with much complexity correct. Comments must not show secrets or
+give code facts again because the facts can change.
 
 ## Examples
 
-**Positive:** A compatibility branch cites the legacy format and explains why removal must wait for
-a named migration milestone.
+**Positive:** A comment refers to the legacy format. Removal must wait for the migration milestone
+with a specified name.
 
-**Misuse:** A comment says "increment retry count" immediately above an obvious increment while the
-actual retry limit remains unexplained.
+**Misuse:** A comment gives "increment retry count" immediately above a clear increment. The comment
+does not give the specified retry limit.
 
-**Athena/agent workflow:** A repository helper documents why it uses a one-off audit instead of a
-retained prose validator, preserving the policy rationale for future maintainers.
+**Athena/agent workflow:** A repository helper uses a comment to record why the helper sets an audit limit. The
+comment keeps the policy rationale without a prose validator.
 
 ## Related principles
 
@@ -61,23 +97,24 @@ retained prose validator, preserving the policy rationale for future maintainers
 
 ## References
 
-### Origin/history
+### Source information
 
-- No primary source establishing one coinage was found; treat the phrase as a practitioner
-  heuristic rather than a quotation attributable to a single author.
+- No primary source records one coinage. Readers must use the phrase as a practitioner
+  heuristic, not as a quotation from one author.
 
-### Current guidance
+### Applicable information
 
 - [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-  says comments usually explain why, while naming complex algorithms and regular expressions as
-  exceptions that can benefit from explanation of what they do.
+  gives the rule that comments usually give rationale. The guidance gives algorithms with much complexity and
+  regular expressions as examples where information about the operation can help.
 - [Google API reference code comments](https://developers.google.com/style/api-reference-comments)
-  requires public API documentation to cover purpose, use, parameters, results, and exceptions.
+  gives public API documentation rules. Public API documentation must include function, operation,
+  parameters, results, and exceptions.
 
-### Further reading
+### More information
 
 - [Google Documentation Best Practices](https://google.github.io/styleguide/docguide/best_practices.html)
-  distinguishes inline comments, API documentation, READMEs, and longer conceptual documents by
-  audience and purpose.
+  gives information about the differences between inline comments, API documentation, READMEs, and
+  documents about concepts. Audience and function control the differences.
 
 [Back to the engineering principles catalog](../README.md#p087)

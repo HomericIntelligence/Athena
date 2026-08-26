@@ -2,10 +2,11 @@
 
 ## Definition
 
-An operation that may run more than once must either produce the same intended effect after repeated
-equivalent requests or use an equivalent protection such as an idempotency key, deduplication,
-conditional write, or reconciliation. A timeout is an unknown outcome, not evidence that the first
-attempt made no state change.
+An operation that can occur more than one time must have one intended effect for equivalent
+requests. An equivalent control can give this guarantee.
+
+Such controls include an idempotency key, duplicate detection, a conditional write, or
+reconciliation. After a timeout, the first try outcome is unknown. The try can change state.
 
 **Aliases:** retry safety, idempotent operation, duplicate suppression
 
@@ -13,53 +14,97 @@ attempt made no state change.
 
 **Classification:** established principle.
 
-Idempotence originates in mathematics and has long been used in protocol design. Athena makes its
-ordering relative to retry explicit; no single source is claimed for that phrase.
+Mathematics and protocol design have used idempotence for many years. Athena puts idempotency first.
+Retry occurs after idempotency. Athena cannot identify one source for that phrase.
 
 ## Decision rule
 
-Do not enable automatic retry for an operation with side effects until duplicate execution is safe
-or uniquely detectable and recoverable.
+If an operation has side effects and duplicate execution is safe, automatic retry can occur. A
+different request identifier for each logical operation lets the system detect duplicate execution
+and recover from it.
 
 ## How to apply
 
-- Classify the operation's effect and define what “the same request” means semantically.
-- Prefer naturally idempotent state-setting operations where the domain allows them.
-- For create, charge, send, or publish operations, accept a caller-generated idempotency key bound
-  to the authenticated caller and normalized request intent.
-- Persist the key and state mutation atomically when possible, including a stable replay response.
-- Define key scope, retention, conflict behavior, and handling of late or concurrent duplicates.
-- If idempotency is impossible, disable blind retry and provide status lookup or reconciliation.
-- Test duplicate, concurrent, timed-out, late-arriving, and same-key/different-intent requests.
+- Classify the operation effect. Record semantic equivalence for requests.
+- If a requested-state operation satisfies domain rules, select that design.
+- Accept an idempotency key for resource writes, charges, message sends, or publications. Connect the key to caller
+  identity and normalized request data.
+- When possible, record the key and state change in one atomic operation. Record a stable duplicate
+  response.
+- Record key scope, retention, conflict behavior, and treatment of late or concurrent duplicates.
+- If results do not show that the operation is safe, do not retry. Give status queries or
+  reconciliation procedures.
+- Do tests with duplicate requests, concurrent requests, timeouts, late requests, and key conflicts.
+
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Receive a request with a stable key"] --> B{"Is there a recorded key?"}
+    B -- Yes --> C{"Is the request equivalent?"}
+    C -- No --> D["Return a conflict"]
+    C -- Yes --> E["Return the recorded result"]
+    B -- No --> F["Commit the effect and key in one atomic operation"]
+    F --> E
+```
+
+## Language examples
+
+Each example returns one job for each equivalent key and payload pair.
+
+### Python
+
+```python
+def create_job(store, key, payload):
+    outcome = store.atomic_get_or_create(key, payload)
+    if outcome.kind is CreateKind.CONFLICT:
+        raise Conflict(key)
+    return outcome.job_id
+```
+
+### Rust
+
+```rust
+fn create_job(store: &Store, key: Key, payload: Payload) -> Result<JobId, Error> {
+    match store.atomic_get_or_create(&key, &payload)? {
+        CreateResult::Created(job) | CreateResult::Replayed(job) => Ok(job.id),
+        CreateResult::Conflict => Err(Error::Conflict(key)),
+    }
+}
+```
 
 ## Boundaries and tensions
 
-Idempotency makes duplication safer; it does not make unbounded attempts acceptable. Apply
-[P038](p038-bounded-retry.md) and [P039](p039-bounded-waiting.md) as separate controls.
+Idempotency decreases duplicate risk. A finite try count is also necessary. Apply
+[P038](p038-bounded-retry.md) and [P039](p039-bounded-waiting.md). These controls have different
+functions.
 
-Recording the idempotency key before the mutation, or vice versa, can itself create partial state.
-Use [P044](p044-atomicity-where-possible.md) when they share a transaction, or reconciliation and
-[P045](p045-compensation-where-atomicity-is-impossible.md) when they do not. A reused key with a
-different intent is a conflict, not a replay.
+If the idempotency record and state change use different transactions, the state change can occur
+only in part. If one transaction can contain the two effects, use [P044](p044-atomicity-where-possible.md).
+
+If one transaction cannot contain the two effects, use reconciliation and
+[P045](p045-compensation-where-atomicity-is-impossible.md). A key with a nonequivalent request is a conflict.
 
 ## Examples
 
 ### Positive application
 
-A create-job API accepts a client request ID. The server atomically records the normalized payload,
-job identifier, and response. Repeated equivalent calls return the same job; a changed payload with
-the same key is rejected.
+A job API accepts a client request identifier. The server uses one atomic operation to record the
+normalized payload, job identifier, and response. Equivalent requests return the same job.
+
+A request with the same key and a different payload receives a conflict response.
 
 ### Misuse or counterexample
 
-A client retries `charge-card` after every timeout without a request key. The first attempt may have
-succeeded, so the retry can charge the customer twice.
+A client retries `charge-card` after each timeout without a request key. The first try can
+succeed before the timeout. The retry can charge the customer two times.
 
 ### Athena or agent workflow
 
-Before retrying an issue-creation request after a lost response, an Athena workflow searches for the
-exact planned title and marker or uses the host's idempotency mechanism. It does not assume the issue
-was never created.
+An Athena workflow does not receive the response from an issue creation request. Before a retry, it
+examines issues for the specified title and marker. It can also use the host idempotency control.
+
+The workflow has no results that show that the first request failed.
 
 ## Related principles
 
@@ -71,24 +116,24 @@ was never created.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [RFC 2068, HTTP/1.1 section 9.1.2 (1997)](https://www.rfc-editor.org/rfc/rfc2068.html#section-9.1.2)
-  — an early HTTP standards-track definition of idempotent methods and repeated-request effects;
-  idempotence itself predates HTTP.
+  — a 1997 HTTP standards-track definition of idempotent methods and duplicate request effects.
+  HTTP is not the source of idempotence.
 
-### Current guidance
+### Applicable information
 
 - [RFC 9110 section 9.2.2, Idempotent Methods](https://www.rfc-editor.org/rfc/rfc9110.html#section-9.2.2)
-  — current HTTP semantics governing when clients can safely repeat requests automatically.
+  — applicable HTTP semantics for requests that the client automatically sends again.
 - [AWS Builders' Library, Making retries safe with idempotent APIs](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/)
-  — practitioner guidance on client request identifiers, semantic equivalence, late arrivals, and
+  — practitioner guidance for client request identifiers, semantic equivalence, late requests, and
   atomic idempotency records.
 
-### Further reading
+### More information
 
 - [Microsoft Azure, Retry pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/retry)
-  — explains why a response failure can occur after successful processing and why retry policy must
-  consider idempotency.
+  — shows why a response can fail after work succeeds. It also shows why retry policy must
+  include idempotency.
 
 [Back to the engineering principles catalog](../README.md#p037)

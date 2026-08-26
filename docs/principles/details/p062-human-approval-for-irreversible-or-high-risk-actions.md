@@ -2,55 +2,101 @@
 
 ## Definition
 
-Obtain explicit human approval before an otherwise unauthorized action that can delete data, alter
-production, change privileges, expose secrets, communicate externally, incur substantial cost, or
-create another difficult-to-reverse effect. Approval must identify the material action being
-authorized, not merely express general trust in the actor or tool.
+Before an unauthorized action can cause an irreversible or high-risk effect, receive action-bound
+human approval. Such effects include data loss, production changes, privilege changes, secret
+exposure, external communication, and high cost. The approval must identify the material action.
+General trust in an actor or tool is not approval for that action.
 
-**Aliases:** human-in-the-loop approval; confirmation gate; approval-bound execution.
+**Aliases:** human-in-the-loop approval, confirmation gate, approval-bound execution.
 
 ## Provenance
 
 **Classification:** Athena synthesis.
 
-The exact rule is not attributable to one origin. It adapts transaction authorization, safety
-interlocks, and current guidance for limiting excessive agent autonomy to repository automation.
+No verified source specifies this rule. The rule adapts transaction authorization, safety
+interlocks, and current guidance about excessive agent authority.
 
 ## Decision rule
 
-If an action is both high-risk or difficult to reverse and is not already explicitly authorized at
-the required specificity, stop before the side effect and obtain approval bound to its target,
-scope, and material parameters.
+When specified authority does not include the specified action, stop before the action causes an
+irreversible or high-risk effect. Before execution resumes, receive approval for the target, scope,
+and material parameters.
 
 ## How to apply
 
-- Classify impact using the real destination, data, privilege, cost, and reversibility.
-- Show the approver the exact action and significant parameters in understandable terms.
-- Ask again when the target, scope, material parameters, or risk changes after approval.
-- Keep approval credentials and execution state protected from substitution or replay.
-- Pair approval with technical safeguards; approval alone does not make an unsafe action safe.
+- Classify impact from the destination, data, privilege, cost, and reversibility.
+- Show the approver the specified action and important parameters in clear terms.
+- When the target, scope, material parameters, or risk changes, receive new approval.
+- Protect approval credentials and execution state from substitution or replay.
+- Pair approval with technical safeguards. Approval without these safeguards does not make a
+  dangerous action safe.
+
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Resolve specified action and impact"] --> B{"Irreversible or high risk?"}
+    B -- "No" --> C["Use standard authorized path"]
+    B -- "Yes" --> D{"Does current authority include action?"}
+    D -- "Yes" --> E["Validate safeguards and execute"]
+    D -- "No" --> F["Receive action-bound human approval"]
+    F --> G{"Approval matches current action?"}
+    G -- "No" --> H["Stop"]
+    G -- "Yes" --> E
+```
+
+## Language examples
+
+Each trusted verifier uses an atomic operation to authenticate the human issuer and validate target,
+digest, freshness, nonce, and replay state.
+
+```python
+def deploy(plan, token, trusted_verifier, replay):
+    trusted_verifier.verify_human_once(
+        token=token,
+        target=plan.target,
+        digest=plan.digest,
+        replay=replay,
+        now=trusted_now(),
+    )
+    plan.execute()
+```
+
+```rust
+fn deploy(
+    plan: &Plan,
+    token: &ApprovalToken,
+    verifier: &TrustedApprovalVerifier,
+    replay: &mut ReplayStore,
+) -> Result<(), Error> {
+    verifier.verify_human_once(
+        token, &plan.target, &plan.digest, replay, trusted_now(),
+    )?;
+    plan.execute();
+    Ok(())
+}
+```
 
 ## Boundaries and tensions
 
-Do not manufacture redundant prompts. Under Athena's repository contract, scoped constructive Git,
-GitHub, and Hephaestus actions already authorized by the user and task do not need a second approval
-merely because they are externally visible. Destructive, privilege-changing, production, secret-
-exposing, materially costly, or otherwise ungranted high-risk actions still require explicit
-approval. Repository policy may impose a stricter gate. Approval never permits an action prohibited
-by a higher-priority instruction or security control.
+Do not make prompts that are not necessary. When the user and task authorize the scope, Athena
+authorizes constructive Git, GitHub, and Hephaestus actions. Public visibility does not make a second
+approval necessary. Action-bound approval is necessary for destructive, privileged, production,
+secret-exposure, high-cost, or unauthorized high-risk actions. Repository policy can specify a
+stricter gate. Approval cannot override a higher-priority instruction or security control.
 
 ## Examples
 
-**Positive:** Before deleting a production dataset, the system presents the resolved environment,
-dataset identifier, retention consequence, and recovery status, then executes only after explicit
-approval for those details.
+**Positive:** Before deletion of a production dataset, the system shows the environment, dataset
+identifier, retention result, and recovery status. It executes only after approval for those
+details.
 
-**Misuse:** A generic onboarding checkbox stating that an agent may "manage resources" is treated as
-permanent approval for any future deletion or deployment.
+**Misuse:** An access checkbox without a specified limit grants resource management. The system uses
+that checkbox as permanent approval for each future deletion or deployment.
 
-**Athena/agent workflow:** A direct request to file a named GitHub issue authorizes that scoped,
-constructive external write. Removing a worktree containing uncommitted changes remains approval-
-gated because it could destroy data.
+**Athena/agent workflow:** A user request for a named GitHub issue authorizes that scoped,
+constructive write. Approval is necessary before removal of a worktree with uncommitted changes
+because removal can cause data loss.
 
 ## Related principles
 
@@ -61,23 +107,23 @@ gated because it could destroy data.
 
 ## References
 
-### Origin/history
+### Source information
 
 - [OWASP Transaction Authorization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Transaction_Authorization_Cheat_Sheet.html)
-  documents the established practice of binding authorization to significant transaction data; it
-  does not establish a single origin for the broader Athena rule.
+  documents the established practice that binds authorization to important transaction data. It
+  is not the initial source for the full Athena rule.
 
-### Current guidance
+### Applicable information
 
 - [OWASP LLM06:2025 Excessive Agency](https://genai.owasp.org/llmrisk/llm062025-excessive-agency/)
-  recommends human approval before high-impact agent actions and limiting available extensions and
-  permissions.
+  recommends human approval before high-impact agent actions. It also recommends limits for
+  available extensions and permissions.
 - [NIST AI RMF 1.0, Appendix C](https://airc.nist.gov/airmf-resources/airmf/appendices/app-c-ai-risk-management-and-human-ai-interaction/)
-  explains that human roles and oversight should be defined according to system context and risk.
+  gives information about human roles and oversight that agree with system context and risk.
 
-### Further reading
+### More information
 
-- [NIST AI RMF Core](https://airc.nist.gov/airmf-resources/airmf/5-sec-core/) provides risk-based
-  governance outcomes for assigning and differentiating oversight responsibilities.
+- [NIST AI RMF Core](https://airc.nist.gov/airmf-resources/airmf/5-sec-core/) gives risk-based
+  governance outcomes for different oversight responsibilities.
 
 [Back to the engineering principles catalog](../README.md#p062)

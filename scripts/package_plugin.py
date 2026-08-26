@@ -27,6 +27,7 @@ ARCHIVE_ROOTS: Final[tuple[str, ...]] = (
     ".codex-plugin",
     "AGENTS.md",
     "CLAUDE.md",
+    "CONTRIBUTING.md",
     "LICENSE",
     "NOTICE",
     "npm",
@@ -40,6 +41,7 @@ ARCHIVE_ROOTS: Final[tuple[str, ...]] = (
 REQUIRED_MEMBERS: Final[frozenset[str]] = frozenset(
     {
         "skills/repo-review/SKILL.md",
+        "CONTRIBUTING.md",
         "skills/pr-review/SKILL.md",
         "skills/pr-review/references/criteria.md",
         "skills/pr-review/references/delivery.md",

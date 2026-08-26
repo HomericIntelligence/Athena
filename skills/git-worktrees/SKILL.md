@@ -24,25 +24,30 @@ background subagents. Use this skill for manual development work.
 
 ## Engineering principles
 
-Use the [canonical engineering-principles catalog](../../docs/principles/README.md) through these
+Use the [canonical engineering-principles catalog](../../docs/principles/README.md) for these
 workflow-specific rules:
 
-- [P010 — Scope Fidelity](../../docs/principles/README.md#p010): create only the requested isolated
-  branch and worktree; leave cleanup and unrelated repository changes to their owning workflows.
-- [P012 — Evidence Before Modification](../../docs/principles/README.md#p012): inspect repository
-  guidance, the selected base revision, directory state, ignore rules, and baseline checks first.
-- [P021 — Evolutionary and Reversible Design](../../docs/principles/README.md#p021): isolate feature
-  work at an exact base so it can be reviewed, integrated, preserved, or abandoned independently.
-- [P033 — State-Safe Failure Semantics](../../docs/principles/README.md#p033): fail before creation
-  when validation fails and preserve any created worktree when later setup or tests fail.
-- [P053 — Validate at Trust Boundaries](../../docs/principles/README.md#p053): pass branch, base, path,
-  and path-root values through the tested helper's validation rather than composing raw Git commands.
-- [P058 — Bounded Agent Authority](../../docs/principles/README.md#p058): bind creation to the named
-  branch, exact start SHA, validated destination, and requested feature scope.
-- [P065 — Verify Before Claiming Completion](../../docs/principles/README.md#p065): report the actual
-  path and start SHA and run the repository-defined clean-baseline checks before declaring readiness.
-- [P083 — Irreversible Actions Last](../../docs/principles/README.md#p083): complete dry-run and safety
-  validation before creating the branch and worktree, and delegate later removal to `tidy`.
+- [P010 — Scope Fidelity](../../docs/principles/README.md#p010): Make only the requested isolated
+  branch and worktree. Delegate cleanup and unrelated changes to the applicable workflows.
+- [P012 — Evidence Before Modification](../../docs/principles/README.md#p012): Before creation,
+  examine repository guidance, the selected base revision, directory state, ignore rules, and
+  baseline checks.
+- [P021 — Evolutionary and Reversible Design](../../docs/principles/README.md#p021): Put feature work
+  in an isolated worktree at the selected base commit. Only if you have user authority and can use
+  the cleanup workflow, remove the worktree.
+- [P033 — State-Safe Failure Semantics](../../docs/principles/README.md#p033): If validation is not
+  satisfactory, stop before creation. If setup or a test after creation is not satisfactory, keep
+  the worktree.
+- [P053 — Validate at Trust Boundaries](../../docs/principles/README.md#p053): Use the tested helper
+  to validate branch, base, path, and path-root values. Do not use these values in a Git command
+  without the helper.
+- [P058 — Bounded Agent Authority](../../docs/principles/README.md#p058): Make only the named branch
+  and worktree for the requested feature. Use the selected start commit and validated destination.
+- [P065 — Verify Before Claiming Completion](../../docs/principles/README.md#p065): Before you report
+  that you prepared the worktree, do the repository checks for a clean baseline. Report the path
+  and start commit.
+- [P083 — Irreversible Actions Last](../../docs/principles/README.md#p083): Before creation, complete
+  the dry-run. Before creation, complete the safety validation. Use `tidy` for removal.
 
 ## Select the directory
 

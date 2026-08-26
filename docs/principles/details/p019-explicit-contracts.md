@@ -2,56 +2,108 @@
 
 ## Definition
 
-State the obligations and guarantees at a boundary wherever ambiguity can cause defects. A useful
-contract covers relevant inputs, outputs, preconditions, postconditions, invariants, units,
-ownership, mutability, side effects, concurrency expectations, and failure behavior.
+When ambiguity can cause defects, give boundary obligations and guarantees. A contract
+includes all properties that are necessary for correct operation.
 
-**Aliases:** interface contract; behavioral contract.
+These properties can include inputs, outputs, preconditions, postconditions, invariants, units,
+ownership, mutability, side effects, concurrency, and failures.
+
+**Aliases:** interface contract, behavioral contract.
 
 ## Provenance
 
 **Classification:** Athena synthesis.
 
-Bertrand Meyer's Design by Contract is a related formal foundation, not an exact alias: it
-formalized preconditions, postconditions, and invariants. This principle deliberately extends that
-vocabulary to operational and ownership properties used in modern systems.
+Bertrand Meyer's Design by Contract gives a related formal foundation. It is not a full
+alias. Meyer made preconditions, postconditions, and invariants part of the method.
+
+This principle also includes operational and ownership properties.
 
 ## Decision rule
 
-If two parties could make different reasonable assumptions about a boundary, encode or document
-the assumption as part of the contract before relying on it.
+Two parties can make different assumptions about a boundary. Before operation, encode or record each
+material assumption.
 
 ## How to apply
 
-- Define accepted and rejected inputs, including units, ranges, nullability, and encoding.
-- Specify observable outputs, side effects, ordering, consistency, and error taxonomy.
-- Express contracts in types, schemas, assertions, tests, or protocol definitions when practical.
-- Name the owner and lifetime of mutable data and resources.
-- Version externally consumed contracts and treat semantic changes as compatibility decisions.
+- Give accepted and rejected inputs. Give units, ranges, nullability, and encoding.
+- Give observable outputs, side effects, order, consistency, and error categories.
+- When applicable, put contracts in types, schemas, assertions, tests, or protocol definitions.
+- Give the owner and lifetime of mutable data and resources.
+- Version external contracts. Each semantic change is a compatibility decision.
+
+## Diagram
+
+```mermaid
+flowchart LR
+    Boundary["System boundary"] --> Ambiguity{"Are assumptions different?"}
+    Ambiguity -->|No| Minimal["Keep the smallest necessary contract"]
+    Ambiguity -->|Yes| Define["Give obligations and guarantees"]
+    Define --> Encode["Encode or record"]
+    Encode --> Verify["Verify observable behavior"]
+```
+
+## Language examples
+
+The two examples accept signed-64 integer inputs and return typed errors for values not in that
+range.
+
+Python:
+
+```python
+I64_MIN, I64_MAX = -(1 << 63), (1 << 63) - 1
+class OutOfRangeError(ValueError): ...
+class NegativeRequestError(ValueError): ...
+class InsufficientCapacityError(ValueError): ...
+
+def reserve_bytes(requested: int, capacity: int) -> int:
+    if type(requested) is not int or type(capacity) is not int or not (I64_MIN <= requested <= I64_MAX and I64_MIN <= capacity <= I64_MAX):
+        raise OutOfRangeError("signed-64 range required")
+    if requested < 0:
+        raise NegativeRequestError("negative request")
+    if requested > capacity:
+        raise InsufficientCapacityError("insufficient capacity")
+    return capacity - requested
+```
+
+Rust:
+
+```rust
+enum ReserveError { OutOfRange, NegativeRequest, InsufficientCapacity }
+
+fn reserve_bytes(requested: i128, capacity: i128) -> Result<i64, ReserveError> {
+    let range = i64::MIN as i128..=i64::MAX as i128;
+    if !range.contains(&requested) || !range.contains(&capacity) { return Err(ReserveError::OutOfRange); }
+    if requested < 0 { return Err(ReserveError::NegativeRequest); }
+    if requested > capacity { return Err(ReserveError::InsufficientCapacity); }
+    Ok((capacity - requested) as i64)
+}
+```
 
 ## Boundaries and tensions
 
-Not every internal helper needs exhaustive prose. Contracts should be proportional to ambiguity,
-risk, and number of consumers. A schema cannot express every semantic promise, and generated
-documentation does not replace executable verification. Do not expose volatile implementation
-details merely to make a contract appear complete.
+Full prose is not necessary for each internal helper. Contract detail changes with ambiguity, risk,
+and consumer count.
+
+A schema cannot contain all semantic promises. Generated documentation does not replace executable
+verification. Do not show implementation details that can change in contract coverage reports.
 
 ## Examples
 
 ### Positive application
 
-A batch API states that sizes are bytes, rejects negative values, preserves input order, returns a
-typed partial-failure result, and does not mutate caller-owned data.
+A batch API uses bytes for sizes. It rejects negative values and preserves input order. It
+returns a typed partial-failure result and preserves caller-owned data.
 
 ### Misuse or counterexample
 
-An endpoint publishes a JSON shape but omits whether retries can duplicate writes. The documented
-syntax is explicit while the behavior callers need remains ambiguous.
+An endpoint publishes a JSON shape. The endpoint does not give retry behavior. Callers do not know if a retry
+can duplicate a write.
 
 ### Athena or agent workflow
 
-A skill defines required inputs, permitted capabilities, success evidence, and safe failure output
-so a host can invoke it without guessing hidden preconditions.
+A skill gives necessary inputs, permitted capabilities, success evidence, and safe failure output.
+A host can invoke the skill without guesses about hidden preconditions.
 
 ## Related principles
 
@@ -61,22 +113,22 @@ so a host can invoke it without guessing hidden preconditions.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Meyer, "Applying Design by Contract" (1992)](https://doi.org/10.1109/2.161279)
-  presents software reliability through explicit client and supplier obligations.
+  shows how explicit client and supplier obligations can increase software reliability.
 
-### Current guidance
+### Applicable information
 
 - [JSON Schema specification, Draft 2020-12](https://json-schema.org/specification)
-  provides a current, machine-readable vocabulary for JSON structure and validation.
+  gives a machine-readable vocabulary for JSON structure and validation.
 - [OpenAPI Specification v3.2.0](https://spec.openapis.org/oas/v3.2.0.html)
-  defines versioned contracts for HTTP operations, parameters, request bodies, responses, and
+  gives versioned contracts for HTTP operations, parameters, request bodies, responses, and
   schemas.
 
-### Further reading
+### More information
 
 - [RFC 9457, "Problem Details for HTTP APIs" (2023)](https://www.rfc-editor.org/rfc/rfc9457.html)
-  demonstrates a stable error contract with general problem types and occurrence-specific detail.
+  shows a stable error contract with general problem types and event-specific detail.
 
 [Back to the engineering principles catalog](../README.md#p019)

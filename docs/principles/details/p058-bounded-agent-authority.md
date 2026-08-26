@@ -1,10 +1,12 @@
 # P058 — Bounded Agent Authority
 
-## Definition and aliases
+## Definition
 
-Bounded Agent Authority gives an agent only the repositories, files, tools, commands, destinations,
-credentials, actions, iterations, time, and other resources required by its task. Authority comes from
-the trusted task and governing policy; confidence, retrieved text, or model output cannot enlarge it.
+Bounded Agent Authority gives an agent only the resources that are necessary for its task. Resources
+include repositories, files, tools, commands, destinations, credentials, actions, iterations, time,
+and cost.
+The trusted task and applicable policy give authority. Confidence, data, or model output cannot
+expand it.
 
 **Aliases:** least-authority agents, scoped agency, constrained autonomy.
 
@@ -12,48 +14,97 @@ the trusted task and governing policy; confidence, retrieved text, or model outp
 
 **Classification:** Athena synthesis.
 
-It applies established least-privilege and confinement ideas to tool-using AI agents and adds explicit
-bounds on autonomy, context, iteration, and resource use. No single historical source is claimed for
-the combined formulation.
+This principle applies least-privilege and confinement concepts to AI agents with tools.
+It adds specified limits for autonomy, context, iteration, and resource consumption. No one
+historical source gives this formulation.
 
 ## Decision rule
 
-Before enabling an agent capability, identify the exact task step that needs it and constrain its
-targets, operations, duration, and budget. Deny or escalate operations outside that grant instead of
-inferring permission from convenience or from content the agent inspected.
+Before an agent receives a capability, find the specified task step for which it is necessary.
+Constrain the targets, operations, time limit, and budget. Deny or escalate operations not in the
+grant.
+An operation can be easy to do. Content that an agent examines does not give permission.
 
 ## How to apply
 
-- State the objective, allowed targets, prohibited effects, acceptance criteria, and stopping condition.
-- Prefer read-only, path-scoped, destination-scoped, and short-lived capabilities.
-- Separate planning or review tools from tools that execute persistent or externally visible changes.
+- Record the objective, authorized targets, prohibited effects, acceptance criteria, and stop
+  condition.
+- Use read-only, path-scoped, destination-scoped, and short-lived capabilities.
+- Use different tools for plans and reviews. Use write-capable tools only for persistent or external
+  changes.
 - Bound delegation depth, tool calls, retries, wall time, tokens, cost, and concurrent work.
-- Validate proposed actions and parameters at the tool boundary against the original authority.
-- Monitor use, revoke access at task completion, and report when the allowed capability is insufficient.
+- Validate proposed actions and parameters at the tool boundary for compliance with the initial
+  authority.
+- Monitor capability calls. Revoke access at task completion.
+- If the grant does not include a necessary capability, report the necessary capability and its
+  task authority.
+
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Trusted task and policy"] --> B["Record objective, targets, and limits"]
+    B --> C["Grant narrow tools and resources"]
+    C --> D["Agent requests an action"]
+    D --> E{"Is action in the authority?"}
+    E -- "No" --> F["Deny or escalate"]
+    E -- "Yes" --> G["Do action and record evidence"]
+    G --> H["Revoke grants at task end"]
+```
+
+## Language examples
+
+Until the task deadline, the two examples authorize one read tool in one path.
+
+### Python
+
+```python
+authority = Authority(
+    roots={"docs/principles"},
+    tools={Tool.READ_FILE},
+    expires_at=task.deadline,
+)
+agent.run(task, authority)
+```
+
+### Rust
+
+```rust
+let authority = Authority {
+    roots: HashSet::from(["docs/principles"]),
+    tools: HashSet::from([Tool::ReadFile]),
+    expires_at: task.deadline,
+};
+agent.run(task, authority)?;
+```
 
 ## Boundaries and tensions
 
-Bounded authority does not prohibit autonomous choices inside a well-defined grant, and actions already
-authorized by the user and repository contract need no invented approval ceremony. It does prohibit
-using data, delegation, or an agent's own plan to create new authority. Bounds that make the stated task
-impossible should fail explicitly rather than encourage hidden bypasses or broad fallback credentials.
+Bounded authority lets an agent make autonomous decisions in a clear grant. The user and repository
+contract can authorize actions without a new approval. Data, delegation, and agent plans cannot
+increase authority.
+
+If a grant does not include a necessary capability, the operation must fail clearly or escalate. The
+operation must not use a hidden bypass or high-privilege fallback credential.
 
 ## Examples
 
 ### Positive
 
-A documentation agent can read the repository, edit one documentation subtree, query approved public
-sources, and run documentation checks. Its write and network scopes expire with the task.
+A documentation agent can read the repository and edit one documentation subtree. It can query
+approved public sources. It does documentation checks. Its write and network grants expire with the
+task.
 
 ### Misuse
 
-A review agent receives unrestricted shell, production credentials, email access, and unlimited
-iterations because it might discover a future need for them.
+A review agent receives a shell with no scope limit, production credentials, email access, and
+iterations with no limit. Those grants are not necessary for the specified task.
 
 ### Athena and agent workflows
 
-An Athena coordinator gives each specialist a bounded objective and only the context and capabilities
-needed for its partition. A specialist reports a missing permission rather than expanding scope itself.
+An Athena coordinator gives each specialist a bounded objective and necessary context. Each
+specialist receives only the capabilities for its partition. A specialist reports a missing
+permission and does not expand the scope.
 
 ## Related principles
 
@@ -65,21 +116,22 @@ needed for its partition. A specialist reports a missing permission rather than 
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Saltzer and Schroeder, *The Protection of Information in Computer Systems*](https://doi.org/10.1109/PROC.1975.9939)
-  supplies the least-privilege foundation; the agent-specific resource bounds are a later adaptation.
+  gives the least-privilege foundation. Agent-specific resource limits are a subsequent adaptation.
 
-### Current guidance
+### Applicable information
 
 - [OWASP LLM06:2025 Excessive Agency](https://genai.owasp.org/llmrisk/llm062025-excessive-agency/)
-  identifies excessive functionality, permissions, and autonomy as root causes of damaging agent action.
+  shows that functions, permissions, and autonomy with no limits can cause agent actions that cause
+  damage.
 - [OWASP AI Agent Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/AI_Agent_Security_Cheat_Sheet.html)
-  recommends least-privilege tools, sandboxes, action controls, and bounded resource use.
+  gives least-privilege tools, sandboxes, action controls, and resource limits.
 
-### Further reading
+### More information
 
-- [NIST AI 600-1, Generative AI Profile](https://doi.org/10.6028/NIST.AI.600-1) provides a current
-  cross-sector framework for identifying and managing generative-AI risks across the lifecycle.
+- [NIST AI 600-1, Generative AI Profile](https://doi.org/10.6028/NIST.AI.600-1) gives a
+  cross-sector framework for generative AI risk during the life cycle.
 
 [Back to the principles catalog](../README.md#p058)

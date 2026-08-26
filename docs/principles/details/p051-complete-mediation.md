@@ -1,59 +1,100 @@
 # P051 — Complete Mediation
 
-## Definition and aliases
+## Definition
 
-Complete Mediation requires an authorization decision for every protected operation on the specific
-target being accessed. An earlier login, screen-level check, network location, or prior successful
-request does not permanently establish authority for later operations.
+Complete Mediation makes an authorization decision necessary for each protected operation and
+specified target. A login, interface check, network location, or completed request does not give
+permanent authority for subsequent operations.
 
-**Aliases:** authorize every access, per-operation authorization, continuous mediation.
+**Aliases:** authorization for each access, operation-specific authorization, continuous mediation.
 
 ## Provenance
 
 **Classification:** established principle.
 
-Saltzer and Schroeder named Complete Mediation as one of their secure-system design principles and
-traced the suggestion to earlier work by Roger Needham.
+Saltzer and Schroeder's paper gives Complete Mediation as a secure system design principle. The
+paper gives a reference to earlier work from Roger Needham.
 
 ## Decision rule
 
-At each protected boundary, bind the current principal, operation, resource, relevant attributes,
-and policy version into an authorization decision. Do not allow an alternate path to reach the
-resource without the same effective check.
+At each protected boundary, bind the request principal, operation, resource, necessary attributes,
+and policy version to an authorization decision. Use the same authorization check on all other paths
+to the resource.
 
 ## How to apply
 
-- Inventory every path to each protected resource, including batch, administrative, and recovery paths.
-- Centralize policy enforcement where practical while preserving resource-specific decisions.
-- Authorize the requested action on the requested object, not merely the route or object type.
-- Revalidate when identity, role, tenancy, ownership, policy, or resource state may have changed.
-- Design caches with explicit expiry and revocation semantics; never cache authority indefinitely.
-- Test direct-object access, alternate transports, stale sessions, and policy changes.
+- Find all paths to each protected resource. Include batch, administrative, and recovery paths.
+- If a central mechanism can enforce all paths, use it. Keep resource-specific decisions.
+- Authorize the requested action on the requested object, not only the route or object type.
+- If identity, role, tenancy, ownership, policy, or resource state can change, validate again.
+- Give each decision cache a specified expiration and revocation policy. Do not cache authority
+  without a limit.
+- Do tests of direct-object access, other transports, stale sessions, and policy changes.
+
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Protected operation request"] --> B["Record principal and target"]
+    B --> C["Load applicable policy and attributes"]
+    C --> D{"Does applicable policy authorize the operation?"}
+    D -- "No" --> E["Deny and record reason"]
+    D -- "Yes" --> F["Do the specified operation"]
+    F --> G["Use a new decision for each subsequent request"]
+```
+
+## Language examples
+
+Before each deletion, the two examples authorize the request user, action, and resource.
+
+### Python
+
+```python
+def delete_document(user, document_id):
+    document = documents.get(document_id)
+    policy.authorize(user, "delete", document)
+    documents.delete(document.id)
+    audit.record(user.id, "delete", document.id)
+```
+
+### Rust
+
+```rust
+fn delete_document(user: &User, id: DocumentId) -> Result<(), Error> {
+    let document = documents::get(id)?;
+    policy::authorize(user, Action::Delete, &document)?;
+    documents::delete(document.id)?;
+    audit::record(user.id, Action::Delete, document.id)
+}
+```
 
 ## Boundaries and tensions
 
-Complete Mediation concerns authorization, not repeated authentication at every function call.
-Verified session identity and carefully bounded decision caching can be valid when changes and
-revocation are handled. Duplicating ad hoc checks across code can create gaps; a shared enforcement
-mechanism is often safer, provided no bypass path exists. Authentication alone never proves that an
-identified caller may perform every action.
+Complete Mediation applies to authorization. It does not authenticate at each function call. When
+change and revocation controls are active, a verified session and a bounded decision cache can be
+correct.
+
+Duplicate, ad hoc checks can cause gaps. If one shared enforcement mechanism has no bypass path, use
+that mechanism. Authentication does not authorize all actions for an identified caller.
 
 ## Examples
 
 ### Positive
 
-An API middleware authenticates a session, then the resource service authorizes the caller's action
-against the requested tenant and object on every request, including administrative endpoints.
+An API middleware component authenticates a session. The resource service then authorizes the
+caller, action, tenant, and object for each request. This rule also includes administrative
+endpoints.
 
 ### Misuse
 
-A UI hides the delete button from ordinary users, but the delete endpoint accepts any authenticated
-session because login was treated as sufficient authorization.
+An interface does not show the delete control to users without permission. The delete endpoint
+accepts all authenticated sessions because login is the only authorization control.
 
 ### Athena and agent workflows
 
-Before each write-capable tool call, the workflow checks that the requested target and operation are
-inside the task's current authority. A prior approved read does not authorize a later push or deletion.
+Before each write-capable tool call, the workflow compares the target and operation with the task
+authority and verifies that the call is authorized. An approved read does not authorize a
+subsequent push or deletion.
 
 ## Related principles
 
@@ -64,19 +105,20 @@ inside the task's current authority. A prior approved read does not authorize a 
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Saltzer and Schroeder, *The Protection of Information in Computer Systems*](https://doi.org/10.1109/PROC.1975.9939)
-  gives the canonical formulation and discusses the risk of stale cached authority decisions.
+  gives the canonical formulation and information about risk from stale cached authority decisions.
 
-### Current guidance
+### Applicable information
 
 - [OWASP Authorization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html)
-  requires validating permissions on every request and testing authorization logic.
+  gives the requirement that each request must have a permission check. It gives authorization logic
+  tests.
 
-### Further reading
+### More information
 
 - [NIST SP 800-53 Release 5.2.0, control AC-3](https://csrc.nist.gov/Pubs/sp/800/53/r5/upd1/Final)
-  specifies policy-based enforcement for approved logical access to information and resources.
+  gives policy controls for approved logical access to information and resources.
 
 [Back to the principles catalog](../README.md#p051)

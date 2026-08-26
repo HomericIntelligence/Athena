@@ -2,52 +2,100 @@
 
 ## Definition
 
-Inspect the final change and run the relevant repository-defined checks before claiming that work is
-complete or correct. Report exactly what ran, against which revision and environment, what passed or
-failed, and what material verification remains unavailable.
+Before a completion claim, examine the last change. Run the applicable checks that the repository
+specifies. Report the command, revision, environment, result, and important verification gaps.
 
-**Aliases:** evidence-backed completion; validate before declaring success.
+**Aliases:** evidence-backed completion, validation before a success claim.
 
 ## Provenance
 
 **Classification:** Athena synthesis.
 
-This formulation combines long-standing verification and validation practice with reproducible
-software-delivery evidence. No single historical origin is claimed. Athena's evidence-integrity
-policy makes truthful, reproducible reporting part of the rule.
+This rule uses established verification practice and evidence from software delivery. No verified
+source owns this rule. Athena's evidence-integrity policy specifies accurate reports with recorded
+commands, revisions, and environments.
 
 ## Decision rule
 
-Do not convert expectation into a completion claim. First inspect the delivered state and obtain
-fresh evidence appropriate to its risk; then scope the claim to what that evidence actually proves.
+Do not report an expectation as a completion claim. Examine the delivered state. Use current,
+risk-based evidence. Limit the claim to facts that the evidence proves.
 
 ## How to apply
 
-- Review the final diff, including generated, staged, and untracked artifacts in scope.
-- Run the repository's required tests, build, type, lint, static, security, and packaging checks.
-- Use the final revision and relevant environment rather than relying on stale earlier results.
-- Record commands, exit status, revision, environment, and meaningful limitations.
-- Report failures, skips, unavailable dependencies, and timeouts without inventing substitute
-  success.
+- Review the last diff and all generated, staged, and untracked artifacts in scope.
+- Run the necessary tests, build checks, type checks, lint checks, static checks, security checks,
+  and package checks.
+- Use the last revision and applicable environment. Do not use stale results.
+- Record commands, exit status, revision, environment, and important limitations.
+- Report failures, skips, unavailable dependencies, and timeouts. Do not report a pass result
+  without evidence.
+
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Examine last change"] --> B["Select necessary checks for risk"]
+    B --> C["Run checks on last revision"]
+    C --> D{"Necessary evidence passes?"}
+    D -- "No" --> E["Report failure or evidence gap"]
+    D -- "Yes" --> F["Record command, revision, and environment"]
+    F --> G["Make evidence-bound completion claim"]
+```
+
+## Language examples
+
+The two examples show completion only if the expected-check set is not empty and each check has a
+current pass result.
+
+```python
+def completion_report(revision, expected, results):
+    current = {
+        name: check for name, check in results.items()
+        if check.revision == revision
+    }
+    missing = sorted(expected.difference(current))
+    failed = sorted(name for name in expected if name in current and not current[name].passed)
+    complete = bool(expected) and not missing and not failed
+    return Report(revision, complete, missing, failed)
+```
+
+```rust
+fn completion_report(revision: &str, expected: &HashSet<String>,
+                     results: &HashMap<String, Check>) -> Report {
+    let current = |name: &String| {
+        results.get(name).filter(|check| check.revision.as_str() == revision)
+    };
+    let missing = expected.iter().filter(|name| current(*name).is_none()).cloned().collect();
+    let failed = expected.iter()
+        .filter(|name| current(*name).is_some_and(|check| !check.passed))
+        .cloned().collect();
+    let complete = !expected.is_empty() && missing.is_empty() && failed.is_empty();
+    Report::new(revision, complete, missing, failed)
+}
+```
 
 ## Boundaries and tensions
 
-Verification should be proportional: documentation, configuration, and production changes need
-different evidence. Passing checks cannot prove requirements that the checks do not exercise, and
-an unverified claim does not become true because a run would be expensive. When a required check
-cannot run, report the gap and the command or environment that would close it. Never bypass the gate
-under [P068 No Validation Bypass](p068-no-validation-bypass.md).
+Use risk-based evidence. Documentation, configuration, and production changes use different
+evidence. Checks that pass cannot prove requirements that the checks do not
+exercise.
+
+Cost does not supply evidence for an unverified claim. If a necessary check cannot run, report the
+gap. Also report the command or environment that can give the missing evidence. Do not bypass the
+gate.
+[P068 No Validation Bypass](p068-no-validation-bypass.md) specifies this rule.
 
 ## Examples
 
-**Positive:** An author inspects the final diff, runs the repository's required gate at the current
-commit, and reports one unavailable platform test separately rather than saying that all tests pass.
+**Positive:** An author examines the last diff and runs the necessary gate at the current commit.
+The report identifies one unavailable platform test and does not claim that all tests pass.
 
-**Misuse:** A developer changes code after a successful test run and cites the earlier run as proof
-for the new revision.
+**Misuse:** A developer changes code after a test passes. The developer cites that stale result
+as proof for the new revision.
 
-**Athena/agent workflow:** Before completion, an agent runs `just all`, reports its actual status,
-and names any narrower checks performed when the full gate could not finish.
+**Athena/agent workflow:** Before completion, an agent runs `just all` and reports the command
+result.
+If the full gate cannot complete, the agent identifies each narrower check.
 
 ## Related principles
 
@@ -59,22 +107,23 @@ and names any narrower checks performed when the full gate could not finish.
 
 ## References
 
-### Origin/history
+### Source information
 
 - [NIST IR 8397, Guidelines on Minimum Standards for Developer Verification of Software](https://doi.org/10.6028/NIST.IR.8397)
-  records a modern consensus set of broadly applicable verification techniques; no single source is
-  treated as the origin of Athena's completion rule.
+  records a current consensus set of verification techniques. Athena does not identify it as the
+  initial source for this rule.
 
-### Current guidance
+### Applicable information
 
-- [NIST SSDF 1.1](https://csrc.nist.gov/pubs/sp/800/218/final) defines review, analysis, and testing
-  practices used to verify software before release.
+- [NIST SSDF 1.1](https://csrc.nist.gov/pubs/sp/800/218/final) specifies review, analysis, and testing
+  practices for software verification before release.
 - [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-  requires reviewers to assess functionality, tests, design, and the complete changed context.
+  states that reviewers must examine function, tests, design, and the full change context.
 
-### Further reading
+### More information
 
-- [Athena evidence integrity policy](../../policies/evidence-integrity.md) defines the repository's
-  reproducibility and truthful-reporting contract for completion evidence.
+- [Athena evidence integrity policy](../../policies/evidence-integrity.md) specifies the
+  repository's contract for accurate completion-evidence reports with recorded commands, revisions,
+  and environments.
 
 [Back to the engineering principles catalog](../README.md#p065)

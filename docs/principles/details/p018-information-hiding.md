@@ -2,56 +2,105 @@
 
 ## Definition
 
-Expose a stable contract while concealing implementation decisions that are likely to change.
-Consumers should know what a component guarantees, not the representation, algorithm, dependency,
-or operational detail used to provide it.
+Give consumers a stable contract and hide implementation decisions that can change.
+Consumers use only the component guarantees. They do not use the component representation, algorithm,
+dependency, or operational details.
 
-**Aliases:** encapsulation of design decisions; implementation hiding.
+**Aliases:** encapsulation of design decisions, implementation hiding.
 
 ## Provenance
 
 **Classification:** established principle.
 
-David Parnas articulated information hiding as a module decomposition criterion in 1972.
-Encapsulation is closely related, but language-level access control alone does not ensure that
-volatile decisions are actually hidden.
+David Parnas used information hiding as a module decomposition criterion in 1972. Encapsulation
+is a related principle. Language-level access control does not hide each implementation
+decision that can change.
 
 ## Decision rule
 
-For every boundary, expose only what consumers need to rely on and keep volatile choices behind
-that boundary.
+Give consumers only the facts that they must use. Keep each implementation decision that can change
+behind the boundary.
 
 ## How to apply
 
-- Identify likely change points such as storage formats, vendors, algorithms, and cache policy.
-- Publish operations and semantic guarantees instead of internal fields or dependency objects.
-- Keep private representations inaccessible through reflection, shared tables, or mutable aliases.
-- Change implementations behind contract tests before changing a public contract.
-- Document intentional escape hatches and their compatibility cost.
+- Find possible change points, for example storage formats, vendors, algorithms, and cache
+  policy.
+- Publish operations and semantic guarantees. Do not publish internal fields or dependency objects.
+- Do not use shared tables or mutable aliases to give access to private representations.
+- Before you change an implementation, do tests of the public contract.
+- Record each specified escape path and its compatibility cost.
+
+## Diagram
+
+```mermaid
+flowchart LR
+    Consumer["Consumer"] --> Contract["Stable contract"]
+    Contract --> Component["Component"]
+    Component --> Choice["Hidden implementation decision"]
+    Choice --> Replace["Replace implementation"]
+    Replace --> Contract
+```
+
+## Language examples
+
+The two examples give store operations to consumers and hide the map representation.
+
+Python:
+
+```python
+class TokenStore:
+    def __init__(self) -> None:
+        self._tokens: dict[str, str] = {}
+
+    def save(self, user: str, token: str) -> None:
+        self._tokens[user] = token
+
+    def load(self, user: str) -> str | None:
+        return self._tokens.get(user)
+```
+
+Rust:
+
+```rust
+use std::collections::HashMap;
+
+pub struct TokenStore { tokens: HashMap<String, String> }
+impl TokenStore {
+    pub fn new() -> Self { Self { tokens: HashMap::new() } }
+    pub fn save(&mut self, user: String, token: String) {
+        self.tokens.insert(user, token);
+    }
+    pub fn load(&self, user: &str) -> Option<&str> {
+        self.tokens.get(user).map(String::as_str)
+    }
+}
+```
 
 ## Boundaries and tensions
 
-Information hiding must not hide behavior that callers need for correctness, including side
-effects, ownership, latency, failure modes, and consistency guarantees. It also does not justify a
-speculative abstraction for every possible implementation. Observability may expose safe
-diagnostic facts without exposing mutable internals or sensitive data.
+Information hiding must show behavior that is necessary for correct operation. This behavior includes
+side effects, ownership, latency, failure modes, and consistency guarantees.
+
+Without evidence for more than one possible implementation, do not make an abstraction.
+Observability can show safe diagnostic facts. It must not show mutable internals or sensitive
+data.
 
 ## Examples
 
 ### Positive application
 
-A repository exposes `save` and `load` semantics while owning its schema and migration details.
-Callers do not construct its SQL or depend on table names.
+A repository publishes `save` and `load` operations. The repository owns its schema and migration
+details. Callers do not write SQL or use table names.
 
 ### Misuse or counterexample
 
-A wrapper marks fields private but returns its mutable internal collection directly. The syntax
-suggests encapsulation while consumers still depend on and can corrupt the representation.
+A wrapper makes its fields private and returns its mutable collection. Consumers can use that
+representation and corrupt it.
 
 ### Athena or agent workflow
 
-A skill invokes a documented helper command and interprets its exit contract. It does not import
-private helper modules or depend on incidental log wording.
+A skill invokes a specified helper command and interprets its exit contract. It does not import
+private helper modules or use log text that is not part of the exit contract.
 
 ## Related principles
 
@@ -61,20 +110,19 @@ private helper modules or depend on incidental log wording.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Parnas, "On the Criteria To Be Used in Decomposing Systems into Modules" (1972)](https://doi.org/10.1145/361598.361623)
-  argues for modules organized around hidden design decisions rather than processing steps.
+  recommends modules that hide design decisions, not process-step modules.
 
-### Current guidance
+### Applicable information
 
 - [Oracle, "Strong Encapsulation in the JDK"](https://docs.oracle.com/en/java/javase/25/migrate/migrating-jdk-8-later-jdk-releases.html)
-  documents a concrete platform boundary that protects unsupported internals from consumers.
+  gives a platform boundary that hides unsupported internals from consumers.
 
-### Further reading
+### More information
 
 - [SEI, "Software Architecture"](https://www.sei.cmu.edu/software-architecture/)
-  describes architecture as explicit structural decisions and emphasizes conformance during
-  evolution.
+  gives explicit structural decisions and conformance during system evolution.
 
 [Back to the engineering principles catalog](../README.md#p018)

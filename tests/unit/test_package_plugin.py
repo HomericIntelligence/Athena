@@ -16,6 +16,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from hashlib import sha256
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import unquote, urlsplit
 
 from scripts.package_plugin import (
     ARCHIVE_ROOTS,
@@ -40,6 +41,34 @@ def technical_english_targets(markdown: str) -> list[str]:
         if normalized_name == "technical_english.md":
             targets.append(path)
     return targets
+
+
+def local_markdown_targets(markdown: str) -> list[tuple[str, str]]:
+    """Return paths and fragments from local Markdown links."""
+    targets: list[tuple[str, str]] = []
+    for target in MARKDOWN_LINK.findall(markdown):
+        parsed = urlsplit(target)
+        if parsed.scheme or parsed.netloc or (not parsed.path and not parsed.fragment):
+            continue
+        targets.append((unquote(parsed.path), unquote(parsed.fragment)))
+    return targets
+
+
+def markdown_anchors(markdown: str) -> set[str]:
+    """Return GitHub-style anchors for the headings in a Markdown document."""
+    anchors: set[str] = set()
+    counts: dict[str, int] = {}
+    for line in markdown.splitlines():
+        match = re.match(r"^#{1,6}\s+(.+?)\s*#*\s*$", line)
+        if match is None:
+            continue
+        heading = re.sub(r"\[([^]]+)\]\([^)]+\)", r"\1", match.group(1))
+        heading = heading.replace("`", "")
+        base = re.sub(r"[^\w -]", "", heading.casefold()).replace(" ", "-")
+        occurrence = counts.get(base, 0)
+        counts[base] = occurrence + 1
+        anchors.add(base if occurrence == 0 else f"{base}-{occurrence}")
+    return anchors
 
 
 def create_repository(root: Path, *, version: str = "1.2.3") -> None:
@@ -365,6 +394,48 @@ if (
                         )
                         self.assertTrue(resolved.startswith("skills/"))
                         self.assertIn(resolved, names)
+
+    def test_source_archive_local_markdown_links_resolve_inside_archive(self) -> None:
+        """The portable archive contains each local Markdown link target."""
+        archive_path, checksum_path = build_package(ROOT)
+        self.addCleanup(archive_path.unlink, missing_ok=True)
+        self.addCleanup(checksum_path.unlink, missing_ok=True)
+
+        with tarfile.open(archive_path, mode="r:gz") as archive:
+            names = {member.name.rstrip("/") for member in archive.getmembers()}
+            checked = 0
+            unresolved: list[str] = []
+            for name in sorted(names):
+                if not name.endswith(".md"):
+                    continue
+                source = archive.extractfile(name)
+                assert source is not None
+                for target, fragment in local_markdown_targets(
+                    source.read().decode("utf-8")
+                ):
+                    checked += 1
+                    resolved = (
+                        posixpath.normpath(
+                            posixpath.join(posixpath.dirname(name), target)
+                        )
+                        if target
+                        else name
+                    )
+                    if resolved == ".." or resolved.startswith(("/", "../")):
+                        unresolved.append(f"{name} -> {target} (outside archive)")
+                    elif resolved not in names:
+                        unresolved.append(f"{name} -> {target} (target does not exist)")
+                    elif fragment and resolved.endswith(".md"):
+                        target_source = archive.extractfile(resolved)
+                        assert target_source is not None
+                        anchors = markdown_anchors(target_source.read().decode("utf-8"))
+                        if fragment.casefold() not in anchors:
+                            unresolved.append(
+                                f"{name} -> {target}#{fragment} (anchor does not exist)"
+                            )
+
+        self.assertGreater(checked, 0, "The archive has no local Markdown links.")
+        self.assertEqual([], unresolved)
 
     def test_source_python_cache_directories_are_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

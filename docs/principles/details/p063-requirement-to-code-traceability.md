@@ -2,52 +2,88 @@
 
 ## Definition
 
-Every substantive code or artifact change should have a defensible path to a requirement,
-acceptance criterion, defect, invariant, or necessary implementation dependency. Traceability makes
-the reason for a change discoverable without requiring a heavyweight matrix for ordinary work.
+Each important code or artifact change must trace to a requirement, acceptance criterion, defect,
+invariant, or necessary implementation dependency. A reviewer must find the applicable trace link.
+Standard work does not make a large traceability matrix necessary.
 
-**Aliases:** requirements traceability; change-to-requirement mapping; implementation provenance.
+**Aliases:** requirements traceability, change-to-requirement map, implementation provenance.
 
 ## Provenance
 
 **Classification:** established principle.
 
-Requirements traceability developed across systems and software engineering rather than from one
-verified inventor. Formal standards often require bidirectional links among requirements, design,
-code, and verification. Athena applies the same discipline proportionally to everyday changes.
+Requirements traceability developed in systems engineering and software engineering. No verified
+inventor owns the practice. Formal standards frequently specify bidirectional links between
+requirements, design, code, and verification. Athena applies the same discipline in proportion to
+risk.
 
 ## Decision rule
 
-If a reviewer cannot explain why a substantive changed element is necessary for the accepted task
-or a documented dependency of that task, remove it, split it into separately authorized work, or
-record the missing requirement before proceeding.
+For each important change, identify its accepted requirement or documented dependency. If there is
+no link, do one of these actions:
+
+- Remove the change.
+- Isolate the work.
+- Before implementation, record the missing requirement.
 
 ## How to apply
 
-- State the requirement and acceptance criteria before implementation.
-- Keep each change focused enough that its issue, plan, or pull-request rationale is unambiguous.
-- Map important design and code decisions to the requirement they satisfy.
-- Identify supporting changes, such as migrations or compatibility work, as explicit dependencies.
-- Update trace links when requirements or implementation ownership change.
+- Before implementation, state the requirement and acceptance criteria.
+- Keep each change narrow. Make its issue, plan, or pull-request rationale clear.
+- Map important design and code decisions to their requirements.
+- Identify migrations, compatibility work, and other support changes as recorded dependencies.
+- When requirements or implementation ownership change, update the trace links.
+
+## Diagram
+
+```mermaid
+flowchart LR
+    A["Accept requirement or defect"] --> B["Specify acceptance criteria"]
+    B --> C["Map design decision"]
+    C --> D["Map code change"]
+    D --> E{"Does the trace link contain all necessary data?"}
+    E -- "No" --> F["Remove, isolate, or record missing requirement"]
+    E -- "Yes" --> G["Submit focused change"]
+```
+
+## Language examples
+
+The two examples associate the function with REQ-17 and implement the accepted REQ-17 rule.
+
+```python
+def normalize_email(value):
+    """REQ-17: Return a lowercase email address without outer spaces."""
+    normalized = value.strip().lower()
+    return normalized
+```
+
+```rust
+/// REQ-17: Return a lowercase email address without outer spaces.
+fn normalize_email(value: &str) -> String {
+    value.trim().to_lowercase()
+}
+```
 
 ## Boundaries and tensions
 
-Traceability is about justified intent, not a comment or ticket ID on every line. Mechanical edits,
-generated artifacts, and refactors can inherit the rationale of their coherent parent change.
-Security and correctness work may be necessary even when an initial request omitted it; make that
-dependency explicit rather than pretending it is unrelated. Traceability must not be used to freeze
-a flawed implementation or bypass [P072 Technical Evidence](p072-technical-evidence-over-preference.md).
+Traceability proves the link between a requirement and the intent. It does not make a comment or
+ticket ID necessary on each line.
+Mechanical edits, generated artifacts, and refactors can inherit the rationale of one coherent
+parent change. Security or correctness work can be necessary when the initial request omits it.
+Then, record the dependency. Do not use traceability to keep an incorrect
+implementation or to bypass
+[P072 Technical Evidence](p072-technical-evidence-over-preference.md).
 
 ## Examples
 
-**Positive:** A schema field, migration, compatibility reader, and removal trigger all point to the
-same accepted data-transition requirement.
+**Positive:** A schema field, migration, compatibility reader, and removal trigger all reference the
+same data-transition requirement that the project accepted.
 
-**Misuse:** A feature pull request includes an unrelated dependency upgrade and broad refactor with
-no requirement explaining either change.
+**Misuse:** A feature pull request includes a dependency update and large refactor that the feature
+does not make necessary. No requirement makes the dependency update or the refactor necessary.
 
-**Athena/agent workflow:** A plan gives every implementation step an acceptance criterion and omits
-files or process artifacts that have no demonstrated product consumer.
+**Athena/agent workflow:** A plan assigns an acceptance criterion to each implementation step. It
+omits files and process artifacts that have no demonstrated product consumer.
 
 ## Related principles
 
@@ -58,23 +94,23 @@ files or process artifacts that have no demonstrated product consumer.
 
 ## References
 
-### Origin/history
+### Source information
 
 - [NASA SWE-064: Bidirectional Traceability Between Software Design and Software Code](https://swehb.nasa.gov/spaces/7150/pages/16450496/SWE-064%2B-%2BBidirectional%2BTraceability%2BBetween%2BSoftware%2BDesign%2Band%2BSoftware%2BCode)
-  documents a mature requirements-engineering treatment of code traceability; no singular origin is
-  claimed here.
+  documents an established systems-engineering treatment of code traceability. This page does not
+  identify the initial source.
 
-### Current guidance
+### Applicable information
 
 - [NASA SWE-050: Software Requirements](https://swehb.nasa.gov/spaces/SWEHBVD/pages/102695421/SWE-050%2B-%2BSoftware%2BRequirements)
-  describes requirements characteristics and bidirectional lifecycle traceability in the current
-  Software Engineering Handbook.
-- [NIST SSDF 1.1](https://csrc.nist.gov/pubs/sp/800/218/final) connects secure design and code
-  practices to documented security requirements and release evidence.
+  lists requirement properties and bidirectional lifecycle traceability in the current Software
+  Engineering Handbook.
+- [NIST SSDF 1.1](https://csrc.nist.gov/pubs/sp/800/218/final) links secure design and code practices
+  to documented security requirements and release evidence.
 
-### Further reading
+### More information
 
 - [Google Engineering Practices: Small CLs](https://google.github.io/eng-practices/review/developer/small-cls.html)
-  explains why one self-contained conceptual change is easier to understand and review.
+  shows why reviewers can more easily understand one self-contained conceptual change.
 
 [Back to the engineering principles catalog](../README.md#p063)

@@ -2,51 +2,82 @@
 
 ## Definition
 
-**Preserve Unrequested Behavior** means retaining existing public APIs, schemas, file formats,
-persistence, command behavior, ordering, security properties, side effects, and failure contracts
-unless the accepted requirement explicitly changes them.
+**Preserve Unrequested Behavior** makes observable behavior that is not in the accepted requirement an
+invariant. This behavior includes public APIs, schemas, file formats, persistence, command behavior,
+order, security properties, side effects, and failure contracts. Do not change it without authority.
 
 ## Provenance
 
 **Classification:** Athena synthesis.
 
-The exact wording is Athena's and is grounded in compatibility practice. Backward-compatibility
-policies, semantic versioning, and regression testing provide established foundations, but no single
-source defines the full principle for every kind of software change.
+Athena gives this name to a rule from compatibility practice. Compatibility policies, semantic versioning,
+and regression tests are established sources. No single source gives all parts of this principle
+for each type of software change.
 
 ## Decision rule
 
-Treat externally observable behavior outside the requested change as an invariant. Alter it only
-when the requirement, a mandatory security correction, or an approved compatibility plan provides
-specific authority and migration handling.
+Make observable behavior that is not in the requested change an invariant. Change it only with specified
+authority from the requirement, a mandatory security correction, or an approved compatibility
+plan. Give the necessary migration.
 
 ## How to apply
 
-- Inventory public and operational behavior touched by the change.
-- Characterize existing behavior with tests when its contract is unclear.
-- Preserve defaults, ordering, errors, formats, and side effects not named in the requirement.
-- Provide compatibility or migration paths for intentionally changed contracts when required.
-- Call out unavoidable collateral behavior changes instead of hiding them in implementation detail.
+- Find public behavior and behavior in operation that the change touches.
+- When the contract is not clear, record current behavior in tests.
+- Keep defaults, ordering, errors, formats, and side effects that the requirement does not include.
+- When a clear decision changes a contract, give necessary compatibility or migration paths.
+- If the implementation cannot prevent behavior changes, give information about the changes. Do not hide the changes in implementation details.
+
+## Diagram
+
+```mermaid
+flowchart TD
+    A["Find the requested behavior change"] --> B["Find other observable behavior"]
+    B --> C["Do the narrow change"]
+    C --> D{"Did other behavior change?"}
+    D -->|Yes| E{"Does authority include the behavior change?"}
+    E -->|No| G["Put the initial behavior back"]
+    E -->|Yes| F["Make sure current contracts are correct"]
+    D -->|No| F
+    G --> F
+```
+
+## Language examples
+
+The two examples change the name and keep all other fields.
+
+```python
+def rename_user(user: dict, name: str) -> dict:
+    updated = user.copy()
+    updated["name"] = name
+    return updated
+```
+
+```rust
+fn rename_user(mut user: User, name: String) -> User {
+    user.name = name;
+    user
+}
+```
 
 ## Boundaries and tensions
 
-This principle does not preserve vulnerabilities, data corruption, or behavior explicitly declared
-unsupported. Repository policy and authorized requirements may demand a breaking change. It also
-does not require reproducing private implementation details when observable behavior remains the
-same. [P010 Scope Fidelity](p010-scope-fidelity.md) limits the change, while
-[P021 Evolutionary and Reversible Design](p021-evolutionary-and-reversible-design.md) guides an
-authorized transition.
+This principle does not keep vulnerabilities, data corruption, or behavior that the contract does
+not include. Repository policy and approved requirements can make a change that is not compatible
+necessary. When observable behavior stays the same, do not reproduce private implementation details.
+[P010 Scope Fidelity](p010-scope-fidelity.md) gives the change boundary.
+[P021 Evolutionary and Reversible Design](p021-evolutionary-and-reversible-design.md) is applicable to an
+approved transition.
 
 ## Examples
 
-**Positive:** A parser fix accepts a newly required input while preserving existing serialized
-output, error categories, and ordering for all other inputs.
+**Positive:** A parser correction accepts a new necessary input. It keeps serialized output,
+error categories, and order for all other inputs.
 
-**Misuse:** A documentation task silently changes a CLI default because the new value seems more
-convenient.
+**Misuse:** A documentation task changes a CLI default without notice and without a requirement.
 
-**Athena/agent workflow:** Updating skill guidance preserves frontmatter triggers, capability
-fallbacks, and host-neutral behavior unless the issue explicitly changes them.
+**Athena/agent workflow:** An update to skill guidance keeps frontmatter triggers, capability
+fallbacks, and host-neutral behavior. An explicit issue requirement can authorize a change.
 
 ## Related principles
 
@@ -59,22 +90,21 @@ fallbacks, and host-neutral behavior unless the issue explicitly changes them.
 
 ## References
 
-### Origin/history
+### Source information
 
-- [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html) formalizes compatibility effects
-  for public APIs; it is a versioning standard, not the origin of Athena's broader rule.
+- [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html) specifies compatibility effects
+  for public APIs. It is a version standard, not the source of all parts of Athena's rule.
 
-### Current guidance
+### Applicable information
 
-- [The Go 1 Compatibility Promise](https://go.dev/doc/go1compat) is a concrete language project's
-  current policy for preserving behavior and documenting permitted exceptions.
+- [The Go 1 Compatibility Promise](https://go.dev/doc/go1compat) is the current policy of the Go
+  language project for behavior preservation and applicable exceptions.
 - [Google Engineering Practices: What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
-  requires reviewers to consider user effects, compatibility, and tests.
+  makes reviewer analysis of user effects, compatibility, and tests necessary.
 
-### Further reading
+### More information
 
 - [Martin Fowler: Is High Quality Software Worth the Cost?](https://martinfowler.com/articles/is-quality-worth-cost.html)
-  discusses the long-term value of internal quality while distinguishing it from externally visible
-  functionality.
+  gives information about the long-term value of internal quality and its relation to observable functionality.
 
 [Back to the engineering principles catalog](../README.md#p014)

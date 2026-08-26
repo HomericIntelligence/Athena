@@ -2,9 +2,11 @@
 
 ## Definition
 
-A circuit breaker observes calls to a dependency and, after evidence of persistent failure, opens
-to reject further calls without invoking that dependency. After a controlled recovery interval it
-admits a limited probe in a half-open state, closing only when recovery criteria are met.
+A circuit breaker monitors calls to a dependency. After measurements show continuous failure, it opens
+and rejects new calls without contact with that dependency.
+
+After a controlled recovery interval, it admits a finite probe set in a half-open state. A failed
+probe opens the breaker again. The breaker closes only after sufficient probes succeed.
 
 **Aliases:** dependency circuit breaker, open/half-open/closed breaker
 
@@ -12,55 +14,109 @@ admits a limited probe in a half-open state, closing only when recovery criteria
 
 **Classification:** established principle.
 
-Michael Nygard popularized the software pattern in *Release It!*; the electrical circuit-breaker
-metaphor and related failure controls are older.
+Michael Nygard made the software pattern known to many engineers in *Release It!*. The electrical
+circuit breaker is the source of the software-pattern name. Related failure controls were available
+before the software pattern.
 
 ## Decision rule
 
-When repeated calls are likely to waste caller resources, overload an unhealthy dependency, or
-spread failure, stop sending them temporarily and test recovery cautiously.
+If calls use resources without a caller result or overload a dependency, stop calls for a finite
+interval. If calls can cause system failure, use the same control. Do a recovery test with
+a finite probe set.
 
 ## How to apply
 
-- Place the breaker around a remote or otherwise failure-prone dependency boundary, not arbitrary
-  local business logic.
-- Choose failure signals, sampling window, threshold, open duration, and recovery criteria from the
-  dependency contract and observed behavior.
-- Keep breaker state scoped appropriately; a global breaker can unnecessarily disable healthy
-  partitions, while a per-request breaker learns nothing.
-- Return a distinct, immediate failure or documented fallback while open.
-- Permit only bounded probes while half-open and prevent a recovery stampede.
-- Emit state transitions, rejected calls, probe outcomes, and affected dependency identity.
-- Test oscillation, slow calls, partial recovery, and breaker behavior with retries.
+- Put the breaker at a failure-prone dependency boundary. If local business logic does not have
+  that failure risk, do not put the breaker at its boundary.
+- Use the dependency contract and measurements to select failure signals, observation
+  window, threshold, open time, and recovery criteria.
+- Give breaker state the correct scope. A global breaker can disable available partitions. A
+  breaker for one request does not have sufficient data from previous calls.
+- While the breaker is open, immediately return a clear failure or a specified fallback.
+- While the breaker is in the half-open state, use only a finite probe set. Prevent a recovery surge.
+- Record state transitions, rejected calls, probe results, and dependency identity.
+- Do tests of state oscillation, slow calls, recovery of only some calls, and interactions with retries.
+
+## Diagram
+
+```mermaid
+flowchart LR
+    A["Closed: let calls continue"] -->|"Failure threshold met"| B["Open: reject calls"]
+    B -->|"Recovery interval expires"| C["Half-open: use finite probes"]
+    C -->|"Recovery criteria met"| A
+    C -->|"A probe fails"| B
+```
+
+## Language examples
+
+Each example records dependency failures and calls that succeed, but does not include permanent
+request errors in breaker state.
+
+### Python
+
+```python
+def call(breaker, client):
+    if (permit := breaker.try_acquire()) is None:
+        return Unavailable()
+    result = client.request()
+    if result.ok:
+        outcome = BreakerOutcome.SUCCESS
+    elif result.is_dependency_failure:
+        outcome = BreakerOutcome.FAILURE
+    else:
+        outcome = BreakerOutcome.IGNORED
+    permit.complete(outcome)
+    return result
+```
+
+### Rust
+
+```rust
+fn call(breaker: &Breaker, client: &Client) -> Result<Response, Error> {
+    let permit = breaker.try_acquire().ok_or(Error::Unavailable)?;
+    let result = client.request();
+    let outcome = match &result {
+        Ok(_) => BreakerOutcome::Success,
+        Err(error) if error.is_dependency_failure() => BreakerOutcome::Failure,
+        Err(_) => BreakerOutcome::Ignored,
+    };
+    permit.complete(outcome);
+    result
+}
+```
 
 ## Boundaries and tensions
 
-A breaker is not a retry policy. [P038](p038-bounded-retry.md) addresses isolated transient errors;
-the breaker protects against persistent failure. A timeout under
-[P039](p039-bounded-waiting.md) still bounds each permitted call.
+A breaker is not a retry policy. Use [P038](p038-bounded-retry.md) for isolated transient errors.
+The breaker prevents more calls during continuous failure. A timeout from
+[P039](p039-bounded-waiting.md) limits the time for each call after breaker approval.
 
-Opening too aggressively can turn a small fault into avoidable unavailability; opening too slowly
-allows cascading failure. [P042](p042-fault-isolation-bulkheads.md) limits the blast radius even
-before the breaker opens, and [P036](p036-graceful-degradation.md) governs any fallback response.
+If a small number of failures opens a breaker, the breaker can cause unavailability that is not necessary. If
+too many failures occur before it opens, it can cause a failure cascade.
+
+[P042](p042-fault-isolation-bulkheads.md) limits the effect before the breaker opens.
+Use [P036](p036-graceful-degradation.md) for each fallback response.
 
 ## Examples
 
 ### Positive application
 
-A client records timeouts within a rolling window. At its tested threshold the dependency-specific
-breaker opens, immediately rejects calls for a bounded interval, then permits a few probes before
-restoring traffic gradually.
+A client records timeouts in an observation window. At its tested threshold, the
+dependency-specific breaker opens. It rejects calls for a finite interval.
+
+Before the breaker makes traffic available again, it uses a small number of probes.
 
 ### Misuse or counterexample
 
-A single validation error opens one application-wide breaker for every tenant and endpoint. Healthy
-traffic is disabled even though the error was a permanent request defect, not dependency failure.
+One validation error opens an application-wide breaker for all tenants and endpoints. The error is
+a permanent request defect, not a dependency failure. The breaker disables available traffic.
 
 ### Athena or agent workflow
 
-If a dependency-backed tool repeatedly returns confirmed service failures, a workflow stops
-invoking it after a bounded threshold and reports the unavailable capability. It does not keep
-spending tool calls or claim that the skipped result succeeded.
+A dependency tool returns measured service-failure results. After a finite threshold, an Athena workflow
+stops calls to that tool and gives an unavailable-capability result.
+
+It does not use more tool calls or give a success result for a missing result.
 
 ## Related principles
 
@@ -71,22 +127,22 @@ spending tool calls or claim that the skipped result succeeded.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Michael T. Nygard, *Release It!*, second edition](https://pragprog.com/titles/mnee2/release-it-second-edition/)
-  — influential source that popularized the circuit-breaker pattern in production software.
+  — a source that made the circuit-breaker pattern known to many production-software engineers.
 - [Martin Fowler, “Circuit Breaker” (2014)](https://martinfowler.com/bliki/CircuitBreaker.html)
-  — practitioner explanation that explicitly credits Nygard and illustrates the state model.
+  — practitioner information that identifies Nygard as the source and shows the state model.
 
-### Current guidance
+### Applicable information
 
 - [Microsoft Azure, Circuit Breaker pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/circuit-breaker)
-  — current guidance on thresholds, open and half-open states, recovery probes, and interaction with
-  retry.
+  — applicable guidance for thresholds, open and half-open states, recovery probes, and retry
+  interaction.
 
-### Further reading
+### More information
 
 - [Google SRE, Addressing Cascading Failures](https://sre.google/sre-book/addressing-cascading-failures/)
-  — operational context for why persistent calls, timeouts, and retries can spread failure.
+  — context for how continuous calls, timeouts, and retries propagate failure.
 
 [Back to the engineering principles catalog](../README.md#p043)

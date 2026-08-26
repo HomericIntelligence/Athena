@@ -2,57 +2,118 @@
 
 ## Definition
 
-**Test-Driven Development** (TDD) is a short development loop in which the next observable behavior
-is expressed as a failing automated test, the smallest production change makes the suite pass, and
-the design is improved while all tests remain green. The cycle is commonly summarized as
-Red–Green–Refactor.
+**Test-Driven Development** (TDD) is a short development cycle. First, an automated test shows the
+next necessary behavior and fails. Then, the author makes the minimum necessary change to
+production code. The test then passes.
+After all tests pass, the author refactors production code while tests continue to pass. The cycle is Red-Green-Refactor.
 
-**Aliases:** TDD; Red–Green–Refactor cycle.
+**Aliases:** TDD and Red-Green-Refactor cycle.
 
 ## Provenance
 
-**Classification:** established principle.
+**Classification:** principle with source evidence.
 
-Kent Beck developed the modern TDD practice in the context of Extreme Programming in the late 1990s
-and documented it in *Test-Driven Development: By Example* in 2002–2003. Athena retains TDD as a
-workflow principle because its ordering creates rapid behavioral and design feedback.
+Before 2000, Kent Beck's Extreme Programming practice included the TDD practice. His 2002
+book, *Test-Driven Development: By Example*, records the practice. Athena keeps TDD because the TDD
+order gives fast behavior and design feedback.
 
 ## Decision rule
 
-For a behavior change, work in the smallest meaningful Red–Green–Refactor cycle: observe the new
-test fail for the intended reason, make it pass with a coherent implementation, then improve the
-design without changing behavior.
+For one behavior change, use one Red-Green-Refactor cycle. Make sure the test gives the expected
+failure. Make the test pass with a correct production change. Then, refactor production code without
+a behavior change.
 
 ## How to apply
 
-- List the next required behaviors, including important failures and boundaries.
-- Select one small behavior and write a test at the appropriate observable boundary.
-- Run it and confirm the failure is expected and meaningful.
-- Write only enough coherent production code to make all relevant tests pass.
-- Refactor tests and production code while keeping the suite green.
-- Repeat, then run the repository's broader required verification.
+- Record the next necessary behaviors, important failures, and boundaries.
+- At a boundary where a user can see the result, write a test for one small behavior.
+- Do the test and make sure that the failure shows the missing behavior.
+- Write only the correct production code that is necessary to make all applicable tests pass.
+- While the suite passes, refactor tests and production code.
+- Do the cycle again. Then, do all necessary repository verification.
+
+## Diagram
+
+The cycle adds one behavior and keeps the design clear.
+
+```mermaid
+flowchart LR
+    A["Write one behavior test"] --> B["Do test and examine failure"]
+    B --> C["Make minimum correct change"]
+    C --> D{"Tests pass?"}
+    D -->|No| C
+    D -->|Yes| E["Refactor code"]
+    E --> G{"Post-refactor tests pass?"}
+    G -->|No| H["Correct refactor"]
+    H --> G
+    G -->|Yes| I{"More behavior?"}
+    I -->|Yes| F["Select next behavior"]
+    F --> A
+    I -->|No| J["Development completed"]
+```
+
+## Language examples
+
+The two examples give the behavior first, use the same domain for signed `i32` text, and reject
+malformed or out-of-range input.
+
+### Python
+
+```python
+def test_clamps_negative_count() -> None:
+    assert clamp_count("-1") == 0
+
+def clamp_count(text: str) -> int:
+    digits = text[1:] if text.startswith("-") else text
+    if not digits or not digits.isascii() or not digits.isdecimal():
+        raise ValueError("count must be i32")
+    value = int(text)
+    if not -(2**31) <= value <= 2**31 - 1:
+        raise ValueError("count must be i32")
+    return max(0, value)
+```
+
+### Rust
+
+```rust
+#[test]
+fn clamps_negative_count() {
+    assert_eq!(clamp_count("-1"), Ok(0));
+}
+
+fn clamp_count(text: &str) -> Result<i32, &'static str> {
+    let digits = text.strip_prefix('-').unwrap_or(text);
+    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("count must be i32");
+    }
+    let value = text.parse::<i32>().map_err(|_| "count must be i32")?;
+    Ok(value.max(0))
+}
+```
 
 ## Boundaries and tensions
 
-TDD is a development loop, not the whole testing strategy. [P026 Regression Before
-Repair](p026-regression-before-repair.md) is specifically about reproducing a defect; TDD applies to
-incremental behavior development more broadly. P022–P028 govern test quality and scope, while TDD
-governs work order. Generic verification also includes builds, types, linting, integration,
-security, and operational checks. A pure behavior-preserving refactor begins from a green,
-adequately characterized baseline; do not manufacture a failing test merely to claim a Red step.
+TDD is a development cycle, not the full test strategy. [P026 Regression Before
+Repair](p026-regression-before-repair.md) is applicable only to a defect. TDD is applicable to incremental
+behavior development. P022-P028 control test quality and scope.
+
+TDD controls work order. Verification also includes builds, types, lint, integration, security, and
+operation checks. A behavior-preserving refactor starts from a sufficient green baseline. Do not
+make a test fail only to record an incorrect Red step.
 
 ## Examples
 
-**Positive:** A parser's next boundary case is specified by a behavioral test that fails with the
-old result, a narrow implementation makes it pass, and duplication is removed while the suite stays
-green.
+**Positive:** A developer writes a behavioral test for the parser's next boundary case. The test
+fails because the parser does not have the behavior. A small implementation makes the test pass. The developer then removes
+duplication with a green suite.
 
-**Misuse:** Implementation is completed first, then a brittle test of private call order is added
-and the work is labeled TDD.
+**Misuse:** A developer completes the implementation first. The developer then adds a test that
+has a dependency on private call order and records the work as TDD.
 
-**Athena/agent workflow:** For a requested behavior change, an agent records the failing test output,
-implements the minimum coherent fix, reruns the focused suite, refactors under green, and then runs
-the repository gate. For a pure refactor it first establishes and reports the green baseline.
+**Athena/agent workflow:** For a behavior change, an agent records the expected test failure. The
+agent makes the minimum correct fix and does the applicable test suite again. Then, the agent
+refactors the code and does the repository verification gate. For a behavior-preserving refactor,
+the agent first records the green baseline.
 
 ## Related principles
 
@@ -65,23 +126,24 @@ the repository gate. For a pure refactor it first establishes and reports the gr
 
 ## References
 
-### Origin/history
+### Source information
 
 - [Kent Beck, *Test-Driven Development: By Example*](https://ptgmedia.pearsoncmg.com/images/9780321146533/samplepages/0321146530.pdf)
-  is the publisher's sample of the foundational book and states the Red–Green–Refactor rules.
+  is the publisher's sample of the book and gives the Red–Green–Refactor rules.
 - [Martin Fowler: Test Driven Development](https://martinfowler.com/bliki/TestDrivenDevelopment.html)
-  records the practice's Extreme Programming history and explains its interface-design feedback.
+  records the practice's Extreme Programming history and gives information about interface-design
+  feedback.
 
-### Current guidance
+### Applicable information
 
 - [The GDS Way: Test-driven development](https://gds-way.digital.cabinet-office.gov.uk/standards/test-driven-development.html)
-  gives current government engineering guidance for expected-failure, green implementation, and
-  refactoring cycles, including cases where other feedback mechanisms are needed.
+  gives government engineering guidance for expected-failure, green implementation, and
+  Red-Green-Refactor cycles. The guidance also gives examples where other feedback mechanisms are necessary.
 
-### Further reading
+### More information
 
 - [Agile Alliance: Testing in agile software development](https://agilealliance.org/agile-qa-testing-in-agile-software-development/)
-  distinguishes TDD from acceptance-test-driven and behavior-driven practices while relating all of
-  them to continuous quality.
+  gives the differences between TDD, acceptance-test-driven practice, and behavior-driven practice.
+  The three practices help continuous quality.
 
 [Back to the engineering principles catalog](../README.md#p091)

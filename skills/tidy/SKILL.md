@@ -27,26 +27,30 @@ all prose that it produces.
 
 ## Engineering principles
 
-Use the [canonical engineering-principles catalog](../../docs/principles/README.md) through these
-workflow-specific rules:
+Use the [canonical engineering-principles catalog](../../docs/principles/README.md) for these
+workflow rules:
 
-- [P010 — Scope Fidelity](../../docs/principles/README.md#p010): delegate only the requested tidy,
-  cleanup, or rebase operation and do not add a second Athena cleanup policy.
-- [P031 — Propagate Rather Than Swallow](../../docs/principles/README.md#p031): preserve the delegated
-  command's output, signals, and nonzero result instead of masking or retrying a failure.
-- [P035 — Fail Secure / Fail Closed](../../docs/principles/README.md#p035): stop when dependency
-  identity, revision binding, checkout cleanliness, or a required capability cannot be established.
-- [P050 — Least Privilege](../../docs/principles/README.md#p050): use only the resolved dependency,
-  target repository, capabilities, and arguments required by this invocation.
-- [P058 — Bounded Agent Authority](../../docs/principles/README.md#p058): forwarding arguments does
-  not widen the user's requested scope, destinations, credentials, or mutation authority.
-- [P061 — Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061): bind
-  the dependency, target, authority, and exact command vector before starting delegated execution.
+- [P010 — Scope Fidelity](../../docs/principles/README.md#p010): Delegate only the requested tidy,
+  cleanup, or rebase operation. Do not add a different cleanup policy for Athena.
+- [P031 — Propagate Rather Than Swallow](../../docs/principles/README.md#p031): Give the delegated
+  command's output, signals, and nonzero result to the caller. Do not hide the failure. Do not
+  automatically retry it.
+- [P035 — Fail Secure / Fail Closed](../../docs/principles/README.md#p035): If a dependency identity or
+  revision-binding check is not satisfactory, stop. If the checkout is not clean, stop. If a
+  necessary capability is not available, stop.
+- [P050 — Least Privilege](../../docs/principles/README.md#p050): Use only the resolved dependency,
+  target repository, capabilities, and arguments that are necessary for this invocation.
+- [P058 — Bounded Agent Authority](../../docs/principles/README.md#p058): When you forward arguments,
+  do not increase the user's scope, destinations, credentials, or mutation authority.
+- [P061 — Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061): Before
+  you start delegated execution, record the dependency, target, authority, and full command vector.
+  Validate the record. During execution, use only the recorded values.
 - [P062 — Human Approval for Irreversible or High-Risk Actions](../../docs/principles/README.md#p062):
-  preserve existing authorization for scoped constructive work without redundant prompts, while
-  leaving destructive or otherwise ungranted irreversible actions behind action-bound approval.
-- [P083 — Irreversible Actions Last](../../docs/principles/README.md#p083): finish dependency and
-  command validation before handing control to an operation that may cross a point of no return.
+  If the user gave authority for scoped constructive work, do not request a second approval. If the
+  user did not give authority for a destructive or irreversible action, request approval for that
+  specified action.
+- [P083 — Irreversible Actions Last](../../docs/principles/README.md#p083): Before you start an
+  irreversible operation, complete the dependency and command validation.
 
 ## Inputs
 

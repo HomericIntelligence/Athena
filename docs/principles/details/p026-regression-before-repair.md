@@ -2,59 +2,110 @@
 
 ## Definition
 
-When practical, reproduce a reported defect with a failing automated test before changing the
-implementation. Confirm that the test fails for the reported reason, passes after the repair, and
-remains in the suite to detect recurrence.
+If safe defect reproduction is possible before implementation repair, add an automated test.
+Make sure that the test fails for the reported cause.
 
-**Aliases:** bug-reproduction test; failing regression test.
+After the repair, make sure that the test passes. Keep the test in the suite to detect recurrence.
+
+**Aliases:** bug-reproduction test, failing regression test.
 
 ## Provenance
 
 **Classification:** practitioner heuristic.
 
-Regression testing is older than automated unit-test frameworks, and test-first bug repair is an
-established technique throughout TDD and maintenance practice. This exact formulation has no
-uniquely verified origin.
+Automated unit test frameworks followed regression tests. Test-first defect repair is a method in
+TDD and maintenance practice. No one source first gave this formulation.
 
 ## Decision rule
 
-Before repairing a reproducible defect, capture its smallest supported behavioral manifestation in
-a test that demonstrably fails against the unfixed revision.
+Before a repair, capture the smallest contract behavior that reproduces the defect. Make sure
+that the unrepaired revision causes the test to fail.
 
 ## How to apply
 
-- Reproduce the symptom in the closest reliable test layer.
-- Run the new test before implementation work and inspect why it fails.
-- Minimize the fixture without removing the condition that triggers the defect.
-- Repair the root cause, then run the focused test and relevant surrounding suite.
-- Keep the test named for behavior so it remains useful after implementation changes.
+- Reproduce the symptom at the nearest stable test level.
+- Before implementation work, run the new test. Make sure that it fails for the reported cause.
+- Use the smallest fixture that reproduces the defect.
+- Preserve the defect condition.
+- Repair the root cause. Then run the specified test and the applicable suite.
+- Give the test a behavior name that continues to help after implementation changes.
+
+## Diagram
+
+```mermaid
+flowchart LR
+    Report["Defect report"] --> Test["Create small behavior test"]
+    Test --> Red{"Fails for reported cause?"}
+    Red -->|No| Refine["Refine reproduction"]
+    Refine --> Test
+    Red -->|Yes| Repair["Repair root cause"]
+    Repair --> Green{"Specified test passes?"}
+    Green -->|No| Repair
+    Green -->|Yes| Suite["Run applicable suite"]
+```
+
+## Language examples
+
+The two examples preserve the same empty-input regression after the mean calculation repair.
+
+Python:
+
+```python
+def mean(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+def test_empty_input_returns_none() -> None:
+    assert mean([]) is None
+```
+
+Rust:
+
+```rust
+fn mean(values: &[f64]) -> Option<f64> {
+    if values.is_empty() {
+        return None;
+    }
+    Some(values.iter().sum::<f64>() / values.len() as f64)
+}
+
+#[test]
+fn empty_input_returns_none() {
+    assert_eq!(mean(&[]), None);
+}
+```
 
 ## Boundaries and tensions
 
-"When practical" matters. Production containment, destructive failures, nondeterministic races,
-and unavailable dependencies may require immediate safe mitigation or a model-based reproduction.
-Do not write a test that merely duplicates the buggy implementation or pin an accidental symptom.
-A passing test added after the fix is weaker evidence because its pre-fix sensitivity was not
-observed. A regression-before-repair test is observed RED on the unfixed revision and GREEN after
-the repair. A characterization test instead begins GREEN to pin existing behavior before
-behavior-preserving refactoring; it is related but is not an alias for regression-before-repair.
+Safe reproduction is not possible in each case. Production containment, destructive failures,
+nondeterministic races, or unavailable dependencies can make safe mitigation necessary before reproduction.
+When reproduction with the production dependency is not safe, use a model-based reproduction.
+
+Do not write a test that copies the defective implementation or depends on an accidental symptom. A
+test added only after repair gives weaker evidence. No evidence shows its sensitivity to the
+reported defect.
+
+A regression test is RED on the unrepaired revision and GREEN after repair. A characterization
+test starts GREEN and records behavior before a behavior-preserving refactor. These tests have
+related but different objectives.
 
 ## Examples
 
 ### Positive application
 
-A parser crash report includes one malformed input. A focused public-API test first reproduces the
-exception, then passes when the parser returns the documented structured error.
+A parser report includes one malformed input. A small test of the public API first reproduces the
+exception. The test passes after the parser returns the specified structured error.
 
 ### Misuse or counterexample
 
-A test is added after the code change and passes on both the repaired and original revisions. It
-records an example but provides no evidence that it detects the regression.
+A developer adds a test after the code change. The test passes on each revision. It does not give
+evidence of regression sensitivity.
 
 ### Athena or agent workflow
 
-An agent records the focused failing command and output, makes the minimal repair, reruns that test,
-then runs the repository-defined gate before claiming completion.
+An agent records the failed command and output. The agent makes the smallest necessary repair. Then,
+the agent runs that test again. If the test passes, the agent runs the repository gate.
 
 ## Related principles
 
@@ -65,20 +116,19 @@ then runs the repository-defined gate before claiming completion.
 
 ## References
 
-### Origin and history
+### Source information
 
 - [Beck, *Test-Driven Development: By Example* (2002)](https://www.pearson.com/en-us/subject-catalog/p/Beck-Test-Driven-Development-By-Example/P200000009421/9780321146533)
-  established a widely used test-first cycle that also informs defect repair.
+  gives a widely used test-first cycle that also applies to defect repair.
 
-### Current guidance
+### Applicable information
 
 - [Google Engineering Practices, "Small CLs"](https://google.github.io/eng-practices/review/developer/small-cls.html)
-  recommends adding missing behavioral coverage before a refactor and keeping related tests with
-  behavior changes.
+  gives pre-refactor guidance for tests of behavior changes and missing behavioral coverage.
 
-### Further reading
+### More information
 
 - [Microsoft, ".NET unit testing best practices"](https://learn.microsoft.com/en-us/dotnet/core/testing/unit-testing-best-practices)
-  explains regression protection and the characteristics of repeatable, self-checking tests.
+  gives information about regression protection and repeatable, self-checking tests.
 
 [Back to the engineering principles catalog](../README.md#p026)
