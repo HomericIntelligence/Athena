@@ -21,23 +21,25 @@ Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 
 ## Engineering principles
 
-Apply the canonical [engineering-principles catalog](../../docs/principles/README.md) through these
-review decisions:
+Use the canonical [engineering-principles catalog](../../docs/principles/README.md) for these review
+decisions:
 
-- [P010 Scope Fidelity](../../docs/principles/README.md#p010) keeps the current issue and canonical
-  plan as the complete review target, while
-  [P066 Preserve Existing Work](../../docs/principles/README.md#p066) prevents the review from
-  rewriting foreign or historical artifacts.
-- [P012 Evidence Before Modification](../../docs/principles/README.md#p012),
-  [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063), and
-  [P072 Technical Evidence Over Preference](../../docs/principles/README.md#p072) require every gap
-  to be grounded in current requirements, repository evidence, and an affected contract.
-- [P015 Architecture Conformance](../../docs/principles/README.md#p015) makes unexplained boundary
-  violations blocking;
-  [P071 Consistency Over Personal Preference](../../docs/principles/README.md#p071) preserves
-  repository conventions unless contrary technical evidence exists; and
-  [P008 Understand Before Subtracting](../../docs/principles/README.md#p008) requires evidence about
-  consumers and purpose before approving deletion or consolidation.
+- [P010 Scope Fidelity](../../docs/principles/README.md#p010): Use the current issue and canonical
+  plan as the full review target.
+- [P066 Preserve Existing Work](../../docs/principles/README.md#p066): Do not rewrite historical
+  artifacts or artifacts that a different actor owns.
+- [P012 Evidence Before Modification](../../docs/principles/README.md#p012): Before you accept a
+  plan, examine current requirements and repository evidence.
+- [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063): For each gap,
+  find the related requirement or contract.
+- [P072 Technical Evidence Over Preference](../../docs/principles/README.md#p072): Give technical
+  evidence for each gap. Do not use personal preference as evidence.
+- [P015 Architecture Conformance](../../docs/principles/README.md#p015): If a boundary violation has
+  no explanation, do not accept the plan.
+- [P071 Consistency Over Personal Preference](../../docs/principles/README.md#p071): If technical
+  evidence does not show a necessary change, obey repository conventions.
+- [P008 Understand Before Subtracting](../../docs/principles/README.md#p008): Before you accept
+  deletion or consolidation, examine the consumers and purpose.
 
 ## Scope and delivery
 

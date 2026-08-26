@@ -30,8 +30,6 @@ All Athena English technical prose must follow the
 skills, agent directions, documents, user messages from skills, and user-interface text. Preserve
 literal text. Preserve all safety, security, evidence, permission, and failure requirements.
 
-The engineering principles in `docs/principles/**` do not have to follow this policy.
-
 Use the current official issue of ASD-STE100. Do not state that repository checks certify
 conformance to ASD-STE100.
 

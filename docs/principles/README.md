@@ -10,8 +10,9 @@ current numbers.
 
 ## Language standard
 
-Descriptive and procedural prose in this catalog obeys
-[ASD-STE100 Simplified Technical English, Issue 9](https://www.asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf).
+Use the [ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.md) for descriptive and
+procedural prose in this catalog. Use the
+[current official standard](https://www.asd-ste100.org/STE_downloads.html) as the authority.
 Each decision rule is for all programming languages.
 Each detail page has a diagram and equivalent examples in Python and Rust.
 

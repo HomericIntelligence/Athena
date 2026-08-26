@@ -1,4 +1,11 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,8 +56,14 @@ async function athenaPlugin() {
 export default athenaPlugin;
 
 export function bundledSkillNames() {
-  return readdirSync(bundledSkillsRoot(), { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
+  const root = bundledSkillsRoot();
+  return readdirSync(root, { withFileTypes: true })
+    .filter(
+      (entry) =>
+        entry.isDirectory() &&
+        existsSync(join(root, entry.name, "SKILL.md")) &&
+        statSync(join(root, entry.name, "SKILL.md")).isFile(),
+    )
     .map((entry) => entry.name)
     .sort();
 }

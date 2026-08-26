@@ -4,12 +4,15 @@
 from __future__ import annotations
 
 import json
+import posixpath
+import re
 import shutil
 import subprocess
 import sys
 from collections.abc import Iterator, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Final
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 sys.dont_write_bytecode = True
 if __package__ in {None, ""}:
@@ -34,11 +37,20 @@ SKILLS_ROOT: Final[PurePosixPath] = PurePosixPath("skills")
 REQUIRED_SKILL_FILES: Final[tuple[PurePosixPath, ...]] = (
     SKILLS_ROOT / "TECHNICAL_ENGLISH.md",
 )
-SOURCE_README_POLICY_TARGET: Final[str] = "../../skills/TECHNICAL_ENGLISH.md"
-STAGED_README_POLICY_TARGET: Final[str] = "skills/TECHNICAL_ENGLISH.md"
+STAGED_SUPPORT_ROOT: Final[PurePosixPath] = SKILLS_ROOT / "_support"
+SUPPORT_ROOTS: Final[tuple[PurePosixPath, ...]] = (
+    PurePosixPath("docs") / "dependency-resolution.md",
+    PurePosixPath("docs") / "policies" / "development.md",
+    PurePosixPath("docs") / "policies" / "evidence-integrity.md",
+    PurePosixPath("docs") / "principles",
+    PurePosixPath("docs") / "review",
+)
 VERSION_MANIFEST: Final[PurePosixPath] = PurePosixPath(".codex-plugin") / "plugin.json"
 DEFAULT_OUTPUT: Final[PurePosixPath] = PurePosixPath("dist") / "opencode-npm"
 GENERATED_SUFFIXES: Final[frozenset[str]] = frozenset({".pyc", ".pyo"})
+MARKDOWN_LINK: Final[re.Pattern[str]] = re.compile(
+    r"(?P<prefix>!?\[[^]]*\]\()(?P<target>[^)\s]+)(?P<suffix>\))"
+)
 
 
 def _relative(path: Path, repo_root: Path) -> PurePosixPath:
@@ -92,17 +104,107 @@ def _skill_sources(repo_root: Path) -> Iterator[Path]:
         yield path
 
 
-def _copy_plugin_file(
-    source_path: Path, target: Path, relative_path: PurePosixPath
+def _support_sources(repo_root: Path) -> Iterator[tuple[Path, PurePosixPath]]:
+    """Yield canonical documentation that installed skills require."""
+    for relative_root in SUPPORT_ROOTS:
+        root = repo_root / relative_root.as_posix()
+        _validate_source(root, relative_root)
+        yield root, relative_root
+        if root.is_dir():
+            for path in sorted(root.rglob("*")):
+                yield path, _relative(path, repo_root)
+
+
+def _rewrite_local_markdown_links(
+    markdown: str,
+    *,
+    source_path: Path,
+    staged_path: PurePosixPath,
+    source_to_staged: dict[Path, PurePosixPath],
+) -> str:
+    """Rebase local links from canonical sources to staged package paths."""
+
+    def replace(match: re.Match[str]) -> str:
+        target = match.group("target")
+        parsed = urlsplit(target)
+        if parsed.scheme or parsed.netloc or not parsed.path:
+            return match.group(0)
+        source_target = (source_path.parent / unquote(parsed.path)).resolve()
+        mapped_target = source_to_staged.get(source_target)
+        if mapped_target is None:
+            raise PackageError(
+                f"The local Markdown link '{target}' in '{source_path}' does not "
+                "have a staged package target."
+            )
+        relative_target = posixpath.relpath(
+            mapped_target.as_posix(), staged_path.parent.as_posix()
+        )
+        staged_target = urlunsplit(
+            (
+                "",
+                "",
+                quote(relative_target, safe="/._~-"),
+                parsed.query,
+                parsed.fragment,
+            )
+        )
+        return f"{match.group('prefix')}{staged_target}{match.group('suffix')}"
+
+    return MARKDOWN_LINK.sub(replace, markdown)
+
+
+def _copy_staged_file(
+    source_path: Path,
+    target: Path,
+    staged_path: PurePosixPath,
+    source_to_staged: dict[Path, PurePosixPath],
 ) -> None:
-    """Copy a plugin file and adjust links for its staged location."""
-    if relative_path != PLUGIN_README:
+    """Copy one package file and rebase its local Markdown links."""
+    if source_path.suffix.casefold() != ".md":
         shutil.copyfile(source_path, target)
         return
-    readme = source_path.read_text(encoding="utf-8")
-    source_link = f"]({SOURCE_README_POLICY_TARGET})"
-    staged_link = f"]({STAGED_README_POLICY_TARGET})"
-    target.write_text(readme.replace(source_link, staged_link), encoding="utf-8")
+    markdown = source_path.read_text(encoding="utf-8")
+    rewritten = _rewrite_local_markdown_links(
+        markdown,
+        source_path=source_path,
+        staged_path=staged_path,
+        source_to_staged=source_to_staged,
+    )
+    target.write_text(rewritten, encoding="utf-8")
+
+
+def _staging_entries(
+    repo_root: Path,
+) -> tuple[list[tuple[Path, PurePosixPath]], dict[Path, PurePosixPath]]:
+    """Return validated source-to-package entries and their link map."""
+    entries = [
+        *(
+            (repo_root / item.as_posix(), PurePosixPath(item.name))
+            for item in PLUGIN_FILES
+        ),
+        *(
+            (repo_root / item.as_posix(), PurePosixPath(item.name))
+            for item in LEGAL_FILES
+        ),
+        *((path, _relative(path, repo_root)) for path in _skill_sources(repo_root)),
+        *(
+            (path, STAGED_SUPPORT_ROOT / relative_path)
+            for path, relative_path in _support_sources(repo_root)
+        ),
+    ]
+    source_to_staged: dict[Path, PurePosixPath] = {}
+    staged_paths: set[PurePosixPath] = set()
+    for source_path, staged_path in entries:
+        source_relative = _relative(source_path, repo_root)
+        _validate_source(source_path, source_relative)
+        resolved_source = source_path.resolve()
+        if resolved_source in source_to_staged:
+            raise PackageError(f"The package input is duplicated: '{source_relative}'.")
+        if staged_path in staged_paths:
+            raise PackageError(f"The package output is duplicated: '{staged_path}'.")
+        source_to_staged[resolved_source] = staged_path
+        staged_paths.add(staged_path)
+    return entries, source_to_staged
 
 
 def stage_package(repo_root: Path, output_directory: Path | None = None) -> Path:
@@ -125,12 +227,6 @@ def stage_package(repo_root: Path, output_directory: Path | None = None) -> Path
             f"The opencode plugin version {package_version!r} does not match the "
             f"host-manifest version {manifest_version!r}."
         )
-    sources = [
-        *((repo_root / item.as_posix(), item) for item in PLUGIN_FILES),
-        *((repo_root / item.as_posix(), item) for item in LEGAL_FILES),
-    ]
-    for source_path, relative_path in sources:
-        _validate_source(source_path, relative_path)
     for relative_path in REQUIRED_SKILL_FILES:
         source_path = repo_root / relative_path.as_posix()
         _validate_source(source_path, relative_path)
@@ -138,23 +234,23 @@ def stage_package(repo_root: Path, output_directory: Path | None = None) -> Path
             raise PackageError(
                 f"The required package input must be a file: '{relative_path}'."
             )
-    for path in _skill_sources(repo_root):
-        _validate_source(path, _relative(path, repo_root))
+    entries, source_to_staged = _staging_entries(repo_root)
 
     if destination.exists():
         shutil.rmtree(destination)
     destination.mkdir(parents=True)
-    for source_path, relative_path in sources:
-        target = destination / relative_path.name
-        _copy_plugin_file(source_path, target, relative_path)
-    for path in _skill_sources(repo_root):
-        relative_path = _relative(path, repo_root)
-        target = destination / relative_path.as_posix()
-        if path.is_dir():
+    for source_path, staged_path in entries:
+        target = destination / staged_path.as_posix()
+        if source_path.is_dir():
             target.mkdir(parents=True, exist_ok=True)
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(path, target)
+            _copy_staged_file(
+                source_path,
+                target,
+                staged_path,
+                source_to_staged,
+            )
     return destination
 
 

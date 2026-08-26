@@ -20,25 +20,29 @@ contracts. Do not test wording, documentation layout, or a private implementatio
 
 ## Engineering principles
 
-Use Athena's [canonical engineering-principles catalog](../../docs/principles/README.md) as the
-definition source. Apply these principles to this workflow:
+Use Athena's [canonical engineering-principles catalog](../../docs/principles/README.md) for the
+principle definitions. Use these principles in this workflow:
 
-- [P022 — Test Behavior, Not Implementation](../../docs/principles/README.md#p022): drive and protect
-  observable contracts rather than private implementation arrangements.
-- [P023 — Parameterized / Table-Driven Testing](../../docs/principles/README.md#p023): express repeated
-  cases through named data when one behavioral rule covers them.
-- [P024 — Boundary-Value Testing](../../docs/principles/README.md#p024): include values around limits
-  and transitions when the behavior has boundaries.
-- [P025 — Property-Based Testing for Invariants](../../docs/principles/README.md#p025): use generated
-  input families when an invariant is stronger than a small example set.
-- [P026 — Regression Before Repair](../../docs/principles/README.md#p026): reproduce a defect with a
-  focused failing test before repairing it when practical.
-- [P027 — Deterministic and Hermetic Tests](../../docs/principles/README.md#p027): control ambient
-  inputs and external boundaries so RED and GREEN are repeatable.
-- [P028 — Test Failure Paths, Not Just Success Paths](../../docs/principles/README.md#p028): cover
-  invalid input, dependency failure, cancellation, and cleanup where the contract requires them.
-- [P091 — Test-Driven Development](../../docs/principles/README.md#p091): for behavior changes, prove
-  missing behavior with RED, implement the smallest GREEN, then improve structure while green.
+- [P022 — Test Behavior, Not Implementation](../../docs/principles/README.md#p022): Write tests for
+  observable contracts. Do not write tests for a private implementation.
+- [P023 — Parameterized / Table-Driven Testing](../../docs/principles/README.md#p023): If one rule is
+  applicable to two or more test cases, use named data in a parameterized or table-driven test.
+- [P024 — Boundary-Value Testing](../../docs/principles/README.md#p024): If the behavior has
+  boundaries, include values near its limits and state changes.
+- [P025 — Property-Based Testing for Invariants](../../docs/principles/README.md#p025): If a small
+  example set is not sufficient for an invariant, use generated input families.
+- [P026 — Regression Before Repair](../../docs/principles/README.md#p026): If it is possible, before
+  you repair the defect, add one test that fails only because of the defect.
+- [P027 — Deterministic and Hermetic Tests](../../docs/principles/README.md#p027): Set environment
+  inputs to specified values. Control external boundaries. Make sure that each test gives the same
+  result each time.
+- [P028 — Test Failure Paths, Not Just Success Paths](../../docs/principles/README.md#p028): If the
+  contract includes failure paths, include invalid input, dependency failure, cancellation, and
+  cleanup.
+- [P091 — Test-Driven Development](../../docs/principles/README.md#p091): For a behavior change, first
+  add a test that shows the missing behavior (`RED`). Then, make the minimum code change that makes
+  the test pass (`GREEN`). After `GREEN`, make the structure better without a behavior change
+  (`REFACTOR`).
 
 ## Working rules
 

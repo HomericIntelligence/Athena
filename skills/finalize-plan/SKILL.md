@@ -22,24 +22,26 @@ Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 
 ## Engineering principles
 
-Apply the canonical [engineering-principles catalog](../../docs/principles/README.md) through these
+Use the canonical [engineering-principles catalog](../../docs/principles/README.md) to make these
 finalization decisions:
 
-- [P010 Scope Fidelity](../../docs/principles/README.md#p010),
-  [P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061), and
-  [P062 Human Approval for Irreversible or High-Risk Actions](../../docs/principles/README.md#p062)
-  constrain writes to the exact verified epoch and the authority already granted by this skill's
-  delivery contract; P062 does not introduce a redundant approval for that authorized write.
-- [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063) requires a lossless
-  source-to-final-body mapping, while
-  [P065 Verify Before Claiming Completion](../../docs/principles/README.md#p065) requires exact
-  readback evidence before the body replacement is reported as successful.
-- [P044 Atomicity Where Possible](../../docs/principles/README.md#p044) keeps the body replacement to
-  one logical update;
-  [P083 Irreversible Actions Last](../../docs/principles/README.md#p083) delays comment deletion until
-  that update is verified; and
-  [P031 Propagate Rather Than Swallow](../../docs/principles/README.md#p031) preserves partial or
-  unknown outcomes instead of hiding or blindly retrying them.
+- [P010 Scope Fidelity](../../docs/principles/README.md#p010): Change only the issue body for the
+  verified epoch.
+- [P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061): Before a
+  write, make sure that the epoch and authority agree with this skill's delivery contract.
+- [P062 Human Approval for Irreversible or High-Risk Actions](../../docs/principles/README.md#p062):
+  If the delivery contract gives authority for the write, continue without a second approval.
+- [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063): Map each source
+  requirement to the issue body without information loss.
+- [P065 Verify Before Claiming Completion](../../docs/principles/README.md#p065): Before you report
+  that finalization is completed, read the issue body. Make sure that it is the same as the approved
+  body.
+- [P044 Atomicity Where Possible](../../docs/principles/README.md#p044): Use one body update for the
+  replacement.
+- [P083 Irreversible Actions Last](../../docs/principles/README.md#p083): Do not remove an applicable
+  comment before you verify the body update.
+- [P031 Propagate Rather Than Swallow](../../docs/principles/README.md#p031): Report each partial or
+  unknown outcome. Do not report a different outcome. Do not automatically retry the update.
 
 ## Scope and delivery
 

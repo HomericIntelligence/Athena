@@ -5,8 +5,7 @@ All Athena English technical prose must follow
 skills, agent directions, public documents, user messages that a skill produces, and text in a user
 interface.
 
-The engineering principles in `docs/principles/**` do not have to follow this policy. The literal
-text that this policy identifies also does not have to follow it.
+The literal text that this policy identifies does not have to obey it.
 
 ## Authority
 

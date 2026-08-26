@@ -20,25 +20,30 @@ Use the shared [review contract](../../docs/review/common.md),
 
 ## Engineering principles
 
-Apply the canonical [engineering-principles catalog](../../docs/principles/README.md) through these
+Use the canonical [engineering-principles catalog](../../docs/principles/README.md) to make these
 review decisions:
 
-- [P010 Scope Fidelity](../../docs/principles/README.md#p010) and
-  [P066 Preserve Existing Work](../../docs/principles/README.md#p066) bind the review to the selected
-  bytes without substituting another scope or disturbing unrelated work.
-- [P012 Evidence Before Modification](../../docs/principles/README.md#p012),
-  [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063), and
-  [P072 Technical Evidence Over Preference](../../docs/principles/README.md#p072) require each
-  finding to connect inspected evidence to a requirement, contract, or demonstrated risk rather than
-  reviewer taste.
-- [P014 Preserve Unrequested Behavior](../../docs/principles/README.md#p014) and
-  [P022 Test Behavior, Not Implementation](../../docs/principles/README.md#p022) make observable
-  behavior the review target, while
-  [P065 Verify Before Claiming Completion](../../docs/principles/README.md#p065) keeps validation and
-  coverage claims bounded by evidence actually obtained.
+- [P010 Scope Fidelity](../../docs/principles/README.md#p010): Examine only the selected bytes. Do not
+  use a different scope.
+- [P066 Preserve Existing Work](../../docs/principles/README.md#p066): Do not change work outside the
+  selected scope.
+- [P012 Evidence Before Modification](../../docs/principles/README.md#p012): Before you report a
+  finding, examine the applicable evidence.
+- [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063): For each finding,
+  find the applicable requirement or contract.
+- [P072 Technical Evidence Over Preference](../../docs/principles/README.md#p072): Give evidence that
+  you examined for each finding. Find the risk that this evidence shows. Do not use reviewer
+  preference as evidence.
+- [P014 Preserve Unrequested Behavior](../../docs/principles/README.md#p014): Do not recommend a
+  behavior change that the request does not include.
+- [P022 Test Behavior, Not Implementation](../../docs/principles/README.md#p022): Examine observable
+  behavior. Do not make tests of private implementation details necessary.
+- [P065 Verify Before Claiming Completion](../../docs/principles/README.md#p065): Make validation and
+  coverage claims only from evidence that you examined.
 
-This skill is read-only. It never edits source, stages files, creates Git
-state, posts forge content, opens issues, or writes review notes into source.
+This skill is read-only. Do not edit source. Do not stage files. Do not make Git state.
+
+Do not post forge content. Do not open issues. Do not write review notes into source.
 
 ## Bind the scope
 

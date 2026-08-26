@@ -23,25 +23,28 @@ required step in this process.
 
 ## Engineering principles
 
-Use Athena's [canonical engineering-principles catalog](../../docs/principles/README.md) as the
-definition source. Apply these principles to this workflow:
+Use Athena's [canonical engineering-principles catalog](../../docs/principles/README.md) for the
+principle definitions. Use these principles in this workflow:
 
-- [P012 — Evidence Before Modification](../../docs/principles/README.md#p012): inspect symptoms,
-  changes, contracts, and repository guidance before choosing a repair.
-- [P015 — Architecture Conformance](../../docs/principles/README.md#p015): compare the failure path
-  with established boundaries before changing the architecture.
-- [P022 — Test Behavior, Not Implementation](../../docs/principles/README.md#p022): reproduce and
-  protect the observable contract rather than a private arrangement.
+- [P012 — Evidence Before Modification](../../docs/principles/README.md#p012): Before you select a
+  repair, examine symptoms, changes, contracts, and repository guidance.
+- [P015 — Architecture Conformance](../../docs/principles/README.md#p015): Before you change the
+  architecture, compare the failure path with the repository boundaries.
+- [P022 — Test Behavior, Not Implementation](../../docs/principles/README.md#p022): Reproduce the
+  observable contract. Add a test for this contract. Do not add a test for the private
+  implementation.
 - [P029 — Generalize Error Policy; Preserve Specific Cause](../../docs/principles/README.md#p029):
-  retain the original cause while applying stable boundary-level error behavior.
-- [P031 — Propagate Rather Than Swallow](../../docs/principles/README.md#p031): preserve failures when
-  the current layer cannot recover completely.
-- [P047 — Observability Is Part of Correctness](../../docs/principles/README.md#p047): gather the
-  minimum correlated, structured, non-sensitive evidence needed to locate the fault.
-- [P065 — Verify Before Claiming Completion](../../docs/principles/README.md#p065): rerun the original
-  reproduction and applicable repository checks before reporting resolution.
-- [P072 — Technical Evidence Over Preference](../../docs/principles/README.md#p072): accept or reject
-  hypotheses using observed evidence rather than intuition.
+  Use a stable error policy at the boundary. Keep the initial cause.
+- [P031 — Propagate Rather Than Swallow](../../docs/principles/README.md#p031): If this layer cannot
+  fully recover from the failure, propagate the failure.
+- [P047 — Observability Is Part of Correctness](../../docs/principles/README.md#p047): Collect the
+  minimum evidence that is necessary to find the fault. Correlate the evidence. Use a structured
+  data format. Do not include sensitive data.
+- [P065 — Verify Before Claiming Completion](../../docs/principles/README.md#p065): Before you tell the
+  user that you corrected the fault, do the initial reproduction again. Then, do the applicable
+  repository checks.
+- [P072 — Technical Evidence Over Preference](../../docs/principles/README.md#p072): Use only collected
+  evidence to accept or reject a hypothesis.
 
 ## Before you start
 
