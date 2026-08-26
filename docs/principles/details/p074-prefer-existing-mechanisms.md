@@ -47,23 +47,23 @@ flowchart TD
 
 ## Language examples
 
-The two examples use an established SHA-256 implementation. They return the same lowercase
-hexadecimal digest for the same bytes.
+The two examples use an established SHA-256 implementation. For the same input bytes, they return
+the same 32 digest bytes in the same order.
 
 ```python
 from hashlib import sha256
 
-def digest(payload: bytes) -> str:
+def digest(payload: bytes) -> bytes:
     value = sha256(payload)
-    return value.hexdigest()
+    return value.digest()
 ```
 
 ```rust
 use sha2::{Digest, Sha256};
 
-fn digest(payload: &[u8]) -> String {
+fn digest(payload: &[u8]) -> Vec<u8> {
     let value = Sha256::digest(payload);
-    format!("{value:x}")
+    value.to_vec()
 }
 ```
 
