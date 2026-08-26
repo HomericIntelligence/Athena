@@ -788,8 +788,8 @@ class WorkflowContractTests(unittest.TestCase):
 
         self.assertEqual(
             {
-                "pi-subagents": "0.43.0",
-                "@earendil-works/pi-coding-agent": "0.84.0",
+                "pi-subagents": "0.51.0",
+                "@earendil-works/pi-coding-agent": "0.84.2",
             },
             manifest["dependencies"],
         )
