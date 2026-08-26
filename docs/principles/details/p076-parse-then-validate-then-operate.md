@@ -26,7 +26,7 @@ completes all input validation, the system can start a side effect.
 ## How to apply
 
 - Find the trust boundary and the internal type for accepted data.
-- Parse the input against a specified grammar. Reject a value that is not clear.
+- Parse the input. Reject it if it does not match a specified grammar or if its meaning is not clear.
 - Normalize only transformations with one specified meaning.
 - Validate ranges, relationships, invariants, authority, and state preconditions at operation time.
 - Make the operation accept only the validated structure.
@@ -100,8 +100,9 @@ validated request.
 **Misuse:** A parser returns an object with missing fields. The executor creates external resources.
 After the side effect, a check finds an incorrect field.
 
-**Athena/agent workflow:** An agent parses issue fields and file paths. The agent validates the fields
-and paths against the task and repository scope. The agent uses tools only with validated targets.
+**Athena/agent workflow:** An agent parses issue fields and file paths. The agent validates the
+fields and paths for compliance with the task and repository scope. The agent uses tools only with
+validated targets.
 
 ## Related principles
 

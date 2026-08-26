@@ -51,7 +51,8 @@ flowchart LR
 
 ## Language examples
 
-The two examples monitor one cancellation signal and release resources on cancellation and completion.
+The two examples monitor one cancellation signal, keep operation failures distinct, and release
+resources on cancellation and completion.
 
 ### Python
 
@@ -69,13 +70,15 @@ async def import_rows(cancel: asyncio.Event) -> None:
 ### Rust
 
 ```rust
-fn import_rows(cancel: &AtomicBool) -> Result<(), Cancelled> {
-    let _input = InputGuard::open()?;
+enum ImportError { Cancelled, Operation(Error) }
+
+fn import_rows(cancel: &AtomicBool) -> Result<(), ImportError> {
+    let _input = InputGuard::open().map_err(ImportError::Operation)?;
     for batch in batches() {
         if cancel.load(Ordering::Acquire) {
-            return Err(Cancelled);
+            return Err(ImportError::Cancelled);
         }
-        import_batch(batch)?;
+        import_batch(batch).map_err(ImportError::Operation)?;
     }
     Ok(())
 }
@@ -113,14 +116,14 @@ coordinator collects the terminal state of each subagent and records all complet
 - No one primary source gives the general pattern. Do not record one language or framework as the
   source.
 - [Go Concurrency Patterns: Context](https://go.dev/blog/context) records a 2014 model that
-  transmits deadlines and cancellation through request-scoped work.
+  transmits deadlines and cancellation to request-scoped work.
 
 ### Applicable information
 
 - [gRPC Cancellation](https://grpc.io/docs/guides/cancellation/) gives cancellation propagation.
   Applications must stop work for a canceled RPC.
 - [Go: Canceling in-progress operations](https://go.dev/doc/database/cancel-operations) gives
-  a cancellation and cleanup example across database calls.
+  a cancellation and cleanup example for database calls.
 
 ### More information
 

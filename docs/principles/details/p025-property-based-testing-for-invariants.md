@@ -2,7 +2,7 @@
 
 ## Definition
 
-Use properties that must hold across many input values. Generate many inputs and
+Use properties that must hold for a set of input values. Generate many inputs and
 reduce each failure to a small counterexample.
 
 This method can help parsers, serializers, algorithms, transformations, protocols, and state
@@ -14,8 +14,8 @@ machines.
 
 **Classification:** established principle.
 
-QuickCheck followed random tests and specification-based generators. The 2000 paper by Claessen and
-Hughes gave the library pattern of generators, properties, and shrinking.
+QuickCheck followed random tests and specification-based generators. Claessen and Hughes wrote the
+2000 paper. It gave the library pattern of generators, properties, and shrinking.
 
 ## Decision rule
 
@@ -48,7 +48,8 @@ flowchart LR
 
 ## Language examples
 
-The two examples generate integer sequences and verify the same reverse round-trip property.
+The two examples generate sequences of signed 32-bit integers with 0–99 elements and verify the
+same reverse round-trip property.
 
 Python:
 
@@ -56,7 +57,10 @@ Python:
 from hypothesis import given
 from hypothesis import strategies as st
 
-@given(st.lists(st.integers()))
+@given(st.lists(
+    st.integers(min_value=-(2**31), max_value=2**31 - 1),
+    min_size=0, max_size=99,
+))
 def test_reverse_round_trip(value: list[int]) -> None:
     encoded = list(reversed(value))
     assert list(reversed(encoded)) == value

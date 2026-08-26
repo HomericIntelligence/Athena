@@ -27,7 +27,7 @@ boundary. If a boundary adds more coordination work than it removes, do not add 
 - Before you select files, layers, or services, find each policy in a workflow.
 - Do not include delivery methods, for example HTTP, CLI, and storage, in domain decisions.
 - Give each shared concern one explicit owner.
-- Do a test of each concern through its contract. Add integration tests at each boundary.
+- Use the applicable contract to test each concern. Add integration tests at each boundary.
 - If one change frequently causes edits on the two sides, examine the split again.
 
 ## Diagram
@@ -120,6 +120,6 @@ do not duplicate responsibilities.
 ### More information
 
 - [Parnas, "On the Criteria To Be Used in Decomposing Systems into Modules" (1972)](https://doi.org/10.1145/361598.361623)
-  gives decomposition around design decisions that can change.
+  gives decomposition organized according to design decisions that can change.
 
 [Back to the engineering principles catalog](../README.md#p016)

@@ -30,7 +30,8 @@ When the task ends, remove the grant.
 - If task-scoped, short-lived credentials are sufficient, use them.
 - Set independent limits for filesystem roots, network destinations, tool sets, and data fields.
 - Examine permissions that are active. Examine inherited roles and transitive service access.
-- If narrower authority cannot complete the requested operation, give a clear denial.
+- If narrower authority cannot complete the operation, give an external denial without sensitive
+  policy or capability details.
 
 ## Diagram
 
@@ -72,7 +73,8 @@ authorize(&grant, Action::ReadReport, "tenant-42")?;
 ## Boundaries and tensions
 
 Least Privilege gives sufficient but minimum authority. It does not mean no authority. Too much
-restriction can cause alternatives that are not safe. A denial must give the missing capability.
+restriction can cause alternatives that are not safe. Put missing-capability details only in
+protected diagnostics for authorized operators.
 
 Least Privilege limits one actor. Separation of Duties limits the actor combinations or conditions
 that can authorize a high-impact result. A trusted identity must also have a narrow authorization.

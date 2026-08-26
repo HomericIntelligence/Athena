@@ -12,9 +12,10 @@ Standard work does not make a large traceability matrix necessary.
 
 **Classification:** established principle.
 
-Requirements traceability developed across systems and software engineering. No verified inventor
-owns the practice. Formal standards frequently specify bidirectional links between requirements,
-design, code, and verification. Athena applies the same discipline in proportion to risk.
+Requirements traceability developed in systems engineering and software engineering. No verified
+inventor owns the practice. Formal standards frequently specify bidirectional links between
+requirements, design, code, and verification. Athena applies the same discipline in proportion to
+risk.
 
 ## Decision rule
 

@@ -26,7 +26,7 @@ selected policy correctly.
 
 - Find decisions that can change. Put these decisions in policy interfaces.
 - Give policy inputs, outputs, defaults, and failure behavior an explicit contract.
-- Supply the policy through a narrow interface. Do not put copies of policy branches in the mechanism.
+- Use a narrow interface to supply the policy. Do not put copies of policy branches in the mechanism.
 - Do policy-selection tests and mechanism-correctness tests independently.
 - If a policy is a security or integrity control, keep enforcement mandatory.
 
@@ -78,7 +78,7 @@ Some low-level policy is necessary for fairness, safety, or resource limits. Rec
 selects priority and fairness rules.
 
 **Misuse:** Authorization rules occur in transport handlers, database helpers, and user interfaces.
-One role change causes edits that do not agree across all three.
+One role change causes edits to all three, and the edits do not agree.
 
 **Athena/agent workflow:** A coordinator selects tasks that can operate independently in parallel. The
 delegation mechanism starts, monitors, and collects workers without new scope policy.

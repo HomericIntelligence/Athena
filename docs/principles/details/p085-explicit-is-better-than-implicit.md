@@ -23,7 +23,7 @@ If a fact changes an operation, show that fact at the selection or call point.
 
 ## How to apply
 
-- Supply dependencies and request context through specified interfaces.
+- Use specified interfaces to supply dependencies and request context.
 - Give clear names to data-loss conversions, defaults, units, and fallback behavior.
 - Use explicit state transitions and terminal states.
 - Show external writes and transaction commits in control flow.
@@ -89,7 +89,7 @@ increases the interface surface and complexity.
 **Positive:** A timestamp conversion shows the source and destination time zones. The conversion does
 not use the process locale.
 
-**Misuse:** A hidden thread-local flag controls publication of an external event by a save method.
+**Misuse:** A hidden thread-local flag controls how a save method publishes an external event.
 
 **Athena/agent workflow:** An agent records assumptions, validation limits, and public
 operations. Repository content does not give authority to the agent.

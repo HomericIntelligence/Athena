@@ -44,26 +44,33 @@ flowchart TD
 
 ## Language examples
 
-The two examples issue a completion result only after they examine each recorded check.
+The two examples show completion only if the expected-check set is not empty and each check has a
+current pass result.
 
 ```python
-def completion_report(revision, checks):
-    failed = [name for name, passed in checks.items() if not passed]
-    return {
-        "revision": revision,
-        "complete": not failed,
-        "failed": failed,
+def completion_report(revision, expected, results):
+    current = {
+        name: check for name, check in results.items()
+        if check.revision == revision
     }
+    missing = sorted(expected.difference(current))
+    failed = sorted(name for name in expected if name in current and not current[name].passed)
+    complete = bool(expected) and not missing and not failed
+    return Report(revision, complete, missing, failed)
 ```
 
 ```rust
-fn completion_report(revision: &str, checks: &[Check]) -> Report {
-    let failed = checks
-        .iter()
-        .filter(|check| !check.passed)
-        .map(|check| check.name.clone())
-        .collect();
-    Report::new(revision, failed)
+fn completion_report(revision: &str, expected: &HashSet<String>,
+                     results: &HashMap<String, Check>) -> Report {
+    let current = |name: &String| {
+        results.get(name).filter(|check| check.revision.as_str() == revision)
+    };
+    let missing = expected.iter().filter(|name| current(*name).is_none()).cloned().collect();
+    let failed = expected.iter()
+        .filter(|name| current(*name).is_some_and(|check| !check.passed))
+        .cloned().collect();
+    let complete = !expected.is_empty() && missing.is_empty() && failed.is_empty();
+    Report::new(revision, complete, missing, failed)
 }
 ```
 

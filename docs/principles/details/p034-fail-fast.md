@@ -64,6 +64,7 @@ fn connect(config: &Config) -> Result<Client, ConfigError> {
     let endpoint = config
         .endpoint
         .as_ref()
+        .filter(|endpoint| !endpoint.is_empty())
         .ok_or(ConfigError::MissingEndpoint)?;
     Ok(Client::new(endpoint))
 }

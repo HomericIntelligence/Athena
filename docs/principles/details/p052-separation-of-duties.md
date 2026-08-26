@@ -17,9 +17,9 @@ include the principle in a formal model. No one paper is the source of the organ
 
 ## Decision rule
 
-If error or compromise by one actor can cause impact above policy limits, use a second independent
-condition or role. Select the number and type of divisions from the risk. Do not use the same
-process for all actions.
+If one actor makes an error or is compromised, find the possible impact. When the impact is more
+than policy limits, use a second independent condition or role. Select the number and type of
+divisions from the risk. Do not use the same process for all actions.
 
 ## How to apply
 
@@ -28,7 +28,8 @@ process for all actions.
 - If role independence decreases risk, divide request, approval, execution, custody, and audit
   roles.
 - Bind approvals to the specified operation, target, parameters, and applicable revision.
-- Prevent one identity from control of all roles without detection through inherited privilege.
+- Make sure that inherited privilege does not give one identity control of all roles without
+  detection.
 - Keep an auditable record of the condition that each independent actor satisfied.
 - Give rules for controlled emergency access and a subsequent review. Do not use informal bypass
   paths.

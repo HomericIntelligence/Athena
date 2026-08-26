@@ -6,7 +6,7 @@ Secure by Design makes security a requirement for architecture, implementation, 
 operation from the start. Each design includes controls for threats to trust boundaries, data flows,
 privileges, dependencies, and execution capabilities.
 
-**Aliases:** security by design, built-in security, shift security left and throughout.
+**Aliases:** security by design, built-in security, security during the full life cycle.
 
 ## Provenance
 
@@ -122,7 +122,7 @@ checks, and failure reports for that tool.
 - [CISA, *Shifting the Balance of Cybersecurity Risk*](https://www.cisa.gov/sites/default/files/2023-06/principles_approaches_for_security-by-design-default_508c.pdf)
   gives Secure by Design and Secure by Default expectations for software producers.
 - [NIST SP 800-218, SSDF Version 1.1](https://doi.org/10.6028/NIST.SP.800-218) gives secure
-  practices across the software development life cycle.
+  practices during the full life cycle for software development.
 
 ### More information
 

@@ -24,7 +24,7 @@ specified operation, revalidate the mutable target and authority.
 ## How to apply
 
 - Put steps in four groups: read-only, reversible, compensatable, and irreversible.
-- Validate inputs and targets first. Then make or change external state.
+- Validate inputs and targets first. Then prepare only reversible state.
 - With correct evidence, use previews, staging, backups, canaries, and dry runs.
 - Bind approval and authorization to the publication target and parameters.
 - After preparation, examine mutable facts again.
@@ -41,7 +41,7 @@ flowchart LR
     B --> C["Preview specified operation"]
     C --> D["Revalidate target and authority"]
     D --> E{"All checks satisfactory?"}
-    E -->|No| F["Stop without external effect"]
+    E -->|No| F["Stop without irreversible effect"]
     E -->|Yes| G["Irreversible operation"]
 ```
 

@@ -20,8 +20,8 @@ measurements.
 ## Decision rule
 
 When an accepted requirement or trusted measurement shows an important constraint, add optimization
-complexity. Before-and-after evidence must show an improvement with no regression against the
-requirement.
+complexity. Before-and-after evidence must show an improvement and must show that the result
+continues to satisfy the requirement.
 
 ## How to apply
 

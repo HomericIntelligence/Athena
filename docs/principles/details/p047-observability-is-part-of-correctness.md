@@ -25,7 +25,7 @@ response period, the operational contract does not have sufficient information.
 
 - Select signals from user outcomes and operational questions. Do not select signals only
   because data is available.
-- Correlate work across boundaries with stable request, trace, or operation identifiers.
+- Use stable request, trace, or operation identifiers to correlate work at all boundaries.
 - Record structured status, reason, duration, and dependency context at the responsible boundary.
 - Use metrics for trends and alerting, traces for causal paths, and logs for discrete evidence.
 - Before production starts, set data retention, sampling, cardinality, access, and redaction
@@ -48,7 +48,8 @@ flowchart LR
 
 ## Language examples
 
-The two examples correlate a request with a metric and a structured outcome event.
+The two examples record a duration metric and a structured outcome event that contains the request
+identifier.
 
 ### Python
 
@@ -90,7 +91,7 @@ failure events.
 
 ### Positive
 
-A request through services carries one trace ID. Each boundary records a structured outcome and
+One trace ID identifies a request in all services. Each boundary records a structured outcome and
 latency. Dashboards report errors that users see. Traces show the dependency with the failure.
 
 ### Misuse

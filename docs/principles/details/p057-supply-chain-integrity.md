@@ -40,7 +40,7 @@ distributed artifact.
 ```mermaid
 flowchart TD
     A["Necessary build input"] --> B["Verify source owner and version policy"]
-    B --> C["Verify evidence selected by risk policy and ecosystem"]
+    B --> C["Verify the necessary evidence for the risk policy and ecosystem"]
     C --> D{"Is selected evidence correct for policy?"}
     D -- "No" --> E["Reject the input"]
     D -- "Yes" --> F["Use an isolated authenticated build"]
@@ -130,6 +130,6 @@ untrusted data.
 ### More information
 
 - [NIST SP 800-161 Revision 1](https://doi.org/10.6028/NIST.SP.800-161r1-upd1) gives cybersecurity
-  supply-chain risk management across systems and organizations.
+  supply-chain risk management for systems and organizations.
 
 [Back to the principles catalog](../README.md#p057)

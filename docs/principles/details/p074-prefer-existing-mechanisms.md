@@ -21,7 +21,7 @@ make a fitness and security assessment necessary because reuse does not always d
 
 When the target environment supports an established mechanism and the mechanism satisfies the
 contract, use it. Its total correctness, security, maintenance, and operation cost must be lower
-than a new mechanism. By default, make only the missing capability, not a second framework.
+than a new mechanism. As the default, make only the missing capability, not a second framework.
 
 ## How to apply
 
@@ -47,16 +47,21 @@ flowchart TD
 
 ## Language examples
 
-The two examples use an established URL parser and reject a URL without a scheme or host.
+The two examples use an established parser to return a host only for a valid HTTP or HTTPS URL with
+a valid port.
 
 ```python
 from urllib.parse import urlparse
 
-def host(value):
-    parsed = urlparse(value)
-    if not parsed.scheme or not parsed.hostname:
-        raise ValueError("URL must have a scheme and host")
-    return parsed.hostname
+def host(value: str) -> str:
+    try:
+        parsed = urlparse(value)
+        hostname, _port = parsed.hostname, parsed.port
+    except ValueError as error:
+        raise ValueError("invalid URL") from error
+    if parsed.scheme not in {"http", "https"} or not hostname:
+        raise ValueError("invalid URL")
+    return hostname
 ```
 
 ```rust
@@ -64,7 +69,10 @@ use url::Url;
 
 fn host(value: &str) -> Result<String, &'static str> {
     let parsed = Url::parse(value).map_err(|_| "invalid URL")?;
-    parsed.host_str().map(str::to_owned).ok_or("URL must have a host")
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("invalid URL");
+    }
+    parsed.host_str().map(str::to_owned).ok_or("invalid URL")
 }
 ```
 
@@ -86,7 +94,7 @@ does not make two replacements with small differences.
 **Misuse:** A custom retry loop duplicates the bounded retry in the repository client. The duplicate
 causes nested attempts and inconsistent delay intervals.
 
-**Athena/agent workflow:** An author invokes a tested skill-local helper through its documented CLI.
+**Athena/agent workflow:** An author invokes the documented CLI for a tested skill-local helper.
 The author does not add a second parser to a Markdown code block.
 
 ## Related principles

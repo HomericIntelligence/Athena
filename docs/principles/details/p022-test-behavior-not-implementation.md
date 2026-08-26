@@ -16,8 +16,8 @@ If a refactor preserves system behavior, the system behavior tests usually do no
 Consumer and provider contract testing is a related but different method. It is not an alias for
 this heuristic.
 
-Black-box testing began before unit test frameworks. Many test communities gave rules against
-implementation-detail tests. No one source gives this formulation.
+Black-box testing began before unit test frameworks. Many test communities did not recommend tests
+of implementation details. No one source gives this formulation.
 
 ## Decision rule
 

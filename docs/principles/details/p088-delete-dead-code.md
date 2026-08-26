@@ -78,7 +78,7 @@ fn dispatch(command: Command) {
 
 A local inspection does not give proof that a public interface or plug-in hook has no consumer. A removal can make
 deprecation and migration necessary. If historical rationale controls code at this time, the rationale is active.
-Remove generated source through the canonical input. Do not edit the generated output independently. Scope
+Change the canonical input to remove generated source. Do not edit the generated output independently. Scope
 fidelity limits cleanup to the specified scope.
 
 ## Examples
@@ -88,7 +88,7 @@ maintainer removes the handler, registration, tests, and help for the command. T
 makes the package again.
 
 **Misuse:** A reviewer deletes a callback with no clear caller. The reviewer does not examine the
-configuration name. A framework loads the callback by that name.
+configuration name. A framework uses that name to load the callback.
 
 **Athena/agent workflow:** An agent first does verification of manifests, references, tests, and
 repository history. After this inspection, the agent removes the helper. Text inspection is not

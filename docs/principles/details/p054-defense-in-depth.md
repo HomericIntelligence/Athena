@@ -2,9 +2,10 @@
 
 ## Definition
 
-Defense in Depth uses independent controls for prevention, detection, limitation, and recovery. One
-control failure does not compromise the protected asset. Each layer must control a
-different failure mode.
+Defense in Depth uses independent controls for prevention, detection, limitation, and recovery. The
+controls decrease the risk that one failure immediately compromises the protected asset.
+Independent boundaries or mechanisms address different failure modes that are relevant to the
+threat.
 
 **Aliases:** layered defense, layered security, independent layered controls.
 
@@ -83,7 +84,7 @@ they increase complexity and attack surface. Defense in Depth does not remove th
 strong primary control.
 
 Detection with no response does not contain an incident. Use the minimum layer set for the specified
-threat model. All layers must operate correctly.
+threat model. Monitoring and maintenance are necessary for each layer.
 
 ## Examples
 

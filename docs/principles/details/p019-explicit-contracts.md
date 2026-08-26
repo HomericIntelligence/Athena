@@ -37,7 +37,7 @@ material assumption.
 ```mermaid
 flowchart LR
     Boundary["System boundary"] --> Ambiguity{"Are assumptions different?"}
-    Ambiguity -->|No| Minimal["Keep a minimal contract"]
+    Ambiguity -->|No| Minimal["Keep the smallest necessary contract"]
     Ambiguity -->|Yes| Define["Give obligations and guarantees"]
     Define --> Encode["Encode or record"]
     Encode --> Verify["Verify observable behavior"]
@@ -116,7 +116,7 @@ A host can invoke the skill without guesses about hidden preconditions.
 ### Source information
 
 - [Meyer, "Applying Design by Contract" (1992)](https://doi.org/10.1109/2.161279)
-  gives software reliability through explicit client and supplier obligations.
+  shows how explicit client and supplier obligations can increase software reliability.
 
 ### Applicable information
 

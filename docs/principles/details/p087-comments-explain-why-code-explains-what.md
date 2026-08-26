@@ -71,8 +71,8 @@ fn decode(message: &Message) -> Payload {
 ## Boundaries and tensions
 
 Comments can be necessary for algorithms with much complexity, regular expressions, protocols, and performance
-code. Comments can give information about the algorithm steps. Some code has no executable
-notation. When the implementation is clear, interface documentation must include external behavior.
+code. Comments can give information about the algorithm steps. Some rationale and algorithm meaning
+cannot be clear in executable notation. When the implementation is clear, interface documentation must include external behavior.
 Comments do not make control flow with much complexity correct. Comments must not show secrets or
 give code facts again because the facts can change.
 

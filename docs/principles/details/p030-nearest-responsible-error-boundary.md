@@ -20,7 +20,7 @@ about error propagation. No one source first gave this formulation.
 
 At the first boundary that can satisfy the caller's contract and preserve correct state, handle the
 failure. If the boundary cannot satisfy the contract or preserve correct state, add applicable safe
-context and propagate the failure.
+context. After the boundary adds the context, propagate the failure.
 
 ## How to apply
 
@@ -44,7 +44,8 @@ flowchart LR
 
 ## Language examples
 
-The two examples put retry policy above a low-level read operation that propagates its error.
+The two examples put retry policy in the caller of a low-level read operation that propagates its
+error.
 
 Python:
 
@@ -78,11 +79,11 @@ fn read_with_retry(client: &mut impl Client) -> Result<String, TimeoutError> {
 
 ## Boundaries and tensions
 
-The nearest syntactic `catch` site does not always have applicable policy. A top-level boundary can convert an
+The first `catch` site is not always the responsible boundary. A top-level boundary can convert an
 unhandled error to a process exit, protocol response, or job status.
 
-Cleanup can occur below the responsible boundary and preserve the failure. Security policy can
-make a generic public result and restricted internal diagnostics necessary.
+A lower-level operation can do cleanup and preserve the failure. Security policy can make a generic
+public result and restricted internal diagnostics necessary.
 
 ## Examples
 
@@ -91,7 +92,7 @@ make a generic public result and restricted internal diagnostics necessary.
 A repository propagates a database timeout. The service knows that the operation is read-only and
 has a deadline. It makes one bounded retry.
 
-The API boundary converts an exhausted retry budget to a public unavailable error response.
+The API boundary converts an exhausted retry budget to a public error with an unavailable status.
 
 ### Misuse or counterexample
 

@@ -32,7 +32,7 @@ failure behavior.
 
 ## Diagram
 
-The reader follows decisions with names through one linear control flow.
+The reader follows one linear control flow with decisions that have names.
 
 ```mermaid
 flowchart LR

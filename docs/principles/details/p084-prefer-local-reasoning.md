@@ -25,15 +25,15 @@ system.
 ## How to apply
 
 - Keep each invariant and the applicable state in the same module.
-- Supply important dependencies through explicit narrow interfaces.
+- Use explicit narrow interfaces to supply important dependencies.
 - Use the minimum global state, hidden callbacks, reflection, and nonlocal effects.
 - Keep each state transition clear and near the operation that starts the transition.
 - Use types and contracts to show facts from a different component.
-- Give a clear entry point above lower-level implementation detail.
+- Give a clear entry point for lower-level implementation detail.
 
 ## Diagram
 
-The component receives each necessary fact through its local contract.
+The local contract supplies each necessary fact to the component.
 
 ```mermaid
 flowchart LR
@@ -85,7 +85,7 @@ fn total_cents(price: &str, rate: &str) -> Result<u64, &'static str> {
 ## Boundaries and tensions
 
 Local reasoning does not let components duplicate global policy or authoritative data. A component
-can use a canonical source through an explicit interface. Authority, traces, and transactions can
+can use an explicit interface to access a canonical source. Authority, traces, and transactions can
 include more than one component. The architecture must show these control points and effects. Some
 distributed invariants are nonlocal. Record each nonlocal invariant.
 

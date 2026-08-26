@@ -27,7 +27,7 @@ and material parameters.
 - Classify impact from the destination, data, privilege, cost, and reversibility.
 - Show the approver the specified action and important parameters in clear terms.
 - When the target, scope, material parameters, or risk changes, receive new approval.
-- Protect approval credentials and execution state against substitution or replay.
+- Protect approval credentials and execution state from substitution or replay.
 - Pair approval with technical safeguards. Approval without these safeguards does not make a
   dangerous action safe.
 

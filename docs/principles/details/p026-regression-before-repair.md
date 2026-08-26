@@ -19,7 +19,7 @@ TDD and maintenance practice. No one source first gave this formulation.
 ## Decision rule
 
 Before a repair, capture the smallest contract behavior that reproduces the defect. Make sure
-that the test fails against the unrepaired revision.
+that the unrepaired revision causes the test to fail.
 
 ## How to apply
 
@@ -94,7 +94,7 @@ related but different objectives.
 
 ### Positive application
 
-A parser report includes one malformed input. A small public API test first reproduces the
+A parser report includes one malformed input. A small test of the public API first reproduces the
 exception. The test passes after the parser returns the specified structured error.
 
 ### Misuse or counterexample
@@ -104,8 +104,8 @@ evidence of regression sensitivity.
 
 ### Athena or agent workflow
 
-An agent records the failed command and output. The agent makes the minimal repair and reruns that
-test. Then the agent runs the repository gate.
+An agent records the failed command and output. The agent makes the smallest necessary repair. Then,
+the agent runs that test again. If the test passes, the agent runs the repository gate.
 
 ## Related principles
 

@@ -5,7 +5,7 @@
 Put related responsibilities and related state in one component. Use the smallest number of weak
 dependencies necessary for system operation.
 
-Cohesion measures internal relation. Coupling measures dependence across a boundary.
+Cohesion measures internal relation. Coupling measures component dependence.
 
 **Aliases:** strong cohesion and loose coupling, functional cohesion and weak coupling.
 
@@ -18,8 +18,8 @@ during the 1970s. Practitioners then gave the short maxim. No one source contain
 
 ## Decision rule
 
-Put elements that change for the same reason in one component. Connect components through the smallest stable
-contract that preserves necessary behavior.
+Put elements that change for the same reason in one component. Use the smallest stable contract
+that preserves necessary behavior to connect components.
 
 ## How to apply
 

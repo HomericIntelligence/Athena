@@ -133,6 +133,6 @@ are not completed.
 ### More information
 
 - [USENIX: *Transparent Checkpoint-Restart of Multiple Processes*](https://www.usenix.org/legacy/event/usenix07/tech/full_papers/laadan/laadan_html/paper.html)
-  gives consistency requirements for checkpoints across cooperative processes and shared state.
+  gives consistency requirements for checkpoints in cooperative processes with shared state.
 
 [Back to the principles catalog](../README.md#p046)

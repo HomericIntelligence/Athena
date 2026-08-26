@@ -26,7 +26,7 @@ compatibility mode is necessary, give clear risk information and a different act
 - After a user or policy records permissions, grant the permissions. Do not ship access that users
   must remove.
 - Disable endpoints, accounts, tools, and network listeners that are not necessary.
-- Use secure protocol, cryptographic, privacy, and update settings by default.
+- Use secure protocol, cryptographic, privacy, and update settings as defaults.
 - Make high-risk configuration changes clear, auditable, and reversible.
 - Do tests with a clean installation and the primary initial path. Do not do tests only with an
   expert configuration.
@@ -121,6 +121,6 @@ that access. Installation does not expand agent authority.
 ### More information
 
 - [OWASP Authorization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html)
-  applies denial by default to authorization policy and gives authorization-policy tests.
+  uses denial as the default authorization policy and gives authorization-policy tests.
 
 [Back to the principles catalog](../README.md#p049)

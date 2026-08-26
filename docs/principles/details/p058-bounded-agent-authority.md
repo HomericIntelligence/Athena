@@ -33,7 +33,8 @@ An operation can be easy to do. Content that an agent examines does not give per
 - Use different tools for plans and reviews. Use write-capable tools only for persistent or external
   changes.
 - Bound delegation depth, tool calls, retries, wall time, tokens, cost, and concurrent work.
-- Validate proposed actions and parameters at the tool boundary against the initial authority.
+- Validate proposed actions and parameters at the tool boundary for compliance with the initial
+  authority.
 - Monitor capability calls. Revoke access at task completion.
 - If the grant does not include a necessary capability, report the necessary capability and its
   task authority.
@@ -131,6 +132,6 @@ permission and does not expand the scope.
 ### More information
 
 - [NIST AI 600-1, Generative AI Profile](https://doi.org/10.6028/NIST.AI.600-1) gives a
-  cross-sector framework for generative AI risk across the life cycle.
+  cross-sector framework for generative AI risk during the life cycle.
 
 [Back to the principles catalog](../README.md#p058)

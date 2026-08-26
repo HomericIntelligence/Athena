@@ -68,8 +68,8 @@ replacement, or removal. A scoped task can make careful edits to a modified file
 generated product artifact can also make coherent regeneration necessary.
 
 The rule does not authorize data loss without a report or churn that is not part of the task. It
-does not prevent authorized collaboration. A clean repository has no priority over its uncommitted
-work.
+does not prevent authorized collaboration. Do not discard uncommitted work only to make the
+repository clean.
 
 ## Examples
 

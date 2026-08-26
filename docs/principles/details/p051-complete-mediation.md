@@ -13,7 +13,7 @@ permanent authority for subsequent operations.
 **Classification:** established principle.
 
 Saltzer and Schroeder's paper gives Complete Mediation as a secure system design principle. The
-paper gives a reference to earlier work by Roger Needham.
+paper gives a reference to earlier work from Roger Needham.
 
 ## Decision rule
 
@@ -92,8 +92,9 @@ accepts all authenticated sessions because login is the only authorization contr
 
 ### Athena and agent workflows
 
-Before each write-capable tool call, the workflow verifies the target and operation against task
-authority. An approved read does not authorize a subsequent push or deletion.
+Before each write-capable tool call, the workflow compares the target and operation with the task
+authority and verifies that the call is authorized. An approved read does not authorize a
+subsequent push or deletion.
 
 ## Related principles
 

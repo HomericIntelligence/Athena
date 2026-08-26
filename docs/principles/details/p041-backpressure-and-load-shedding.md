@@ -52,8 +52,7 @@ flowchart TD
 
 ## Language examples
 
-Each example rejects work when demand is more than capacity. It gives a retry signal before slot
-exhaustion.
+Each example rejects work at capacity and gives a retry signal.
 
 ### Python
 

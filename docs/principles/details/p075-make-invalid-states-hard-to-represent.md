@@ -29,7 +29,8 @@ clearly, use runtime checks at more than one location.
   variants.
 - Use validated constructors or factories that return a value that satisfies the invariant or a
   specified error.
-- When unrestricted mutation can violate invariants, keep fields private.
+- When unrestricted mutation can violate invariants, give field access only with operations that
+  enforce invariants.
 - Express units, identifiers, necessary fields, and legal transitions in types or schemas.
 - Revalidate facts from external mutable state at the responsible boundary.
 
@@ -75,8 +76,9 @@ enum Payment {
 No type system can prove all temporal, distributed, authorization, or business invariants. External
 data is untrusted. Also use
 [P053 boundary validation](p053-validate-at-trust-boundaries.md) and
-[P076 parse-validate-operate](p076-parse-then-validate-then-operate.md). When their complexity is
-more than the risk reduction, do not use wrappers, generics, or type-level mechanisms.
+[P076 parse-validate-operate](p076-parse-then-validate-then-operate.md). When the complexity of
+wrappers, generics, or type-level mechanisms is more than the risk reduction, do not use these
+mechanisms.
 Representations must be clear, easy to change, and compatible with necessary serialization
 contracts.
 

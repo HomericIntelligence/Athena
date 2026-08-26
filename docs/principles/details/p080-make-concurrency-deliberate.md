@@ -18,7 +18,7 @@ changes the correctness model. The design must include explicit analysis.
 
 ## Decision rule
 
-Use sequential execution by default. Use concurrency only for a measured latency, throughput,
+As the default, use sequential execution. Use concurrency only for a measured latency, throughput,
 response, or isolation benefit. Select a model with testable safety and termination properties.
 
 ## How to apply
@@ -27,7 +27,7 @@ response, or isolation benefit. Select a model with testable safety and terminat
 - Use the minimum shared mutable state. Use immutable messages or ownership transfer.
 - Give order guarantees, synchronization, and permitted interleavings.
 - Set limits for workers, queues, fan-out, and active work.
-- Propagate deadlines and cancellation through the task tree.
+- Propagate deadlines and cancellation to all tasks in the tree.
 - Give one result for failures and concurrent errors.
 - Where applicable, use race detection, stress tests, and deterministic model tests.
 
@@ -117,6 +117,6 @@ coordinator collects and compares all results.
 ### More information
 
 - [Go Concurrency Patterns: Context](https://go.dev/blog/context) gives information about explicit
-  propagation of deadlines and cancellation across concurrent request work.
+  propagation of deadlines and cancellation to all concurrent request work.
 
 [Back to the engineering principles catalog](../README.md#p080)

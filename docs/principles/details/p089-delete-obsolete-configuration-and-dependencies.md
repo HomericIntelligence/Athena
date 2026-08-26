@@ -2,7 +2,7 @@
 
 ## Definition
 
-**Delete Obsolete Configuration and Dependencies** completes a removal across its full support
+**Delete Obsolete Configuration and Dependencies** completes a removal in all parts of its support
 surface. First, do a verification that the consumer count is zero. Then, remove obsolete flags,
 packages, lockfile entries, deployment settings, tests, documents, metrics, and support code.
 
@@ -23,9 +23,9 @@ canonical control. Then, complete the removal.
 
 ## How to apply
 
-- Trace the removed capability through manifests, lockfiles, images, deploy files, and environment
+- Trace the removed capability in manifests, lockfiles, images, deploy files, and environment
   variables.
-- Examine optional and build-time consumers. Examine consumers through dependency chains, platforms, and runtime loaders.
+- Examine optional and build-time consumers. Examine consumers in dependency chains, platforms, and runtime loaders.
 - Remove obsolete feature flags, defaults, secrets, dashboards, alerts, and runbook steps.
 - Change the canonical dependency or configuration source, then make the derived artifacts again.
 - Do tests of clean installation, packaging, startup, specified platforms, and deployment paths.
@@ -33,7 +33,7 @@ canonical control. Then, complete the removal.
 
 ## Diagram
 
-The removal follows each support artifact to the last consumer found by inspection.
+The removal follows each support artifact to the last consumer that inspection finds.
 
 ```mermaid
 flowchart LR

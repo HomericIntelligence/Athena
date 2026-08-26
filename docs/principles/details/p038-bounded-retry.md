@@ -73,7 +73,7 @@ def fetch(client):
 fn fetch(client: &Client) -> Result<Data, Error> {
     for attempt in 0..3 {
         match client.fetch() {
-            Err(error) if error.is_transient() && attempt < 2 => delay(jitter(attempt)),
+            Err(error) if error.is_transient() && attempt < 2 => delay(jitter(2_u64.pow(attempt))),
             result => return result,
         }
     }
@@ -110,8 +110,9 @@ retries without a limit. One request causes a retry storm.
 
 ### Athena or agent workflow
 
-A coordinator retries a transient transport failure from a subagent only before its iteration and
-time budget. It immediately gives a validation-failure or permission-denial result.
+A coordinator retries a transient transport failure from a subagent only while its iteration
+budget and time budget permit the retry. It immediately gives a validation-failure or
+permission-denial result.
 
 ## Related principles
 

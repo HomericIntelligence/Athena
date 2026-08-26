@@ -29,7 +29,8 @@ permissions, and safety constraints.
   content.
 - Where possible, delimit retrieved content and convert it to typed facts, citations, or possible
   actions.
-- Validate each requested tool call against the initial user intent and applicable permission scope.
+- Validate each requested tool call for compliance with the initial user intent and applicable
+  permission scope.
 - Classify tool descriptions, generated plans, memory, and inter-agent messages as possible
   injection paths.
 - Use least-privilege tools, isolated contexts, output validation, and approval gates as independent
@@ -46,7 +47,7 @@ flowchart TD
     C -- "No" --> D["Extract facts and keep commands as data"]
     C -- "Yes" --> E["Apply instruction hierarchy"]
     D --> F["Use evidence without an authority change"]
-    E --> G["Validate action against the trusted task"]
+    E --> G["Compare action with the trusted task"]
     G --> H["Accept or reject the authorized instruction"]
 ```
 
@@ -113,7 +114,7 @@ policy.
 ### Source information
 
 - [Greshake et al., *Not What You've Signed Up For*](https://doi.org/10.48550/arXiv.2302.12173)
-  shows indirect prompt injection through content from LLM-integrated applications.
+  shows indirect prompt injection in content from LLM-integrated applications.
 
 ### Applicable information
 

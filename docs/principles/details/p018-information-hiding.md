@@ -26,7 +26,7 @@ behind the boundary.
 - Find possible change points, for example storage formats, vendors, algorithms, and cache
   policy.
 - Publish operations and semantic guarantees. Do not publish internal fields or dependency objects.
-- Prevent access to private representations through shared tables or mutable aliases.
+- Do not use shared tables or mutable aliases to give access to private representations.
 - Before you change an implementation, do tests of the public contract.
 - Record each specified escape path and its compatibility cost.
 

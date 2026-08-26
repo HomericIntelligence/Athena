@@ -18,16 +18,18 @@ two or more agents. Historical confinement literature did not give this rule.
 ## Decision rule
 
 Delegate only a specified, bounded partition with no more authority than the parent. Before the
-parent accepts a child result, verify the result provenance, scope, and evidence. Verify requested
-effects against the parent contract.
+parent accepts a child result, verify the result provenance, scope, and evidence. Verify that
+requested effects comply with the parent contract.
 
 ## How to apply
 
 - Give the child a specified objective, inputs, authorized outputs, constraints, and stop condition.
 - Give the child the minimum necessary context. Do not copy full histories, secrets, or customer
   data that does not apply.
-- Give the child narrower, short-lived capabilities. Do not give the child the parent's credentials
-  or tools.
+- Give the child narrower, short-lived capabilities.
+- Do not give the child the parent's credentials.
+- Do not automatically give all tools from the parent.
+- Give only the constrained tool subset that the child task needs.
 - Limit recursion, child count, concurrency, retries, time, tokens, cost, and persistent memory.
 - When identity is important, authenticate inter-agent messages and validate their structured
   contents.

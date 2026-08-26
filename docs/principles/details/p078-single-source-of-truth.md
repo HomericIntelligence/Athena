@@ -26,7 +26,7 @@ all other representations receive the same data from the authoritative represent
 - Give each domain fact an authoritative owner and specified write interface.
 - If policy accepts the cost, make secondary representations from authoritative data.
 - Give caches and replicas a non-authoritative status. Record freshness limits.
-- Record the source, version, and reconciliation rules across asynchronous boundaries.
+- Record the source, version, and reconciliation rules for asynchronous boundaries.
 - Use an explicit operation to move authority. Do not let two writers give different values without a signal.
 - When authors can change copies independently, find differences.
 
@@ -84,8 +84,8 @@ fn client_timeout(config: &Config) -> Result<u64, &'static str> {
 
 SSOT is not a rule for one database, one service, or one global system owner. Different bounded contexts
 can own different facts. Distributed replicas can increase availability. When the authority and
-consistency model of each copy are clear, derived copies are correct. When control causes a bottleneck
-or incorrect agreement, central control is incorrect.
+consistency model of each copy are clear, derived copies are permitted in the specified model.
+When control causes a bottleneck or incorrect agreement, central control is incorrect.
 
 ## Examples
 

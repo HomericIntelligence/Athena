@@ -6,15 +6,16 @@
 lifetime. The principle also gives transfer, cleanup, and termination rules. Resources include memory,
 files, locks, transactions, connections, callbacks, processes, tasks, and temporary artifacts.
 
-**Aliases:** none. RAII and ownership types are implementation families for this principle.
+**Aliases:** none. Resource Acquisition Is Initialization (RAII) and ownership types are
+implementation families for this principle.
 
 ## Provenance
 
 **Classification:** principle with source evidence.
 
-No source records an initial author of the general rule. Structured programs, C++ Resource Acquisition Is
-Initialization (RAII), ownership types, scope cleanup, and structured concurrency use this rule. These
-mechanisms are different. Each mechanism makes responsibility and lifetime clear.
+No source records an initial author of the general rule. Structured programs, C++ RAII, ownership
+types, scope cleanup, and structured concurrency use this rule. These mechanisms are different.
+Each mechanism makes responsibility and lifetime clear.
 
 ## Decision rule
 
@@ -46,8 +47,8 @@ flowchart LR
 
 ## Language examples
 
-The two examples connect file cleanup to a clear scope, accept LF and CRLF line endings, and give an
-error for an empty file.
+The two examples connect file cleanup to a clear scope, accept line-feed (LF) and
+carriage-return/line-feed (CRLF) endings, and give an error for an empty file.
 
 ### Python
 
@@ -118,6 +119,6 @@ coordinator then records completion.
 ### More information
 
 - [Standard C++ FAQ: Exceptions and RAII](https://isocpp.org/wiki/faq/exceptions/1000) gives
-  information about deterministic cleanup across success and exception paths.
+  information about deterministic cleanup for success and exception paths.
 
 [Back to the engineering principles catalog](../README.md#p079)

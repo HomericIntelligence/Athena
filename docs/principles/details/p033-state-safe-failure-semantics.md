@@ -45,7 +45,7 @@ flowchart TD
     D --> F{"Did the operation fail?"}
     E --> F
     F -- "No" --> G["Publish the correct result"]
-    F -- "Yes" --> H["Repair state or show a specified recoverable state"]
+    F -- "Yes" --> H["Put the system in the specified recoverable state"]
     H --> I["Release resources and propagate the failure"]
 ```
 

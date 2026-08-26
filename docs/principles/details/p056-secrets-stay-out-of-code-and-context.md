@@ -39,8 +39,9 @@ Limit the exposure time. Prevent secondary copies.
   services.
 - Scan source and artifacts. Use the scan as a secondary control, not as permission to embed
   secrets.
-- If exposure is possible, revoke or rotate the secret. Deletion of the copy that users can see is
-  not sufficient.
+- If there is evidence of exposure or if you think that exposure occurred, revoke the secret.
+- If continued access is necessary after revocation, replace the secret.
+- Deletion of the copy that users can see is not sufficient.
 
 ## Diagram
 
@@ -48,7 +49,7 @@ Limit the exposure time. Prevent secondary copies.
 flowchart TD
     A["Protected operation starts"] --> B{"Is a reference or scoped identity sufficient?"}
     B -- "Yes" --> C["Give the reference to a protected tool"]
-    B -- "No" --> D["Give the minimum secret through a protected channel"]
+    B -- "No" --> D["Protected channel gives minimum secret"]
     C --> E["Return only the operation result"]
     D --> E
     E --> F["Revoke access and remove temporary copies"]
@@ -126,7 +127,7 @@ child task.
   gives information about central storage, short lifetimes, rotation, audits, source exposure, and
   log redaction.
 - [NIST SP 800-218, SSDF Version 1.1](https://doi.org/10.6028/NIST.SP.800-218) gives requirements for
-  software, credentials, and development environments across the secure development life cycle.
+  software, credentials, and development environments during the secure development life cycle.
 
 ### More information
 

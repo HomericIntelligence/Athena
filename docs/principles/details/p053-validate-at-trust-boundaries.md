@@ -25,7 +25,7 @@ Before the system accepts the data, complete all syntax, semantic, size, and aut
 ## How to apply
 
 - Map boundaries between principals, privileges, components, tenants, and data sources.
-- Make one decoded and normalized form. Validate the normalized form against an allowlist or schema.
+- Make one decoded and normalized form. Compare the normalized form with an allowlist or schema.
 - Do checks of type, length, range, shape, encoding, ownership, and applicable resource limits.
 - Keep data isolated from commands. Use typed APIs and bound parameters. Do not make command text.
 - Validate generated and tool-proposed operations again at the component that will do them.
@@ -84,7 +84,7 @@ correct issue, web page, or tool response is data. It does not get instruction a
 ### Positive
 
 A file tool resolves a requested path and compares it with the authorized root. It rejects links
-that are not in that root. It enforces a size limit and passes the resolved path through a typed
+that are not in that root. It enforces a size limit and passes the resolved path to a typed
 interface.
 
 ### Misuse

@@ -5,8 +5,8 @@
 A circuit breaker monitors calls to a dependency. After measurements show continuous failure, it opens
 and rejects new calls without contact with that dependency.
 
-After a controlled recovery interval, it admits a finite probe set in a half-open state. Until the
-dependency satisfies the recovery criteria, it stays in the half-open state. Then it closes.
+After a controlled recovery interval, it admits a finite probe set in a half-open state. A failed
+probe opens the breaker again. The breaker closes only after sufficient probes succeed.
 
 **Aliases:** dependency circuit breaker, open/half-open/closed breaker
 

@@ -20,7 +20,7 @@ persons necessary for each operation.
 ## Decision rule
 
 A proposal does not give sufficient authority for a high-impact action. Immediately before
-execution, resolve the specified action. Validate its authority and safeguards against the current
+execution, resolve the specified action. Validate its authority and safeguards for the current
 state.
 
 ## How to apply

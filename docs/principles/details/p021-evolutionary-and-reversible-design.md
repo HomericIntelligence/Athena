@@ -2,7 +2,7 @@
 
 ## Definition
 
-Change a system through incremental, behavior-preserving, and migration-safe steps. Keep a tested
+Use incremental, behavior-preserving, and migration-safe steps to change a system. Keep a tested
 method to use the previous state again or continue to a safe state.
 
 During a transition, compatible versions can operate together. Use evidence from small
@@ -111,7 +111,7 @@ does not do destructive cleanup. After user approval, it uses the guarded tidy w
 ### Source information
 
 - [Fowler, "Original Strangler Fig Application" (2004)](https://martinfowler.com/bliki/OriginalStranglerFigApplication.html)
-  gives replacement in steps around a legacy system, without one cutover rewrite.
+  gives replacement in steps for a legacy system, without one cutover rewrite.
 
 ### Applicable information
 
@@ -121,6 +121,6 @@ does not do destructive cleanup. After user approval, it uses the guarded tidy w
 ### More information
 
 - [Ford, Parsons, and Kua, *Building Evolutionary Architectures*, second-edition sample](https://www.thoughtworks.com/content/dam/thoughtworks/documents/books/bk_building_evolutionary_architectures_second_edition_free_chapter.pdf)
-  gives evolutionary architecture as guided, incremental change across more than one dimension.
+  gives evolutionary architecture as guided, incremental change in more than one dimension.
 
 [Back to the engineering principles catalog](../README.md#p021)

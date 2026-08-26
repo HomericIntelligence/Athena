@@ -5,8 +5,8 @@
 Exercise values at and near transitions, limits, and equivalence partition edges. Defects frequently
 occur where behavior changes.
 
-Applicable cases include values below, at, and above a threshold. Also include zero, one, empty,
-full, minimum, maximum, overflow, and rejected states.
+Applicable cases include values less than, equal to, and more than a threshold. Also include zero,
+one, empty, full, minimum, maximum, overflow, and rejected states.
 
 **Aliases:** boundary value analysis, limit testing, edge testing.
 
@@ -35,17 +35,18 @@ at the edge. Include representations that can overflow or become empty.
 ```mermaid
 flowchart LR
     Contract["Contract or state transition"] --> Edge["Find material edge"]
-    Edge --> Below["Select value below edge"]
-    Edge --> At["Select value at edge"]
-    Edge --> Above["Select value above edge"]
-    Below --> Verify["Verify result and state"]
+    Edge --> Less["Select a value less than the edge"]
+    Edge --> At["Select a value at the edge"]
+    Edge --> More["Select a value more than the edge"]
+    Less --> Verify["Verify result and state"]
     At --> Verify
-    Above --> Verify
+    More --> Verify
 ```
 
 ## Language examples
 
-The two examples verify the same cases below, at, and above the accepted range.
+The two examples verify the same values less than the minimum, at the limits, and more than the
+maximum.
 
 Python:
 
@@ -99,7 +100,7 @@ encoding. Character count and byte count can be different.
 ### Athena or agent workflow
 
 A bounded workflow test includes zero iterations, one iteration, the configured maximum, and one
-iteration above the maximum. The case above the maximum must give a clear terminal failure.
+iteration more than the maximum. That case must give a clear terminal failure.
 
 ## Related principles
 
@@ -117,7 +118,7 @@ iteration above the maximum. The case above the maximum must give a clear termin
 ### Applicable information
 
 - [ISTQB Certified Tester Foundation Level Syllabus v4.0.1](https://istqb.org/wp-content/uploads/2024/11/ISTQB_CTFL_Syllabus_v4.0.1.pdf)
-  gives two-value and three-value analysis around equivalence partition boundaries.
+  gives two-value and three-value analysis at and near equivalence partition boundaries.
 
 ### More information
 

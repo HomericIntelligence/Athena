@@ -39,17 +39,20 @@ Specify the safe outcome for budget expiration.
 
 ```mermaid
 flowchart TD
-    A["Start an external wait"] --> B["Set a deadline and send cancellation"]
-    B --> C{"What terminal result occurs?"}
-    C -- Success --> D["Keep the completed result"]
-    C -- Cancellation --> E["Keep the cancellation result"]
-    C -- Timeout --> F["Keep the timeout result"]
-    C -- Failure --> G["Keep the failure result"]
-    D --> H["Release owned resources"]
-    E --> H
-    F --> H
-    G --> H
-    H --> I["Return the selected result"]
+    A["Get the cancellation signal before the wait"] --> B["Set the deadline"]
+    B --> C["Pass the signal to the operation"]
+    C --> D{"What occurs?"}
+    D -- Success --> E["Keep the completed result"]
+    D -- "Cancellation request" --> F["Send the cancellation signal"]
+    F --> G["Keep the cancellation result"]
+    D -- "Deadline expires" --> H["Send the cancellation signal"]
+    H --> I["Keep the timeout result"]
+    D -- Failure --> J["Keep the failure result"]
+    E --> K["Release the owned resources"]
+    G --> K
+    I --> K
+    J --> K
+    K --> L["Return the terminal result"]
 ```
 
 ## Language examples

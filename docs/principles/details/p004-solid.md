@@ -41,7 +41,8 @@ Dependency injection is one method, not the principle.
 
 **Classification:** established principle.
 
-A paper from Robert C. Martin shows the five principles as a group in approximately 2000. Bertrand Meyer was the first
+Robert C. Martin wrote separate papers about the five principles. One paper describes Single
+Responsibility. A second paper includes the other four principles. Bertrand Meyer was the first
 source for Open/Closed. Barbara Liskov and Jeannette Wing give Liskov Substitution a formal basis.
 
 ## Decision rule
@@ -83,14 +84,14 @@ from collections.abc import Callable
 
 I32_MIN, I32_MAX = -(2**31), 2**31 - 1
 
-def invoice_total(
-    subtotal: int, tax: Callable[[int], int]
-) -> int:
+def invoice_total(subtotal: int, tax: Callable[[int], int]) -> int:
     if type(subtotal) is not int or not I32_MIN <= subtotal <= I32_MAX:
         raise OverflowError("amount is not in the i32 range")
     tax_value = tax(subtotal)
+    if type(tax_value) is not int or not I32_MIN <= tax_value <= I32_MAX:
+        raise OverflowError("amount is not in the i32 range")
     total = subtotal + tax_value
-    if type(tax_value) is not int or not I32_MIN <= tax_value <= I32_MAX or not I32_MIN <= total <= I32_MAX:
+    if not I32_MIN <= total <= I32_MAX:
         raise OverflowError("amount is not in the i32 range")
     return total
 ```

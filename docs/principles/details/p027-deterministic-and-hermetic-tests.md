@@ -2,7 +2,7 @@
 
 ## Definition
 
-Make tests repeatable through controlled inputs and isolation from undeclared external influences.
+Use controlled inputs and isolation from undeclared external influences to make tests repeatable.
 Such influences include time, random values, environment variables, file state, networks, locale,
 concurrency, and shared services.
 
@@ -20,7 +20,7 @@ Software test guidance includes determinism and isolation. Large build and test 
 ## Decision rule
 
 If an external input can change a result, the test must declare or control that input. The test must
-not leak mutable state across executions.
+not share mutable state between executions.
 
 ## How to apply
 
@@ -47,7 +47,7 @@ flowchart LR
 
 ## Language examples
 
-The two examples inject the same clock value. They do not use the wall clock.
+The two examples inject the same clock value and do not read the wall clock.
 
 Python:
 

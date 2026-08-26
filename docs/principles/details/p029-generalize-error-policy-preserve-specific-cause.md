@@ -2,8 +2,8 @@
 
 ## Definition
 
-Use a small, stable error taxonomy at architectural boundaries. Preserve the initial cause, stack,
-and safe structured context for diagnosis.
+Use a small taxonomy for stable errors at architectural boundaries. Preserve the initial cause,
+stack, and safe structured context for diagnosis.
 
 A general policy helps callers select a response. A specific cause helps operators diagnose the
 failed event.
@@ -82,7 +82,7 @@ One `operation failed` result is too general when callers must select different 
 dependency exception is too specific and couples consumers to internal details.
 
 Cause preservation does not authorize disclosure of stacks, paths, queries, credentials, or
-personal data. Change stable taxonomies only through approved decisions. Do not add one type for
+personal data. Use approved decisions to change stable taxonomies. Do not add one type for
 each event.
 
 ## Examples
