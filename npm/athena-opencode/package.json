@@ -1,6 +1,6 @@
 {
   "name": "@homericintelligence/athena-opencode",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Athena provides workflow skills as an opencode plugin.",
   "license": "BSD-3-Clause",
   "type": "module",
