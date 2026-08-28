@@ -30,7 +30,7 @@ Use the [shared review contract](../../docs/review/common.md) and the
 - Revision.
 - Worktree overlay or other mutable view.
 - Target path, if one exists.
-- Validation evidence that binds the review to the current head commit. If no such receipt exists,
+- Validation receipt that binds the review to the current head commit. If no such receipt exists,
   report the evidence gap and do not claim success.
 
 ## Principles
@@ -100,7 +100,7 @@ Report these items:
 - target and any scope expansion;
 - candidate list with stable IDs and categories;
 - evidence for consumers, behavior, purpose, contracts, history, risk, and validation;
-- for any validation result, the exact command, current reviewed head, environment, exit status,
+- for any validation receipt, the exact command, current reviewed head, environment, exit status,
   and unedited output; otherwise report the evidence gap and do not state success;
 - published public API deprecation evidence, when applicable;
 - category result for simplification coverage: `finding`, `clear`, or `not applicable`;
