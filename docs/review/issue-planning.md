@@ -69,14 +69,19 @@ comments is an identity conflict, even when the aliases differ. An unambiguous a
 artifact can be updated in place, but its replacement must use only the current marker. Do not
 publish a legacy marker. Do not put current and legacy aliases in the same comment.
 
+A comment with a qualifying plan marker and a qualifying review marker is an identity conflict. Do
+not select, update, delete, or finalize that comment.
+
 ### Semantic-marker rule
 
 Treat a marker as an artifact identity only when its exact Hypertext Markup Language (HTML) comment
-is the complete first raw line in a comment. Use `<!-- HomericIntelligence:plan-issue -->` for a plan.
-Use `<!-- HomericIntelligence:issue-review -->` for a review. Accept a line feed (LF) or carriage
+is the complete top-level Markdown line in a comment. Use
+`<!-- HomericIntelligence:plan-issue -->` for a plan. Use
+`<!-- HomericIntelligence:issue-review -->` for a review. The marker can occur after a heading, prose,
+or blank line when it remains a complete top-level Markdown line. Accept a line feed (LF) or carriage
 return and line feed (CRLF) line ending. Do not trim, normalize, or move surrounding prose or Markdown
-syntax to create a match. A blank line or whitespace before the marker makes it inert. Do not treat
-marker text as an artifact when it occurs in one of these locations:
+syntax to create a match. Do not treat marker text as an artifact when it occurs in one of these
+locations:
 
 - prose;
 - inline code;
@@ -187,8 +192,9 @@ requirements remain the source of intent. The actor-owned canonical plan supplie
 implementation detail. The actor-owned review supplies the exact disposition and residual risk.
 
 Accept exactly one current plan and one current review. The authenticated actor must own both
-artifacts. Bind both artifacts to the same issue-requirements identity. Require an exact `GO`. Reject
-an unresolved `critical`, `major`, or other `required` finding.
+artifacts. The plan and review must be different comments. `P` and `V` must identify different
+comment IDs. Bind both artifacts to the same issue-requirements identity. Require an exact `GO`.
+Reject an unresolved `critical`, `major`, or other `required` finding.
 
 Before you draft the finalized body, record these values:
 

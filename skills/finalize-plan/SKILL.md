@@ -89,6 +89,8 @@ A planning epoch is one set of these sealed source identities:
 - `V` identifies one actor-owned `<!-- HomericIntelligence:issue-review -->` comment ID and its review-content
   digest.
 
+`P` and `V` must identify different comment IDs. Do not use one comment as both plan and review.
+
 The review must contain the same issue, `R`, plan-comment ID, and `P`. These values must match
 exactly. The review must have the exact `GO` disposition. It must not have an unresolved `critical`,
 `major`, or other `required` finding. Do not write if an artifact is conditional, partial,
