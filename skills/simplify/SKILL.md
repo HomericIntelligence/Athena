@@ -68,18 +68,27 @@ principle definitions. Use only these principles because they materially affect 
    exports, configuration, dependencies, and documentation. Report each scope expansion.
 4. Compare concepts, control flow, interfaces, dependencies, configuration, state, and code.
 5. Collect evidence about consumers, behavior, purpose, contracts, history, risk, and validation.
-6. Classify each supported candidate as delete, consolidate, reuse, simplify, or retain.
-7. Give each candidate a stable ID.
-8. For each candidate, report scope, preserved behavior, the smaller alternative, dependencies and
-   order, validation, rollback, and expected net reduction.
-9. If the repository changes during review, stop and report drift.
-10. After the read-only report, stop at a checkpoint. Offer one of these actions:
+6. Before you classify a deletion or breaking interface change, check if it affects a published
+   public API.
+7. If a candidate affects a published public API, identify the published surface, current
+   consumers, required deprecation notice or compatibility bridge, migration path, supported
+   version or removal window, and validation evidence.
+8. If the repository has no documented deprecation policy for that published public API, stop and
+   request maintainer direction.
+9. Until the deprecation and compatibility conditions are complete, classify that published public
+   API candidate as `retain` or limit it to deprecation and migration work.
+10. Classify each supported candidate as delete, consolidate, reuse, simplify, or retain.
+11. Give each candidate a stable ID.
+12. For each candidate, report scope, preserved behavior, the smaller alternative, dependencies and
+    order, validation, rollback, and expected net reduction.
+13. If the repository changes during review, stop and report drift.
+14. After the read-only report, stop at a checkpoint. Offer one of these actions:
    - stop;
    - publish one issue for one candidate or a deduplicated tracker with child issues for many
      candidates; or
    - implement only the approved candidate IDs and deletion paths.
-11. If no supported candidate exists, report that result and do not create an empty tracker.
-12. If a required capability is absent, use the documented safe fallback or stop with the missing
+15. If no supported candidate exists, report that result and do not create an empty tracker.
+16. If a required capability is absent, use the documented safe fallback or stop with the missing
     evidence. Do not guess.
 
 ## Review output
@@ -90,6 +99,7 @@ Report these items:
 - target and any scope expansion;
 - candidate list with stable IDs and categories;
 - evidence for consumers, behavior, purpose, contracts, history, risk, and validation;
+- published public API deprecation evidence, when applicable;
 - category result for simplification coverage: `finding`, `clear`, or `not applicable`;
 - the checkpoint action list;
 - drift, if any; and
@@ -101,6 +111,8 @@ severity, disposition, location, impact, evidence, and remediation fields.
 ## Failed approaches
 
 - Do not treat zero direct callers or a raw line count as proof that removal is safe.
+- Do not classify published public API removal or a breaking interface change as immediately
+  executable without the documented deprecation and compatibility evidence.
 - Do not sample the bound scope when the full scope is available.
 - Do not guess a missing capability or invent a tracker when no supported candidate exists.
 - Do not continue after drift.
