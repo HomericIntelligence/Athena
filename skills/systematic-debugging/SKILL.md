@@ -150,6 +150,8 @@ Use this method to test a hypothesis:
 Repair the root cause.
 
 Do not repair only the symptom.
+Before you add code, check whether removal, reuse, consolidation, or deletion of an obsolete
+workaround is the smallest safe repair. If that repair preserves the contract, choose it.
 
 1. Use the `test-driven-development` skill to create a regression test.
 2. Under [P026 — Regression Before Repair](../../docs/principles/README.md#p026), create the test

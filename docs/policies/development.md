@@ -90,6 +90,8 @@ or failure requirement to make text shorter.
 
 - Add such an artifact only when a current consumer requires it. The owner and update method must be
   explicit.
+- Use this sequence for each change: remove, reuse, consolidate, simplify, then add. Add only when
+  the earlier choices cannot meet the requirement.
 - Tests must verify computable behavior, data contracts, security properties, or executable artifact
   structure.
 - Do not test prose wording, headings, paragraph presence, document counts, or duplicated text

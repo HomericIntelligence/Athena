@@ -8,8 +8,9 @@ Use the [ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.md)
 output.
 
 This is the canonical contract for `change-review`, `issue-review`, `plan-issue`, `finalize-plan`,
-`pr-review`, and `repo-review`. A scope-specific skill can add requirements. It must not copy or
-weaken this contract. See the [review framework overview](README.md) for the component map.
+`pr-review`, `repo-review`, and `simplify`. A scope-specific skill can add requirements. It must
+not copy or weaken this contract. See the [review framework overview](README.md) for the component
+map.
 
 ## Review order
 
@@ -19,7 +20,8 @@ weaken this contract. See the [review framework overview](README.md) for the com
 4. Classify the surfaces.
 5. Select only applicable language and review profiles.
 6. Compare a credible simpler alternative when the change adds a module, abstraction, public
-   interface, dependency, configuration path, state owner, or overlapping behavior.
+   interface, dependency, configuration path, state owner, or overlapping behavior. Also compare
+   safe deletion, reuse, consolidation, and retention with evidence.
 7. Inspect behavior, error paths, boundary paths, and functional-test evidence.
 8. Remove duplicate findings.
 9. Assign severity and an independent disposition to each finding.
@@ -64,7 +66,7 @@ Classify the surface before you select checks. Relevant surfaces include:
 
 Run a section only when the classification activates it. Record each skipped section as not
 applicable (N/A). Record the reason. An N/A result is not a score or proof of safety. For a weighted
-score, remove only an N/A weight that the classifier proves:
+score, remove only an N/A weight that the classifier proves.
 
 `100 * sum(weight * earned_fraction for applicable sections) / sum(weight for applicable sections)`
 
@@ -73,6 +75,20 @@ separately. If no weighted section applies, report that the grade is unavailable
 or pull or merge request review, read each changed file in full context. For a repository review,
 account for each in-scope file. Apply repository conventions and
 [language routing](language-routing.md) before generic advice.
+
+### Simplification coverage
+
+When the scoped artifact adds, owns, changes, or removes code, control flow, an interface, a
+dependency, configuration, state, or overlapping behavior, review simplification coverage. Record
+one evidence-backed result for the in-scope area. Use one of these results:
+
+- `finding`: the review found a supported simplification candidate.
+- `clear`: the evidence did not show a supported simplification candidate.
+- `not applicable`: the scope did not activate simplification review. State the reason and
+  inspected scope.
+
+For each simplification finding, add `category: simplification`. Keep the normal severity,
+disposition, location, impact, evidence, and remediation fields.
 
 ## Evidence and validation
 
@@ -298,6 +314,7 @@ principle finding, name the applicable boundary or behavior.
 
 Include these items in each finding:
 
+- when simplification applies, a category of `simplification`;
 - a severity: `critical`, `major`, `minor`, `nit`, or `FYI`;
 - an independent disposition: `required`, `suggestion`, `nit`, or `FYI`;
 - the exact `path:line` or artifact location;

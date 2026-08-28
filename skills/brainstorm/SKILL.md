@@ -99,6 +99,9 @@ Complete in order:
 - Propose two or three different approaches with trade-offs.
 - Put your recommended option first. Explain the reason for the recommendation.
 - Refer to existing patterns in the target codebase.
+- For each approach that adds code or structure, name one credible subtractive or reuse
+  alternative first.
+- If no subtractive or reuse alternative can meet the requirement, say why with evidence.
 
 ### Present the design
 
