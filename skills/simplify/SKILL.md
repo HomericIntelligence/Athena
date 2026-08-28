@@ -1,7 +1,7 @@
 ---
 name: simplify
 license: BSD-3-Clause
-description: Review a repository or target path for safe deletion, reuse, consolidation, or retention when subtraction may satisfy the current requirement with less code or less system complexity. Use this skill for read-only review. Stop if the repository root, revision, worktree overlay, in-scope inventory, or a current-head validation receipt cannot be bound.
+description: Review a repository or target path for safe deletion, reuse, consolidation, or retention when subtraction may satisfy the current requirement with less code or less system complexity. Use this skill for read-only review. Stop if the repository root, revision, worktree overlay, or in-scope inventory cannot be bound.
 argument-hint: "[TARGET]"
 allowed-tools: [Read, Bash, Grep, Glob, Agent]
 ---
@@ -30,8 +30,8 @@ Use the [shared review contract](../../docs/review/common.md) and the
 - Revision.
 - Worktree overlay or other mutable view.
 - Target path, if one exists.
-- Validation receipt that binds the review to the current head commit. If no such receipt exists,
-  report the evidence gap and do not claim success.
+- Validation receipt that binds the review to the current head commit, when one exists. If no such
+  receipt exists, report the evidence gap and do not state success.
 
 ## Principles
 
