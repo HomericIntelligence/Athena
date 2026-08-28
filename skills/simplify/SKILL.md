@@ -1,7 +1,7 @@
 ---
 name: simplify
 license: BSD-3-Clause
-description: Review a repository or target path for safe deletion, reuse, consolidation, or retention when subtraction may satisfy the current requirement with less code or less system complexity. Use this skill for read-only review. Stop if the repository root, revision, worktree overlay, or in-scope inventory cannot be bound.
+description: Review a repository or target path for safe deletion, reuse, consolidation, or retention when subtraction may satisfy the current requirement with less code or less system complexity. Use this skill for read-only review. Stop if the repository root, revision, worktree overlay, in-scope inventory, or a current-head validation receipt cannot be bound.
 argument-hint: "[TARGET]"
 allowed-tools: [Read, Bash, Grep, Glob, Agent]
 ---
@@ -30,7 +30,8 @@ Use the [shared review contract](../../docs/review/common.md) and the
 - Revision.
 - Worktree overlay or other mutable view.
 - Target path, if one exists.
-- Validation evidence that binds the review to the current revision.
+- Validation evidence that binds the review to the current head commit. If no such receipt exists,
+  report the evidence gap and do not claim success.
 
 ## Principles
 
@@ -99,8 +100,8 @@ Report these items:
 - target and any scope expansion;
 - candidate list with stable IDs and categories;
 - evidence for consumers, behavior, purpose, contracts, history, risk, and validation;
-- for any validation success claim, the exact command, bound revision, environment, exit status,
-  and unedited output; otherwise report the evidence gap and do not claim success;
+- for any validation result, the exact command, current reviewed head, environment, exit status,
+  and unedited output; otherwise report the evidence gap and do not state success;
 - published public API deprecation evidence, when applicable;
 - category result for simplification coverage: `finding`, `clear`, or `not applicable`;
 - the checkpoint action list;
@@ -115,6 +116,8 @@ severity, disposition, location, impact, evidence, and remediation fields.
 - Do not treat zero direct callers or a raw line count as proof that removal is safe.
 - Do not classify published public API removal or a breaking interface change as immediately
   executable without the documented deprecation and compatibility evidence.
+- Do not use a PR description, earlier run, or stale receipt as evidence for a current-head success
+  claim.
 - Do not sample the bound scope when the full scope is available.
 - Do not guess a missing capability or invent a tracker when no supported candidate exists.
 - Do not continue after drift.
