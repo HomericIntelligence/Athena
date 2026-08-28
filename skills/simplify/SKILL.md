@@ -66,19 +66,20 @@ principle definitions. Use only these principles because they materially affect 
    sample.
 3. If a module or directory target is given, start there. Expand only to connected callers, tests,
    exports, configuration, dependencies, and documentation. Report each scope expansion.
-4. Collect evidence about consumers, behavior, purpose, contracts, history, risk, and validation.
-5. Classify each supported candidate as delete, consolidate, reuse, simplify, or retain.
-6. Give each candidate a stable ID.
-7. For each candidate, report scope, preserved behavior, the smaller alternative, dependencies and
+4. Compare concepts, control flow, interfaces, dependencies, configuration, state, and code.
+5. Collect evidence about consumers, behavior, purpose, contracts, history, risk, and validation.
+6. Classify each supported candidate as delete, consolidate, reuse, simplify, or retain.
+7. Give each candidate a stable ID.
+8. For each candidate, report scope, preserved behavior, the smaller alternative, dependencies and
    order, validation, rollback, and expected net reduction.
-8. If the repository changes during review, stop and report drift.
-9. After the read-only report, stop at a checkpoint. Offer one of these actions:
+9. If the repository changes during review, stop and report drift.
+10. After the read-only report, stop at a checkpoint. Offer one of these actions:
    - stop;
    - publish one issue for one candidate or a deduplicated tracker with child issues for many
      candidates; or
    - implement only the approved candidate IDs and deletion paths.
-10. If no supported candidate exists, report that result and do not create an empty tracker.
-11. If a required capability is absent, use the documented safe fallback or stop with the missing
+11. If no supported candidate exists, report that result and do not create an empty tracker.
+12. If a required capability is absent, use the documented safe fallback or stop with the missing
     evidence. Do not guess.
 
 ## Review output
