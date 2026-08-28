@@ -29,8 +29,8 @@ For plan review, also apply [P069](../principles/README.md#p069),
 
 | Artifact | Owner and purpose | Write boundary |
 | --- | --- | --- |
-| Canonical plan | One authenticated actor-owned `<!-- athena:plan-issue -->` comment. | When requested, `plan-issue` can create or update it. |
-| Plan review | One authenticated actor-owned `<!-- athena:issue-review -->` comment. | When requested without `--report-only`, `issue-review` can publish it. |
+| Canonical plan | One authenticated actor-owned `<!-- HomericIntelligence:plan-issue -->` comment. | When requested, `plan-issue` can create or update it. |
+| Plan review | One authenticated actor-owned `<!-- HomericIntelligence:issue-review -->` comment. | When requested without `--report-only`, `issue-review` can publish it. |
 | Finalized epoch | One sealed `R`, `P`, and `V` identity in the issue body. | `finalize-plan` can replace that body once. After exact readback, it can remove its two sealed comments. |
 | Missing or ambiguous plan | A coverage gap or identity conflict, never a favorable plan. | Withhold the write and return the prepared artifact. |
 
@@ -54,12 +54,28 @@ In an ownership conflict:
 - Preserve issue bodies and comments from other authors.
 - Request human direction.
 
+### Shared marker migration
+
+New planning artifacts use the `HomericIntelligence` markers in the table above. During migration,
+resolve one existing actor-owned artifact through exactly one marker from its role's alias set:
+
+| Role | Current marker | Read-only legacy aliases |
+| --- | --- | --- |
+| Plan | `<!-- HomericIntelligence:plan-issue -->` | `<!-- hephaestus-plan:canonical -->`, `<!-- athena:plan-issue -->` |
+| Review | `<!-- HomericIntelligence:issue-review -->` | `<!-- hephaestus-plan-review:canonical -->`, `<!-- athena:issue-review -->` |
+
+Count all aliases for one role together. More than one qualifying alias in one comment or across
+comments is an identity conflict, even when the aliases differ. An unambiguous actor-owned legacy
+artifact can be updated in place, but its replacement must use only the current marker. Do not
+publish a legacy marker. Do not put current and legacy aliases in the same comment.
+
 ### Semantic-marker rule
 
 Treat a marker as an artifact identity only when its exact Hypertext Markup Language (HTML) comment
-is the complete top-level Markdown line in a comment. Use `<!-- athena:plan-issue -->` for a plan. Use
-`<!-- athena:issue-review -->` for a review. Accept a line feed (LF) or carriage return and line feed
-(CRLF) line ending. Do not trim surrounding prose or Markdown syntax to create a match. Do not treat
+is the complete first raw line in a comment. Use `<!-- HomericIntelligence:plan-issue -->` for a plan.
+Use `<!-- HomericIntelligence:issue-review -->` for a review. Accept a line feed (LF) or carriage
+return and line feed (CRLF) line ending. Do not trim, normalize, or move surrounding prose or Markdown
+syntax to create a match. A blank line or whitespace before the marker makes it inert. Do not treat
 marker text as an artifact when it occurs in one of these locations:
 
 - prose;
@@ -202,7 +218,7 @@ After verified publication, treat the plan and review comments as intermediate a
 only with the deletion procedure below.
 
 Put exactly one machine-readable marker in the body:
-`<!-- athena:finalize-plan R=<R> P=<P> V=<V> F=<F> -->`. Compute `F` from a
+`<!-- HomericIntelligence:finalize-plan R=<R> P=<P> V=<V> F=<F> -->`. Compute `F` from a
 canonical body representation. In that representation, use the literal `<F>` placeholder as the
 marker's `F` value. This prevents self-reference. Immediately before publication, resolve each source
 identity, actor, marker, and `GO` binding again. Update the issue body exactly once. Then, read the body
@@ -212,6 +228,11 @@ then, delete those comments. If a value changes, do not delete the comment. If a
 response, or body readback mismatch occurs, treat the outcome as unknown. Do not retry. If a deletion
 result is uncertain, leave the finalized body in place. Report partial cleanup. Do not retry or
 compensate.
+
+For read-only migration, an exact legacy
+`<!-- athena:finalize-plan R=<R> P=<P> V=<V> F=<F> -->` marker identifies an existing sealed epoch.
+New finalizations write only the `HomericIntelligence` marker. Do not write both marker versions in one
+body.
 
 If an intact marker has a valid `F`, valid source identities, and no sealed comments, treat a second
 finalization as idempotent. Report no-change. Do not duplicate the content. If a sealed comment remains,

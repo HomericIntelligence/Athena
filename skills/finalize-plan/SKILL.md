@@ -84,9 +84,9 @@ A planning epoch is one set of these sealed source identities:
 
 - `R` is the canonical digest of the original issue requirements. It contains the exact issue ID,
   title, body, and acceptance criteria before finalization.
-- `P` identifies one actor-owned `<!-- athena:plan-issue -->` comment ID and its canonical plan-content
+- `P` identifies one actor-owned `<!-- HomericIntelligence:plan-issue -->` comment ID and its canonical plan-content
   digest.
-- `V` identifies one actor-owned `<!-- athena:issue-review -->` comment ID and its review-content
+- `V` identifies one actor-owned `<!-- HomericIntelligence:issue-review -->` comment ID and its review-content
   digest.
 
 The review must contain the same issue, `R`, plan-comment ID, and `P`. These values must match
@@ -95,11 +95,16 @@ exactly. The review must have the exact `GO` disposition. It must not have an un
 malformed, stale, foreign, duplicated, absent, or not verifiable.
 
 Record exactly one marker in the rendered body:
-`<!-- athena:finalize-plan R=<R> P=<P> V=<V> F=<F> -->`. Before you calculate `F`, use the literal
+`<!-- HomericIntelligence:finalize-plan R=<R> P=<P> V=<V> F=<F> -->`. Before you calculate `F`, use the literal
 `<F>` placeholder as the marker's `F` value. Calculate `F` from the final body. Do not calculate a
 digest from a marker that contains its own digest. The marker identifies the sealed source
 identities separately from the generated body. It also permits later readback verification without
 recursion.
+
+For migration only, resolve the exact actor-owned legacy aliases in the shared issue-planning contract.
+Resolve an existing exact `<!-- athena:finalize-plan R=<R> P=<P> V=<V> F=<F> -->` body marker only as
+sealed historical evidence. New finalizations must write the `HomericIntelligence` markers. Do not emit
+both marker versions.
 
 ## Finalize
 
