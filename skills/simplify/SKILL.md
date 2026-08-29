@@ -30,8 +30,8 @@ Use the [shared review contract](../../docs/review/common.md) and the
 - Revision.
 - Worktree overlay or other mutable view.
 - Target path, if one exists.
-- Validation receipt that binds the review to the current head commit, when one exists. If no such
-  receipt exists, report the evidence gap and do not state success.
+- Validation evidence, when available. If no current-head receipt exists, report the evidence gap
+  and do not state that validation succeeded.
 
 ## Principles
 
@@ -100,8 +100,9 @@ Report these items:
 - target and any scope expansion;
 - candidate list with stable IDs and categories;
 - evidence for consumers, behavior, purpose, contracts, history, risk, and validation;
-- for any validation receipt, the exact command, current reviewed head, environment, exit status,
-  and unedited output; otherwise report the evidence gap and do not state success;
+- for any validation evidence, the exact command, current reviewed head, environment, exit status,
+  and unedited output; otherwise report no current-head validation evidence and do not state that
+  validation succeeded;
 - published public API deprecation evidence, when applicable;
 - category result for simplification coverage: `finding`, `clear`, or `not applicable`;
 - the checkpoint action list;
@@ -116,8 +117,8 @@ severity, disposition, location, impact, evidence, and remediation fields.
 - Do not treat zero direct callers or a raw line count as proof that removal is safe.
 - Do not classify published public API removal or a breaking interface change as immediately
   executable without the documented deprecation and compatibility evidence.
-- Do not use a PR description, earlier run, or stale receipt as evidence for a current-head success
-  claim.
+- Do not use a PR description, earlier run, stale receipt, or unbound host output as evidence for a
+  current-head success claim.
 - Do not sample the bound scope when the full scope is available.
 - Do not guess a missing capability or invent a tracker when no supported candidate exists.
 - Do not continue after drift.
