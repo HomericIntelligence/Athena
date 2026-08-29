@@ -28,6 +28,8 @@ or failure requirement to make text shorter.
 - If an issue tracks the work, put `Closes #N` on its own line in the body.
 - Run required checks against the current head revision. The checks must be successful, current, and
   not incorrectly skipped.
+- Do not say that a check passed in the PR description unless the description can cite the current
+  head receipt that supports the claim.
 - Before auto-merge or merge, get an independent strict review.
 - Use a merge method that the repository supports. Do not guess or impose an organization-wide
   fallback.
@@ -90,6 +92,8 @@ or failure requirement to make text shorter.
 
 - Add such an artifact only when a current consumer requires it. The owner and update method must be
   explicit.
+- Use this sequence for each change: remove, reuse, consolidate, simplify, then add. Add only when
+  the earlier choices cannot meet the requirement.
 - Tests must verify computable behavior, data contracts, security properties, or executable artifact
   structure.
 - Do not test prose wording, headings, paragraph presence, document counts, or duplicated text
