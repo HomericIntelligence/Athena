@@ -85,12 +85,12 @@ principle definitions. Use only these principles because they materially affect 
 13. If the repository changes during review, stop and report drift.
 14. After the read-only report, stop at a checkpoint. Offer one of these actions:
    - stop;
-   - publish one issue for one candidate or a deduplicated tracker with child issues for many
-     candidates; or
-   - hand off the approved candidate IDs and deletion paths to a separate implementation
-     workflow with explicit write authority outside `simplify`.
-15. If no supported candidate exists, report that result and do not create an empty tracker.
-16. If a required capability is absent, use the documented safe fallback or stop with the missing
+   - hand off the approved candidate IDs and deletion paths to `plan-issue` or another
+     write-authorized workflow outside `simplify`.
+15. `simplify` does not create issues, trackers, or any other forge write. If a write task is
+   needed, hand off to a separate workflow with explicit write authority.
+16. If no supported candidate exists, report that result and do not create an empty tracker.
+17. If a required capability is absent, use the documented safe fallback or stop with the missing
     evidence. Do not guess.
 
 ## Review output

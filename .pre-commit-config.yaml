@@ -4,7 +4,6 @@ repos:
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
-        exclude: ^\.agents/plugins/marketplace\.json$
       - id: check-merge-conflict
       - id: check-added-large-files
         args: ["--maxkb=512"]
