@@ -87,7 +87,8 @@ principle definitions. Use only these principles because they materially affect 
    - stop;
    - publish one issue for one candidate or a deduplicated tracker with child issues for many
      candidates; or
-   - implement only the approved candidate IDs and deletion paths.
+   - hand off the approved candidate IDs and deletion paths to a separate implementation
+     workflow with explicit write authority outside `simplify`.
 15. If no supported candidate exists, report that result and do not create an empty tracker.
 16. If a required capability is absent, use the documented safe fallback or stop with the missing
     evidence. Do not guess.
