@@ -14,6 +14,7 @@ sys.dont_write_bytecode = True
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from scripts.policies.agent_contract import validate_agent_contract
 from scripts.semver import SEMVER_PATTERN
 from skills._cli import argument_parser
 
@@ -608,20 +609,23 @@ def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationErro
             *errors,
             ValidationError("ruleset", "The ruleset must contain a rules list."),
         ]
-    status_checks = next(
-        (
-            rule
-            for rule in rules
-            if isinstance(rule, dict) and rule.get("type") == "required_status_checks"
-        ),
-        None,
-    )
-    if not isinstance(status_checks, dict) or not isinstance(
-        status_checks.get("parameters"), dict
-    ):
+    status_check_rules = [
+        rule
+        for rule in rules
+        if isinstance(rule, dict) and rule.get("type") == "required_status_checks"
+    ]
+    if len(status_check_rules) != 1:
         return [
             *errors,
-            ValidationError("ruleset", "The required status-check policy is missing."),
+            ValidationError(
+                "ruleset", "The ruleset must contain exactly one status-check policy."
+            ),
+        ]
+    status_checks = status_check_rules[0]
+    if not isinstance(status_checks.get("parameters"), dict):
+        return [
+            *errors,
+            ValidationError("ruleset", "The required status-check policy is invalid."),
         ]
     parameters = status_checks["parameters"]
     if parameters.get("strict_required_status_checks_policy") is not False:
@@ -633,13 +637,12 @@ def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationErro
             )
         )
     checks = parameters.get("required_status_checks")
-    if not isinstance(checks, list) or not any(
-        isinstance(check, dict) and check.get("context") == "required-checks-gate"
-        for check in checks
-    ):
+    if checks != [{"context": "required-checks-gate", "integration_id": 15368}]:
         errors.append(
             ValidationError(
-                "ruleset", "The ruleset must require 'required-checks-gate'."
+                "ruleset",
+                "The ruleset must require only 'required-checks-gate' from the "
+                "GitHub Actions integration.",
             )
         )
     pull_request = next(
@@ -690,6 +693,10 @@ def validate_repository(repo_root: Path) -> list[ValidationError]:
         *_validate_cli_conventions(repo_root),
         *_validate_repo_review_scorecard(repo_root),
         *_validate_ruleset_policy(repo_root),
+        *(
+            ValidationError("agent-contract", error.reason)
+            for error in validate_agent_contract(repo_root)
+        ),
     ]
     claude, _ = _read_json(
         repo_root / ".claude-plugin" / "plugin.json", "version", repo_root

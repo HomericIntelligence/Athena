@@ -1,0 +1,11 @@
+name: Validate agent contract
+description: Validate root agent instructions against the canonical Athena catalog.
+runs:
+  using: composite
+  steps:
+    - name: Validate the caller checkout
+      shell: bash
+      run: >-
+        python3 -I -S "${{ github.action_path }}/../../../scripts/validate_agent_contract.py"
+        --root "${{ github.workspace }}"
+        --catalog-root "${{ github.action_path }}/../../.."

@@ -92,12 +92,17 @@ or failure requirement to make text shorter.
 
 - Add such an artifact only when a current consumer requires it. The owner and update method must be
   explicit.
+- The marked development-principles block in root `AGENTS.md` is generated data that the fleet
+  agent-contract validator consumes. `docs/principles/README.md` owns its content. The
+  agent-contract renderer owns its update method. Do not edit the block manually.
 - Use this sequence for each change: remove, reuse, consolidate, simplify, then add. Add only when
   the earlier choices cannot meet the requirement.
 - Tests must verify computable behavior, data contracts, security properties, or executable artifact
   structure.
 - Do not test prose wording, headings, paragraph presence, document counts, or duplicated text
   strings.
+- Exact machine-consumed fields are data contracts, not editorial prose. This exception includes
+  the root `CLAUDE.md` pointer and the generated development-principles block.
 - Markdown lint and link checks can verify document syntax and link resolution. They must not freeze
   editorial content.
 - Prefer stable public outcomes to these types of assertions:

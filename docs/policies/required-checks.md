@@ -9,6 +9,9 @@ timeout.
 
 ## Canonical contexts
 
+- `agent-contract / validate-agent-contract` checks root `AGENTS.md` and `CLAUDE.md` against the
+  canonical Athena principles catalog. The reusable workflow has read-only permission. It accepts
+  no input and no secret.
 - `forbid-suppressions` rejects silent-failure workarounds. It also rejects
   `continue-on-error: true`.
 - `validate` does these checks:
@@ -61,6 +64,25 @@ Add each new gating job to `required-checks-gate`. Never represent an advisory j
 tracked `main` ruleset and the live `main` ruleset require `required-checks-gate` to pass against the
 current `main` base before merge.
 
+Athena calls `.github/workflows/_agent-contract.yml` from its required and release workflows. The
+workflow checks out the caller revision. The called Athena revision supplies the validator and
+catalog. The validator reads only the caller's root `AGENTS.md` and `CLAUDE.md` files.
+
+A consumer uses this job after issue #163 publishes and protects the version tag:
+
+```yaml
+jobs:
+  agent-contract:
+    name: agent-contract
+    permissions:
+      contents: read
+    uses: >-
+      HomericIntelligence/Athena/.github/workflows/_agent-contract.yml@agent-contract-v1.0.0
+```
+
+This call emits the `agent-contract / validate-agent-contract` check. Add the caller job to the
+repository's aggregate required gate.
+
 The required workflow handles the `merge_group` `checks_requested` event. It also handles these entry
 points:
 
@@ -68,6 +90,9 @@ points:
 - push;
 - reusable workflow; and
 - scheduled run.
+
+The concurrency key includes the event type. Thus, a scheduled or reusable run cannot cancel a
+pull-request, merge-group, or push run for the same revision.
 
 The tracked `main` ruleset records this staged merge-queue policy:
 
@@ -96,3 +121,7 @@ Release jobs then do these actions:
 5. They publish only the files that passed the aggregate gate.
 
 A release workflow never creates an artifact that did not pass the required checks.
+
+[Issue #163](https://github.com/HomericIntelligence/Athena/issues/163) owns the protected
+`agent-contract-v*` release and its live tag ruleset. Consumers must not use an agent-contract
+version until that release protects the tag from deletion and retargeting.

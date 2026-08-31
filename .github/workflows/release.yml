@@ -8,8 +8,15 @@ permissions:
   contents: read
 
 jobs:
+  agent-contract:
+    name: agent-contract
+    permissions:
+      contents: read
+    uses: $/.github/workflows/_agent-contract.yml
+
   preflight:
     name: verify-release-trust
+    needs: agent-contract
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
