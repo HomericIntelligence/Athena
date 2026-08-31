@@ -1,7 +1,7 @@
 ---
 name: learn
 license: BSD-3-Clause
-description: Preserve a verified Mnemosyne lesson without a duplicate. Store prior versions in `.history` and evidence in `.notes.md`. Discovery requires a usable checkout. Read-only work can use a stale checkout. A new pull request requires an isolated worktree from a synchronized current default-branch base. An existing pull request uses only its bound head. Otherwise, report without changes.
+description: Preserve a verified Mnemosyne lesson without a duplicate. Store privacy-safe prior versions or privacy-redaction records in `.history` and evidence in `.notes.md`. Discovery requires a usable checkout. Read-only work can use a stale checkout. A new pull request requires an isolated worktree from a synchronized current default-branch base. An existing pull request uses only its bound head. Otherwise, report without changes.
 argument-hint: <lesson or session summary>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 ---
@@ -110,6 +110,8 @@ Select `blocked` if one of these conditions applies:
 - provenance is uncertain;
 - more than one open PR targets the selected canonical entry;
 - the selected PR is not safe to write; or
+- the selected canonical artifact set contains a secret, credential, regulated record, or material
+  that is subject to an erasure request; or
 - retirement is unsafe.
 
 Do not create a near-duplicate to avoid a blocked consolidation. If exactly one open PR changes the
@@ -127,7 +129,7 @@ Store each lesson in three artifact types. Do not use the main skill as an appen
 | Artifact | Contains | Excludes |
 | --- | --- | --- |
 | `skills/<name>.md` | Current general triggers, decision rules, workflow, failures, parameters, and zero to three short examples. Each example must materially change a decision. | Prior versions, changelog text, session history, transcripts, and repeated project cases. |
-| `skills/<name>.history` | Superseded main-skill versions and append-only records for version, change, and provenance. | Active instructions that exist only in this file. |
+| `skills/<name>.history` | Privacy-safe superseded main-skill versions, eligible privacy-redaction records, and append-only records for version, change, and provenance. | Active instructions that exist only in this file. |
 | `skills/<name>.notes.md` | Source details that pass privacy checks, long examples, commands, measurements, verification reports, and useful supporting evidence. | Rules that the skill requires for operation. |
 
 For each amendment, rewrite the main entry around the smallest reusable change. Do not append the
@@ -136,10 +138,27 @@ example must show a materially different decision branch. It must be shorter tha
 shows. A repository name, issue narrative, transcript, or another instance of an established pattern
 is evidence. It is not a new main-skill example.
 
-If `.history` does not contain the version, archive the complete prior retrievable content before you
-replace the main entry. Add the new version and provenance record to `.history`. Put useful detailed
-evidence for the current rule in `.notes.md`. Do not move prohibited sensitive content to another
-artifact.
+Before you replace a main entry, inspect the complete prior retrievable content against the private
+and proprietary information rules. If `.history` contains the version, require either a complete
+privacy-safe snapshot or an eligible privacy-redaction record for that version. Do not append a
+duplicate record. If the existing record does not satisfy either requirement, select `blocked`.
+
+If `.history` does not contain the version and the prior content passes the privacy rules, archive
+the complete content.
+
+If `.history` does not contain the version and the prior content already contained prohibited
+private or proprietary information at the bound source revision, do not copy it. If the incident
+stop condition does not apply and the reusable rule can be generalized safely, write a legacy
+privacy-redaction record instead. Record only the prior version, the archive status
+`privacy-redacted`, a generalized reason, a generalized change summary, and privacy-safe provenance.
+State that the exact snapshot was intentionally omitted. Do not reproduce or quote the prohibited
+content. Do not add a path, link, object identifier, or other retrieval pointer to it. This exception
+does not apply to prohibited content that the current operation introduced. Privacy takes precedence
+over exact archival only for this legacy case.
+
+After the archive action, add the new version and provenance record to `.history`. Put useful
+detailed evidence for the current rule in `.notes.md`. Do not move prohibited sensitive content to
+another artifact.
 
 Keep only the schema-required current version identifier in the main-file frontmatter. Put prior
 versions, change summaries, provenance, and other version-control information in `.history`. Obey
@@ -159,6 +178,11 @@ in a main skill, notes, history, filename, frontmatter, example, commit, or PR d
   details;
 - proprietary source, configuration, prompts, logs, data, metrics, or operational details; or
 - secrets, credentials, tokens, or other access material.
+
+If the selected canonical artifact set contains a secret, credential, regulated record, or material
+that is subject to an erasure request, select `blocked` before a durable write. Report only a safe
+summary and route the material to an authorized incident-remediation process. `learn` does not
+authorize a Git-history rewrite or purge.
 
 Replace sensitive details with a correct general pattern. For example, use "an isolated checkout"
 instead of a local path. If public information gives an equivalent example, cite or describe it. Do
@@ -272,9 +296,13 @@ Do not use this fallback to reconstruct an Existing-PR worktree.
 21. For `create`, make the initial version-and-provenance record in `.history`.
 22. For `create`, put useful supporting details in `.notes.md`.
 23. Apply the selected disposition only to paths in its allowlist.
-24. For `amend` or `consolidate`, archive each superseded canonical version before you rewrite the
-    main entry.
-25. Except for the required historical snapshot, do not copy content between artifact types.
+24. For `amend` or `consolidate`, inspect each superseded canonical version and its existing history
+    record before you rewrite the main entry. Use an existing valid record without duplication. If
+    an existing record is invalid, select `blocked`. If no record exists, archive the complete
+    content when it passes the privacy rules. Otherwise, write an eligible legacy privacy-redaction
+    record or stop under the incident rule.
+25. Except for a required privacy-safe historical snapshot, do not copy content between artifact
+    types. A privacy-redaction record must not copy or locate prohibited content.
 26. Give current rules, history records, and notes evidence one owner each.
 27. During consolidation, migrate verified active consumers.
 28. After the consumer migration, retire each named duplicate.
@@ -291,6 +319,8 @@ Do not use this fallback to reconstruct an Existing-PR worktree.
     - notes and history are not in normal retrieval;
     - there is no duplicate intent;
     - there is no version history in the main entry; and
+    - each required prior version has either a complete privacy-safe snapshot or an eligible
+      privacy-redaction record; and
     - there is no stale consolidated name.
 
 35. Create a signed commit with a Developer Certificate of Origin (DCO) attestation.
@@ -304,7 +334,7 @@ Do not use this fallback to reconstruct an Existing-PR worktree.
     - disposition;
     - bound or new PR URL;
     - main-file byte size;
-    - archived version;
+    - archived version and archive result (`complete snapshot` or `privacy-redaction record`);
     - companion files;
     - retired entries, if any; and
     - exact validation evidence.
@@ -326,5 +356,6 @@ discard changes. Do not force removal. Do not change a pre-existing worktree.
   checkout.
 - Do not bypass the private and proprietary information rules. Do not invent a public equivalent if
   safe generalization is not possible.
-- Do not put prior versions in the main entry. Archive them in `.history`.
+- Do not put prior versions in the main entry. Store a complete privacy-safe snapshot or, only for
+  an eligible legacy version, a privacy-redaction record in `.history`.
 - If an open PR targets the selected canonical entry, do not create a competing PR.
