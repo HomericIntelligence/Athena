@@ -7,9 +7,11 @@ technical-English, and governance contracts. Do not copy these contracts for eac
 
 - [`adr/0001-plugin-distro-scope-policy.md`](adr/0001-plugin-distro-scope-policy.md): the accepted
   plugin-only distribution boundary.
+- [`adr/0002-local-first-knowledge-retrieval.md`](adr/0002-local-first-knowledge-retrieval.md): the
+  local-first read boundary and strict mutation boundary for repository integrations.
 - [`host-compatibility.md`](host-compatibility.md): coding-harness capability mapping.
-- [`dependency-resolution.md`](dependency-resolution.md): mandatory Mnemosyne and Hephaestus owner
-  and checkout resolution.
+- [`dependency-resolution.md`](dependency-resolution.md): local-first Mnemosyne reads and mandatory
+  repository resolution for Mnemosyne delivery and Hephaestus execution.
 
 ## Policies
 
