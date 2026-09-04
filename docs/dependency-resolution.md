@@ -1,54 +1,59 @@
-# Required repository resolution
+# Repository resolution
 
 Apply the [ASD-STE100 technical-English policy](../skills/TECHNICAL_ENGLISH.md) to all English technical prose
 in this document.
 
-**Why:** Athena must use trusted and current knowledge and automation. It must not use a repository
-only because it has a similar name. It must not use a stale checkout or an unverified remote.
+**Why:** Athena must use trusted and current repositories when it changes Mnemosyne or executes
+Hephaestus. Read-only knowledge can use an older local checkout when it reports the revision and
+limits. Athena must not report an unverified remote or stale checkout as current.
 
 ## At a glance
 
-During normal resolution, Athena does these steps:
+During normal resolution for a write or automation execution, Athena does these steps:
 
 1. It resolves a trusted owner.
 2. It synchronizes an exact checkout.
 3. It binds use to the reported revision.
 
-A trust, authentication, checkout, or update failure stops the dependent skill.
+A trust, authentication, checkout, or update failure stops that write or automation execution.
 
-In planning mode, an explicit read-only path can use an existing checkout as a best-effort source.
-This path does not synchronize with the upstream repository. It must do these actions:
+All read-only Mnemosyne paths use an existing checkout as a best-effort source. This path does not
+require synchronization with the upstream repository. It must do these actions:
 
 - bind use to the current `HEAD`;
 - report the current `HEAD`;
 - report the freshness and trust limits;
 - never substitute a different repository; and
-- never make a durable write.
+- never make a durable write from that unchecked state.
 
-A skill can impose stricter requirements. The `learn` skill requires a usable checkout before it
-starts discovery or writes a lesson. In planning mode, its discovery path does not create a checkout.
+If local knowledge is unavailable, stop only knowledge retrieval. Continue the primary task. The
+`learn` skill can classify a candidate, but it must complete normal resolution and duplicate checks
+before a durable write.
 
 ```mermaid
 flowchart LR
-    A["Resolve dependency"] --> B{"Is there an explicit owner?"}
-    B -->|yes| C["Validate override"]
-    B -->|no| D{"Is there a trusted organization fork?"}
-    D -->|yes| E["Use maintained fork"]
-    D -->|no| F["Use canonical upstream"]
-    C --> G["Verify origin and clean checkout"]
-    E --> G
-    F --> G
-    G --> H{"Is this the read-only planning path?"}
-    H -->|yes| I["Inspect existing checkout; bind current HEAD; report limits"]
-    H -->|no| J["Fetch, fast-forward, and bind SHA"]
-    J --> K["Revalidate automatic-fork trust before use"]
+    A["Resolve dependency"] --> B{"Read-only Mnemosyne use?"}
+    B -->|yes| C{"Is a local checkout readable?"}
+    C -->|yes| D["Bind local HEAD and report limits"]
+    C -->|no| E["Report no local guidance; continue primary task"]
+    B -->|no| F{"Is there an explicit owner?"}
+    F -->|yes| G["Validate override"]
+    F -->|no| H{"Is there a trusted organization fork?"}
+    H -->|yes| I["Use maintained fork"]
+    H -->|no| J["Use canonical upstream"]
+    G --> K["Verify origin and clean checkout"]
+    I --> K
+    J --> K
+    K --> L["Fetch, fast-forward, and bind SHA"]
+    L --> M["Revalidate automatic-fork trust before use"]
 ```
 
 ## Component details
 
 ### Owner selection
 
-For dependency `<Repository>` with environment override `<OWNER_VARIABLE>`, use these steps:
+For a route that needs normal resolution of dependency `<Repository>` with environment override
+`<OWNER_VARIABLE>`, use these steps:
 
 1. If `<OWNER_VARIABLE>` is not empty, select `<value>/<Repository>`.
 
@@ -123,7 +128,8 @@ information:
 
 ### Checkout and revalidation
 
-Normal resolution requires these capabilities:
+Normal resolution applies to Mnemosyne delivery and Hephaestus execution. It requires these
+capabilities:
 
 - authenticated GitHub CLI (`gh`);
 - `git`; and
@@ -140,7 +146,7 @@ repository. For an existing checkout, do these checks and actions:
 - Report the resolved repository and commit SHA.
 
 For an automatically selected same-owner fork, repeat the trust checks immediately before use. Do
-this before you read knowledge or execute automation. Re-query these values:
+this before you write knowledge or execute automation. Re-query these values:
 
 - the Organization owner of the current repository;
 - the permission of the viewer;
@@ -153,15 +159,19 @@ Require these values to agree with the reported trust decision. Require the chec
 agree with the re-queried tip SHA. Stop if a value does not agree. This check closes the race between
 resolution and use.
 
-### Read-only local best effort
+### Read-only knowledge access
 
-Use this exception only for a read-only planning path or a `learn` discovery path. The path can
-inspect an existing checkout. It can bind use to the current `HEAD` without these actions:
+Use this path for all read-only Mnemosyne retrieval. Inspect the existing checkout first. Bind use
+to the current `HEAD` without these actions:
 
 - clone;
 - fetch;
 - fast-forward; or
 - revalidation of an automatic fork.
+
+Do not require the local checkout to have the newest Mnemosyne revision. Do not require its revision
+to agree with the installed Athena revision. The installed skill supplies its own retrieval
+contract.
 
 Report this information:
 
@@ -170,11 +180,11 @@ Report this information:
 - the trust basis or trust uncertainty; and
 - the freshness limit.
 
-If the checkout is missing or inspection fails, stop the dependent knowledge retrieval. The caller
-can continue its primary plan only when its skill contract permits planning without guidance. The
-`learn` skill does not permit this fallback. It blocks without an existing usable checkout.
+If the checkout is missing or inspection fails, stop the dependent knowledge retrieval. Continue the
+primary task. `learn` can classify an undelivered candidate, but it cannot make a duplicate decision
+or publish a write until normal resolution succeeds.
 
-For normal execution and the `learn` delivery boundary, these conditions are fatal:
+For Hephaestus execution and the `learn` delivery boundary, these conditions are fatal:
 
 - an authentication failure;
 - a missing repository;
@@ -185,7 +195,7 @@ For normal execution and the `learn` delivery boundary, these conditions are fat
 - a fetch failure; or
 - a fast-forward failure.
 
-The read-only local exception never permits pull-request creation before upstream synchronization.
+Read-only local access never permits pull-request creation before upstream synchronization.
 
 Mnemosyne writes use isolated worktrees and always end in a pull request. Athena reads or executes
 Hephaestus from its canonical checkout. Athena never edits Hephaestus unless the user explicitly asks
