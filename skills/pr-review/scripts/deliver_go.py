@@ -282,7 +282,6 @@ def deliver_go(
 
     response_by_id = _response_map(initial, responses)
     resolved: list[str] = []
-    current = initial
     for thread_id in sorted(response_by_id):
         response = response_by_id[thread_id]
         body = _delivery_body(binding, response)
@@ -317,8 +316,8 @@ def deliver_go(
                 "The review conversation changed before thread resolution."
             )
         _call_write("resolve", forge.resolve, thread_id)
-        current = _snapshot(forge, binding)
-        after_resolution = _thread(current, thread_id)
+        after_resolution_snapshot = _snapshot(forge, binding)
+        after_resolution = _thread(after_resolution_snapshot, thread_id)
         if (
             not after_resolution.is_resolved
             or after_resolution.comments != before_resolution.comments
