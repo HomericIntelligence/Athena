@@ -13,3 +13,6 @@ SEMVER_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?"
     r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
 )
+
+# Canonical identity for the build SBOM and release artifact.
+BUILD_ARTIFACT_NAME: Final[str] = "athena-build-linux-64"
