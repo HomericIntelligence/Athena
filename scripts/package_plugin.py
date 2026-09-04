@@ -47,6 +47,7 @@ REQUIRED_MEMBERS: Final[frozenset[str]] = frozenset(
         "skills/pr-review/references/delivery.md",
         "skills/pr-review/references/evidence.md",
         "skills/pr-review/references/prevalidated.md",
+        "skills/pr-review/scripts/deliver_go.py",
         "skills/change-review/SKILL.md",
         "skills/change-review/scripts/resolve_scope.py",
         "skills/change-review/references/scope-resolution.md",
