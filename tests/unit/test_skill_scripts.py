@@ -2038,6 +2038,87 @@ class WorktreeScriptTests(unittest.TestCase):
 
 
 class TidyDelegationTests(unittest.TestCase):
+    def test_tidy_propagates_partial_cleanup_failure_without_success_conclusion(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            automation_checkout = root / "trusted automation"
+            automation_checkout.mkdir()
+            target_repository = root / "target repository"
+            target_repository.mkdir()
+            bin_directory = root / "bin"
+            bin_directory.mkdir()
+            fake_uv = bin_directory / "uv"
+            fake_uv.write_text(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "print('All branches rebased cleanly — no swarm needed.')\n"
+                "print('WARNING gh tidy exited with code 128 — proceeding to parse output anyway', "
+                "file=sys.stderr)\n"
+                "raise SystemExit(128)\n",
+                encoding="utf-8",
+            )
+            fake_uv.chmod(0o755)
+            environment = os.environ.copy()
+            environment["PATH"] = f"{bin_directory}{os.pathsep}{environment['PATH']}"
+
+            result = run_script(
+                "skills/tidy/scripts/run_tidy.py",
+                str(automation_checkout),
+                cwd=target_repository,
+                env=environment,
+            )
+
+        self.assertEqual(128, result.returncode)
+        self.assertEqual(
+            "All branches rebased cleanly — no swarm needed.\n", result.stdout
+        )
+        self.assertEqual(
+            "WARNING gh tidy exited with code 128 — proceeding to parse output anyway\n",
+            result.stderr,
+        )
+
+    def test_tidy_zero_exit_passes_output_through_transparently(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            automation_checkout = root / "trusted automation"
+            automation_checkout.mkdir()
+            target_repository = root / "target repository"
+            target_repository.mkdir()
+            bin_directory = root / "bin"
+            bin_directory.mkdir()
+            fake_uv = bin_directory / "uv"
+            fake_uv.write_text(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "print(sys.stdin.read(), end='')\n"
+                "print('delegated success', file=sys.stderr)\n",
+                encoding="utf-8",
+            )
+            fake_uv.chmod(0o755)
+            environment = os.environ.copy()
+            environment["PATH"] = f"{bin_directory}{os.pathsep}{environment['PATH']}"
+
+            result = run_script(
+                "skills/tidy/scripts/run_tidy.py",
+                str(automation_checkout),
+                cwd=target_repository,
+                env=environment,
+                input_text="interactive sentinel\n",
+            )
+
+        self.assertEqual(0, result.returncode)
+        self.assertEqual("interactive sentinel\n", result.stdout)
+        self.assertEqual("delegated success\n", result.stderr)
+
+    def test_tidy_delegate_remains_process_replacement_without_capture(self) -> None:
+        source = (ROOT / "skills/tidy/scripts/run_tidy.py").read_text(encoding="utf-8")
+
+        self.assertIn("os.execvp(", source)
+        self.assertNotIn("subprocess", source)
+        self.assertNotIn("capture_output", source)
+
     def test_tidy_delegate_preserves_process_contract(self) -> None:
         delegate = ROOT / "skills/tidy/scripts/run_tidy.py"
         self.assertTrue(delegate.is_file(), "the thin tidy delegate must exist")
