@@ -1410,6 +1410,10 @@ jobs:
         self.assertEqual(
             "read", release["jobs"]["required"]["permissions"].get("issues")
         )
+        self.assertEqual("release", release["jobs"]["release"]["environment"])
+        self.assertEqual("release", release["jobs"]["publish-npm"]["environment"])
+        self.assertNotIn("environment", release["jobs"]["preflight"])
+        self.assertNotIn("environment", release["jobs"]["required"])
         self.assertEqual(
             "athena-plugin", release["jobs"]["release"]["steps"][1]["with"]["name"]
         )
