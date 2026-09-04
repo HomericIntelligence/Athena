@@ -33,7 +33,25 @@ The job does not scan example lockfiles or build-time compiler binaries. These i
 installed runtime surface. The native inventories are continuous integration (CI) evidence and not
 release assets. Athena never includes those third-party packages in its archive.
 [Issue #74](https://github.com/HomericIntelligence/Athena/issues/74) tracks restoration of a broader
-source inventory. This restoration can occur when the upstream runtime corrects the excluded inputs.
+source inventory. The advisory `security/pi-upstream-inventory-watch` job scans the full upstream Pi
+source tree each week with the same Syft and Grype policy. A failed watch means that upstream still
+has findings in inputs outside the installed runtime surface. Its first successful run authorizes
+the restoration procedure below. The watch is not a required check because upstream findings are
+outside Athena's current runtime contract.
+
+## Restoring the full Pi source inventory
+
+Restore the full source inventory only after the advisory watch passes on upstream `main`:
+
+1. Record the upstream commit from the successful watch run.
+2. Set `PI_RUNTIME_REF` in `.github/workflows/_required.yml` to that commit.
+3. In the `package` job, scan `"$PI_RUNTIME_SOURCE_ROOT"` instead of the coding-agent
+   `npm-shrinkwrap.json` path. Keep the `syft-pi-subagents.json` inventory.
+4. Update the Pi inventory assertions in `tests/unit/test_supply_chain.py`.
+5. Remove the issue #74 pointer after the required dependency scan passes with no exceptions.
+
+Any residual finding must use the narrow policy in
+`security/vulnerability-exceptions.yaml`. Do not add a broad ignore.
 
 Host capabilities, the runner operating system, and commands used only in examples are outside the
 dependency scope. Athena remains a plugin distribution. It does not add a Python package or runtime

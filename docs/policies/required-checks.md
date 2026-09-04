@@ -51,6 +51,11 @@ timeout.
   - The linked Athena issue must be open.
   - It retains the full JavaScript Object Notation (JSON) reports.
 
+- `security/pi-upstream-inventory-watch` is the single intentional advisory job. It runs on the
+  weekly schedule or by manual dispatch, tracks issue #74, and scans the full upstream Pi source
+  tree. It must not join `required-checks-gate` while upstream-only findings can fail the scan. Retire
+  it when the full inventory is restored in the required gate.
+
 - On pull requests, `pr-policy` enforces these requirements:
 
   - applicable issue linkage;
@@ -97,6 +102,8 @@ points:
 
 The concurrency key includes the event type. Thus, a scheduled or reusable run cannot cancel a
 pull-request, merge-group, or push run for the same revision.
+Manual dispatch runs the workflow entry points as configured. The advisory Pi watch is the only job
+that runs exclusively for manual dispatch or the weekly schedule.
 
 The tracked `main` ruleset records this staged merge-queue policy:
 
