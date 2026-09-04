@@ -58,6 +58,7 @@ class ValidationError(NamedTuple):
 
     surface: str
     reason: str
+    operational: bool = False
 
 
 def _read_json(
@@ -65,12 +66,13 @@ def _read_json(
 ) -> tuple[dict[str, object] | None, list[ValidationError]]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, ValueError) as exc:
         return None, [
             ValidationError(
                 surface,
                 f"The validator cannot read '{path.relative_to(repo_root)}'. "
                 f"The operation returned this diagnostic.\n{exc}",
+                True,
             )
         ]
     if not isinstance(data, dict):
@@ -392,6 +394,7 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
                     "self-contained",
                     f"The validator cannot inspect '{relative_path}'. "
                     f"The operation returned this diagnostic.\n{exc}",
+                    True,
                 )
             )
             continue
@@ -741,7 +744,7 @@ def main(argv: list[str] | None = None) -> int:
         print("The Athena skill validation failed:", file=sys.stderr)
         for error in errors:
             print(f"  - {error.surface}: {error.reason}", file=sys.stderr)
-        return 1
+        return 2 if any(error.operational for error in errors) else 1
     if not args.quiet:
         print("The Athena skill validation passed.")
     return 0

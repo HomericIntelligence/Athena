@@ -75,9 +75,13 @@ def _pr_policy_command() -> int:
             "body,closingIssuesReferences",
         ]
     )
+    if not isinstance(pr, dict):
+        raise ValueError(  # noqa: TRY004 - malformed provider input is operational
+            "GitHub returned a pull-request response that is not an object."
+        )
     closing_issues = pr.get("closingIssuesReferences")
     if not isinstance(closing_issues, list):
-        raise TypeError(
+        raise ValueError(  # noqa: TRY004 - malformed provider input is operational
             "GitHub returned a closingIssuesReferences field that is not valid."
         )
     query = """query($owner:String!,$name:String!,$pr:Int!,$endCursor:String) {
@@ -121,18 +125,18 @@ def _required_jobs_command() -> int:
     event_name = os.environ.get("EVENT_NAME")
     results_text = os.environ.get("RESULTS")
     if event_name is None:
-        raise SystemExit("The required environment variable EVENT_NAME is missing.")
+        raise ValueError("The required environment variable EVENT_NAME is missing.")
     if results_text is None:
-        raise SystemExit("The required environment variable RESULTS is missing.")
+        raise ValueError("The required environment variable RESULTS is missing.")
     try:
         results = json.loads(results_text)
-    except json.JSONDecodeError as error:
-        raise SystemExit(
+    except ValueError as error:
+        raise ValueError(
             "The RESULTS value must contain valid JSON. "
             f"The parser returned this diagnostic.\n{error}"
         ) from error
     if not isinstance(results, dict):
-        raise SystemExit("The RESULTS value must be a JSON object.")
+        raise ValueError("The RESULTS value must be a JSON object.")  # noqa: TRY004
     failures = failed_required_jobs(event_name, results)
     if failures:
         raise SystemExit(
@@ -163,13 +167,29 @@ def _release_command(repo_root: Path) -> int:
     tag = _required_env("GITHUB_REF_NAME")
     workflow_sha = _required_env("GITHUB_SHA")
     tag_ref = _run_json(["gh", "api", f"repos/{repository}/git/ref/tags/{tag}"])
-    annotated = tag_ref.get("object", {}).get("type") == "tag"
+    if not isinstance(tag_ref, dict) or not isinstance(tag_ref.get("object"), dict):
+        raise ValueError(  # noqa: TRY004 - malformed provider input is operational
+            "GitHub returned an invalid tag reference response."
+        )
+    annotated = tag_ref["object"].get("type") == "tag"
     if not annotated:
         tag_object: dict[str, Any] = {}
     else:
-        tag_sha = tag_ref["object"]["sha"]
+        tag_sha = tag_ref["object"].get("sha")
+        if not isinstance(tag_sha, str) or not tag_sha:
+            raise ValueError("GitHub returned an invalid annotated tag reference.")
         tag_object = _run_json(["gh", "api", f"repos/{repository}/git/tags/{tag_sha}"])
+        if not isinstance(tag_object, dict):
+            raise ValueError("GitHub returned an invalid annotated tag response.")
+        if not isinstance(tag_object.get("object"), dict):
+            raise ValueError("GitHub returned an invalid annotated tag object.")
+        if not isinstance(tag_object.get("verification"), dict):
+            raise ValueError("GitHub returned an invalid tag verification response.")
     branch = _run_json(["gh", "api", f"repos/{repository}/branches/main"])
+    if not isinstance(branch, dict):
+        raise ValueError(  # noqa: TRY004 - malformed provider input is operational
+            "GitHub returned an invalid branch response."
+        )
     tag_commit = str(tag_object.get("object", {}).get("sha", ""))
     errors = evaluate_release(
         tag=tag,

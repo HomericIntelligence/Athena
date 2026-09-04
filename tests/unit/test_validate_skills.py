@@ -14,6 +14,7 @@ from collections.abc import Callable
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / "scripts" / "validate_skills.py"
@@ -162,7 +163,7 @@ class DistributionTests(unittest.TestCase):
             check=False,
         )
 
-        self.assertEqual(1, result.returncode)
+        self.assertEqual(2, result.returncode)
         self.assertIn(".codex-plugin/plugin.json", result.stderr)
         self.assertNotIn("Traceback", result.stderr)
 
@@ -415,6 +416,23 @@ class DistributionTests(unittest.TestCase):
         errors = validator._validate_layout_and_policy(self.fixture)
 
         self.assertEqual(["self-contained"], [error.surface for error in errors])
+
+    def test_cli_reports_inspection_failure_as_exit_two(self) -> None:
+        errors = io.StringIO()
+        with (
+            patch.object(
+                validator,
+                "validate_repository",
+                return_value=[
+                    validator.ValidationError("self-contained", "read failed", True)
+                ],
+            ),
+            redirect_stderr(errors),
+        ):
+            result = validator.main(["--root", str(self.fixture)])
+
+        self.assertEqual(2, result)
+        self.assertIn("read failed", errors.getvalue())
 
     def test_distributable_coverage_prefixed_file_is_inspected(self) -> None:
         repository = "HomericIntelligence/" + "UnapprovedRepository"
