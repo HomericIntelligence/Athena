@@ -45,6 +45,9 @@ workflow-check:
     just workflow-lint
     uv run check-jsonschema --builtin-schema vendor.github-workflows .github/workflows/*.yml
 
+uv-pins:
+    uv run python scripts/ci_policy.py uv-pins
+
 package:
     uv run python scripts/package_plugin.py
 
@@ -61,6 +64,7 @@ check:
     just static
     just markdownlint
     just workflow-check
+    just uv-pins
 
 all:
     just check
