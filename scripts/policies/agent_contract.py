@@ -75,6 +75,15 @@ class _NotRegularFileError(OSError):
     """A selected repository path is not a regular file."""
 
 
+def _close_descriptor_quietly(descriptor: int) -> None:
+    """Close a descriptor without masking an active result or error."""
+    try:
+        os.close(descriptor)
+    except OSError:
+        # A failed close leaves descriptor ownership unspecified. Do not retry it.
+        return
+
+
 def _opening_fence(line: str) -> tuple[str, int] | None:
     indentation = len(line) - len(line.lstrip(" "))
     if indentation > 3:
@@ -130,39 +139,41 @@ def _open_relative_regular(
 
     directory_flags = os.O_RDONLY | _DIRECTORY | _NOFOLLOW | _CLOSE_ON_EXEC
     file_flags = os.O_RDONLY | _NOFOLLOW | _CLOSE_ON_EXEC | _NONBLOCK
-    directory_descriptors: list[int] = []
+    directory_descriptor: int | None = os.open(root, directory_flags)
     file_descriptor: int | None = None
     try:
-        current_directory = os.open(root, directory_flags)
-        directory_descriptors.append(current_directory)
         for component in relative_path.parts[:-1]:
-            current_directory = os.open(
+            assert directory_descriptor is not None
+            child_descriptor = os.open(
                 component,
                 directory_flags,
-                dir_fd=current_directory,
+                dir_fd=directory_descriptor,
             )
-            directory_descriptors.append(current_directory)
+            try:
+                os.close(directory_descriptor)
+            except OSError:
+                # A failed close leaves ownership unspecified. Close the child once.
+                directory_descriptor = None
+                _close_descriptor_quietly(child_descriptor)
+                raise
+            directory_descriptor = child_descriptor
+        assert directory_descriptor is not None
         file_descriptor = os.open(
             relative_path.parts[-1],
             file_flags,
-            dir_fd=current_directory,
+            dir_fd=directory_descriptor,
         )
         metadata = os.fstat(file_descriptor)
         if not stat.S_ISREG(metadata.st_mode):
-            os.close(file_descriptor)
-            file_descriptor = None
             raise _NotRegularFileError("The selected path is not a regular file.")
         return file_descriptor, metadata
     except BaseException:
         if file_descriptor is not None:
-            os.close(file_descriptor)
+            _close_descriptor_quietly(file_descriptor)
         raise
     finally:
-        for descriptor in reversed(directory_descriptors):
-            try:
-                os.close(descriptor)
-            except OSError:
-                pass
+        if directory_descriptor is not None:
+            _close_descriptor_quietly(directory_descriptor)
 
 
 def _read_bounded_regular_utf8(

@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
+import stat
 import tempfile
 import unittest
 from collections.abc import Callable
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
+from unittest.mock import Mock, call, patch
 
 from scripts import validate_agent_contract as agent_contract_cli
 from scripts.policies import agent_contract
@@ -497,6 +500,44 @@ class AgentContractTests(unittest.TestCase):
                         any(expected in error.reason for error in errors),
                         errors,
                     )
+
+    def test_parent_close_failure_closes_the_opened_child_once(self) -> None:
+        open_descriptor = Mock(side_effect=[10, 11, 12])
+        closed_descriptors: list[int] = []
+
+        def close_descriptor(descriptor: int) -> None:
+            closed_descriptors.append(descriptor)
+            if descriptor == 10:
+                raise OSError("simulated parent close failure")
+
+        with (
+            patch.object(os, "open", open_descriptor),
+            patch.object(os, "close", side_effect=close_descriptor),
+            patch.object(os, "fstat", return_value=Mock(st_mode=stat.S_IFREG)),
+            self.assertRaisesRegex(OSError, "parent close failure"),
+        ):
+            agent_contract._open_relative_regular(
+                self.fixture, Path("nested/target.txt")
+            )
+
+        self.assertEqual(2, open_descriptor.call_count)
+        self.assertEqual([10, 11], closed_descriptors)
+
+    def test_nonregular_file_close_failure_is_not_retried(self) -> None:
+        close_descriptor = Mock(side_effect=[OSError("simulated close failure"), None])
+        with (
+            patch.object(os, "open", side_effect=[10, 11]),
+            patch.object(
+                os,
+                "fstat",
+                return_value=Mock(st_mode=stat.S_IFIFO),
+            ),
+            patch.object(os, "close", close_descriptor),
+            self.assertRaises(agent_contract._NotRegularFileError),
+        ):
+            agent_contract._open_relative_regular(self.fixture, Path("pipe"))
+
+        self.assertEqual([call(11), call(10)], close_descriptor.call_args_list)
 
     def test_generated_rows_have_the_complete_sorted_identifier_set(self) -> None:
         text = (self.fixture / "AGENTS.md").read_text(encoding="utf-8")
