@@ -374,8 +374,6 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
             or "__pycache__" in relative_path.parts
         ):
             continue
-        if relative_path.as_posix() == "scripts/validate_skills.py":
-            continue
         if path.suffix.lower() in {
             ".gif",
             ".ico",
@@ -743,7 +741,7 @@ def main(argv: list[str] | None = None) -> int:
         print("The Athena skill validation failed:", file=sys.stderr)
         for error in errors:
             print(f"  - {error.surface}: {error.reason}", file=sys.stderr)
-        return 2
+        return 1
     if not args.quiet:
         print("The Athena skill validation passed.")
     return 0

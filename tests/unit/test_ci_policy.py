@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
+import subprocess
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from hashlib import sha256
 from pathlib import Path
 from unittest.mock import patch
@@ -472,6 +475,64 @@ class SuppressionPolicyTests(unittest.TestCase):
 
 
 class CommandTests(unittest.TestCase):
+    def test_pr_policy_command_wraps_subprocess_failure(self) -> None:
+        environment = {
+            "GITHUB_REPOSITORY": "owner/repository",
+            "PR_NUMBER": "9",
+            "REPO_OWNER": "owner",
+            "REPO_NAME": "repository",
+            "PR_AUTHOR": "contributor",
+        }
+        error = io.StringIO()
+        completed = subprocess.CompletedProcess(
+            ["gh"], 1, stdout="", stderr="authentication failed"
+        )
+        with (
+            patch.dict(os.environ, environment, clear=False),
+            patch("scripts.ci_policy.subprocess.run", return_value=completed),
+            redirect_stderr(error),
+        ):
+            result = ci_policy.main(["pr-policy"])
+
+        self.assertEqual(2, result)
+        self.assertIn("error: command failed", error.getvalue())
+        self.assertIn("authentication failed", error.getvalue())
+
+    def test_pr_policy_command_reports_missing_environment(self) -> None:
+        error = io.StringIO()
+        with (
+            patch.dict(
+                os.environ, {"GITHUB_REPOSITORY": "owner/repository"}, clear=True
+            ),
+            redirect_stderr(error),
+        ):
+            result = ci_policy.main(["pr-policy"])
+
+        self.assertEqual(2, result)
+        self.assertIn(
+            "missing required environment variable: PR_NUMBER", error.getvalue()
+        )
+
+    def test_pr_policy_command_reports_malformed_json(self) -> None:
+        environment = {
+            "GITHUB_REPOSITORY": "owner/repository",
+            "PR_NUMBER": "9",
+            "REPO_OWNER": "owner",
+            "REPO_NAME": "repository",
+            "PR_AUTHOR": "contributor",
+        }
+        error = io.StringIO()
+        completed = subprocess.CompletedProcess(["gh"], 0, stdout="not json", stderr="")
+        with (
+            patch.dict(os.environ, environment, clear=False),
+            patch("scripts.ci_policy.subprocess.run", return_value=completed),
+            redirect_stderr(error),
+        ):
+            result = ci_policy.main(["pr-policy"])
+
+        self.assertEqual(2, result)
+        self.assertIn("error: command produced malformed JSON", error.getvalue())
+
     def test_pr_policy_command_collects_paginated_github_evidence(self) -> None:
         environment = {
             "GITHUB_REPOSITORY": "owner/repository",

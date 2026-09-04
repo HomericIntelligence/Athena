@@ -645,6 +645,23 @@ if (
             self.assertEqual(1, result)
             self.assertIn("validation-sentinel-42", errors.getvalue())
 
+    def test_cli_reports_operational_build_failure_as_exit_two(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            errors = io.StringIO()
+            with (
+                patch("scripts.package_plugin._validate_repository"),
+                patch(
+                    "scripts.package_plugin.build_package",
+                    side_effect=OSError("output is not writable"),
+                ),
+                redirect_stderr(errors),
+            ):
+                result = main(["--root", str(root)])
+
+        self.assertEqual(2, result)
+        self.assertIn("output is not writable", errors.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()
