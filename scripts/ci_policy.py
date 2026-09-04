@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -19,7 +18,6 @@ from scripts.policies.pull_request import evaluate_pull_request, flatten_commit_
 from scripts.policies.release import evaluate_release, verify_release_assets
 from scripts.policies.required_jobs import failed_required_jobs
 from scripts.policies.suppressions import find_suppressions
-from scripts.policies.uv_pins import find_uv_pin_drift
 from skills._cli import argument_parser
 
 __all__ = (
@@ -27,7 +25,6 @@ __all__ = (
     "evaluate_release",
     "failed_required_jobs",
     "find_suppressions",
-    "find_uv_pin_drift",
     "flatten_commit_pages",
     "verify_release_assets",
 )
@@ -197,6 +194,10 @@ def _suppression_command(repo_root: Path) -> int:
 
 def _uv_pins_command(repo_root: Path) -> int:
     """Validate that all workflow uv pins match the Containerfile pin."""
+    import re
+
+    from scripts.policies.uv_pins import find_uv_pin_drift
+
     container_path = repo_root / "ci" / "Containerfile"
     workflow_paths = sorted((repo_root / ".github" / "workflows").glob("*.yml"))
     workflow_texts = {

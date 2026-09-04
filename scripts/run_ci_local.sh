@@ -12,6 +12,7 @@
 #   ./scripts/run_ci_local.sh static       # Run lint, format, and type checks.
 #   ./scripts/run_ci_local.sh markdownlint # Lint the documentation.
 #   ./scripts/run_ci_local.sh workflow     # Validate workflow syntax and schemas.
+#   ./scripts/run_ci_local.sh uv-pins      # Check uv version consistency.
 #
 # The script selects a container engine. It tries Podman before Docker.
 # To select the engine, set CONTAINER_ENGINE. For example:
@@ -166,6 +167,11 @@ run_workflow() {
     run_in_container uv run check-jsonschema --builtin-schema vendor.github-workflows .github/workflows/*.yml
 }
 
+run_uv_pins() {
+    log_step "Check uv version consistency."
+    run_in_container uv run python scripts/ci_policy.py uv-pins
+}
+
 # ============================================================================
 # Run the selected checks.
 # ============================================================================
@@ -203,17 +209,21 @@ case "${SUBSET}" in
     workflow)
         run_step "workflow" run_workflow
         ;;
+    uv-pins)
+        run_step "uv-pins" run_uv_pins
+        ;;
     all)
         run_step "validate" run_validate
         run_step "test" run_test
         run_step "static" run_static
         run_step "markdownlint" run_markdownlint
         run_step "workflow" run_workflow
+        run_step "uv-pins" run_uv_pins
         ;;
     *)
         log_error "The subset is not valid: '${SUBSET}'."
         log_error "Use one of these values:"
-        log_error "all, validate, test, static, markdownlint, workflow"
+        log_error "all, validate, test, static, markdownlint, workflow, uv-pins"
         exit 1
         ;;
 esac

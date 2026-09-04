@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import builtins
 import json
 import os
 import tempfile
 import unittest
 from hashlib import sha256
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 from scripts import ci_policy
@@ -537,6 +539,26 @@ jobs:
 
 
 class CommandTests(unittest.TestCase):
+    def test_plain_python_command_does_not_require_pyyaml(self) -> None:
+        real_import = builtins.__import__
+
+        def reject_yaml(name: str, *args: Any, **kwargs: Any) -> Any:
+            if name == "yaml":
+                raise ModuleNotFoundError("No module named 'yaml'")
+            return real_import(name, *args, **kwargs)
+
+        with (
+            patch("builtins.__import__", side_effect=reject_yaml),
+            tempfile.TemporaryDirectory() as temporary_directory,
+        ):
+            root = Path(temporary_directory)
+            (root / "workflow.yml").write_text("run: safe-command\n", encoding="utf-8")
+            with patch("scripts.ci_policy.subprocess.run") as run:
+                run.return_value.stdout = "workflow.yml\n"
+                self.assertEqual(
+                    0, ci_policy.main(["suppressions", "--root", str(root)])
+                )
+
     def test_pr_policy_command_collects_paginated_github_evidence(self) -> None:
         environment = {
             "GITHUB_REPOSITORY": "owner/repository",

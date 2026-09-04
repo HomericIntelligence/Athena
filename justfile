@@ -107,6 +107,10 @@ ci-markdownlint:
 ci-workflow:
     ./scripts/run_ci_local.sh workflow
 
+# Check uv version consistency in the CI container.
+ci-uv-pins:
+    ./scripts/run_ci_local.sh uv-pins
+
 # Run all supported local CI checks in the container.
 ci-all:
     ./scripts/run_ci_local.sh all
