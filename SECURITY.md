@@ -44,6 +44,15 @@ We aim to acknowledge reports no later than five business days after receipt.
 - **Supply chain:** GitHub Actions use commit pins. The repository allowlist permits only the reviewed
   action revisions in the required and release workflows. Dependency checkouts verify their identity.
   A release contains repository resources and not executable package artifacts.
+- **Untrusted fork code in CI:** On pull requests, the required `package` job deliberately installs
+  the plugin from the pull request head fork with `pi install git:github.com/<fork>@<head>
+  --no-approve` and executes its skills under pi RPC. Athena accepts this supply-chain risk because
+  the job must run the plugin to verify the distributed artifact. The job has only `contents: read`
+  permission. Its checkout does not persist credentials, Git prompts are disabled, the Pi runtime
+  uses locked dependencies, no token is exported to the step, and RPC probes run offline. This step
+  must never gain secrets, write-scoped tokens, elevated workflow permissions, or network egress
+  beyond the install-time fetch. Any capability change requires an explicit review of this risk
+  acceptance.
 - **Secrets:** Required continuous integration (CI) scans the complete Git history. Repository
   policies prohibit credentials and private data.
 
