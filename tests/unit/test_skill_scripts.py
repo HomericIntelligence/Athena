@@ -2053,9 +2053,8 @@ class TidyDelegationTests(unittest.TestCase):
             fake_uv.write_text(
                 "#!/usr/bin/env python3\n"
                 "import sys\n"
-                "print('All branches rebased cleanly — no swarm needed.')\n"
-                "print('WARNING gh tidy exited with code 128 — proceeding to parse output anyway', "
-                "file=sys.stderr)\n"
+                "print('partial cleanup: rebase conflict remains unresolved')\n"
+                "print('checked-out worktree skipped', file=sys.stderr)\n"
                 "raise SystemExit(128)\n",
                 encoding="utf-8",
             )
@@ -2072,12 +2071,11 @@ class TidyDelegationTests(unittest.TestCase):
 
         self.assertEqual(128, result.returncode)
         self.assertEqual(
-            "All branches rebased cleanly — no swarm needed.\n", result.stdout
+            "partial cleanup: rebase conflict remains unresolved\n", result.stdout
         )
-        self.assertEqual(
-            "WARNING gh tidy exited with code 128 — proceeding to parse output anyway\n",
-            result.stderr,
-        )
+        self.assertEqual("checked-out worktree skipped\n", result.stderr)
+        self.assertNotIn("All branches rebased cleanly", result.stdout)
+        self.assertNotIn("All branches rebased cleanly", result.stderr)
 
     def test_tidy_zero_exit_passes_output_through_transparently(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
