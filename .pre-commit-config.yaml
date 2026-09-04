@@ -22,7 +22,7 @@ repos:
         pass_filenames: false
       - id: athena-markdownlint
         name: Check Markdown in the Athena repository
-        entry: uv run pymarkdown -d MD013,MD024,MD033,MD041,MD046 scan README.md AGENTS.md CLAUDE.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md docs skills
+        entry: uv run pymarkdown -d MD013,MD024,MD033,MD041,MD046 scan README.md AGENTS.md CLAUDE.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md .github docs skills
         language: system
         pass_filenames: false
       - id: athena-validator-tests
