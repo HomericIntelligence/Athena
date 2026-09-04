@@ -66,6 +66,19 @@ After required checks pass, a maintainer creates a signed `vX.Y.Z` tag. The rele
 revalidates the repository, builds a portable plugin archive, and publishes a GitHub release. No
 Python wheel or source distribution is produced.
 
+## Definition of done
+
+A change is done when:
+
+- `just all` passes locally.
+- Each completion claim has runnable evidence that follows the
+  [evidence integrity policy](docs/policies/evidence-integrity.md).
+- Documentation and skill frontmatter follow `AGENTS.md` and the
+  [development policy](docs/policies/development.md).
+- Commits are signed Conventional Commits with a Developer Certificate of Origin (DCO)
+  attestation.
+- The pull request passes the current-head [required checks](docs/policies/required-checks.md).
+
 ## Rejection criteria
 
 Athena rejects a pull request that does one or more of these actions:
