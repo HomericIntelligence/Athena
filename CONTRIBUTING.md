@@ -71,6 +71,20 @@ produced.
 Before the first release, a repository administrator must create the `release` environment in
 Settings > Environments. Add at least one required reviewer and restrict deployment to the
 repository's release tags (for example, `v*`). Keep the environment name exactly `release`.
+GitHub can create a missing environment without these protection rules. Before a release tag is
+created, verify the configuration with the GitHub CLI. Replace `<OWNER>/<REPOSITORY>` with the
+repository name:
+
+```bash
+gh api repos/<OWNER>/<REPOSITORY>/environments/release \
+  --jq '{reviewers: (.protection_rules | map(select(.type == "required_reviewers")) | length), policy: .deployment_branch_policy}'
+gh api repos/<OWNER>/<REPOSITORY>/environments/release/deployment-branch-policies \
+  --jq '.branch_policies[] | .name'
+```
+
+The first command must show at least one required-reviewer rule and a custom deployment policy.
+The second command must show `v*`. Do not create a release tag when either check does not show the
+required result.
 
 If a published release is defective, use this rollback procedure:
 
@@ -85,7 +99,7 @@ If a published release is defective, use this rollback procedure:
 
 npm does not provide a safe, general unpublish path after its short unpublish window. Deprecate the
 published package version, then publish the next patch version:
-`npm deprecate athena-opencode@X.Y.Z "Defective release; use X.Y.(Z+1)"`.
+`npm deprecate @homericintelligence/athena-opencode@X.Y.Z "Defective release; use X.Y.(Z+1)"`.
 
 ## Rejection criteria
 
