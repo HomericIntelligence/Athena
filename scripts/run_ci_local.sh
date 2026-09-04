@@ -157,7 +157,7 @@ run_static() {
 
 run_markdownlint() {
     log_step "Check Markdown in public documents and skills."
-    run_in_container uv run pymarkdown -d MD013,MD024,MD033,MD041,MD046 scan README.md AGENTS.md CLAUDE.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md docs skills
+    run_in_container uv run pymarkdown -d MD013,MD024,MD033,MD041,MD046 scan README.md AGENTS.md CLAUDE.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md .github docs skills
 }
 
 run_workflow() {
