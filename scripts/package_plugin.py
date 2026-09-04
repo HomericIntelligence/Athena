@@ -287,9 +287,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         repo_root = _repository_root(arguments.root)
         _validate_repository(repo_root)
         archive_path, checksum_path = build_package(repo_root)
-    except (PackageError, OSError, subprocess.SubprocessError) as error:
+    except PackageError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
+    except (OSError, subprocess.SubprocessError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
     print(f"The tool built '{archive_path}' and '{checksum_path}'.")
     return 0
 

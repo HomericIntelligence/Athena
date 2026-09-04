@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Apply the Athena continuous integration (CI) and release policies."""
+"""Apply Athena continuous integration (CI) and release policies.
+
+Exit codes:
+    0: The policy check passed.
+    1: A policy violation was found.
+    2: The tool could not complete the check.
+"""
 
 from __future__ import annotations
 
@@ -31,16 +37,32 @@ __all__ = (
 
 
 def _run_json(command: list[str]) -> Any:
-    result = subprocess.run(command, check=True, capture_output=True, text=True)
-    return json.loads(result.stdout)
+    result = subprocess.run(command, check=False, capture_output=True, text=True)
+    if result.returncode != 0:
+        detail = result.stderr.strip() or "no diagnostic was returned"
+        raise OSError(
+            f"command failed (exit {result.returncode}): {' '.join(command)}: {detail}"
+        )
+    try:
+        return json.loads(result.stdout)
+    except ValueError as error:
+        raise ValueError(f"command produced malformed JSON: {error}") from error
+
+
+def _required_env(name: str) -> str:
+    """Return a required environment value or raise an actionable error."""
+    value = os.environ.get(name)
+    if value is None:
+        raise OSError(f"missing required environment variable: {name}")
+    return value
 
 
 def _pr_policy_command() -> int:
-    repository = os.environ["GITHUB_REPOSITORY"]
-    pr_number = os.environ["PR_NUMBER"]
-    owner = os.environ["REPO_OWNER"]
-    name = os.environ["REPO_NAME"]
-    author = os.environ["PR_AUTHOR"]
+    repository = _required_env("GITHUB_REPOSITORY")
+    pr_number = _required_env("PR_NUMBER")
+    owner = _required_env("REPO_OWNER")
+    name = _required_env("REPO_NAME")
+    author = _required_env("PR_AUTHOR")
     pr = _run_json(
         [
             "gh",
@@ -137,9 +159,9 @@ def _manifest_versions(repo_root: Path) -> dict[str, str]:
 
 
 def _release_command(repo_root: Path) -> int:
-    repository = os.environ["GITHUB_REPOSITORY"]
-    tag = os.environ["GITHUB_REF_NAME"]
-    workflow_sha = os.environ["GITHUB_SHA"]
+    repository = _required_env("GITHUB_REPOSITORY")
+    tag = _required_env("GITHUB_REF_NAME")
+    workflow_sha = _required_env("GITHUB_SHA")
     tag_ref = _run_json(["gh", "api", f"repos/{repository}/git/ref/tags/{tag}"])
     annotated = tag_ref.get("object", {}).get("type") == "tag"
     if not annotated:
@@ -202,14 +224,14 @@ def _publish_release_command(directory: Path) -> int:
             "gh",
             "release",
             "create",
-            os.environ["GITHUB_REF_NAME"],
+            _required_env("GITHUB_REF_NAME"),
             *(str(directory / name) for name in asset_names),
             "--generate-notes",
             "--notes-file",
             str(release_notes),
             "--verify-tag",
             "--repo",
-            os.environ["GITHUB_REPOSITORY"],
+            _required_env("GITHUB_REPOSITORY"),
         ],
         check=True,
     )
@@ -230,15 +252,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args(argv)
-    if args.command == "pr-policy":
-        return _pr_policy_command()
-    if args.command == "required-jobs":
-        return _required_jobs_command()
-    if args.command == "release":
-        return _release_command(args.root.resolve())
-    if args.command == "publish-release":
-        return _publish_release_command(args.root.resolve())
-    return _suppression_command(args.root.resolve())
+    try:
+        if args.command == "pr-policy":
+            return _pr_policy_command()
+        if args.command == "required-jobs":
+            return _required_jobs_command()
+        if args.command == "release":
+            return _release_command(args.root.resolve())
+        if args.command == "publish-release":
+            return _publish_release_command(args.root.resolve())
+        return _suppression_command(args.root.resolve())
+    except (OSError, subprocess.SubprocessError, TypeError, ValueError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

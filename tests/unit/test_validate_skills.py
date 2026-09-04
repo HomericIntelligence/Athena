@@ -162,7 +162,7 @@ class DistributionTests(unittest.TestCase):
             check=False,
         )
 
-        self.assertEqual(2, result.returncode)
+        self.assertEqual(1, result.returncode)
         self.assertIn(".codex-plugin/plugin.json", result.stderr)
         self.assertNotIn("Traceback", result.stderr)
 
@@ -405,6 +405,17 @@ class DistributionTests(unittest.TestCase):
             literal=repository,
         )
 
+    def test_validator_checks_its_own_file_for_ecosystem_references(self) -> None:
+        path = self.fixture / "scripts" / "validate_skills.py"
+        path.write_text(
+            "homericintelligence" + "/" + "forbidden-" + "repository\n",
+            encoding="utf-8",
+        )
+
+        errors = validator._validate_layout_and_policy(self.fixture)
+
+        self.assertEqual(["self-contained"], [error.surface for error in errors])
+
     def test_distributable_coverage_prefixed_file_is_inspected(self) -> None:
         repository = "HomericIntelligence/" + "UnapprovedRepository"
         (self.fixture / "docs" / ".coverage-bypass.md").write_text(
@@ -640,7 +651,7 @@ class DistributionTests(unittest.TestCase):
         errors = io.StringIO()
         with redirect_stderr(errors):
             result = validator.main(["--root", str(self.fixture)])
-        self.assertEqual(result, 2)
+        self.assertEqual(result, 1)
         self.assertTrue(errors.getvalue().strip())
 
 
