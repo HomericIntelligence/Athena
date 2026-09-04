@@ -10,6 +10,9 @@ bootstrap:
 validate:
     uv run python scripts/validate_skills.py
 
+agent-contract:
+    uv run python scripts/validate_agent_contract.py
+
 test:
     uv run coverage erase
     PYTHONDONTWRITEBYTECODE=1 ATHENA_COVERAGE=1 uv run coverage run --branch --parallel-mode --source=scripts,skills -m pytest -q

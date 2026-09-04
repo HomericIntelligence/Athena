@@ -12,15 +12,24 @@ name: Required Checks
     - cron: "17 9 * * 2"
 
 concurrency:
-  group: required-${{ github.workflow }}-${{ github.head_ref || github.sha }}
+  group: >-
+    ${{ format('required-{0}-{1}-{2}', github.workflow,
+    github.event_name, github.event.pull_request.number || github.sha) }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
+  agent-contract:
+    name: agent-contract
+    permissions:
+      contents: read
+    uses: $/.github/workflows/_agent-contract.yml
+
   forbid-suppressions:
     name: forbid-suppressions
+    needs: agent-contract
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -32,6 +41,7 @@ jobs:
 
   validate:
     name: validate
+    needs: agent-contract
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -59,6 +69,7 @@ jobs:
 
   markdownlint:
     name: markdownlint
+    needs: agent-contract
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -82,6 +93,7 @@ jobs:
 
   workflow-schema:
     name: workflow-schema
+    needs: agent-contract
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -105,6 +117,7 @@ jobs:
 
   justfile-check:
     name: justfile-check
+    needs: agent-contract
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -119,6 +132,7 @@ jobs:
 
   security-secrets-scan:
     name: security/secrets-scan
+    needs: agent-contract
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -136,6 +150,7 @@ jobs:
 
   package:
     name: package
+    needs: agent-contract
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -347,6 +362,7 @@ jobs:
 
   pr-policy:
     name: pr-policy
+    needs: agent-contract
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -374,6 +390,7 @@ jobs:
     timeout-minutes: 2
     if: always()
     needs:
+      - agent-contract
       - forbid-suppressions
       - validate
       - markdownlint

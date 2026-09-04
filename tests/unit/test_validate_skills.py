@@ -64,6 +64,42 @@ class DistributionTests(unittest.TestCase):
     def test_repository_is_valid(self) -> None:
         self.assertEqual(validator.validate_repository(self.fixture), [])
 
+    def test_repository_requires_the_exact_root_claude_pointer(self) -> None:
+        (self.fixture / "CLAUDE.md").write_bytes(b"@AGENTS.md")
+
+        errors = validator.validate_repository(self.fixture)
+
+        self.assertTrue(
+            any(
+                error.surface == "agent-contract" and "CLAUDE.md" in error.reason
+                for error in errors
+            ),
+            errors,
+        )
+
+    def test_repository_requires_the_generated_principles_block(self) -> None:
+        path = self.fixture / "AGENTS.md"
+        text = path.read_text(encoding="utf-8")
+        start_marker = (
+            "<!-- BEGIN ATHENA DEVELOPMENT PRINCIPLES: agent-contract-v1.0.0 -->"
+        )
+        end_marker = "<!-- END ATHENA DEVELOPMENT PRINCIPLES -->"
+        start = text.find(start_marker)
+        end = text.find(end_marker)
+        if start >= 0 and end >= start:
+            text = text[:start] + text[end + len(end_marker) :]
+        path.write_text(text, encoding="utf-8")
+
+        errors = validator.validate_repository(self.fixture)
+
+        self.assertTrue(
+            any(
+                error.surface == "agent-contract" and "AGENTS.md" in error.reason
+                for error in errors
+            ),
+            errors,
+        )
+
     def test_frontmatter_parser(self) -> None:
         self.assertEqual(
             validator._frontmatter_name("---\nname: example\n---\n"), "example"
@@ -486,6 +522,56 @@ class DistributionTests(unittest.TestCase):
 
         status_checks["parameters"]["strict_required_status_checks_policy"] = False
         status_checks["parameters"]["required_status_checks"] = []
+        path.write_text(json.dumps(document), encoding="utf-8")
+
+        self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
+
+    def test_ruleset_requires_only_the_github_actions_aggregate_gate(self) -> None:
+        path = self.fixture / ".github" / "rulesets" / "homeric-main-baseline.json"
+        original = path.read_text(encoding="utf-8")
+        invalid_checks = {
+            "missing integration": [{"context": "required-checks-gate"}],
+            "wrong integration": [
+                {"context": "required-checks-gate", "integration_id": 1}
+            ],
+            "extra check": [
+                {"context": "required-checks-gate", "integration_id": 15368},
+                {"context": "smoke-test", "integration_id": 15368},
+            ],
+            "duplicate aggregate": [
+                {"context": "required-checks-gate", "integration_id": 15368},
+                {"context": "required-checks-gate", "integration_id": 15368},
+            ],
+            "extra field": [
+                {
+                    "context": "required-checks-gate",
+                    "integration_id": 15368,
+                    "unexpected": True,
+                }
+            ],
+        }
+        for name, checks in invalid_checks.items():
+            with self.subTest(name=name):
+                document = json.loads(original)
+                status_checks = next(
+                    rule
+                    for rule in document["rules"]
+                    if rule["type"] == "required_status_checks"
+                )
+                status_checks["parameters"]["required_status_checks"] = checks
+                path.write_text(json.dumps(document), encoding="utf-8")
+
+                self.assert_validation_errors(
+                    validator._validate_ruleset_policy, "ruleset"
+                )
+
+        document = json.loads(original)
+        status_checks = next(
+            rule
+            for rule in document["rules"]
+            if rule["type"] == "required_status_checks"
+        )
+        document["rules"].append(json.loads(json.dumps(status_checks)))
         path.write_text(json.dumps(document), encoding="utf-8")
 
         self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
