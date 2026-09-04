@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import unittest
 from pathlib import Path
 from typing import Any, cast
 
 SETTINGS_PATH = Path(__file__).parents[2] / ".claude" / "settings.json"
+HOOK_PATH = SETTINGS_PATH.parent / "hooks" / "deny_unguarded_force_push.py"
+
+HOOK_SPEC = importlib.util.spec_from_file_location(
+    "deny_unguarded_force_push", HOOK_PATH
+)
+assert HOOK_SPEC is not None and HOOK_SPEC.loader is not None
+HOOK = importlib.util.module_from_spec(HOOK_SPEC)
+HOOK_SPEC.loader.exec_module(HOOK)
 
 
 def load_settings() -> dict[str, Any]:
@@ -18,35 +27,27 @@ def load_settings() -> dict[str, Any]:
     )
 
 
-def bash_rule_matches(rule: str, command: str) -> bool:
-    """Apply the prefix and exact matching used by Claude Bash rules."""
-    prefix = rule.removeprefix("Bash(").removesuffix(")")
-    if prefix.endswith("*"):
-        return command.startswith(prefix[:-1])
-    return command == prefix
-
-
 class ClaudeSettingsTests(unittest.TestCase):
+    def test_force_push_hook_is_configured(self) -> None:
+        """The Bash pre-tool hook enforces the force-push policy."""
+        settings = load_settings()
+        hooks = settings["hooks"]["PreToolUse"]
+
+        self.assertEqual("Bash", hooks[0]["matcher"])
+        self.assertIn("deny_unguarded_force_push.py", hooks[0]["hooks"][0]["command"])
+
     def test_guarded_force_with_lease_push_is_not_denied(self) -> None:
         """Guarded force-with-lease pushes are permitted."""
-        settings = load_settings()
         command = "git push --force-with-lease --force-if-includes origin feature/x"
-        denied = settings["permissions"]["deny"]
-
-        self.assertFalse(
-            any(bash_rule_matches(rule, command) for rule in denied),
-        )
+        self.assertFalse(HOOK.is_unguarded_force_push(command))
 
     def test_unguarded_force_push_is_denied(self) -> None:
         """Unguarded force pushes remain denied."""
-        settings = load_settings()
-        denied = settings["permissions"]["deny"]
-
         for command in (
             "git push --force origin feature/x",
             "git push --force origin main",
+            "git push -f origin feature/x",
+            "git -C /tmp/repo push --force origin feature/x",
         ):
             with self.subTest(command=command):
-                self.assertTrue(
-                    any(bash_rule_matches(rule, command) for rule in denied),
-                )
+                self.assertTrue(HOOK.is_unguarded_force_push(command))
