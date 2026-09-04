@@ -12,7 +12,7 @@ and review output.
 ```text
 [complete review] -> [verdict] -> [rebind exact artifact]
                                         |
-                     [one comment-only batch, when requested]
+                 [finding batch or verified GO finalization]
                                         |
                 [optional separate auto-merge opt-in after GO]
 ```
@@ -48,21 +48,128 @@ workflow. GitLab can report a verdict. This skill must not enable GitLab auto-me
 
 | Verdict | Required conditions |
 | --- | --- |
-| **GO** | Use only for the default profile. Require grade A (93–100). Require aligned architecture or an evidenced intentional change. Require zero `required` findings. Require complete applicable source, scope, requirements, language, and validation coverage. Require all host-selected local checks to pass on the reviewed head. |
+| **GO** | Use only for the default profile. Require grade A (93–100). Require aligned architecture or an evidenced intentional change. Require zero `required` findings. Require complete applicable source, scope, requirements, language, and validation coverage. Require all host-selected local checks to pass on the reviewed head. A delivered GO also requires the verified GO-delivery postconditions. |
 | **CONDITIONAL GO** | Require architecture to pass. Require no open `required` source finding. Require a score of at least B. Use when a remediable review condition remains. Examples include incomplete source, scope, requirement, language, or validation coverage; a local validation gap; or deliberately limited CI-free evidence. State each condition. |
 | **NO-GO** | Use for a score below B or a `required` finding. Also use it for a material or unexplained architecture violation or failed required local validation. Use it for an invalid, stale, or drifted identity, scope, requirement, path, or current-head binding. |
 
-`--report-only` can report `GO`. It records `auto_merge: withheld (read-only)`. Without
-`--enable-auto-merge-on-go`, a `GO` records `auto_merge: withheld (not requested)`. For
+`--report-only` can report that the review evidence is GO-eligible. It must record
+`delivery: withheld (read-only)` and `auto_merge: withheld (read-only)`. It must not report a
+delivered GO. Without `--enable-auto-merge-on-go`, a delivered GO records
+`auto_merge: withheld (not requested)`. For
 `CONDITIONAL GO`, `NO-GO`, CI-free, prevalidated, and GitLab, record `auto_merge: not-eligible` with
 the blocker.
+
+## Verified GO delivery
+
+A direct default-profile GitHub review owns this narrow finalization unless an enclosing coordinator
+declares itself as the single delivery owner. Complete the finalization before you emit terminal GO.
+The finalization can make only these changes:
+
+- add one verified reviewer response to each open review thread;
+- resolve each thread after its response is visible;
+- add `state:implementation-go`; and
+- remove `state:implementation-no-go`.
+
+Do not create a missing label. Do not change another label. Treat the two implementation-state labels
+as mutually exclusive.
+
+Read the complete conversation for every open thread. A response must state the disposition and the
+exact reviewed-head evidence that makes resolution correct. If a finding is not addressed, keep its
+thread open and change the verdict to NO-GO. Do not use a general PR comment as a thread response. Do
+not alter already-resolved history.
+
+For direct GitHub delivery, invoke the installed `deliver_go.py` helper. Give it every retained target
+and immutable identity value. Give it a response manifest that binds each initially open thread to its
+complete conversation digest and non-empty reviewer response. The helper must do these actions:
+
+First, use the read-only preparation mode with the same target arguments and `--prepare-manifest`.
+This mode returns each open thread, its complete conversation, and its digest. Add the verified
+response body to each entry. Preserve all binding, thread, and digest values. Save that JSON as the
+response manifest. Then, run the delivery command:
+
+```bash
+<installed-skill>/scripts/deliver_go.py \
+  --target-host github.com \
+  --target-repository <owner/repository> \
+  --expected-pr-url <canonical-pr-url> \
+  --expected-base-oid <base-oid> \
+  --expected-head-oid <head-oid> \
+  --prepare-manifest \
+  <number>
+```
+
+```bash
+<installed-skill>/scripts/deliver_go.py \
+  --target-host github.com \
+  --target-repository <owner/repository> \
+  --expected-pr-url <canonical-pr-url> \
+  --expected-base-oid <base-oid> \
+  --expected-head-oid <head-oid> \
+  --responses-file <response-manifest.json> \
+  <number>
+```
+
+Use this response-manifest shape:
+
+```json
+{
+  "binding": {
+    "repository": "owner/repository",
+    "number": 123,
+    "url": "https://github.com/owner/repository/pull/123",
+    "base_oid": "<40-lowercase-hex>",
+    "head_oid": "<40-lowercase-hex>"
+  },
+  "responses": [
+    {
+      "thread_id": "<review-thread-node-id>",
+      "conversation_sha256": "<complete-conversation-digest>",
+      "body": "Verified response with disposition and exact-head evidence."
+    }
+  ]
+}
+```
+
+Use an empty `responses` list only when there are no open threads. The helper adds its own
+deterministic delivery marker. Do not put a marker in `body`.
+
+1. Bind the canonical open, non-draft PR and exact base and head again.
+2. Enumerate all open threads and their complete conversations.
+3. Reject a response manifest that has a missing, extra, duplicate, stale, or empty entry.
+4. Before each response, verify the exact PR head and bound conversation.
+5. Post one deterministic response and verify its receipt and visibility.
+6. Resolve that thread only after the verified response is visible on the unchanged head.
+7. Verify the resolution before it continues.
+8. Before the label change, bind the exact open head again and require zero open threads.
+9. In one target-scoped command, add `state:implementation-go` and remove
+   `state:implementation-no-go`.
+10. Read the PR and all threads again. Require the unchanged head, zero open threads, and exactly one
+    implementation-state label: `state:implementation-go`.
+
+If a read, response, resolution, label change, or readback fails or is indeterminate, stop. Do not
+retry blindly. Do not unresolve a thread. Do not make a compensating label change. Report the known
+partial state and withhold terminal GO. A later review can recognize an exact deterministic response,
+but it must repeat all current-head and final-state checks.
+
+GitHub does not provide a head-conditional thread-resolution or label mutation. Therefore, the helper
+guarantees the immediate pre-write and post-write bindings. If the post-write binding detects a race,
+report the external state as partial. Never report a delivered GO for that run.
+
+If an enclosing coordinator is the declared single delivery owner, do not invoke the helper or make a
+second write. Return the bound structured GO result to that coordinator. The coordinator must perform
+and verify the same sequence. It must not expose terminal GO until the final postconditions pass.
+
+`--report-only`, `--ci-free`, and `--prevalidated` never run this finalization. A GitLab review can use
+an authenticated capability that proves equivalent exact-head, discussion-response, resolution, and
+exclusive-label postconditions. If that capability is absent, report the eligible assessment and the
+delivery blocker. Do not claim a delivered GO.
 
 ## Guarded GitHub auto-merge
 
 Enable auto-merge only when the user directly requests `--enable-auto-merge-on-go`. Apply this option
-only to an exact eligible default-profile GitHub `GO`. Before you apply it, verify each requested
-comment batch. This option does not permit a direct merge, retry, approval, label, bypass, or policy
-change.
+only after an exact delivered default-profile GitHub `GO`. Before you apply it, verify each requested
+comment batch and the verified GO-delivery postconditions. This option does not permit a direct merge,
+retry, approval, additional label change, bypass, or policy change.
 
 1. Resolve these values again:
    - canonical host;
@@ -124,10 +231,11 @@ Return, in order:
 9. Report coverage gaps, delivery state, and auto-merge state.
 10. After the findings, report brief strengths.
 
-## Comment-only publication
+## Finding publication
 
-The requested review delivery boundary permits normal publication. Publish comments only. Do not do
-any of these actions:
+The requested review delivery boundary permits normal finding publication. Publish findings as
+comments only. This section does not prohibit the separate verified GO finalization. During finding
+publication, do not do any of these actions:
 
 - approve;
 - request changes;
@@ -145,10 +253,10 @@ If any of these conditions applies, return the complete ready-to-publish batch w
 - The invocation is indirect.
 - The invocation uses `--report-only`.
 - A forge capability is absent.
-- There are no findings.
 - A bound value changed.
 
-Do not post a clean review.
+If there are no findings, do not post a clean review. Continue to verified GO delivery only when all
+GO conditions apply.
 
 Before each requested write, fetch the exact open artifact again. Derive the fully qualified write
 target only from the retained identity. Revalidate these values:
