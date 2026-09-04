@@ -17,5 +17,6 @@
 /CLAUDE.md @mvillmow
 /pyproject.toml @mvillmow
 /uv.lock @mvillmow
+/.python-version @mvillmow
 /justfile @mvillmow
 /.pre-commit-config.yaml @mvillmow
