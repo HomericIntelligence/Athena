@@ -498,6 +498,42 @@ class CommandTests(unittest.TestCase):
         self.assertIn("error: command failed", error.getvalue())
         self.assertIn("authentication failed", error.getvalue())
 
+    def test_pr_policy_command_rejects_wrong_json_shape(self) -> None:
+        environment = {
+            "GITHUB_REPOSITORY": "owner/repository",
+            "PR_NUMBER": "9",
+            "REPO_OWNER": "owner",
+            "REPO_NAME": "repository",
+            "PR_AUTHOR": "contributor",
+        }
+        error = io.StringIO()
+        with (
+            patch.dict(os.environ, environment, clear=False),
+            patch("scripts.ci_policy._run_json", return_value=[]),
+            redirect_stderr(error),
+        ):
+            result = ci_policy.main(["pr-policy"])
+
+        self.assertEqual(2, result)
+        self.assertIn("not an object", error.getvalue())
+
+    def test_release_command_rejects_wrong_json_shape(self) -> None:
+        environment = {
+            "GITHUB_REPOSITORY": "owner/repository",
+            "GITHUB_REF_NAME": "v1.2.3",
+            "GITHUB_SHA": "a" * 40,
+        }
+        error = io.StringIO()
+        with (
+            patch.dict(os.environ, environment, clear=False),
+            patch("scripts.ci_policy._run_json", return_value=[]),
+            redirect_stderr(error),
+        ):
+            result = ci_policy.main(["release", "--root", "."])
+
+        self.assertEqual(2, result)
+        self.assertIn("invalid tag reference", error.getvalue())
+
     def test_pr_policy_command_reports_missing_environment(self) -> None:
         error = io.StringIO()
         with (
@@ -655,11 +691,8 @@ class CommandTests(unittest.TestCase):
             with (
                 self.subTest(case=case),
                 patch.dict(os.environ, environment, clear=True),
-                self.assertRaises(SystemExit) as raised,
             ):
-                ci_policy.main(["required-jobs"])
-
-            self.assertIsInstance(raised.exception.code, str)
+                self.assertEqual(2, ci_policy.main(["required-jobs"]))
 
     def test_required_jobs_command_rejects_invalid_job_results(self) -> None:
         for results in ('{"validate": []}', '{"validate": {"result": 1}}'):

@@ -22,6 +22,7 @@ from scripts.package_plugin import (
     ARCHIVE_ROOTS,
     REQUIRED_MEMBERS,
     PackageError,
+    PackageOperationalError,
     build_package,
     inspect_archive,
     main,
@@ -611,6 +612,20 @@ if (
                     )
                     with self.assertRaises(PackageError):
                         read_plugin_version(root)
+
+    def test_read_plugin_version_reports_read_failure_as_operational(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as temporary_directory,
+            self.assertRaises(PackageOperationalError),
+        ):
+            read_plugin_version(Path(temporary_directory))
+
+    def test_inspect_archive_reports_read_failure_as_operational(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as temporary_directory,
+            self.assertRaises(PackageOperationalError),
+        ):
+            inspect_archive(Path(temporary_directory) / "missing.tar.gz")
 
     def test_cli_validates_and_builds_explicit_repository(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
