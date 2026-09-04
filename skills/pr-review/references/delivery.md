@@ -52,6 +52,14 @@ workflow. GitLab can report a verdict. This skill must not enable GitLab auto-me
 | **CONDITIONAL GO** | Require architecture to pass. Require no open `required` source finding. Require a score of at least B. Use when a remediable review condition remains. Examples include incomplete source, scope, requirement, language, or validation coverage; a local validation gap; or deliberately limited CI-free evidence. State each condition. |
 | **NO-GO** | Use for a score below B or a `required` finding. Also use it for a material or unexplained architecture violation or failed required local validation. Use it for an invalid, stale, or drifted identity, scope, requirement, path, or current-head binding. |
 
+### Merge readiness
+
+Report forge approval and required-gate state as a separate **Merge readiness** fact when default-profile
+evidence is available. For example: `Blocked — one independent approval required by repository policy`.
+Use GitHub `reviewDecision` and GitLab merge-request approval state as repository-policy evidence. This
+state does not lower the review score or verdict. GO is a review verdict, not an approval, merge
+authorization, or claim that every branch-protection rule is satisfied.
+
 `--report-only` can report that the review evidence is GO-eligible. It must record
 `delivery: withheld (read-only)` and `auto_merge: withheld (read-only)`. It must not report a
 delivered GO. Without `--enable-auto-merge-on-go`, a delivered GO records
@@ -182,7 +190,7 @@ retry, approval, additional label change, bypass, or policy change.
    - scope digest;
    - linked-requirements digest;
    - path manifest;
-   - all effective pre-admission gates; and
+   - all effective pre-admission gates, including required approvals; and
    - required queue route.
 2. If a value changed or a binding is missing, withhold auto-merge.
 3. If a gate failed or is pending, withhold auto-merge.
@@ -228,8 +236,10 @@ Return, in order:
    - proportionate fix.
 7. Report the six-dimension scorecard, weighted grade, and terminal verdict.
 8. Report commands and their pass or fail state.
-9. Report coverage gaps, delivery state, and auto-merge state.
-10. After the findings, report brief strengths.
+9. Report coverage gaps.
+10. Report merge readiness or repository-policy state.
+11. Report delivery state and auto-merge state.
+12. After the findings, report brief strengths.
 
 ## Finding publication
 

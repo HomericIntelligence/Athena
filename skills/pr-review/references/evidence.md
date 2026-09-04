@@ -216,6 +216,16 @@ queries the authenticated commit-scoped Checks API for the retained head OID. It
 If provider data is missing, stale, mixed-head, partial, malformed, or unavailable, leave `checks`
 empty. Emit a `coverage_gap`. Do not use that data to support a merge-ready claim.
 
+The strict GitHub collector also returns a top-level `merge_readiness` record with `review_decision`
+and an `authority` note. This record is repository-policy evidence. It is excluded from the review
+verdict inputs, `reviewed_scope`, and all scope digests, so an approval change does not require a new
+technical review. GitHub `REVIEW_REQUIRED` can therefore accompany a GO review verdict when the only
+missing gate is an approval. Auto-merge still requires every forge policy gate to pass.
+
+| Record | Required content |
+| --- | --- |
+| `merge_readiness` | `review_decision` from GitHub `reviewDecision` or `UNAVAILABLE`, plus an `authority` note; excluded from verdict inputs and scope digests. |
+
 ### Collect and verify GitLab evidence
 
 Retain these records. Re-fetch them before every GitLab publication:
@@ -230,8 +240,9 @@ Retain these records. Re-fetch them before every GitLab publication:
 Each pipeline or check that supplies default-profile evidence must identify the reviewed `head_sha`.
 If it does not identify that value, report a coverage gap. Treat a partial response as a coverage
 failure. Use source from the immutable `head_sha` tree or a bound snapshot. Run local validation only
-through the host execution boundary. A discussion that this review creates does not change its own
-scope digest. Retain prior discussions as review context. Do not treat them as mutable scope fields.
+through the host execution boundary. Approval gaps are merge-readiness facts, not review coverage
+failures. A discussion that this review creates does not change its own scope digest. Retain prior
+discussions as review context. Do not treat them as mutable scope fields.
 
 ### Inspect source and history
 
