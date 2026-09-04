@@ -3,7 +3,6 @@
 #
 # This image contains Python 3.13. This version satisfies requires-python >=3.13,<3.14.
 # The image contains uv and the locked development environment.
-# The image contains the pre-commit hook environments.
 # The image uses the non-root user 'ci' for compatibility with rootless Podman.
 #
 # The toolchain uses uv as Architecture Decision Record (ADR) 017 specifies.
@@ -15,7 +14,6 @@
 #
 # Run the image with one of these commands:
 #   podman run --rm -v .:/workspace:Z athena-ci:local uv run pytest tests
-#   podman run --rm -v .:/workspace:Z athena-ci:local uv run pre-commit run --all-files
 
 # ============================================================================
 # Stage 0 installs the uv binary from a pinned GitHub release archive.
@@ -50,7 +48,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     UV_LINK_MODE=copy \
     PATH="/opt/athena-venv/bin:$PATH"
 
-# Install the build dependencies and Git. The pre-commit hooks require Git.
+# Install the build dependencies and Git.
 # Install security updates that the pinned base image does not contain.
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     git \
@@ -75,15 +73,6 @@ COPY uv.lock pyproject.toml .pre-commit-config.yaml README.md ./
 # The full source tree is not present in this layer.
 # Thus, source changes do not invalidate this cache layer.
 RUN uv sync --locked --no-install-project
-
-# Layer 3 installs the pre-commit hook environments.
-# This installation lets 'pre-commit run --all-files' start immediately.
-# The command does not have to download hook repositories or create virtual environments in CI.
-# The pre-commit install-hooks command requires a Git repository.
-# Thus, initialize a temporary repository.
-RUN git init . && \
-    uv run pre-commit install-hooks && \
-    rm -rf .git
 
 # ============================================================================
 # Stage 2 builds the minimal runtime image without build tools.
@@ -114,18 +103,10 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 COPY --from=uv /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/
 COPY --from=builder /opt/athena-venv /opt/athena-venv
 
-# Copy the installed pre-commit hook environments from the builder cache.
-COPY --from=builder /root/.cache/pre-commit /root/.cache/pre-commit
-
 # Create a non-root user for compatibility with rootless Podman.
 # User identifier (UID) 1000 identifies the first user on most Linux systems.
 # This UID usually matches the developer UID and permits volume access without --userns=keep-id.
 RUN groupadd -r ci && useradd -r -g ci -u 1000 -m -s /bin/bash ci
-
-# Copy the pre-commit cache to the home directory of the ci user.
-# The pre-commit tool uses $HOME/.cache.
-RUN cp -r /root/.cache/pre-commit /home/ci/.cache/ 2>/dev/null || true && \
-    chown -R ci:ci /home/ci/.cache
 
 # Use the mounted repository root as the runtime working directory.
 WORKDIR /workspace

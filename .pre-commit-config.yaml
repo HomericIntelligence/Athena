@@ -17,31 +17,31 @@ repos:
     hooks:
       - id: athena-validate-skills
         name: Validate the Athena plugin distribution
-        entry: uv run python scripts/validate_skills.py
+        entry: just validate
         language: system
         pass_filenames: false
       - id: athena-markdownlint
         name: Check Markdown in the Athena repository
-        entry: uv run pymarkdown -d MD013,MD024,MD033,MD041,MD046 scan README.md AGENTS.md CLAUDE.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md docs skills
+        entry: just markdownlint
         language: system
         pass_filenames: false
       - id: athena-validator-tests
         name: Run the Athena contract tests and coverage policy
-        entry: uv run coverage erase && PYTHONDONTWRITEBYTECODE=1 ATHENA_COVERAGE=1 uv run coverage run --branch --parallel-mode --source=scripts,skills -m pytest -q && uv run coverage combine && uv run coverage json -o coverage.json && uv run python scripts/coverage_policy.py coverage.json --minimum 80
+        entry: just test
         language: system
         pass_filenames: false
       - id: athena-python-lint
         name: Check the Athena repository tools
-        entry: uv run ruff check scripts tests skills
+        entry: just lint
         language: system
         pass_filenames: false
       - id: athena-python-format
         name: Check the format of the Athena repository tools
-        entry: uv run ruff format --check scripts tests skills
+        entry: just format-check
         language: system
         pass_filenames: false
       - id: athena-python-types
         name: Check the types in the Athena repository tools
-        entry: uv run mypy --strict --explicit-package-bases scripts tests skills
+        entry: just typecheck
         language: system
         pass_filenames: false
