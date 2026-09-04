@@ -35,20 +35,28 @@ release assets. Athena never includes those third-party packages in its archive.
 [Issue #74](https://github.com/HomericIntelligence/Athena/issues/74) tracks restoration of a broader
 source inventory. The advisory `security/pi-upstream-inventory-watch` job scans the full upstream Pi
 source tree each week with the same Syft and Grype policy. A failed watch means that upstream still
-has findings in inputs outside the installed runtime surface. Its first successful run authorizes
-the restoration procedure below. The watch is not a required check because upstream findings are
-outside Athena's current runtime contract.
+has findings in inputs outside the installed runtime surface. A successful watch does not authorize
+restoration: the watch applies the normal exception file, so its result can include an excepted High
+or Critical finding. Before restoration, run the same scan with an exception file that contains only
+`exceptions: []` and retain that exception-free report with the exact upstream commit. The watch is
+not a required check because upstream findings are outside Athena's current runtime contract.
 
 ## Restoring the full Pi source inventory
 
-Restore the full source inventory only after the advisory watch passes on upstream `main`:
+Restore the full source inventory only after an exception-free scan passes for an exact upstream
+checkout:
 
-1. Record the upstream commit from the successful watch run.
-2. Set `PI_RUNTIME_REF` in `.github/workflows/_required.yml` to that commit.
-3. In the `package` job, scan `"$PI_RUNTIME_SOURCE_ROOT"` instead of the coding-agent
+1. Record the upstream commit from the exception-free scan. Do not use a moving branch name as the
+   recorded ref.
+2. Define `PI_RUNTIME_REPOSITORY`, `PI_RUNTIME_REF`, and `PI_RUNTIME_SOURCE_ROOT` in the `package`
+   job. The ref must be the recorded commit, and the root must be the checkout of that commit.
+3. Fetch that repository and ref into the root. Verify that the checkout reports the recorded commit
+   before the scan.
+4. In the `package` job, scan `"$PI_RUNTIME_SOURCE_ROOT"` instead of the coding-agent
    `npm-shrinkwrap.json` path. Keep the `syft-pi-subagents.json` inventory.
-4. Update the Pi inventory assertions in `tests/unit/test_supply_chain.py`.
-5. Remove the issue #74 pointer after the required dependency scan passes with no exceptions.
+5. Update the Pi inventory assertions in `tests/unit/test_supply_chain.py` to require the repository,
+   commit ref, checkout root, and full-source scan.
+6. Remove the issue #74 pointer only after the required dependency scan passes with no exceptions.
 
 Any residual finding must use the narrow policy in
 `security/vulnerability-exceptions.yaml`. Do not add a broad ignore.
