@@ -13,7 +13,7 @@ from pathlib import Path
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from skills._cli import argument_parser
+from skills._cli import argument_parser, git_read_arguments, git_read_environment
 
 _REQUIRED_HEPHAESTUS_TIDY_REVISION = "aa357098e5d72178d248e4188e7f5e5f843cdd3f"
 
@@ -22,6 +22,7 @@ def _validate_hephaestus_revision(automation_checkout: Path) -> int:
     """Fail closed when the resolved Hephaestus checkout is older than the fix."""
     command = [
         "git",
+        *git_read_arguments(),
         "-C",
         str(automation_checkout),
         "merge-base",
@@ -30,7 +31,7 @@ def _validate_hephaestus_revision(automation_checkout: Path) -> int:
         "HEAD",
     ]
     try:
-        result = subprocess.run(command, check=False)
+        result = subprocess.run(command, check=False, env=git_read_environment())
     except FileNotFoundError as error:
         missing = error.filename or command[0]
         print(f"The required command is not available: '{missing}'.", file=sys.stderr)

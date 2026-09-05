@@ -2046,27 +2046,92 @@ class TidyDelegationTests(unittest.TestCase):
         path.chmod(0o755)
 
     def _write_git_revision_gate(
-        self, path: Path, automation_checkout: Path, *, exit_code: int
+        self,
+        path: Path,
+        automation_checkout: Path,
+        *,
+        exit_code: int,
+        hostile_environment: dict[str, str] | None = None,
     ) -> None:
         self._write_executable(
             path,
             "#!/usr/bin/env python3\n"
+            "import os\n"
             "import sys\n"
             "arguments = sys.argv[1:]\n"
             f"expected_checkout = {str(automation_checkout)!r}\n"
             f"required_revision = {self.REQUIRED_HEPHAESTUS_TIDY_REVISION!r}\n"
+            f"hostile_environment = {hostile_environment or {}!r}\n"
+            "safe_environment = {\n"
+            "    'GIT_ATTR_NOSYSTEM': '1',\n"
+            "    'GIT_CONFIG_GLOBAL': os.devnull,\n"
+            "    'GIT_CONFIG_NOSYSTEM': '1',\n"
+            "    'GIT_CONFIG_SYSTEM': os.devnull,\n"
+            "    'GIT_GRAFT_FILE': os.devnull,\n"
+            "    'GIT_NO_LAZY_FETCH': '1',\n"
+            "    'GIT_NO_REPLACE_OBJECTS': '1',\n"
+            "    'GIT_OPTIONAL_LOCKS': '0',\n"
+            "    'GIT_TERMINAL_PROMPT': '0',\n"
+            "}\n"
             "if (\n"
-            "    len(arguments) != 6\n"
-            "    or arguments[0] != '-C'\n"
-            "    or arguments[1] != expected_checkout\n"
-            "    or arguments[2] != 'merge-base'\n"
-            "    or arguments[3] != '--is-ancestor'\n"
-            "    or arguments[4] != required_revision\n"
-            "    or arguments[5] != 'HEAD'\n"
+            "    arguments[:3] != ['-c', 'core.commitGraph=false', '--no-replace-objects']\n"
+            "    or len(arguments) != 9\n"
+            "    or arguments[3] != '-C'\n"
+            "    or arguments[4] != expected_checkout\n"
+            "    or arguments[5] != 'merge-base'\n"
+            "    or arguments[6] != '--is-ancestor'\n"
+            "    or arguments[7] != required_revision\n"
+            "    or arguments[8] != 'HEAD'\n"
+            "    or any(os.environ.get(key) == value for key, value in hostile_environment.items())\n"
+            "    or any(os.environ.get(key) != value for key, value in safe_environment.items())\n"
             "):\n"
             "    raise SystemExit(2)\n"
             f"raise SystemExit({exit_code})\n",
         )
+
+    def test_tidy_revision_gate_ignores_hostile_git_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            automation_checkout = root / "trusted automation"
+            automation_checkout.mkdir()
+            target_repository = root / "target repository"
+            target_repository.mkdir()
+            bin_directory = root / "bin"
+            bin_directory.mkdir()
+            hostile_environment = {
+                "GIT_ALTERNATE_OBJECT_DIRECTORIES": str(root / "alternate objects"),
+                "GIT_DIR": str(root / "hostile.git"),
+                "GIT_OBJECT_DIRECTORY": str(root / "objects"),
+                "GIT_REPLACE_REF_BASE": "refs/hostile/replace/",
+                "GIT_WORK_TREE": str(root / "hostile worktree"),
+            }
+            self._write_git_revision_gate(
+                bin_directory / "git",
+                automation_checkout,
+                exit_code=0,
+                hostile_environment=hostile_environment,
+            )
+            self._write_executable(
+                bin_directory / "uv",
+                "#!/usr/bin/env python3\n"
+                "import os\n"
+                f"hostile_environment = {hostile_environment!r}\n"
+                "if any(os.environ.get(key) != value for key, value in hostile_environment.items()):\n"
+                "    raise SystemExit(98)\n"
+                "raise SystemExit(37)\n",
+            )
+            environment = os.environ.copy()
+            environment.update(hostile_environment)
+            environment["PATH"] = f"{bin_directory}{os.pathsep}{environment['PATH']}"
+
+            result = run_script(
+                "skills/tidy/scripts/run_tidy.py",
+                str(automation_checkout),
+                cwd=target_repository,
+                env=environment,
+            )
+
+        self.assertEqual(37, result.returncode, result.stderr)
 
     def test_tidy_rejects_stale_hephaestus_checkout_before_delegation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
