@@ -68,7 +68,7 @@ COPY --from=uv /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/
 
 # Layer 1 copies the dependency files. Dependency changes invalidate this cache layer.
 WORKDIR /opt/athena-build
-COPY uv.lock pyproject.toml .pre-commit-config.yaml README.md ./
+COPY uv.lock pyproject.toml .python-version .pre-commit-config.yaml README.md ./
 
 # Layer 2 installs the locked development dependencies in the virtual environment.
 # The --no-install-project option defers installation of the project.

@@ -34,6 +34,21 @@ class ToolchainPolicyTests(unittest.TestCase):
         self.assertEqual(3, len(stages))
         self.assertTrue(all(stage == version for stage in stages))
 
+    def test_builder_copies_python_pin_before_environment_install(self) -> None:
+        """Require the builder to copy the Python pin before environment setup."""
+        root = Path(__file__).resolve().parents[2]
+        containerfile = (root / "ci" / "Containerfile").read_text(encoding="utf-8")
+        environment_install = containerfile.index("RUN uv sync --locked")
+        builder_prefix = containerfile[:environment_install]
+        copied_files = re.findall(r"^COPY (.+) \./$", builder_prefix, re.MULTILINE)
+
+        self.assertTrue(
+            any(
+                ".python-version" in copy_command.split()
+                for copy_command in copied_files
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
