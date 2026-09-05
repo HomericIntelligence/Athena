@@ -275,7 +275,10 @@ def _is_unguarded_force_push_segment(tokens: list[str]) -> bool:
     if not tokens or tokens[0] != "git":
         start = _consume_command_prefix(tokens)
         if start is None:
-            return True
+            for index, token in enumerate(tokens):
+                if token == "git":
+                    return _is_unguarded_force_push_segment(tokens[index:])
+            return False
         if start >= len(tokens) or tokens[start] != "git":
             return False
         tokens = tokens[start:]

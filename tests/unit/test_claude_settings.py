@@ -67,6 +67,16 @@ class ClaudeSettingsTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertFalse(HOOK.is_unguarded_force_push(command))
 
+    def test_unsupported_prefix_without_git_push_is_not_denied(self) -> None:
+        """Unsupported prefixes without Git pushes are permitted."""
+        for command in (
+            "time pytest",
+            "command -v python3",
+            "if true; then echo ok; fi",
+        ):
+            with self.subTest(command=command):
+                self.assertFalse(HOOK.is_unguarded_force_push(command))
+
     def test_unguarded_force_push_is_denied(self) -> None:
         """Unguarded force pushes remain denied."""
         for command in (
