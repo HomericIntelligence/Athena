@@ -534,6 +534,38 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(2, result)
         self.assertIn("invalid tag reference", error.getvalue())
 
+    def test_release_command_reports_manifest_without_version(self) -> None:
+        environment = {
+            "GITHUB_REPOSITORY": "owner/repository",
+            "GITHUB_REF_NAME": "v1.2.3",
+            "GITHUB_SHA": "commit",
+        }
+        responses = [
+            {"object": {"type": "tag", "sha": "tag-object"}},
+            {
+                "object": {"sha": "commit"},
+                "verification": {"verified": True},
+            },
+            {"protected": True},
+        ]
+        error = io.StringIO()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            manifest = root / ".claude-plugin" / "plugin.json"
+            manifest.parent.mkdir()
+            manifest.write_text("{}\n", encoding="utf-8")
+
+            with (
+                patch.dict(os.environ, environment, clear=False),
+                patch("scripts.ci_policy._run_json", side_effect=responses),
+                redirect_stderr(error),
+            ):
+                result = ci_policy.main(["release", "--root", str(root)])
+
+        self.assertEqual(2, result)
+        self.assertIn("version", error.getvalue())
+        self.assertNotIn("Traceback", error.getvalue())
+
     def test_pr_policy_command_reports_missing_environment(self) -> None:
         error = io.StringIO()
         with (

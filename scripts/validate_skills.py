@@ -132,6 +132,7 @@ def _validate_skills(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
                     "skills",
                     f"The validator cannot read 'skills/{directory.name}/SKILL.md'. "
                     f"The operation returned this diagnostic.\n{exc}",
+                    True,
                 )
             )
             continue
@@ -436,6 +437,7 @@ def _validate_cli_conventions(repo_root: Path = REPO_ROOT) -> list[ValidationErr
                     "cli",
                     f"The validator cannot read '{path.relative_to(repo_root)}'. "
                     f"The operation returned this diagnostic.\n{exc}",
+                    True,
                 )
             )
             continue
@@ -542,6 +544,7 @@ def _validate_repo_review_scorecard(
                 "repo-review",
                 "The validator cannot read the scorecard. "
                 f"The operation returned this diagnostic.\n{error}",
+                True,
             )
         ]
     sections = [match.group("name") for match in REPO_REVIEW_SECTION.finditer(criteria)]
