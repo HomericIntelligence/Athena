@@ -224,11 +224,25 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             "REVIEW_REQUIRED": {
                 "ci_evidence": ci_evidence,
                 "merge_readiness": {"review_decision": "REVIEW_REQUIRED"},
+                "policy_state": {
+                    "head_oid": "b" * 40,
+                    "queue_route_satisfied": False,
+                    "required_approvals_passed": False,
+                    "required_checks_passed": True,
+                    "reviewed_head_oid": "b" * 40,
+                },
                 "reviewed_source": reviewed_source,
             },
             "APPROVED": {
                 "ci_evidence": ci_evidence,
                 "merge_readiness": {"review_decision": "APPROVED"},
+                "policy_state": {
+                    "head_oid": "b" * 40,
+                    "queue_route_satisfied": True,
+                    "required_approvals_passed": True,
+                    "required_checks_passed": True,
+                    "reviewed_head_oid": "b" * 40,
+                },
                 "reviewed_source": reviewed_source,
             },
         }
@@ -240,7 +254,9 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                 self.assertEqual(reviewed_source, scenario["reviewed_source"])
                 self.assertEqual(ci_evidence, scenario["ci_evidence"])
                 auto_merge_eligibility[review_decision] = (
-                    self.delivery.auto_merge_eligible(scenario["merge_readiness"])
+                    self.delivery.auto_merge_eligible(
+                        scenario["merge_readiness"], scenario["policy_state"]
+                    )
                 )
                 forge = FakeForge(self.delivery, threads=(self.thread(),))
                 result = self.delivery.deliver_go(

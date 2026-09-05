@@ -98,11 +98,19 @@ class DeliveryResult:
     label: str = GO_LABEL
 
 
-def auto_merge_eligible(merge_readiness: dict[str, Any] | None) -> bool:
-    """Return whether repository policy allows auto-merge."""
+def auto_merge_eligible(
+    merge_readiness: dict[str, Any] | None,
+    policy_state: dict[str, Any] | None,
+) -> bool:
+    """Return true only when review approval and bound policy evidence both pass."""
     return (
         isinstance(merge_readiness, dict)
         and merge_readiness.get("review_decision") == "APPROVED"
+        and isinstance(policy_state, dict)
+        and policy_state.get("head_oid") == policy_state.get("reviewed_head_oid")
+        and policy_state.get("required_checks_passed") is True
+        and policy_state.get("required_approvals_passed") is True
+        and policy_state.get("queue_route_satisfied") is True
     )
 
 
