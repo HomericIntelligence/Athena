@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import io
 import json
 import os
@@ -19,12 +20,14 @@ from unittest.mock import patch
 import yaml
 
 from scripts import generate_sboms, scan_vulnerabilities
+from scripts.policies import release as release_policy
 from scripts.policies.vulnerabilities import (
     VulnerabilityPolicyError,
     evaluate_report,
     load_exceptions,
     load_report,
 )
+from scripts.semver import BUILD_ARTIFACT_NAME
 
 RAW_SPDX = {
     "spdxVersion": "SPDX-2.3",
@@ -301,6 +304,18 @@ def finding(
 
 
 class SbomTests(unittest.TestCase):
+    def test_build_artifact_name_is_shared(self) -> None:
+        self.assertEqual(
+            BUILD_ARTIFACT_NAME,
+            generate_sboms.BUILD_ARTIFACT_NAME,  # type: ignore[attr-defined]
+        )
+        self.assertIs(
+            generate_sboms.BUILD_ARTIFACT_NAME,  # type: ignore[attr-defined]
+            release_policy.BUILD_ARTIFACT_NAME,  # type: ignore[attr-defined]
+        )
+        self.assertNotIn("athena-build-linux-64", inspect.getsource(generate_sboms))
+        self.assertNotIn("athena-build-linux-64", inspect.getsource(release_policy))
+
     def test_plugin_spdx_is_reproducible_and_covers_archive_and_dependencies(
         self,
     ) -> None:
