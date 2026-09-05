@@ -213,6 +213,58 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self.assertEqual({"state:implementation-go", "enhancement"}, forge.labels)
         self.assertGreater(forge.events.count("read"), 3)
 
+    def test_delivery_keeps_go_when_review_readiness_changes(self) -> None:
+        reviewed_source = {
+            "base_oid": "a" * 40,
+            "head_oid": "b" * 40,
+            "paths": ("reviewed.txt",),
+        }
+        ci_evidence = {"required-checks-gate": "SUCCESS"}
+        scenarios = {
+            "REVIEW_REQUIRED": {
+                "ci_evidence": ci_evidence,
+                "merge_readiness": {"review_decision": "REVIEW_REQUIRED"},
+                "reviewed_source": reviewed_source,
+            },
+            "APPROVED": {
+                "ci_evidence": ci_evidence,
+                "merge_readiness": {"review_decision": "APPROVED"},
+                "reviewed_source": reviewed_source,
+            },
+        }
+        delivery_statuses: dict[str, str] = {}
+
+        for review_decision, scenario in scenarios.items():
+            with self.subTest(review_decision=review_decision):
+                self.assertEqual(reviewed_source, scenario["reviewed_source"])
+                self.assertEqual(ci_evidence, scenario["ci_evidence"])
+                forge = FakeForge(self.delivery, threads=(self.thread(),))
+                result = self.delivery.deliver_go(
+                    forge, self.binding(), (self.plan(self.thread()),)
+                )
+
+                self.assertEqual("delivered", result.status)
+                self.assertEqual(
+                    {"state:implementation-go", "enhancement"}, forge.labels
+                )
+                delivery_statuses[review_decision] = result.status
+
+        self.assertEqual(
+            scenarios["REVIEW_REQUIRED"]["reviewed_source"],
+            scenarios["APPROVED"]["reviewed_source"],
+        )
+        self.assertEqual(
+            scenarios["REVIEW_REQUIRED"]["ci_evidence"],
+            scenarios["APPROVED"]["ci_evidence"],
+        )
+        self.assertEqual(
+            delivery_statuses["REVIEW_REQUIRED"], delivery_statuses["APPROVED"]
+        )
+        self.assertNotEqual(
+            scenarios["REVIEW_REQUIRED"]["merge_readiness"],
+            scenarios["APPROVED"]["merge_readiness"],
+        )
+
     def test_missing_thread_response_prevents_all_mutations(self) -> None:
         forge = FakeForge(self.delivery, threads=(self.thread(),))
 
