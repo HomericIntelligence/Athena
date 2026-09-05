@@ -216,6 +216,16 @@ queries the authenticated commit-scoped Checks API for the retained head OID. It
 If provider data is missing, stale, mixed-head, partial, malformed, or unavailable, leave `checks`
 empty. Emit a `coverage_gap`. Do not use that data to support a merge-ready claim.
 
+The strict GitHub collector also returns a top-level `merge_readiness` record with `review_decision`
+and an `authority` note. This record is repository-policy evidence. It is excluded from the review
+verdict inputs, `reviewed_scope`, and all scope digests, so an approval change does not require a new
+technical review. GitHub `REVIEW_REQUIRED` can therefore accompany a GO review verdict when the only
+missing gate is an approval. Auto-merge still requires every forge policy gate to pass.
+
+| Record | Required content |
+| --- | --- |
+| `merge_readiness` | `review_decision` from GitHub `reviewDecision` or `UNAVAILABLE`, plus an `authority` note; excluded from verdict inputs and scope digests. |
+
 ### Collect and verify GitLab evidence
 
 Retain these records. Re-fetch them before every GitLab publication:
@@ -226,12 +236,32 @@ Retain these records. Re-fetch them before every GitLab publication:
 | `reviewed_scope` | Canonical digest of title, description, draft state, source/target names, and linked-work identities; exclude discussions and CI evidence. |
 | `changed_path_manifest` | NUL-safe count and digest of the union of both immutable diff lenses. |
 | `reviewed_linked_requirements` | Canonical ID, URL, and content digest of title, description, acceptance criteria, and every consumed comment or plan artifact. |
+| `merge_readiness` | `approval_state` from GitLab or `UNAVAILABLE`, the exact MR `head_sha` for that state, and an `authority` note; excluded from verdict inputs and scope digests. |
+
+The configured GitLab capability must bind `merge_readiness.head_sha` to
+`reviewed_identity.head_sha`. Treat the record as repository-policy evidence. Exclude the complete
+record from review verdict inputs, `reviewed_scope`, `reviewed_linked_requirements`,
+`changed_path_manifest`, and all scope digests. The `authority` note must state this boundary. An
+approval-state change on the same head does not require a new technical review. If the approval state
+is missing or malformed, use `UNAVAILABLE`. If its head is missing or does not match the reviewed
+head, report a merge-readiness coverage gap. Do not make a merge-ready claim from that record. A
+source-head change invalidates the complete review binding.
+
+Before a configured GitLab capability supplies default-profile evidence, test these cases:
+
+- Change only the approval state for one `head_sha`. Verify that only `merge_readiness` changes. The
+  verdict inputs and all scope digests must stay identical.
+- Supply approval evidence for a different or missing `head_sha`. Verify that the capability reports
+  a merge-readiness coverage gap and does not make a merge-ready claim.
+- Omit the approval state for the reviewed `head_sha`. Verify that the capability records
+  `approval_state: UNAVAILABLE` and does not change the technical review verdict.
 
 Each pipeline or check that supplies default-profile evidence must identify the reviewed `head_sha`.
 If it does not identify that value, report a coverage gap. Treat a partial response as a coverage
 failure. Use source from the immutable `head_sha` tree or a bound snapshot. Run local validation only
-through the host execution boundary. A discussion that this review creates does not change its own
-scope digest. Retain prior discussions as review context. Do not treat them as mutable scope fields.
+through the host execution boundary. Approval gaps are merge-readiness facts, not review coverage
+failures. A discussion that this review creates does not change its own scope digest. Retain prior
+discussions as review context. Do not treat them as mutable scope fields.
 
 ### Inspect source and history
 

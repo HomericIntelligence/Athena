@@ -13,6 +13,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 from skills._cli import argument_parser, git_read_arguments, git_read_environment
@@ -466,6 +467,27 @@ class FakeGitHubCliFixtureTests(unittest.TestCase):
                 {"FAKE_GH_FILES_JSON": json.dumps({"filename": "ignored.py"})},
                 0,
                 "",
+                "",
+            ),
+            (
+                (
+                    "api",
+                    "--hostname",
+                    "github.com",
+                    "--method",
+                    "GET",
+                    "-H",
+                    "Accept: application/vnd.github+json",
+                    f"repos/owner/repository/commits/{'b' * 40}/check-runs?per_page=100&page=1",
+                ),
+                {
+                    "FAKE_GH_EXPECTED_CHECK_HEAD": "b" * 40,
+                    "FAKE_GH_CHECK_RUNS_JSON": json.dumps(
+                        {"total_count": 0, "check_runs": []}
+                    ),
+                },
+                0,
+                {"total_count": 0, "check_runs": []},
                 "",
             ),
             (("unknown",), {}, 2, "", "unexpected gh invocation: ['unknown']\n"),
@@ -987,6 +1009,7 @@ class PullRequestScriptTests(unittest.TestCase):
                     "number": 9,
                     "title": "Portable Athena",
                     "author": {"login": "reviewer"},
+                    "reviewDecision": "REVIEW_REQUIRED",
                     "statusCheckRollup": [{"name": "required-checks-gate"}],
                 }
             )
@@ -1013,11 +1036,137 @@ class PullRequestScriptTests(unittest.TestCase):
             [{"name": "required-checks-gate"}],
             evidence["pull_request"]["statusCheckRollup"],
         )
+        self.assertEqual(
+            "REVIEW_REQUIRED", evidence["merge_readiness"]["review_decision"]
+        )
+        self.assertNotIn("reviewDecision", evidence["pull_request"])
         self.assertEqual(["skills/pr-review/SKILL.md"], evidence["changed_files"])
         self.assertEqual(evidence["changed_files"], evidence["changed_paths"])
         self.assertEqual("SUCCESS", evidence["checks"][0]["state"])
         self.assertNotIn("commits", requested_fields.split(","))
         self.assertNotIn("files", requested_fields.split(","))
+
+    def test_collect_evidence_keeps_review_inputs_identical_when_approval_changes(
+        self,
+    ) -> None:
+        outputs: dict[str, dict[str, Any]] = {}
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            repository = root / "repo"
+            initialize_repository(repository)
+            base_oid = git(repository, "rev-parse", "HEAD")
+            (repository / "reviewed.txt").write_text("exact head\n", encoding="utf-8")
+            git(repository, "add", "reviewed.txt")
+            git(repository, "commit", "--quiet", "-m", "test: exact review head")
+            head_oid = git(repository, "rev-parse", "HEAD")
+            check_runs = {
+                "total_count": 1,
+                "check_runs": [
+                    {
+                        "id": 1,
+                        "name": "required-checks-gate",
+                        "head_sha": head_oid,
+                        "status": "completed",
+                        "conclusion": "success",
+                    }
+                ],
+            }
+
+            for decision in ("REVIEW_REQUIRED", "APPROVED"):
+                with self.subTest(decision=decision):
+                    case_root = root / decision.lower()
+                    case_root.mkdir()
+                    env = self.make_fake_tools(case_root, [])
+                    env["FAKE_GH_VIEW_JSON"] = json.dumps(
+                        {
+                            "number": 9,
+                            "body": "",
+                            "isDraft": False,
+                            "baseRefOid": base_oid,
+                            "headRefOid": head_oid,
+                            "closingIssuesReferences": [],
+                            "reviewDecision": decision,
+                        }
+                    )
+                    env["FAKE_GH_REQUIRE_REPOSITORY"] = "owner/repository"
+                    env["FAKE_GH_EXPECTED_CHECK_HEAD"] = head_oid
+                    env["FAKE_GH_CHECK_RUNS_JSON"] = json.dumps(check_runs)
+                    result = run_script(
+                        "skills/pr-review/scripts/collect_evidence.py",
+                        "--expected-base-oid",
+                        base_oid,
+                        "--expected-head-oid",
+                        head_oid,
+                        "--expected-host",
+                        "github.com",
+                        "--expected-repository",
+                        "owner/repository",
+                        "--expected-pr-number",
+                        "9",
+                        "--expected-pr-url",
+                        "https://github.com/owner/repository/pull/9",
+                        "9",
+                        cwd=repository,
+                        env=env,
+                    )
+
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    outputs[decision] = json.loads(result.stdout)
+
+        pending = outputs["REVIEW_REQUIRED"]
+        approved = outputs["APPROVED"]
+        source_keys = (
+            "changed_files",
+            "changed_paths",
+            "changed_path_manifest",
+            "reviewed_identity",
+            "reviewed_scope",
+        )
+        source_evidence = {
+            decision: {key: evidence[key] for key in source_keys}
+            for decision, evidence in outputs.items()
+        }
+        check_evidence = {
+            decision: {
+                "checks": evidence["checks"],
+                "binding": evidence["check_evidence"],
+            }
+            for decision, evidence in outputs.items()
+        }
+
+        self.assertEqual(
+            source_evidence["REVIEW_REQUIRED"], source_evidence["APPROVED"]
+        )
+        self.assertEqual(check_evidence["REVIEW_REQUIRED"], check_evidence["APPROVED"])
+        self.assertEqual(
+            pending["pull_request"],
+            approved["pull_request"],
+        )
+        self.assertNotEqual(pending["merge_readiness"], approved["merge_readiness"])
+        self.assertEqual(head_oid, pending["reviewed_identity"]["head_oid"])
+        self.assertEqual(head_oid, pending["check_evidence"]["head_oid"])
+        self.assertEqual(
+            head_oid,
+            pending["checks"][0]["head_sha"],
+        )
+
+    def test_collect_evidence_tolerates_missing_review_decision(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            env = self.make_fake_tools(root, [])
+            env["FAKE_GH_VIEW_JSON"] = json.dumps({"number": 9})
+            env["FAKE_GH_FILES_JSON"] = "[]"
+            env["FAKE_GH_CHECKS"] = "[]"
+            result = run_script(
+                "skills/pr-review/scripts/collect_evidence.py",
+                "9",
+                cwd=root,
+                env=env,
+            )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        evidence = json.loads(result.stdout)
+        self.assertEqual("UNAVAILABLE", evidence["merge_readiness"]["review_decision"])
 
     def test_collect_evidence_rejects_pr_from_another_repository(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

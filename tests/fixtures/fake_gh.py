@@ -33,6 +33,20 @@ def require_explicit_repository(arguments: list[str]) -> int | None:
     return None
 
 
+def check_run_response(arguments: list[str]) -> object | None:
+    """Return configured check runs for an exact commit-scoped request."""
+    expected_head = os.environ.get("FAKE_GH_EXPECTED_CHECK_HEAD")
+    if expected_head is None or not arguments:
+        return None
+    endpoint = arguments[-1]
+    expected_prefix = f"repos/owner/repository/commits/{expected_head}/check-runs?"
+    if not endpoint.startswith("repos/owner/repository/commits/"):
+        return None
+    if not endpoint.startswith(expected_prefix):
+        raise ValueError("expected check evidence for the retained head")
+    return load_json("FAKE_GH_CHECK_RUNS_JSON", {"total_count": 0, "check_runs": []})
+
+
 def main() -> int:
     arguments = sys.argv[1:]
     if arguments[:2] == ["pr", "view"]:
@@ -103,6 +117,14 @@ def main() -> int:
         )
         return 0
     if arguments[:1] == ["api"]:
+        try:
+            check_runs = check_run_response(arguments)
+        except ValueError as error:
+            print(error, file=sys.stderr)
+            return 11
+        if check_runs is not None:
+            print(json.dumps(check_runs))
+            return 0
         files = load_json("FAKE_GH_FILES_JSON", [])
         for item in files if isinstance(files, list) else []:
             if isinstance(item, dict) and isinstance(item.get("filename"), str):
