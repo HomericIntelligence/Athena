@@ -9,9 +9,9 @@ This file records the candidate release used in the recheck.
 | osx-arm64 package | `osx-arm64/python-3.13.15-hb59dee6_101_cp313.conda` |
 | osx-64 package | `osx-64/python-3.13.15-h9dec186_101_cp313.conda` |
 | Grype database | v6.1.9, built 2026-08-18T06:15:38Z |
-| Result | The current Grype database still matches CVE-2026-15308 for CPython 3.13.15. This remains a blocking result. Issue #15 still needs an explicit security decision. |
-| Decision | Keep issue #15 open and keep the exception in place until a recorded security decision changes the outcome. Do not close #16 from this recheck. |
-| Decision evidence | The active exception in `security/vulnerability-exceptions.yaml` still records CVE-2026-15308 for `python` 3.13.14 with owner `@mvillmow`, issue #15, approval `2026-08-16`, and expiry `2026-09-15`. |
+| Result | The current Grype database still matches CVE-2026-15308 for CPython 3.13.15. This remains a blocking result. |
+| Escalation | No separate security decision record exists for #16. Leave #16 open until a recorded security decision changes the outcome. |
+| Decision evidence | The active exception in `security/vulnerability-exceptions.yaml` records CVE-2026-15308 for `python` 3.13.14 with owner `@mvillmow`, issue #15, approval `2026-08-16`, and expiry `2026-09-15`. |
 
 Sources:
 
