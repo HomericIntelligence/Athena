@@ -1,3 +1,11 @@
+---
+name: Feature request
+about: Propose a change to Athena
+title: ""
+labels: ""
+assignees: ""
+---
+
 # Feature request
 
 ## Problem

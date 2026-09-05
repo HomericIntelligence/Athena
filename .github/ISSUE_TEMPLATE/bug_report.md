@@ -1,3 +1,11 @@
+---
+name: Bug report
+about: Report a reproducible problem in Athena
+title: ""
+labels: ""
+assignees: ""
+---
+
 # Bug report
 
 ## Describe the problem
