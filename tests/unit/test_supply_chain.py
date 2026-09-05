@@ -1410,6 +1410,7 @@ jobs:
         self.assertEqual(
             "read", release["jobs"]["required"]["permissions"].get("issues")
         )
+        self.assertEqual("read", release["jobs"]["preflight"]["permissions"]["actions"])
         self.assertEqual("release", release["jobs"]["release"]["environment"])
         self.assertEqual("release", release["jobs"]["publish-npm"]["environment"])
         preflight_step = next(
