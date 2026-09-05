@@ -20,7 +20,7 @@ specifies accurate reports with recorded commands, revisions, and environments.
 This head has one current repository document check.
 
 ```text
-head: 95c882506082cf736b2c7fc8fc594ccefb63dc7a
+head: 0c50d5955d9ecde172110ca58266b0f9a233bedf
 command: just markdownlint
 argv: uv run pymarkdown -d MD013,MD024,MD033,MD041,MD046 scan README.md AGENTS.md CLAUDE.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md docs skills
 environment: local worktree; CPython 3.13.11
