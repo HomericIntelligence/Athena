@@ -163,7 +163,7 @@ class DistributionTests(unittest.TestCase):
             check=False,
         )
 
-        self.assertEqual(2, result.returncode)
+        self.assertEqual(1, result.returncode)
         self.assertIn(".codex-plugin/plugin.json", result.stderr)
         self.assertNotIn("Traceback", result.stderr)
 

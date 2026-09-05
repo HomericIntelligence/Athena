@@ -121,11 +121,18 @@ def read_plugin_version(repo_root: Path) -> str:
     """Read and validate the Semantic Versioning (SemVer) value in the plugin manifest."""
     manifest = repo_root / ".codex-plugin" / "plugin.json"
     try:
-        document = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as error:
+        text = manifest.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
         raise PackageOperationalError(
             f"The tool cannot read the plugin version from '{manifest}'. "
             f"The operation returned this diagnostic.\n{error}"
+        ) from error
+    try:
+        document = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise PackageError(
+            f"The plugin manifest is not valid JSON: '{manifest}'. "
+            f"The repository content returned this diagnostic.\n{error}"
         ) from error
     version = document.get("version") if isinstance(document, dict) else None
     if not isinstance(version, str) or SEMVER_PATTERN.fullmatch(version) is None:

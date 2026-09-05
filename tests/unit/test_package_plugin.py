@@ -620,6 +620,18 @@ if (
         ):
             read_plugin_version(Path(temporary_directory))
 
+    def test_read_plugin_version_reports_malformed_json_as_policy_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            create_repository(root)
+            (root / ".codex-plugin" / "plugin.json").write_text(
+                "{not valid json}\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(PackageError):
+                read_plugin_version(root)
+
     def test_inspect_archive_reports_read_failure_as_operational(self) -> None:
         with (
             tempfile.TemporaryDirectory() as temporary_directory,
@@ -659,6 +671,25 @@ if (
 
             self.assertEqual(1, result)
             self.assertIn("validation-sentinel-42", errors.getvalue())
+
+    def test_cli_reports_malformed_plugin_metadata_as_exit_one(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            create_repository(root)
+            (root / ".codex-plugin" / "plugin.json").write_text(
+                "{not valid json}\n",
+                encoding="utf-8",
+            )
+            errors = io.StringIO()
+
+            with (
+                patch("scripts.package_plugin._validate_repository"),
+                redirect_stderr(errors),
+            ):
+                result = main(["--root", str(root)])
+
+            self.assertEqual(1, result)
+            self.assertIn("not valid JSON", errors.getvalue())
 
     def test_cli_reports_operational_build_failure_as_exit_two(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

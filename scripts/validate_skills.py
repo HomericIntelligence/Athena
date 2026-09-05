@@ -65,14 +65,24 @@ def _read_json(
     path: Path, surface: str, repo_root: Path = REPO_ROOT
 ) -> tuple[dict[str, object] | None, list[ValidationError]]:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, ValueError) as exc:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
         return None, [
             ValidationError(
                 surface,
                 f"The validator cannot read '{path.relative_to(repo_root)}'. "
                 f"The operation returned this diagnostic.\n{exc}",
                 True,
+            )
+        ]
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        return None, [
+            ValidationError(
+                surface,
+                f"The file '{path.relative_to(repo_root)}' must contain valid JSON. "
+                f"The parser returned this diagnostic.\n{exc}",
             )
         ]
     if not isinstance(data, dict):
