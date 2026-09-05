@@ -22,6 +22,7 @@ from scripts.package_plugin import (
     ARCHIVE_ROOTS,
     REQUIRED_MEMBERS,
     PackageError,
+    PackageOperationalError,
     build_package,
     inspect_archive,
     main,
@@ -612,6 +613,20 @@ if (
                     with self.assertRaises(PackageError):
                         read_plugin_version(root)
 
+    def test_read_plugin_version_reports_read_failure_as_operational(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as temporary_directory,
+            self.assertRaises(PackageOperationalError),
+        ):
+            read_plugin_version(Path(temporary_directory))
+
+    def test_inspect_archive_reports_read_failure_as_operational(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as temporary_directory,
+            self.assertRaises(PackageOperationalError),
+        ):
+            inspect_archive(Path(temporary_directory) / "missing.tar.gz")
+
     def test_cli_validates_and_builds_explicit_repository(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -644,6 +659,23 @@ if (
 
             self.assertEqual(1, result)
             self.assertIn("validation-sentinel-42", errors.getvalue())
+
+    def test_cli_reports_operational_build_failure_as_exit_two(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            errors = io.StringIO()
+            with (
+                patch("scripts.package_plugin._validate_repository"),
+                patch(
+                    "scripts.package_plugin.build_package",
+                    side_effect=OSError("output is not writable"),
+                ),
+                redirect_stderr(errors),
+            ):
+                result = main(["--root", str(root)])
+
+        self.assertEqual(2, result)
+        self.assertIn("output is not writable", errors.getvalue())
 
 
 if __name__ == "__main__":

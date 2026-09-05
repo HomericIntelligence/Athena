@@ -14,6 +14,7 @@ from collections.abc import Callable
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / "scripts" / "validate_skills.py"
@@ -405,6 +406,67 @@ class DistributionTests(unittest.TestCase):
             literal=repository,
         )
 
+    def test_validator_checks_its_own_file_for_ecosystem_references(self) -> None:
+        path = self.fixture / "scripts" / "validate_skills.py"
+        path.write_text(
+            "homericintelligence" + "/" + "forbidden-" + "repository\n",
+            encoding="utf-8",
+        )
+
+        errors = validator._validate_layout_and_policy(self.fixture)
+
+        self.assertEqual(["self-contained"], [error.surface for error in errors])
+
+    def test_cli_reports_validator_read_failures_as_exit_two(self) -> None:
+        original_read_text = Path.read_text
+        cases = (
+            (
+                validator._validate_skills,
+                self.fixture / "skills" / "advise" / "SKILL.md",
+            ),
+            (
+                validator._validate_cli_conventions,
+                self.fixture / "scripts" / "validate_skills.py",
+            ),
+            (
+                validator._validate_repo_review_scorecard,
+                self.fixture / "docs" / "review" / "repository-scorecard.md",
+            ),
+        )
+
+        for validate, unreadable_path in cases:
+            with self.subTest(validate=validate.__name__):
+
+                def fail_selected_path(
+                    path: Path,
+                    *args: Any,
+                    selected_path: Path = unreadable_path,
+                    **kwargs: Any,
+                ) -> str:
+                    if path == selected_path:
+                        raise OSError("read failed")
+                    return original_read_text(path, *args, **kwargs)
+
+                with patch.object(Path, "read_text", fail_selected_path):
+                    validation_errors = validate(self.fixture)
+
+                self.assertEqual(1, len(validation_errors), validation_errors)
+                self.assertTrue(validation_errors[0].operational)
+
+                errors = io.StringIO()
+                with (
+                    patch.object(
+                        validator,
+                        "validate_repository",
+                        return_value=validation_errors,
+                    ),
+                    redirect_stderr(errors),
+                ):
+                    result = validator.main(["--root", str(self.fixture)])
+
+                self.assertEqual(2, result)
+                self.assertIn("read failed", errors.getvalue())
+
     def test_distributable_coverage_prefixed_file_is_inspected(self) -> None:
         repository = "HomericIntelligence/" + "UnapprovedRepository"
         (self.fixture / "docs" / ".coverage-bypass.md").write_text(
@@ -636,11 +698,11 @@ class DistributionTests(unittest.TestCase):
         self.assertEqual(output.getvalue(), "")
 
     def test_cli_failure_is_actionable(self) -> None:
-        shutil.rmtree(self.fixture / "skills")
+        (self.fixture / "athena").mkdir()
         errors = io.StringIO()
         with redirect_stderr(errors):
             result = validator.main(["--root", str(self.fixture)])
-        self.assertEqual(result, 2)
+        self.assertEqual(result, 1)
         self.assertTrue(errors.getvalue().strip())
 
 

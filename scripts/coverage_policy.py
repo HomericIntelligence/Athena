@@ -83,7 +83,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             for path in missing
         ]
         failures.extend(coverage_failures(report, arguments.minimum))
-    except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
+    except (OSError, TypeError, ValueError) as error:
         print(f"coverage policy error: {error}", file=sys.stderr)
         return 2
     if failures:

@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Apply the Athena continuous integration (CI) and release policies."""
+"""Apply Athena continuous integration (CI) and release policies.
+
+Exit codes:
+    0: The policy check passed.
+    1: A policy violation was found.
+    2: The tool could not complete the check.
+"""
 
 from __future__ import annotations
 
@@ -31,16 +37,32 @@ __all__ = (
 
 
 def _run_json(command: list[str]) -> Any:
-    result = subprocess.run(command, check=True, capture_output=True, text=True)
-    return json.loads(result.stdout)
+    result = subprocess.run(command, check=False, capture_output=True, text=True)
+    if result.returncode != 0:
+        detail = result.stderr.strip() or "no diagnostic was returned"
+        raise OSError(
+            f"command failed (exit {result.returncode}): {' '.join(command)}: {detail}"
+        )
+    try:
+        return json.loads(result.stdout)
+    except ValueError as error:
+        raise ValueError(f"command produced malformed JSON: {error}") from error
+
+
+def _required_env(name: str) -> str:
+    """Return a required environment value or raise an actionable error."""
+    value = os.environ.get(name)
+    if value is None:
+        raise OSError(f"missing required environment variable: {name}")
+    return value
 
 
 def _pr_policy_command() -> int:
-    repository = os.environ["GITHUB_REPOSITORY"]
-    pr_number = os.environ["PR_NUMBER"]
-    owner = os.environ["REPO_OWNER"]
-    name = os.environ["REPO_NAME"]
-    author = os.environ["PR_AUTHOR"]
+    repository = _required_env("GITHUB_REPOSITORY")
+    pr_number = _required_env("PR_NUMBER")
+    owner = _required_env("REPO_OWNER")
+    name = _required_env("REPO_NAME")
+    author = _required_env("PR_AUTHOR")
     pr = _run_json(
         [
             "gh",
@@ -53,9 +75,13 @@ def _pr_policy_command() -> int:
             "body,closingIssuesReferences",
         ]
     )
+    if not isinstance(pr, dict):
+        raise ValueError(  # noqa: TRY004 - malformed provider input is operational
+            "GitHub returned a pull-request response that is not an object."
+        )
     closing_issues = pr.get("closingIssuesReferences")
     if not isinstance(closing_issues, list):
-        raise TypeError(
+        raise ValueError(  # noqa: TRY004 - malformed provider input is operational
             "GitHub returned a closingIssuesReferences field that is not valid."
         )
     query = """query($owner:String!,$name:String!,$pr:Int!,$endCursor:String) {
@@ -99,18 +125,18 @@ def _required_jobs_command() -> int:
     event_name = os.environ.get("EVENT_NAME")
     results_text = os.environ.get("RESULTS")
     if event_name is None:
-        raise SystemExit("The required environment variable EVENT_NAME is missing.")
+        raise ValueError("The required environment variable EVENT_NAME is missing.")
     if results_text is None:
-        raise SystemExit("The required environment variable RESULTS is missing.")
+        raise ValueError("The required environment variable RESULTS is missing.")
     try:
         results = json.loads(results_text)
-    except json.JSONDecodeError as error:
-        raise SystemExit(
+    except ValueError as error:
+        raise ValueError(
             "The RESULTS value must contain valid JSON. "
             f"The parser returned this diagnostic.\n{error}"
         ) from error
     if not isinstance(results, dict):
-        raise SystemExit("The RESULTS value must be a JSON object.")
+        raise ValueError("The RESULTS value must be a JSON object.")  # noqa: TRY004
     failures = failed_required_jobs(event_name, results)
     if failures:
         raise SystemExit(
@@ -130,24 +156,48 @@ def _manifest_versions(repo_root: Path) -> dict[str, str]:
         "pi": repo_root / "package.json",
         "opencode": repo_root / "npm" / "athena-opencode" / "package.json",
     }
-    return {
-        name: str(json.loads(path.read_text(encoding="utf-8"))["version"])
-        for name, path in paths.items()
-    }
+    versions: dict[str, str] = {}
+    for name, path in paths.items():
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            versions[name] = str(manifest["version"])
+        except KeyError as error:
+            relative_path = path.relative_to(repo_root)
+            raise ValueError(
+                f"The manifest does not have the required 'version' field: "
+                f"'{relative_path}'."
+            ) from error
+    return versions
 
 
 def _release_command(repo_root: Path) -> int:
-    repository = os.environ["GITHUB_REPOSITORY"]
-    tag = os.environ["GITHUB_REF_NAME"]
-    workflow_sha = os.environ["GITHUB_SHA"]
+    repository = _required_env("GITHUB_REPOSITORY")
+    tag = _required_env("GITHUB_REF_NAME")
+    workflow_sha = _required_env("GITHUB_SHA")
     tag_ref = _run_json(["gh", "api", f"repos/{repository}/git/ref/tags/{tag}"])
-    annotated = tag_ref.get("object", {}).get("type") == "tag"
+    if not isinstance(tag_ref, dict) or not isinstance(tag_ref.get("object"), dict):
+        raise ValueError(  # noqa: TRY004 - malformed provider input is operational
+            "GitHub returned an invalid tag reference response."
+        )
+    annotated = tag_ref["object"].get("type") == "tag"
     if not annotated:
         tag_object: dict[str, Any] = {}
     else:
-        tag_sha = tag_ref["object"]["sha"]
+        tag_sha = tag_ref["object"].get("sha")
+        if not isinstance(tag_sha, str) or not tag_sha:
+            raise ValueError("GitHub returned an invalid annotated tag reference.")
         tag_object = _run_json(["gh", "api", f"repos/{repository}/git/tags/{tag_sha}"])
+        if not isinstance(tag_object, dict):
+            raise ValueError("GitHub returned an invalid annotated tag response.")
+        if not isinstance(tag_object.get("object"), dict):
+            raise ValueError("GitHub returned an invalid annotated tag object.")
+        if not isinstance(tag_object.get("verification"), dict):
+            raise ValueError("GitHub returned an invalid tag verification response.")
     branch = _run_json(["gh", "api", f"repos/{repository}/branches/main"])
+    if not isinstance(branch, dict):
+        raise ValueError(  # noqa: TRY004 - malformed provider input is operational
+            "GitHub returned an invalid branch response."
+        )
     tag_commit = str(tag_object.get("object", {}).get("sha", ""))
     errors = evaluate_release(
         tag=tag,
@@ -202,14 +252,14 @@ def _publish_release_command(directory: Path) -> int:
             "gh",
             "release",
             "create",
-            os.environ["GITHUB_REF_NAME"],
+            _required_env("GITHUB_REF_NAME"),
             *(str(directory / name) for name in asset_names),
             "--generate-notes",
             "--notes-file",
             str(release_notes),
             "--verify-tag",
             "--repo",
-            os.environ["GITHUB_REPOSITORY"],
+            _required_env("GITHUB_REPOSITORY"),
         ],
         check=True,
     )
@@ -230,15 +280,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--root", type=Path, default=Path.cwd())
     args = parser.parse_args(argv)
-    if args.command == "pr-policy":
-        return _pr_policy_command()
-    if args.command == "required-jobs":
-        return _required_jobs_command()
-    if args.command == "release":
-        return _release_command(args.root.resolve())
-    if args.command == "publish-release":
-        return _publish_release_command(args.root.resolve())
-    return _suppression_command(args.root.resolve())
+    try:
+        if args.command == "pr-policy":
+            return _pr_policy_command()
+        if args.command == "required-jobs":
+            return _required_jobs_command()
+        if args.command == "release":
+            return _release_command(args.root.resolve())
+        if args.command == "publish-release":
+            return _publish_release_command(args.root.resolve())
+        return _suppression_command(args.root.resolve())
+    except (OSError, subprocess.SubprocessError, TypeError, ValueError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
