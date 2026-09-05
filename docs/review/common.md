@@ -8,9 +8,9 @@ Use the [ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.md)
 output.
 
 This is the canonical contract for `change-review`, `issue-review`, `plan-issue`, `finalize-plan`,
-`pr-review`, `repo-review`, and `simplify`. A scope-specific skill can add requirements. It must
-not copy or weaken this contract. See the [review framework overview](README.md) for the component
-map.
+`pr-review`, `repo-review`, `simplify`, and the assessment phase of `realign`. A scope-specific
+skill can add requirements. It must not copy or weaken this contract. See the
+[review framework overview](README.md) for the component map.
 
 ## Review order
 
@@ -367,6 +367,7 @@ Apply [P033](../principles/README.md#p033), [P044](../principles/README.md#p044)
 | Issue-plan finalization | Treat `--draft` as read-only. A verified finalized planning epoch can replace the resolved issue body once. After exact readback, `finalize-plan` can delete only its sealed actor-owned plan and review comments. Do not change other forge state. Do not retry an uncertain deletion. |
 | Pull request review | If findings remain, publish one logical comment-only review batch. For GitHub, publish exactly one atomic `COMMENT` review. Put each anchorable finding in its `comments` array. For GitLab, use a supported atomic draft or batch. If this capability is not available, use a revalidated ordered discussion sequence. Do not split GitHub findings into separate reviews or posts. Do not retry an indeterminate post. Do not post a clean review. Enable auto-merge only after an explicit `--enable-auto-merge-on-go` action and an exact strict `GO`. Before you enable it, revalidate the artifact, head, required checks, merge policy, and provider. Do not enable it for `CONDITIONAL GO`, `NO-GO`, `--report-only`, continuous-integration-free (CI-free), or prevalidated review. The prevalidated profile does not post or run commands. |
 | Repository review | If findings remain, create a tracking hierarchy and work items without duplicates. On GitHub, use a writable configured Project and existing unambiguous fields when they are available. Treat `--report-only` as read-only. |
+| Realignment assessment handoff | Keep the assessment local and read-only. Stop after the assessment report. Repair can write repository state only through a separate `realign --apply` request for candidate identifiers that the user explicitly approves. Before repair, rebind the revision, overlay, target, and candidate evidence. Approval does not authorize forge writes, dependency installation, public API changes or migrations, or unrelated cleanup. |
 
 If a host or forge does not have a required capability, return a ready-to-publish plan. Report the
 coverage gap. Do not claim that a comment, issue, epic, or annotation exists when it does not.
