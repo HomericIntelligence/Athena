@@ -21,6 +21,26 @@ from skills._cli import argument_parser, git_read_arguments, git_read_environmen
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def load_skill_script_module(relative_path: str, module_name: str) -> Any:
+    """Load one skill script so tests can call its production helpers."""
+    script = ROOT / relative_path
+    specification = importlib.util.spec_from_file_location(module_name, script)
+    assert specification is not None
+    assert specification.loader is not None
+    module = importlib.util.module_from_spec(specification)
+    sys.modules[module_name] = module
+    script_directory = str(script.parent)
+    sys.path.insert(0, script_directory)
+    try:
+        specification.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(module_name, None)
+        raise
+    finally:
+        sys.path.remove(script_directory)
+    return module
+
+
 def executable_scripts() -> list[Path]:
     candidates = [*ROOT.glob("scripts/*.py"), *ROOT.glob("skills/*/scripts/*.py")]
     return sorted(
@@ -1146,21 +1166,10 @@ class PullRequestScriptTests(unittest.TestCase):
             pending["checks"][0]["head_sha"],
         )
 
-        clean_assessment = {
-            "profile": "default",
-            "grade": "A",
-            "architecture_aligned": True,
-            "required_findings": 0,
-            "coverage_complete": True,
-        }
-        auto_merge_prerequisites = {
-            "requested": True,
-            "identity_rebound": True,
-            "comment_publication_verified": True,
-            "required_threads_resolved": True,
-            "review_participants_unchanged": True,
-            "supported_method_available": True,
-        }
+        collector = load_skill_script_module(
+            "skills/pr-review/scripts/collect_evidence.py",
+            f"test_collect_evidence_report_{id(self)}",
+        )
         reports: dict[str, dict[str, str]] = {}
         for decision, evidence in outputs.items():
             exact_source = (
@@ -1174,41 +1183,43 @@ class PullRequestScriptTests(unittest.TestCase):
                 and evidence["checks"][0]["head_sha"] == head_oid
                 and evidence["checks"][0]["conclusion"] == "success"
             )
-            assessment_passes = (
-                clean_assessment["profile"] == "default"
-                and clean_assessment["grade"] == "A"
-                and clean_assessment["architecture_aligned"] is True
-                and clean_assessment["required_findings"] == 0
-                and clean_assessment["coverage_complete"] is True
+            reports[decision] = collector.review_report(
+                evidence,
+                assessment_passes=True,
+                source_evidence_complete=exact_source,
+                check_evidence_complete=exact_checks,
+                auto_merge_requested=True,
+                identity_rebound=True,
+                comment_publication_verified=True,
+                required_threads_resolved=True,
+                review_participants_unchanged=True,
+                supported_method_available=True,
+                effective_policy_gates_clear=decision == "APPROVED",
             )
-            verdict = (
-                "GO"
-                if assessment_passes and exact_source and exact_checks
-                else "CONDITIONAL GO"
-            )
-            review_decision = evidence["merge_readiness"]["review_decision"]
-            merge_readiness = "ready" if review_decision == "APPROVED" else "blocked"
-            auto_merge = (
-                "eligible"
-                if all(auto_merge_prerequisites.values())
-                and verdict == "GO"
-                and merge_readiness == "ready"
-                else "blocked"
-            )
-            reports[decision] = {
-                "verdict": verdict,
-                "merge_readiness": merge_readiness,
-                "auto_merge": auto_merge,
-            }
+        reports["APPROVED_WITH_PENDING_GATE"] = collector.review_report(
+            approved,
+            assessment_passes=True,
+            source_evidence_complete=True,
+            check_evidence_complete=True,
+            auto_merge_requested=True,
+            identity_rebound=True,
+            comment_publication_verified=True,
+            required_threads_resolved=True,
+            review_participants_unchanged=True,
+            supported_method_available=True,
+            effective_policy_gates_clear=False,
+        )
 
         self.assertEqual("GO", reports["REVIEW_REQUIRED"]["verdict"])
         self.assertEqual("GO", reports["APPROVED"]["verdict"])
+        self.assertEqual("GO", reports["APPROVED_WITH_PENDING_GATE"]["verdict"])
         self.assertNotEqual(
             reports["REVIEW_REQUIRED"]["merge_readiness"],
             reports["APPROVED"]["merge_readiness"],
         )
         self.assertEqual("blocked", reports["REVIEW_REQUIRED"]["auto_merge"])
         self.assertEqual("eligible", reports["APPROVED"]["auto_merge"])
+        self.assertEqual("blocked", reports["APPROVED_WITH_PENDING_GATE"]["auto_merge"])
 
     def test_collect_evidence_tolerates_missing_review_decision(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

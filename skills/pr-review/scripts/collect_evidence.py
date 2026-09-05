@@ -1339,6 +1339,49 @@ def merge_readiness(metadata: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def review_report(
+    evidence: dict[str, Any],
+    *,
+    assessment_passes: bool,
+    source_evidence_complete: bool,
+    check_evidence_complete: bool,
+    auto_merge_requested: bool,
+    identity_rebound: bool,
+    comment_publication_verified: bool,
+    required_threads_resolved: bool,
+    review_participants_unchanged: bool,
+    supported_method_available: bool,
+    effective_policy_gates_clear: bool,
+) -> dict[str, str]:
+    """Classify review, policy, and auto-merge states for report output."""
+    verdict = (
+        "GO"
+        if assessment_passes and source_evidence_complete and check_evidence_complete
+        else "CONDITIONAL GO"
+    )
+    readiness = evidence.get("merge_readiness")
+    review_decision = (
+        readiness.get("review_decision") if isinstance(readiness, dict) else None
+    )
+    merge_status = "ready" if review_decision == "APPROVED" else "blocked"
+    auto_merge_eligible = (
+        auto_merge_requested
+        and identity_rebound
+        and comment_publication_verified
+        and required_threads_resolved
+        and review_participants_unchanged
+        and supported_method_available
+        and effective_policy_gates_clear
+        and verdict == "GO"
+        and merge_status == "ready"
+    )
+    return {
+        "verdict": verdict,
+        "merge_readiness": merge_status,
+        "auto_merge": "eligible" if auto_merge_eligible else "blocked",
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argument_parser(description=__doc__)
     parser.add_argument(

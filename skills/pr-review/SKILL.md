@@ -153,7 +153,7 @@ includes it.
 8. Establish architecture alignment before you grade the implementation.
 9. Treat a material unexplained architecture violation as a required finding. It blocks a positive
    verdict for all check results and scores.
-10. Compute the verdict without PR approval state. Report merge readiness with delivery evidence.
+10. Classify the surfaces.
 11. Select only the applicable language routes and review routes.
 12. Read each changed file in its full context.
 13. Record each excluded route as N/A.
@@ -162,7 +162,7 @@ includes it.
 16. Use both immutable diff lenses.
 17. Before you calculate the score, complete each failed or sampled dimension.
 18. Calculate the score from earned evidence.
-19. Decide whether the evidence supports GO, CONDITIONAL GO, or NO-GO.
+19. Decide whether the evidence supports GO, CONDITIONAL GO, or NO-GO without PR approval state.
 20. Immediately before a requested write, bind the exact artifact and source again.
 21. If a direct default GitHub review supports GO, use the installed `deliver_go.py` helper with the
     retained identity and an exact response manifest for every open review thread.
