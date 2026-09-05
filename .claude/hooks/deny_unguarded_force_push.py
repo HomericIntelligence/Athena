@@ -90,25 +90,26 @@ def _is_forced_refspec(token: str) -> bool:
 
 
 def _iter_command_segments(command: str) -> list[list[str]]:
-    """Split a Bash command into top-level token segments."""
-    tokens = _tokenize_bash_command(command)
-    if tokens is None:
-        return []
-
     segments: list[list[str]] = []
-    segment: list[str] = []
 
-    for token in tokens:
-        if token in _SHELL_CONTROL_OPERATORS:
-            if segment:
-                segments.append(segment)
-                segment = []
-            continue
+    for line in command.splitlines():
+        tokens = _tokenize_bash_command(line)
+        if tokens is None:
+            return []
 
-        segment.append(token)
+        segment: list[str] = []
 
-    if segment:
-        segments.append(segment)
+        for token in tokens:
+            if token in _SHELL_CONTROL_OPERATORS:
+                if segment:
+                    segments.append(segment)
+                    segment = []
+                continue
+
+            segment.append(token)
+
+        if segment:
+            segments.append(segment)
 
     return segments
 
