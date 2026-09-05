@@ -17,8 +17,13 @@ _SETUP_UV = "astral-sh/setup-uv@"
 
 
 def _container_pin(container_text: str) -> tuple[str | None, str | None]:
-    url_match = _UV_URL.search(container_text)
-    checksum_match = _UV_CHECKSUM.search(container_text)
+    active_text = "\n".join(
+        line
+        for line in container_text.splitlines()
+        if not line.lstrip().startswith("#")
+    )
+    url_match = _UV_URL.search(active_text)
+    checksum_match = _UV_CHECKSUM.search(active_text)
     return (
         url_match.group("version") if url_match else None,
         checksum_match.group("checksum") if checksum_match else None,

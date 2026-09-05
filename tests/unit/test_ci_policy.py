@@ -512,6 +512,16 @@ jobs:
         findings = find_uv_pin_drift(self.CONTAINER, {"workflow.yml": workflow})
         self.assertEqual(1, len(findings))
 
+    def test_commented_container_url_does_not_override_active_pin(self) -> None:
+        container = (
+            "# curl https://github.com/astral-sh/uv/releases/download/0.12.1/"
+            "uv-x86_64-unknown-linux-gnu.tar.gz -o /tmp/uv.tar.gz\n"
+            + self.CONTAINER.replace("0.12.1", "0.13.0")
+        )
+        workflow = self.WORKFLOW.replace("0.12.1", "0.13.0")
+
+        self.assertEqual([], find_uv_pin_drift(container, {"workflow.yml": workflow}))
+
     def test_malformed_container_pin_fails_closed(self) -> None:
         for container in (
             self.CONTAINER.replace("download/0.12.1", "download/not-a-version"),
