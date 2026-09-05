@@ -32,14 +32,14 @@ inventories for Grype.
 The job does not scan example lockfiles or build-time compiler binaries. These items are not in the
 installed runtime surface. The native inventories are continuous integration (CI) evidence and not
 release assets. Athena never includes those third-party packages in its archive.
-[Issue #74](https://github.com/HomericIntelligence/Athena/issues/74) tracks restoration of a broader
-source inventory. The advisory `security/pi-upstream-inventory-watch` job scans the full upstream Pi
-source tree each week with the same Syft and Grype policy. A failed watch means that upstream still
-has findings in inputs outside the installed runtime surface. A successful watch does not authorize
-restoration: the watch applies the normal exception file, so its result can include an excepted High
-or Critical finding. Before restoration, run the same scan with an exception file that contains only
-`exceptions: []` and retain that exception-free report with the exact upstream commit. The watch is
-not a required check because upstream findings are outside Athena's current runtime contract.
+The advisory `security/pi-upstream-inventory-watch` job scans the full upstream Pi source tree each
+week with the same Syft and Grype policy. A failed watch means that upstream still has findings in
+inputs outside the installed runtime surface. A successful watch does not authorize restoration: the
+watch applies the normal exception file, so its result can include an excepted High or Critical
+finding. Before broader inventory restoration, run the same scan with an exception file that
+contains only `exceptions: []` and retain that exception-free report with the exact upstream
+commit. The watch is not a required check because upstream findings are outside Athena's current
+runtime contract.
 
 ## Restoring the full Pi source inventory
 
@@ -56,8 +56,6 @@ checkout:
    `npm-shrinkwrap.json` path. Keep the `syft-pi-subagents.json` inventory.
 5. Update the Pi inventory assertions in `tests/unit/test_supply_chain.py` to require the repository,
    commit ref, checkout root, and full-source scan.
-6. Remove the issue #74 pointer only after the required dependency scan passes with no exceptions.
-
 Any residual finding must use the narrow policy in
 `security/vulnerability-exceptions.yaml`. Do not add a broad ignore.
 

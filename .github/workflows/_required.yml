@@ -363,6 +363,7 @@ jobs:
 
   pi-upstream-inventory-watch:
     name: security/pi-upstream-inventory-watch
+    needs: agent-contract
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
