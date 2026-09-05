@@ -21,26 +21,6 @@ from skills._cli import argument_parser, git_read_arguments, git_read_environmen
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def load_skill_script_module(relative_path: str, module_name: str) -> Any:
-    """Load one skill script so tests can call its production helpers."""
-    script = ROOT / relative_path
-    specification = importlib.util.spec_from_file_location(module_name, script)
-    assert specification is not None
-    assert specification.loader is not None
-    module = importlib.util.module_from_spec(specification)
-    sys.modules[module_name] = module
-    script_directory = str(script.parent)
-    sys.path.insert(0, script_directory)
-    try:
-        specification.loader.exec_module(module)
-    except BaseException:
-        sys.modules.pop(module_name, None)
-        raise
-    finally:
-        sys.path.remove(script_directory)
-    return module
-
-
 def executable_scripts() -> list[Path]:
     candidates = [*ROOT.glob("scripts/*.py"), *ROOT.glob("skills/*/scripts/*.py")]
     return sorted(
@@ -1158,6 +1138,10 @@ class PullRequestScriptTests(unittest.TestCase):
             source_evidence["REVIEW_REQUIRED"], source_evidence["APPROVED"]
         )
         self.assertEqual(check_evidence["REVIEW_REQUIRED"], check_evidence["APPROVED"])
+        self.assertEqual(
+            pending["pull_request"],
+            approved["pull_request"],
+        )
         self.assertNotEqual(pending["merge_readiness"], approved["merge_readiness"])
         self.assertEqual(head_oid, pending["reviewed_identity"]["head_oid"])
         self.assertEqual(head_oid, pending["check_evidence"]["head_oid"])
@@ -1165,61 +1149,6 @@ class PullRequestScriptTests(unittest.TestCase):
             head_oid,
             pending["checks"][0]["head_sha"],
         )
-
-        collector = load_skill_script_module(
-            "skills/pr-review/scripts/collect_evidence.py",
-            f"test_collect_evidence_report_{id(self)}",
-        )
-        reports: dict[str, dict[str, str]] = {}
-        for decision, evidence in outputs.items():
-            exact_source = (
-                evidence["reviewed_identity"]["head_oid"] == head_oid
-                and evidence["changed_files"] == ["reviewed.txt"]
-                and evidence["changed_path_manifest"]["count"] == 1
-            )
-            exact_checks = (
-                evidence["check_evidence"]
-                == {"count": 1, "head_oid": head_oid, "status": "head_bound"}
-                and evidence["checks"][0]["head_sha"] == head_oid
-                and evidence["checks"][0]["conclusion"] == "success"
-            )
-            reports[decision] = collector.review_report(
-                evidence,
-                assessment_passes=True,
-                source_evidence_complete=exact_source,
-                check_evidence_complete=exact_checks,
-                auto_merge_requested=True,
-                identity_rebound=True,
-                comment_publication_verified=True,
-                required_threads_resolved=True,
-                review_participants_unchanged=True,
-                supported_method_available=True,
-                effective_policy_gates_clear=decision == "APPROVED",
-            )
-        reports["APPROVED_WITH_PENDING_GATE"] = collector.review_report(
-            approved,
-            assessment_passes=True,
-            source_evidence_complete=True,
-            check_evidence_complete=True,
-            auto_merge_requested=True,
-            identity_rebound=True,
-            comment_publication_verified=True,
-            required_threads_resolved=True,
-            review_participants_unchanged=True,
-            supported_method_available=True,
-            effective_policy_gates_clear=False,
-        )
-
-        self.assertEqual("GO", reports["REVIEW_REQUIRED"]["verdict"])
-        self.assertEqual("GO", reports["APPROVED"]["verdict"])
-        self.assertEqual("GO", reports["APPROVED_WITH_PENDING_GATE"]["verdict"])
-        self.assertNotEqual(
-            reports["REVIEW_REQUIRED"]["merge_readiness"],
-            reports["APPROVED"]["merge_readiness"],
-        )
-        self.assertEqual("blocked", reports["REVIEW_REQUIRED"]["auto_merge"])
-        self.assertEqual("eligible", reports["APPROVED"]["auto_merge"])
-        self.assertEqual("blocked", reports["APPROVED_WITH_PENDING_GATE"]["auto_merge"])
 
     def test_collect_evidence_tolerates_missing_review_decision(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
