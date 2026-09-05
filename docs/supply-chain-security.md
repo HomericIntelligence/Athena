@@ -36,28 +36,11 @@ The advisory `security/pi-upstream-inventory-watch` job scans the full upstream 
 week with the same Syft and Grype policy. A failed watch means that upstream still has findings in
 inputs outside the installed runtime surface. A successful watch does not authorize restoration: the
 watch applies the normal exception file, so its result can include an excepted High or Critical
-finding. Before broader inventory restoration, run the same scan with an exception file that
-contains only `exceptions: []` and retain that exception-free report with the exact upstream
-commit. The watch is not a required check because upstream findings are outside Athena's current
-runtime contract.
-
-## Restoring the full Pi source inventory
-
-Restore the full source inventory only after an exception-free scan passes for an exact upstream
-checkout:
-
-1. Record the upstream commit from the exception-free scan. Do not use a moving branch name as the
-   recorded ref.
-2. Define `PI_RUNTIME_REPOSITORY`, `PI_RUNTIME_REF`, and `PI_RUNTIME_SOURCE_ROOT` in the `package`
-   job. The ref must be the recorded commit, and the root must be the checkout of that commit.
-3. Fetch that repository and ref into the root. Verify that the checkout reports the recorded commit
-   before the scan.
-4. In the `package` job, scan `"$PI_RUNTIME_SOURCE_ROOT"` instead of the coding-agent
-   `npm-shrinkwrap.json` path. Keep the `syft-pi-subagents.json` inventory.
-5. Update the Pi inventory assertions in `tests/unit/test_supply_chain.py` to require the repository,
-   commit ref, checkout root, and full-source scan.
-Any residual finding must use the narrow policy in
-`security/vulnerability-exceptions.yaml`. Do not add a broad ignore.
+finding. For this watch, run the same scan with an exception file that contains only
+`exceptions: []` and retain that exception-free report with the exact upstream commit. The watch is
+not a required check because upstream findings are outside Athena's current runtime contract.
+This advisory job does not complete issue #74. Keep issue #74 open until the required gate scans the
+full source inventory at a pinned upstream commit and passes without exceptions.
 
 Host capabilities, the runner operating system, and commands used only in examples are outside the
 dependency scope. Athena remains a plugin distribution. It does not add a Python package or runtime
