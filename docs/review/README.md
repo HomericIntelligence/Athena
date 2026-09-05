@@ -39,6 +39,7 @@ flowchart LR
 | [ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.md) | Method for technical prose and literal-text boundary. | Before you write or change technical prose or review output. |
 | [Shared contract](common.md) | Architecture gate, evidence, simplification coverage, canonical-principle application profiles, findings, and delivery boundaries. | Every review. |
 | [Simplify workflow](../../skills/simplify/SKILL.md) | Read-only subtraction-first review for safe deletion, reuse, consolidation, and retention. | The task may shrink or retire behavior. |
+| [Realign workflow](../../skills/realign/SKILL.md) | Architecture assessment and repair of explicitly approved candidates. | Code can have unexplained architecture drift or evidence-backed structural defects. |
 | [Language routing](language-routing.md) | Applicable language and toolchain profile. | The changed or inventoried surface contains code or build tooling. |
 | [Behavior-first testing](behavior-first-testing.md) | Functional-test quality and false-confidence rules. | Tests, validation, or a plan are in scope. |
 | [Issue planning](issue-planning.md) | Canonical plan identity, review, and finalized-epoch artifacts. | Planning, reviewing, or finalizing an issue. |
