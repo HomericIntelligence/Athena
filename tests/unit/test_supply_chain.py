@@ -1287,10 +1287,14 @@ jobs:
         required_jobs = required["jobs"]
         release_jobs = release["jobs"]
         self.assertEqual(
-            set(required_jobs) - {"required-checks-gate"},
+            set(required_jobs)
+            - {"required-checks-gate", "pi-upstream-inventory-watch"},
             set(required_jobs["required-checks-gate"]["needs"]),
         )
-        for name in set(required_jobs) - {"agent-contract"}:
+        for name in set(required_jobs) - {
+            "agent-contract",
+            "pi-upstream-inventory-watch",
+        }:
             with self.subTest(workflow="required", job=name):
                 self.assertTrue(
                     self._depends_on(required_jobs, name, "agent-contract"),
@@ -1577,6 +1581,10 @@ jobs:
         self.assertEqual(
             "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
             watch["if"],
+        )
+        self.assertEqual(
+            {"contents": "read", "issues": "read"},
+            watch["permissions"],
         )
         self.assertNotIn(
             "pi-upstream-inventory-watch", jobs["required-checks-gate"]["needs"]

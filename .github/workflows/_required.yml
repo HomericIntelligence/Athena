@@ -368,6 +368,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
+      issues: read
     env:
       PI_UPSTREAM_REPOSITORY: https://github.com/earendil-works/pi.git
       PI_UPSTREAM_REF: main
