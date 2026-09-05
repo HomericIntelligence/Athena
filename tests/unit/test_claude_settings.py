@@ -46,6 +46,11 @@ class ClaudeSettingsTests(unittest.TestCase):
         command = "git push --force-with-lease origin +feature:feature"
         self.assertFalse(HOOK.is_unguarded_force_push(command))
 
+    def test_guarded_force_with_matching_scoped_lease_is_not_denied(self) -> None:
+        """A scoped lease protects the matching forced refspec."""
+        command = "git push --force-with-lease=refs/heads/main origin +main:main"
+        self.assertFalse(HOOK.is_unguarded_force_push(command))
+
     def test_multiline_benign_command_is_not_denied(self) -> None:
         """A harmless multiline Bash command is permitted."""
         command = "echo first line\nprintf second line"
@@ -77,6 +82,7 @@ class ClaudeSettingsTests(unittest.TestCase):
             "git push --force-with-lease=refs/heads/feature -f origin feature/x",
             "git push -f origin feature/x --force-with-lease=refs/heads/feature",
             "git push origin +feature:feature",
+            "git push --force-with-lease=refs/heads/feature origin +main:main",
             "git -C /tmp/repo push --force origin feature/x",
             "true && git push -f origin main",
             "git push -f origin main; echo hi",

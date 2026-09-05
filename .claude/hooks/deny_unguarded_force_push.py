@@ -94,6 +94,41 @@ def _has_short_option_flag(token: str, flag: str) -> bool:
     return token.startswith("-") and not token.startswith("--") and flag in token[1:]
 
 
+def _push_ref_variants(ref: str) -> set[str]:
+    """Return comparable ref names for one push or lease target."""
+    variants = {ref}
+
+    if ref.startswith("refs/heads/"):
+        variants.add(ref.removeprefix("refs/heads/"))
+    elif "/" not in ref:
+        variants.add(f"refs/heads/{ref}")
+
+    return variants
+
+
+def _parse_force_with_lease(token: str) -> tuple[bool, str | None]:
+    """Return whether one lease token is scoped and its ref name when present."""
+    if token == "--force-with-lease":
+        return True, None
+
+    if token.startswith("--force-with-lease="):
+        value = token.removeprefix("--force-with-lease=")
+        ref, _, _ = value.partition(":")
+        return False, ref or None
+
+    return False, None
+
+
+def _parse_forced_refspec(token: str) -> str | None:
+    """Return the pushed destination ref for one forced refspec."""
+    if not _is_forced_refspec(token):
+        return None
+
+    refspec = token.removeprefix("+")
+    _, _, destination = refspec.partition(":")
+    return destination or refspec or None
+
+
 def _iter_command_segments(command: str) -> list[list[str]]:
     segments: list[list[str]] = []
 
@@ -139,17 +174,34 @@ def _is_unguarded_force_push_segment(tokens: list[str]) -> bool:
 
     push_tokens = tokens[index + 1 :]
     has_force = any(token == "--force" or _has_short_option_flag(token, "f") for token in push_tokens)
-    has_force_with_lease = any(
-        token == "--force-with-lease"
-        or token.startswith("--force-with-lease=")
-        for token in push_tokens
+    if has_force:
+        return True
+
+    unscoped_leases = 0
+    scoped_leases: set[str] = set()
+    forced_refspecs: list[str] = []
+
+    for token in push_tokens:
+        lease_is_unscoped, lease_ref = _parse_force_with_lease(token)
+        if lease_is_unscoped:
+            unscoped_leases += 1
+        elif lease_ref is not None:
+            scoped_leases.update(_push_ref_variants(lease_ref))
+
+        forced_refspec = _parse_forced_refspec(token)
+        if forced_refspec is not None:
+            forced_refspecs.append(forced_refspec)
+
+    if not forced_refspecs:
+        return False
+
+    if unscoped_leases:
+        return False
+
+    return any(
+        not _push_ref_variants(forced_refspec).intersection(scoped_leases)
+        for forced_refspec in forced_refspecs
     )
-    has_forced_refspec = any(
-        _is_forced_refspec(token)
-        for token in push_tokens
-        if not token.startswith("-")
-    )
-    return has_force or (has_forced_refspec and not has_force_with_lease)
 
 
 def is_unguarded_force_push(command: str) -> bool:
