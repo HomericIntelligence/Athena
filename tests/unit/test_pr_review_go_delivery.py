@@ -287,6 +287,32 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             scenarios["APPROVED"]["merge_readiness"],
         )
 
+    def test_auto_merge_requires_valid_matching_policy_head_oids(self) -> None:
+        merge_readiness = {"review_decision": "APPROVED"}
+        policy_state = {
+            "head_oid": "b" * 40,
+            "queue_route_satisfied": True,
+            "required_approvals_passed": True,
+            "required_checks_passed": True,
+            "reviewed_head_oid": "b" * 40,
+        }
+
+        self.assertTrue(
+            self.delivery.auto_merge_eligible(merge_readiness, policy_state)
+        )
+        for missing_policy_state in (
+            {**policy_state, "head_oid": None},
+            {**policy_state, "reviewed_head_oid": None},
+            {**policy_state, "head_oid": ""},
+            {**policy_state, "reviewed_head_oid": ""},
+        ):
+            with self.subTest(missing_policy_state=missing_policy_state):
+                self.assertFalse(
+                    self.delivery.auto_merge_eligible(
+                        merge_readiness, missing_policy_state
+                    )
+                )
+
     def test_missing_thread_response_prevents_all_mutations(self) -> None:
         forge = FakeForge(self.delivery, threads=(self.thread(),))
 

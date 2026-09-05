@@ -103,11 +103,21 @@ def auto_merge_eligible(
     policy_state: dict[str, Any] | None,
 ) -> bool:
     """Return true only when review approval and bound policy evidence both pass."""
+    if not isinstance(policy_state, dict):
+        return False
+    try:
+        head_oid = require_commit_oid(
+            policy_state.get("head_oid"), "policy_state.head_oid"
+        )
+        reviewed_head_oid = require_commit_oid(
+            policy_state.get("reviewed_head_oid"), "policy_state.reviewed_head_oid"
+        )
+    except RuntimeError:
+        return False
     return (
         isinstance(merge_readiness, dict)
         and merge_readiness.get("review_decision") == "APPROVED"
-        and isinstance(policy_state, dict)
-        and policy_state.get("head_oid") == policy_state.get("reviewed_head_oid")
+        and head_oid == reviewed_head_oid
         and policy_state.get("required_checks_passed") is True
         and policy_state.get("required_approvals_passed") is True
         and policy_state.get("queue_route_satisfied") is True
