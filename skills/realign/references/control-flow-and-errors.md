@@ -13,8 +13,8 @@ outermost boundary. If a layer cannot complete the outcome, preserve the cause a
 failure.
 
 Do not infer a defect from branch count, nesting depth, exception count, or a generated diagnostic.
-Confirm a reachable behavior or architecture effect. Use retain when the evidence does not support
-a change.
+Confirm a reachable behavior or architecture effect. Route the lead to `retain` when the evidence
+does not support a change.
 
 ## Branch or guard structure that hides a state model
 
@@ -34,8 +34,8 @@ a change.
   framework only to reduce nesting.
 - **Validation:** Test each applicable transition, boundary value, and invalid state. Confirm that the
   refactor starts from a green behavior baseline.
-- **Routing owner:** Use realign for state or policy restructuring. Use simplify when branch
-  deletion is the complete evidence-backed correction. Use systematic-debugging first when a
+- **Routing owner:** Use `realign` for state or policy restructuring. Use `simplify` when branch
+  deletion is the complete evidence-backed correction. Use `systematic-debugging` first when a
   branch has a current behavior defect.
 - **Applicable principles:** [P012](../../../docs/principles/README.md#p012),
   [P014](../../../docs/principles/README.md#p014),
@@ -67,7 +67,7 @@ a change.
 - **Validation:** Test malformed, boundary, and valid inputs at the public boundary. Test direct
   internal entry points when they are supported contracts. Run the repository-selected type and
   schema checks.
-- **Routing owner:** Use realign to move or strengthen a validation boundary. Use simplify for
+- **Routing owner:** Use `realign` to move or strengthen a validation boundary. Use `simplify` for
   duplicate checks only after evidence proves that the authoritative boundary is complete.
 - **Applicable principles:** [P011](../../../docs/principles/README.md#p011),
   [P012](../../../docs/principles/README.md#p012),
@@ -100,7 +100,7 @@ a change.
   contract.
 - **Validation:** Test dependency failure, stale data, invalid input, and degraded operation that
   apply. Verify the public status, error, state, and structured diagnostic.
-- **Routing owner:** Use realign for fallback-policy or boundary repair. Use simplify only when
+- **Routing owner:** Use `realign` for fallback-policy or boundary repair. Use `simplify` only when
   the fallback is dead or redundant and safe deletion is complete.
 - **Applicable principles:** [P014](../../../docs/principles/README.md#p014),
   [P019](../../../docs/principles/README.md#p019),
@@ -134,9 +134,9 @@ a change.
 - **Validation:** Test each public error outcome, recovery path, cleanup path, and failure state.
   Verify language-specific cause chaining or error wrapping. Confirm that one policy owner handles
   each failure.
-- **Routing owner:** Use realign for error-boundary repair. Use systematic-debugging before repair
+- **Routing owner:** Use `realign` for error-boundary repair. Use `systematic-debugging` before repair
   when evidence shows an active failure. Route a redundant catch that can be deleted without another
-  structural change to simplify.
+  structural change to `simplify`.
 - **Applicable principles:** [P012](../../../docs/principles/README.md#p012),
   [P019](../../../docs/principles/README.md#p019),
   [P029](../../../docs/principles/README.md#p029),
@@ -165,8 +165,8 @@ a change.
   correlation. Do not expose secrets to preserve diagnostics.
 - **Validation:** Test error classification and public translation. Inspect the cause chain and
   structured diagnostics. Confirm that failure telemetry is neither absent nor duplicated.
-- **Routing owner:** Use realign for error-contract or observability ownership changes. Use
-  simplify when removal of an unchanged catch or duplicate log is the complete safe correction.
+- **Routing owner:** Use `realign` for error-contract or observability ownership changes. Use
+  `simplify` when removal of an unchanged catch or duplicate log is the complete safe correction.
 - **Applicable principles:** [P014](../../../docs/principles/README.md#p014),
   [P019](../../../docs/principles/README.md#p019),
   [P029](../../../docs/principles/README.md#p029),
@@ -197,8 +197,8 @@ a change.
   the caller deadline. Add backoff or a circuit breaker only when operation evidence requires it.
 - **Validation:** Use controlled failure injection. Test the maximum attempt count, permanent
   failure, deadline, cancellation, repeated side effects, and success after a transient failure.
-- **Routing owner:** Use realign. Use systematic-debugging first for a reproduced retry defect.
-  Use simplify when an extra retry layer can be removed with no other contract change.
+- **Routing owner:** Use `realign`. Use `systematic-debugging` first for a reproduced retry defect.
+  Use `simplify` when an extra retry layer can be removed with no other contract change.
 - **Applicable principles:** [P012](../../../docs/principles/README.md#p012),
   [P014](../../../docs/principles/README.md#p014),
   [P019](../../../docs/principles/README.md#p019),
@@ -229,8 +229,8 @@ a change.
 - **Validation:** Use controlled time and explicit synchronization. Test cancellation before start,
   during work, and during cleanup. Test deadline expiry and shutdown. Do not use a wall-clock sleep
   as the only proof.
-- **Routing owner:** Use realign. Use systematic-debugging first when the repository has a
-  reproduced hang or orphaned task. Use simplify only for a proven unused timeout wrapper.
+- **Routing owner:** Use `realign`. Use `systematic-debugging` first when the repository has a
+  reproduced hang or orphaned task. Use `simplify` only for a proven unused timeout wrapper.
 - **Applicable principles:** [P012](../../../docs/principles/README.md#p012),
   [P014](../../../docs/principles/README.md#p014),
   [P019](../../../docs/principles/README.md#p019),
@@ -262,8 +262,8 @@ a change.
   roll-forward. Put the irreversible action after applicable validation and reversible work.
 - **Validation:** Inject a failure at each material step. Test retry, compensation, resume, duplicate
   delivery, and rollback or roll-forward. Verify the invariant after each outcome.
-- **Routing owner:** Use realign. Use systematic-debugging first for reproduced data loss or state
-  corruption. A dead rollback path can use simplify only after the replacement recovery contract is
+- **Routing owner:** Use `realign`. Use `systematic-debugging` first for reproduced data loss or state
+  corruption. A dead rollback path can use `simplify` only after the replacement recovery contract is
   proved.
 - **Applicable principles:** [P011](../../../docs/principles/README.md#p011),
   [P012](../../../docs/principles/README.md#p012),
@@ -297,8 +297,8 @@ a change.
 - **Validation:** Test success, operation failure, cleanup failure, cancellation, and repeated use.
   Use repository tools that can detect leaks, races, or unreleased locks when the execution boundary
   permits them.
-- **Routing owner:** Use realign. Use systematic-debugging first for a reproduced leak, race, or
-  deadlock. Use simplify when an unused resource layer can be removed safely.
+- **Routing owner:** Use `realign`. Use `systematic-debugging` first for a reproduced leak, race, or
+  deadlock. Use `simplify` when an unused resource layer can be removed safely.
 - **Applicable principles:** [P012](../../../docs/principles/README.md#p012),
   [P014](../../../docs/principles/README.md#p014),
   [P019](../../../docs/principles/README.md#p019),
@@ -328,8 +328,8 @@ a change.
   cap concurrent work. Remove concurrency only when behavior and measured requirements permit it.
 - **Validation:** Use deterministic synchronization and race detection when available. Test one and
   multiple failures, cancellation, shutdown, capacity, and ordering-independent outcomes.
-- **Routing owner:** Use realign. Use systematic-debugging first for a reproduced race or lost
-  result. Use simplify when unnecessary concurrency can be removed with no behavior change.
+- **Routing owner:** Use `realign`. Use `systematic-debugging` first for a reproduced race or lost
+  result. Use `simplify` when unnecessary concurrency can be removed with no behavior change.
 - **Applicable principles:** [P012](../../../docs/principles/README.md#p012),
   [P014](../../../docs/principles/README.md#p014),
   [P019](../../../docs/principles/README.md#p019),

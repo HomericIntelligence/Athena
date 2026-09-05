@@ -56,8 +56,10 @@ coverage gap.
 
 ## Run the read-only commands
 
-Use these fixed command plans. Pass `<TARGET_DIRECTORY>` only when the bound target is a directory.
-If no target exists, omit that argument and run from the bound repository root.
+Use these fixed command plans. Pass `<TARGET_DIRECTORY>` only after it is normalized, bound,
+confirmed to be inside the repository root, and confirmed to be a directory. The placeholder is not
+the raw user argument. If no target exists, omit that argument and run from the bound repository
+root.
 
 ```text
 AISLOP_NO_TELEMETRY=1 AISLOP_NO_HISTORY=1 AISLOP_NO_UPDATE_NOTIFIER=1 <AISLOP> doctor <TARGET_DIRECTORY>
@@ -69,6 +71,10 @@ target string. The boundary must make source read-only, deny the network and cre
 scrubbed environment, and permit writes only to declared disposable outputs. It must also satisfy all
 other properties in the [shared review contract](../../../docs/review/common.md#evidence-and-validation).
 If one property is absent, do not run AISlop. Report the missing property.
+
+Do not let AISlop follow a symbolic link or submodule, or traverse a path outside the bound
+repository. If the scanner scope contains one of these boundaries, or the host cannot enforce this
+constraint, skip AISlop for that scope and report a scanner-coverage gap.
 
 Do not use these AISlop capabilities in this workflow:
 

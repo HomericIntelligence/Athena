@@ -8,7 +8,8 @@ decision.
 
 Do not infer code authorship from a pattern. A metric, style feature, or generated diagnostic is a
 signal only. Confirm each candidate with repository contracts, callers, tests, history, and
-reachable behavior. If evidence does not support a change, use the `retain` disposition.
+reachable behavior. If evidence does not support a change, route the lead to `retain` and do not
+create a finding.
 
 ## Architecture boundary or dependency-direction drift
 
@@ -218,8 +219,9 @@ reachable behavior. If evidence does not support a change, use the `retain` disp
   the code parses and validates it before core use. Retain a cast that the language or framework
   requires when evidence proves its precondition.
 - **Smallest safe correction:** Use an existing domain type, schema, constructor, or state model at
-  the authoritative boundary. Parse and validate once. Keep public compatibility unless the approved
-  candidate includes a migration contract.
+  the authoritative boundary. Parse and validate once. Keep public compatibility. A migration
+  contract is necessary evidence, not authority. If a public migration is required, stop the
+  `realign` repair and request separate authority for the required migration workflow.
 - **Validation:** Add or run boundary-value and invalid-state tests. Use the repository-selected type
   checker or compiler. Verify serialization and public error behavior.
 - **Routing owner:** Use `realign`. Use `simplify` for duplicate validation only after the
