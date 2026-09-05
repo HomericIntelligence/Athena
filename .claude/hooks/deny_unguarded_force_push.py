@@ -89,18 +89,32 @@ def _is_forced_refspec(token: str) -> bool:
     return token.startswith("+")
 
 
-def is_unguarded_force_push(command: str) -> bool:
-    """Return whether command is a Git push with force but no lease guard."""
-    if "\n" in command or "\r" in command:
-        return True
-
+def _iter_command_segments(command: str) -> list[list[str]]:
+    """Split a Bash command into top-level token segments."""
     tokens = _tokenize_bash_command(command)
     if tokens is None:
-        return False
+        return []
 
-    if any(token in _SHELL_CONTROL_OPERATORS for token in tokens):
-        return True
+    segments: list[list[str]] = []
+    segment: list[str] = []
 
+    for token in tokens:
+        if token in _SHELL_CONTROL_OPERATORS:
+            if segment:
+                segments.append(segment)
+                segment = []
+            continue
+
+        segment.append(token)
+
+    if segment:
+        segments.append(segment)
+
+    return segments
+
+
+def _is_unguarded_force_push_segment(tokens: list[str]) -> bool:
+    """Return whether one command segment is an unguarded Git push."""
     if not tokens or tokens[0] != "git":
         return False
 
@@ -125,6 +139,14 @@ def is_unguarded_force_push(command: str) -> bool:
         if not token.startswith("-")
     )
     return has_forced_refspec or has_force
+
+
+def is_unguarded_force_push(command: str) -> bool:
+    """Return whether command is a Git push with force but no lease guard."""
+    for tokens in _iter_command_segments(command):
+        if _is_unguarded_force_push_segment(tokens):
+            return True
+    return False
 
 
 def main() -> int:

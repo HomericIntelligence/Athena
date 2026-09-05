@@ -41,6 +41,22 @@ class ClaudeSettingsTests(unittest.TestCase):
         command = "git push --force-with-lease --force-if-includes origin feature/x"
         self.assertFalse(HOOK.is_unguarded_force_push(command))
 
+    def test_multiline_benign_command_is_not_denied(self) -> None:
+        """A harmless multiline Bash command is permitted."""
+        command = "echo first line\nprintf second line"
+        self.assertFalse(HOOK.is_unguarded_force_push(command))
+
+    def test_shell_control_operators_are_not_denied(self) -> None:
+        """Shell control operators do not trigger a force-push denial."""
+        for command in (
+            "true && echo hi",
+            "echo first; echo second",
+            "echo left | tr a-z A-Z",
+            "sleep 1 &",
+        ):
+            with self.subTest(command=command):
+                self.assertFalse(HOOK.is_unguarded_force_push(command))
+
     def test_unguarded_force_push_is_denied(self) -> None:
         """Unguarded force pushes remain denied."""
         for command in (
