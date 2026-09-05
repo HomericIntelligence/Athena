@@ -1,6 +1,6 @@
 # Python 3.13.15 recheck
 
-This file records the candidate release used with `.python-version`.
+This file records the candidate release used in the recheck.
 
 | Item | Evidence |
 | --- | --- |
@@ -9,7 +9,8 @@ This file records the candidate release used with `.python-version`.
 | osx-arm64 package | `osx-arm64/python-3.13.15-hb59dee6_101_cp313.conda` |
 | osx-64 package | `osx-64/python-3.13.15-h9dec186_101_cp313.conda` |
 | Grype database | v6.1.9, built 2026-08-18T06:15:38Z |
-| Result | The current Grype database still matches CVE-2026-15308 for CPython 3.13.15. Keep the exception. |
+| Result | The current Grype database still matches CVE-2026-15308 for CPython 3.13.15. This remains a blocking result. Issue #15 still needs an explicit security decision. |
+| Decision | Issue #15 remains open. An explicit security decision is still required before #16 can close. |
 
 Sources:
 

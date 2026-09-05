@@ -159,7 +159,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          version: "0.12.1"
+          version: "0.10.8"
           enable-cache: true
       - name: Install locked build environment
         run: uv sync --locked
@@ -324,7 +324,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          version: "0.12.1"
+          version: "0.10.8"
           enable-cache: true
       - name: Install locked scan environment
         run: uv sync --locked
