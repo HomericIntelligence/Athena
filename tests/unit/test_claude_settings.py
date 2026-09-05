@@ -84,9 +84,11 @@ class ClaudeSettingsTests(unittest.TestCase):
             "git push origin +feature:feature",
             "git push --force-with-lease=refs/heads/feature origin +main:main",
             "git -C /tmp/repo push --force origin feature/x",
+            "env -i git push -f origin main",
             "true && git push -f origin main",
             "git push -f origin main; echo hi",
             "echo ok\ngit push -f origin main",
+            "if true; then git push -f origin main; fi",
         ):
             with self.subTest(command=command):
                 self.assertTrue(HOOK.is_unguarded_force_push(command))

@@ -53,18 +53,41 @@ _SHELL_CONTROL_OPERATORS = {
     "&",
 }
 
-_COMMAND_WRAPPERS = {
-    "builtin",
-    "command",
-    "env",
-    "exec",
-    "sudo",
-    "time",
+_UNSUPPORTED_COMMAND_STARTS = {
+    "case",
+    "do",
+    "done",
+    "elif",
+    "else",
+    "esac",
+    "fi",
+    "for",
+    "function",
+    "if",
+    "select",
+    "then",
+    "until",
+    "while",
 }
 
-_COMMAND_WRAPPER_OPTIONS = {
+_ENV_FLAGS = {
+    "-i",
+    "--ignore-environment",
+}
+
+_ENV_OPTIONS_WITH_VALUE = {
+    "-u",
+    "--unset",
+    "-C",
+    "--chdir",
+    "--default-signal",
+    "--block-signal",
+}
+
+_UNSUPPORTED_WRAPPERS = {
+    "builtin",
     "command",
-    "env",
+    "exec",
     "sudo",
     "time",
 }
@@ -151,43 +174,73 @@ def _is_shell_assignment(token: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", token))
 
 
-def _consume_command_prefix(tokens: list[str]) -> int:
+def _consume_env_prefix(tokens: list[str], index: int) -> int | None:
+    """Return the index of the command after env options."""
+    while index < len(tokens):
+        token = tokens[index]
+
+        if token in {"(", ")"}:
+            return None
+
+        if _is_shell_assignment(token):
+            index += 1
+            continue
+
+        if token in _ENV_FLAGS or token == "-":
+            index += 1
+            continue
+
+        if token in _ENV_OPTIONS_WITH_VALUE:
+            if index + 1 >= len(tokens):
+                return None
+            value = tokens[index + 1]
+            if value in {"(", ")"} or _is_shell_assignment(value) or value.startswith("-"):
+                return None
+            index += 2
+            continue
+
+        if any(token.startswith(f"{option}=") for option in _ENV_OPTIONS_WITH_VALUE):
+            index += 1
+            continue
+
+        if token.startswith("-"):
+            return None
+
+        if token in _UNSUPPORTED_COMMAND_STARTS:
+            return None
+
+        break
+
+    return index
+
+
+def _consume_command_prefix(tokens: list[str]) -> int | None:
     """Return the index of the actual command token after shell wrappers."""
     index = 0
 
     while index < len(tokens):
         token = tokens[index]
 
-        if token in {"(", ")"} or _is_shell_assignment(token):
+        if token in {"(", ")"}:
+            return None
+
+        if _is_shell_assignment(token):
             index += 1
             continue
 
-        if token not in _COMMAND_WRAPPERS:
+        if token in _UNSUPPORTED_COMMAND_STARTS:
+            return None
+
+        if token in _UNSUPPORTED_WRAPPERS:
+            return None
+
+        if token != "env":
             break
 
         index += 1
-        if token not in _COMMAND_WRAPPER_OPTIONS:
-            continue
-
-        while index < len(tokens):
-            option = tokens[index]
-            if option in {"(", ")"} or _is_shell_assignment(option):
-                index += 1
-                continue
-
-            if not option.startswith("-"):
-                break
-
-            index += 1
-            if index < len(tokens):
-                value = tokens[index]
-                if (
-                    value not in {"(", ")"}
-                    and not _is_shell_assignment(value)
-                    and not value.startswith("-")
-                ):
-                    index += 1
-            continue
+        index = _consume_env_prefix(tokens, index)
+        if index is None:
+            return None
 
     return index
 
@@ -221,6 +274,8 @@ def _is_unguarded_force_push_segment(tokens: list[str]) -> bool:
     """Return whether one command segment is an unguarded Git push."""
     if not tokens or tokens[0] != "git":
         start = _consume_command_prefix(tokens)
+        if start is None:
+            return True
         if start >= len(tokens) or tokens[start] != "git":
             return False
         tokens = tokens[start:]
