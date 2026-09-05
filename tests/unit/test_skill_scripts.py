@@ -217,7 +217,7 @@ class ScriptConventionTests(unittest.TestCase):
             (
                 "skills/tidy/scripts/run_tidy.py",
                 ("/tmp/automation",),
-                "uv",
+                "git",
                 127,
             ),
         )
@@ -2038,10 +2038,66 @@ class WorktreeScriptTests(unittest.TestCase):
 
 
 class TidyDelegationTests(unittest.TestCase):
+    REQUIRED_HEPHAESTUS_TIDY_REVISION = "aa357098e5d72178d248e4188e7f5e5f843cdd3f"
+
     @staticmethod
     def _write_executable(path: Path, source: str) -> None:
         path.write_text(source, encoding="utf-8")
         path.chmod(0o755)
+
+    def _write_git_revision_gate(
+        self, path: Path, automation_checkout: Path, *, exit_code: int
+    ) -> None:
+        self._write_executable(
+            path,
+            "#!/usr/bin/env python3\n"
+            "import sys\n"
+            "arguments = sys.argv[1:]\n"
+            f"expected_checkout = {str(automation_checkout)!r}\n"
+            f"required_revision = {self.REQUIRED_HEPHAESTUS_TIDY_REVISION!r}\n"
+            "if (\n"
+            "    len(arguments) != 6\n"
+            "    or arguments[0] != '-C'\n"
+            "    or arguments[1] != expected_checkout\n"
+            "    or arguments[2] != 'merge-base'\n"
+            "    or arguments[3] != '--is-ancestor'\n"
+            "    or arguments[4] != required_revision\n"
+            "    or arguments[5] != 'HEAD'\n"
+            "):\n"
+            "    raise SystemExit(2)\n"
+            f"raise SystemExit({exit_code})\n",
+        )
+
+    def test_tidy_rejects_stale_hephaestus_checkout_before_delegation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            automation_checkout = root / "trusted automation"
+            automation_checkout.mkdir()
+            target_repository = root / "target repository"
+            target_repository.mkdir()
+            bin_directory = root / "bin"
+            bin_directory.mkdir()
+            self._write_git_revision_gate(
+                bin_directory / "git", automation_checkout, exit_code=1
+            )
+            self._write_executable(
+                bin_directory / "uv",
+                "#!/usr/bin/env python3\nraise SystemExit(99)\n",
+            )
+            environment = os.environ.copy()
+            environment["PATH"] = f"{bin_directory}{os.pathsep}{environment['PATH']}"
+
+            result = run_script(
+                "skills/tidy/scripts/run_tidy.py",
+                str(automation_checkout),
+                cwd=target_repository,
+                env=environment,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("stale", result.stderr)
+        self.assertNotIn("All branches rebased cleanly", result.stdout)
+        self.assertNotIn("All branches rebased cleanly", result.stderr)
 
     def test_tidy_propagates_partial_cleanup_failure_without_success_conclusion(
         self,
@@ -2056,6 +2112,9 @@ class TidyDelegationTests(unittest.TestCase):
             target_repository.mkdir()
             bin_directory = root / "bin"
             bin_directory.mkdir()
+            self._write_git_revision_gate(
+                bin_directory / "git", automation_checkout, exit_code=0
+            )
             # Model the fixed Hephaestus boundary. `uv` runs the project-local
             # tidy shim, and the shim returns the delegated `gh tidy` status.
             self._write_executable(
@@ -2132,6 +2191,9 @@ class TidyDelegationTests(unittest.TestCase):
             target_repository.mkdir()
             bin_directory = root / "bin"
             bin_directory.mkdir()
+            self._write_git_revision_gate(
+                bin_directory / "git", automation_checkout, exit_code=0
+            )
             # The shim keeps stdin attached and passes the dependency exit code
             # back without adding its own summary.
             self._write_executable(
@@ -2196,7 +2258,7 @@ class TidyDelegationTests(unittest.TestCase):
         source = (ROOT / "skills/tidy/scripts/run_tidy.py").read_text(encoding="utf-8")
 
         self.assertIn("os.execvp(", source)
-        self.assertNotIn("subprocess", source)
+        self.assertIn("subprocess.run(", source)
         self.assertNotIn("capture_output", source)
 
     def test_tidy_delegate_preserves_process_contract(self) -> None:
@@ -2211,6 +2273,9 @@ class TidyDelegationTests(unittest.TestCase):
             target_repository.mkdir()
             bin_directory = root / "bin"
             bin_directory.mkdir()
+            self._write_git_revision_gate(
+                bin_directory / "git", automation_checkout, exit_code=0
+            )
             fake_uv = bin_directory / "uv"
             fake_uv.write_text(
                 "#!/usr/bin/env python3\n"

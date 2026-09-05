@@ -118,8 +118,10 @@ return the failure without a change. In that case, stop. Do not use a stale chec
 similar name, an ambient executable, or a second cleanup implementation.
 
 The `hephaestus-tidy` boundary must resolve to a Hephaestus revision that propagates the inner
-cleanup exit status. Athena consumes that status transparently; it does not infer success from
-output. If the resolved checkout does not satisfy that contract, stop.
+cleanup exit status. Athena checks that the resolved checkout includes commit
+`aa357098e5d72178d248e4188e7f5e5f843cdd3f` before delegation. Athena consumes that status
+transparently; it does not infer success from output. If the resolved checkout does not satisfy
+that contract, stop.
 
 ## Failed approaches
 
