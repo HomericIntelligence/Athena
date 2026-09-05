@@ -156,10 +156,18 @@ def _manifest_versions(repo_root: Path) -> dict[str, str]:
         "pi": repo_root / "package.json",
         "opencode": repo_root / "npm" / "athena-opencode" / "package.json",
     }
-    return {
-        name: str(json.loads(path.read_text(encoding="utf-8"))["version"])
-        for name, path in paths.items()
-    }
+    versions: dict[str, str] = {}
+    for name, path in paths.items():
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            versions[name] = str(manifest["version"])
+        except KeyError as error:
+            relative_path = path.relative_to(repo_root)
+            raise ValueError(
+                f"The manifest does not have the required 'version' field: "
+                f"'{relative_path}'."
+            ) from error
+    return versions
 
 
 def _release_command(repo_root: Path) -> int:
