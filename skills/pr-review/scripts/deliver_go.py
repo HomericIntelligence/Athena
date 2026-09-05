@@ -98,6 +98,14 @@ class DeliveryResult:
     label: str = GO_LABEL
 
 
+def auto_merge_eligible(merge_readiness: dict[str, Any] | None) -> bool:
+    """Return whether repository policy allows auto-merge."""
+    return (
+        isinstance(merge_readiness, dict)
+        and merge_readiness.get("review_decision") == "APPROVED"
+    )
+
+
 class Forge(Protocol):
     """The minimum bound forge capability used by the delivery state machine."""
 

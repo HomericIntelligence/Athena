@@ -233,11 +233,15 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             },
         }
         delivery_statuses: dict[str, str] = {}
+        auto_merge_eligibility: dict[str, bool] = {}
 
         for review_decision, scenario in scenarios.items():
             with self.subTest(review_decision=review_decision):
                 self.assertEqual(reviewed_source, scenario["reviewed_source"])
                 self.assertEqual(ci_evidence, scenario["ci_evidence"])
+                auto_merge_eligibility[review_decision] = (
+                    self.delivery.auto_merge_eligible(scenario["merge_readiness"])
+                )
                 forge = FakeForge(self.delivery, threads=(self.thread(),))
                 result = self.delivery.deliver_go(
                     forge, self.binding(), (self.plan(self.thread()),)
@@ -260,6 +264,8 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self.assertEqual(
             delivery_statuses["REVIEW_REQUIRED"], delivery_statuses["APPROVED"]
         )
+        self.assertFalse(auto_merge_eligibility["REVIEW_REQUIRED"])
+        self.assertTrue(auto_merge_eligibility["APPROVED"])
         self.assertNotEqual(
             scenarios["REVIEW_REQUIRED"]["merge_readiness"],
             scenarios["APPROVED"]["merge_readiness"],
