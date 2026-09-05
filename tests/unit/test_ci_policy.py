@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import builtins
 import json
 import os
 import tempfile
 import unittest
 from hashlib import sha256
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 from scripts import ci_policy
+from scripts.policies.uv_pins import find_uv_pin_drift
 
 
 def write_checksum(artifact: Path) -> None:
@@ -471,7 +474,101 @@ class SuppressionPolicyTests(unittest.TestCase):
         self.assertTrue(diagnostic)
 
 
+class UvPinsPolicyTests(unittest.TestCase):
+    CONTAINER = (
+        "curl https://github.com/astral-sh/uv/releases/download/0.12.1/"
+        "uv-x86_64-unknown-linux-gnu.tar.gz -o /tmp/uv.tar.gz\n"
+        'echo "' + "a" * 64 + '  /tmp/uv.tar.gz" | sha256sum --check\n'
+    )
+    WORKFLOW = """
+jobs:
+  build:
+    steps:
+      - uses: astral-sh/setup-uv@abc
+        with:
+          version: "0.12.1"
+"""
+
+    def test_consistent_pins_have_no_findings(self) -> None:
+        self.assertEqual(
+            [], find_uv_pin_drift(self.CONTAINER, {"workflow.yml": self.WORKFLOW})
+        )
+
+    def test_drift_names_workflow_and_both_versions(self) -> None:
+        findings = find_uv_pin_drift(
+            self.CONTAINER,
+            {"workflow.yml": self.WORKFLOW.replace("0.12.1", "0.10.8")},
+        )
+        self.assertEqual(1, len(findings))
+        self.assertIn("workflow.yml", findings[0])
+        self.assertIn("0.10.8", findings[0])
+        self.assertIn("0.12.1", findings[0])
+
+    def test_multiple_steps_detect_partial_drift(self) -> None:
+        workflow = self.WORKFLOW.replace(
+            "    steps:",
+            '    steps:\n      - uses: astral-sh/setup-uv@def\n        with:\n          version: "0.10.8"',
+        )
+        findings = find_uv_pin_drift(self.CONTAINER, {"workflow.yml": workflow})
+        self.assertEqual(1, len(findings))
+
+    def test_commented_container_url_does_not_override_active_pin(self) -> None:
+        container = (
+            "# curl https://github.com/astral-sh/uv/releases/download/0.12.1/"
+            "uv-x86_64-unknown-linux-gnu.tar.gz -o /tmp/uv.tar.gz\n"
+            + self.CONTAINER.replace("0.12.1", "0.13.0")
+        )
+        workflow = self.WORKFLOW.replace("0.12.1", "0.13.0")
+
+        self.assertEqual([], find_uv_pin_drift(container, {"workflow.yml": workflow}))
+
+    def test_malformed_container_pin_fails_closed(self) -> None:
+        for container in (
+            self.CONTAINER.replace("download/0.12.1", "download/not-a-version"),
+            self.CONTAINER.replace("a" * 64, "missing"),
+            self.CONTAINER.replace("a" * 64, "g" * 64),
+        ):
+            with self.subTest(container=container):
+                self.assertTrue(
+                    find_uv_pin_drift(container, {"workflow.yml": self.WORKFLOW})
+                )
+
+    def test_zero_setup_uv_steps_fails_closed(self) -> None:
+        findings = find_uv_pin_drift(self.CONTAINER, {"workflow.yml": "jobs: {}\n"})
+        self.assertEqual(1, len(findings))
+        self.assertIn("No astral-sh/setup-uv", findings[0])
+
+    def test_repository_pins_are_consistent(self) -> None:
+        root = Path(__file__).parents[2]
+        container = (root / "ci" / "Containerfile").read_text(encoding="utf-8")
+        workflows = {
+            str(path.relative_to(root)): path.read_text(encoding="utf-8")
+            for path in (root / ".github" / "workflows").glob("*.yml")
+        }
+        self.assertEqual([], find_uv_pin_drift(container, workflows))
+
+
 class CommandTests(unittest.TestCase):
+    def test_plain_python_command_does_not_require_pyyaml(self) -> None:
+        real_import = builtins.__import__
+
+        def reject_yaml(name: str, *args: Any, **kwargs: Any) -> Any:
+            if name == "yaml":
+                raise ModuleNotFoundError("No module named 'yaml'")
+            return real_import(name, *args, **kwargs)
+
+        with (
+            patch("builtins.__import__", side_effect=reject_yaml),
+            tempfile.TemporaryDirectory() as temporary_directory,
+        ):
+            root = Path(temporary_directory)
+            (root / "workflow.yml").write_text("run: safe-command\n", encoding="utf-8")
+            with patch("scripts.ci_policy.subprocess.run") as run:
+                run.return_value.stdout = "workflow.yml\n"
+                self.assertEqual(
+                    0, ci_policy.main(["suppressions", "--root", str(root)])
+                )
+
     def test_pr_policy_command_collects_paginated_github_evidence(self) -> None:
         environment = {
             "GITHUB_REPOSITORY": "owner/repository",

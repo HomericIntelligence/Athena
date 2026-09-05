@@ -45,6 +45,9 @@ workflow-check:
     just workflow-lint
     uv run check-jsonschema --builtin-schema vendor.github-workflows .github/workflows/*.yml
 
+uv-pins:
+    uv run python scripts/ci_policy.py uv-pins
+
 package:
     uv run python scripts/package_plugin.py
 
@@ -61,6 +64,7 @@ check:
     just static
     just markdownlint
     just workflow-check
+    just uv-pins
 
 all:
     just check
@@ -102,6 +106,10 @@ ci-markdownlint:
 # Validate workflow syntax and schemas in the container.
 ci-workflow:
     ./scripts/run_ci_local.sh workflow
+
+# Check uv version consistency in the CI container.
+ci-uv-pins:
+    ./scripts/run_ci_local.sh uv-pins
 
 # Run all supported local CI checks in the container.
 ci-all:

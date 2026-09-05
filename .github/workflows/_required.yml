@@ -66,6 +66,8 @@ jobs:
         run: just ci-test
       - name: Run lint, format, and type checks in the container
         run: just ci-static
+      - name: Check uv version consistency in the container
+        run: just ci-uv-pins
 
   markdownlint:
     name: markdownlint
@@ -159,7 +161,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          version: "0.10.8"
+          version: "0.12.1"
           enable-cache: true
       - name: Install locked build environment
         run: uv sync --locked
@@ -324,7 +326,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          version: "0.10.8"
+          version: "0.12.1"
           enable-cache: true
       - name: Install locked scan environment
         run: uv sync --locked

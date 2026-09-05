@@ -192,6 +192,32 @@ def _suppression_command(repo_root: Path) -> int:
     return 0
 
 
+def _uv_pins_command(repo_root: Path) -> int:
+    """Validate that all workflow uv pins match the Containerfile pin."""
+    import re
+
+    from scripts.policies.uv_pins import find_uv_pin_drift
+
+    container_path = repo_root / "ci" / "Containerfile"
+    workflow_paths = sorted((repo_root / ".github" / "workflows").glob("*.yml"))
+    workflow_texts = {
+        str(path.relative_to(repo_root)): path.read_text(encoding="utf-8")
+        for path in workflow_paths
+    }
+    findings = find_uv_pin_drift(
+        container_path.read_text(encoding="utf-8"), workflow_texts
+    )
+    if findings:
+        raise SystemExit("\n".join(findings))
+    version_match = re.search(
+        r"releases/download/(?P<version>\d+\.\d+\.\d+)/uv-",
+        container_path.read_text(encoding="utf-8"),
+    )
+    version = version_match.group("version") if version_match else "unknown"
+    print(f"uv pins are in sync ({version}).")
+    return 0
+
+
 def _publish_release_command(directory: Path) -> int:
     asset_names = verify_release_assets(directory)
     release_notes = directory.parent / "docs" / "release-notes.md"
@@ -226,6 +252,7 @@ def main(argv: list[str] | None = None) -> int:
             "required-jobs",
             "release",
             "suppressions",
+            "uv-pins",
         ),
     )
     parser.add_argument("--root", type=Path, default=Path.cwd())
@@ -238,6 +265,8 @@ def main(argv: list[str] | None = None) -> int:
         return _release_command(args.root.resolve())
     if args.command == "publish-release":
         return _publish_release_command(args.root.resolve())
+    if args.command == "uv-pins":
+        return _uv_pins_command(args.root.resolve())
     return _suppression_command(args.root.resolve())
 
 
