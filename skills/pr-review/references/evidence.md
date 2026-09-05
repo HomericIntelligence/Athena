@@ -102,8 +102,10 @@ The helper must reject a different returned target. `exit 2` means that there is
 Do not fetch through an ambient checkout remote. Do not pull through an ambient checkout remote. Do
 not clone through an ambient checkout remote. Do not invoke a remote helper through an ambient
 checkout remote. Do not otherwise acquire objects through that remote. Use exact OIDs only after you
-verify the local commit objects. As an alternative, materialize a host-owned read-only snapshot that
-binds to the canonical target and both OIDs.
+verify the local commit objects. As an alternative, use
+`<installed-skill>/scripts/materialize_snapshot.py --repository <owner/repository> --pr-number <number> --base-ref <branch> --base-oid <oid> --head-oid <oid>`
+to materialize a host-owned read-only snapshot inside the same quota boundary. The helper binds the
+snapshot to the canonical target and both OIDs.
 
 The default GitHub collector first keeps the local immutable-read path. If either captured object is
 absent, the collector creates a disposable repository. It fetches only `refs/heads/<base>` and
@@ -160,10 +162,12 @@ Invoke the installed helper with every retained identity field:
   <number>
 ```
 
-Require all seven identity arguments. Do not treat a legacy invocation as publication-eligible. The
-helper must use the retained `github.com/owner/repo` target. It must return final metadata, not initial
-metadata. It must fail on partial, non-open, changed, or mismatched data. In strict mode, do not use the
-mutable `/files` endpoint or newline-delimited paths. Retain these returned values:
+The helper scripts share `pr_identity.py`. That module provides `validate_pr_identifier`,
+`require_commit_oid`, and `require_github_repository` for canonical input checks before any evidence
+read. Require all seven identity arguments. Do not treat a legacy invocation as publication-eligible.
+The helper must use the retained `github.com/owner/repo` target. It must return final metadata, not
+initial metadata. It must fail on partial, non-open, changed, or mismatched data. In strict mode, do
+not use the mutable `/files` endpoint or newline-delimited paths. Retain these returned values:
 
 - `changed_files`;
 - the backwards-compatible `changed_paths`;

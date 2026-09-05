@@ -17,9 +17,8 @@ coverage.json
 venv/
 
 # Ignore secrets and credentials as an additional security control.
-# The .gitattributes file treats these file patterns as binary data.
-# The .gitignore file ignores accidental .env files in normal Git operations.
-# The .gitattributes rules do not cover the secrets/ directory.
+# These ignore rules are one defense-in-depth layer.
+# Secret files must never be committed.
 .env
 .env.*
 *.pem
