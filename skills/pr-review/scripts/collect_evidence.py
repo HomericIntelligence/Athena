@@ -68,7 +68,6 @@ MAX_CHANGED_PATH_MANIFEST_BYTES = 2 * 1024 * 1024
 MAX_CHANGED_PATHS = 10_000
 MAX_CHANGED_PATH_STDERR_BYTES = 16 * 1024
 CHANGED_PATH_REQUEST_TIMEOUT_SECONDS = 30.0
-MAX_CHECK_RUN_PAGE_BYTES = 256 * 1024
 MAX_CHECK_RUN_BYTES = 2 * 1024 * 1024
 MAX_CHECK_RUN_PAGES = 100
 MAX_CHECK_RUNS = 10_000
@@ -1218,7 +1217,7 @@ def head_bound_check_runs(repository: str, head_oid: str) -> list[dict[str, Any]
                         f"per_page=100&page={page_number}"
                     ),
                 ),
-                maximum_bytes=min(MAX_CHECK_RUN_PAGE_BYTES, remaining_bytes),
+                maximum_bytes=remaining_bytes,
                 limit_error="The GitHub check-run response exceeds the safe byte limit.",
                 timeout_seconds=CHECK_RUN_REQUEST_TIMEOUT_SECONDS,
                 stderr_maximum_bytes=MAX_CHECK_RUN_STDERR_BYTES,
