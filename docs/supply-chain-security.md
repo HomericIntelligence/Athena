@@ -32,8 +32,15 @@ inventories for Grype.
 The job does not scan example lockfiles or build-time compiler binaries. These items are not in the
 installed runtime surface. The native inventories are continuous integration (CI) evidence and not
 release assets. Athena never includes those third-party packages in its archive.
-[Issue #74](https://github.com/HomericIntelligence/Athena/issues/74) tracks restoration of a broader
-source inventory. This restoration can occur when the upstream runtime corrects the excluded inputs.
+The advisory `security/pi-upstream-inventory-watch` job scans the full upstream Pi source tree each
+week with the same Syft and Grype policy. A failed watch means that upstream still has findings in
+inputs outside the installed runtime surface. A successful watch does not authorize restoration: the
+watch applies the normal exception file, so its result can include an excepted High or Critical
+finding. For this watch, run the same scan with an exception file that contains only
+`exceptions: []` and retain that exception-free report with the exact upstream commit. The watch is
+not a required check because upstream findings are outside Athena's current runtime contract.
+This advisory job does not complete issue #74. Keep issue #74 open until the required gate scans the
+full source inventory at a pinned upstream commit and passes without exceptions.
 
 Host capabilities, the runner operating system, and commands used only in examples are outside the
 dependency scope. Athena remains a plugin distribution. It does not add a Python package or runtime

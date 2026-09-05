@@ -1287,10 +1287,14 @@ jobs:
         required_jobs = required["jobs"]
         release_jobs = release["jobs"]
         self.assertEqual(
-            set(required_jobs) - {"required-checks-gate"},
+            set(required_jobs)
+            - {"required-checks-gate", "pi-upstream-inventory-watch"},
             set(required_jobs["required-checks-gate"]["needs"]),
         )
-        for name in set(required_jobs) - {"agent-contract"}:
+        for name in set(required_jobs) - {
+            "agent-contract",
+            "pi-upstream-inventory-watch",
+        }:
             with self.subTest(workflow="required", job=name):
                 self.assertTrue(
                     self._depends_on(required_jobs, name, "agent-contract"),
@@ -1374,7 +1378,14 @@ jobs:
         )
 
         self.assertEqual(
-            {"workflow_call", "pull_request", "push", "merge_group", "schedule"},
+            {
+                "workflow_call",
+                "workflow_dispatch",
+                "pull_request",
+                "push",
+                "merge_group",
+                "schedule",
+            },
             set(workflow["on"]),
         )
         self.assertEqual({"branches": ["main"]}, workflow["on"]["pull_request"])
@@ -1552,6 +1563,64 @@ jobs:
                     reference = step.get("uses")
                     if reference and not reference.startswith(("./", "$/")):
                         self.assertRegex(reference, r"^[^@]+@[0-9a-f]{40}$")
+
+    def test_pi_upstream_inventory_watch_tracks_restoration_without_gating_prs(
+        self,
+    ) -> None:
+        """The upstream full-tree scan is advisory until restoration is safe."""
+        root = Path(__file__).resolve().parents[2]
+        required = yaml.safe_load(
+            (root / ".github" / "workflows" / "_required.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        jobs = required["jobs"]
+        watch = jobs["pi-upstream-inventory-watch"]
+
+        self.assertEqual("security/pi-upstream-inventory-watch", watch["name"])
+        self.assertEqual(
+            "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
+            watch["if"],
+        )
+        self.assertEqual(
+            {"contents": "read", "issues": "read"},
+            watch["permissions"],
+        )
+        self.assertNotIn(
+            "pi-upstream-inventory-watch", jobs["required-checks-gate"]["needs"]
+        )
+        self.assertIn("workflow_dispatch", required["on"])
+        fetch_step = next(
+            step
+            for step in watch["steps"]
+            if step.get("name") == "Fetch the upstream Pi source inventory"
+        )
+        scan_step = next(
+            step
+            for step in watch["steps"]
+            if step.get("name") == "Scan the full upstream Pi source tree"
+        )
+        self.assertIn('git -C "$PI_UPSTREAM_SOURCE_ROOT" init', fetch_step["run"])
+        self.assertIn(
+            'git -C "$PI_UPSTREAM_SOURCE_ROOT" fetch --depth=1 origin "$PI_UPSTREAM_REF"',
+            fetch_step["run"],
+        )
+        self.assertIn('scan "$PI_UPSTREAM_SOURCE_ROOT" -o json', scan_step["run"])
+        self.assertIn("scripts/scan_vulnerabilities.py", scan_step["run"])
+        self.assertIn("syft-pi-source-full.json", scan_step["run"])
+        self.assertIn("grype-pi-source-full.json", scan_step["run"])
+
+        expected_pins = {
+            reference.split("@", 1)[0]: reference
+            for job_name, job in jobs.items()
+            if job_name != "pi-upstream-inventory-watch"
+            for step in job.get("steps", [])
+            if (reference := step.get("uses")) and not reference.startswith("./")
+        }
+        for step in watch["steps"]:
+            reference = step.get("uses")
+            if reference:
+                self.assertEqual(expected_pins[reference.split("@", 1)[0]], reference)
 
 
 if __name__ == "__main__":
