@@ -117,9 +117,9 @@ requires Python 3 and `uv`. If a capability is not available or the command resu
 return the failure without a change. In that case, stop. Do not use a stale checkout, a repository with a
 similar name, an ambient executable, or a second cleanup implementation.
 
-The `hephaestus-tidy` boundary must propagate the inner cleanup exit status. Athena consumes that
-status transparently; it does not infer success from output. The dependency fix is tracked in
-HomericIntelligence/Hephaestus.
+The `hephaestus-tidy` boundary must resolve to a Hephaestus revision that propagates the inner
+cleanup exit status. Athena consumes that status transparently; it does not infer success from
+output. If the resolved checkout does not satisfy that contract, stop.
 
 ## Failed approaches
 

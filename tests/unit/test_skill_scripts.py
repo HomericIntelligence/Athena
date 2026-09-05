@@ -2038,6 +2038,11 @@ class WorktreeScriptTests(unittest.TestCase):
 
 
 class TidyDelegationTests(unittest.TestCase):
+    @staticmethod
+    def _write_executable(path: Path, source: str) -> None:
+        path.write_text(source, encoding="utf-8")
+        path.chmod(0o755)
+
     def test_tidy_propagates_partial_cleanup_failure_without_success_conclusion(
         self,
     ) -> None:
@@ -2045,20 +2050,59 @@ class TidyDelegationTests(unittest.TestCase):
             root = Path(temporary_directory)
             automation_checkout = root / "trusted automation"
             automation_checkout.mkdir()
+            automation_bin = automation_checkout / "bin"
+            automation_bin.mkdir()
             target_repository = root / "target repository"
             target_repository.mkdir()
             bin_directory = root / "bin"
             bin_directory.mkdir()
-            fake_uv = bin_directory / "uv"
-            fake_uv.write_text(
+            # Model the fixed Hephaestus boundary. `uv` runs the project-local
+            # tidy shim, and the shim returns the delegated `gh tidy` status.
+            self._write_executable(
+                bin_directory / "gh",
                 "#!/usr/bin/env python3\n"
                 "import sys\n"
                 "print('partial cleanup: rebase conflict remains unresolved')\n"
                 "print('checked-out worktree skipped', file=sys.stderr)\n"
                 "raise SystemExit(128)\n",
-                encoding="utf-8",
             )
-            fake_uv.chmod(0o755)
+            self._write_executable(
+                automation_bin / "hephaestus-tidy",
+                "#!/usr/bin/env python3\n"
+                "import subprocess\n"
+                "import sys\n"
+                "command = [\n"
+                "    'gh',\n"
+                "    'tidy',\n"
+                "    '--rebase-all',\n"
+                "    '--auto-delete-merged',\n"
+                "    '--trunk',\n"
+                "    'main',\n"
+                "    '--skip-gc',\n"
+                "]\n"
+                "result = subprocess.run(command, check=False)\n"
+                "raise SystemExit(result.returncode)\n",
+            )
+            self._write_executable(
+                bin_directory / "uv",
+                "#!/usr/bin/env python3\n"
+                "import subprocess\n"
+                "import sys\n"
+                "from pathlib import Path\n"
+                "arguments = sys.argv[1:]\n"
+                "if (\n"
+                "    len(arguments) < 5\n"
+                "    or arguments[0] != 'run'\n"
+                "    or arguments[1] != '--project'\n"
+                "    or arguments[3] != '--locked'\n"
+                "    or arguments[4] != 'hephaestus-tidy'\n"
+                "):\n"
+                "    raise SystemExit(2)\n"
+                "project = Path(arguments[2])\n"
+                "command = [str(project / 'bin' / 'hephaestus-tidy'), *arguments[5:]]\n"
+                "result = subprocess.run(command, check=False)\n"
+                "raise SystemExit(result.returncode)\n",
+            )
             environment = os.environ.copy()
             environment["PATH"] = f"{bin_directory}{os.pathsep}{environment['PATH']}"
 
@@ -2082,19 +2126,57 @@ class TidyDelegationTests(unittest.TestCase):
             root = Path(temporary_directory)
             automation_checkout = root / "trusted automation"
             automation_checkout.mkdir()
+            automation_bin = automation_checkout / "bin"
+            automation_bin.mkdir()
             target_repository = root / "target repository"
             target_repository.mkdir()
             bin_directory = root / "bin"
             bin_directory.mkdir()
-            fake_uv = bin_directory / "uv"
-            fake_uv.write_text(
+            # The shim keeps stdin attached and passes the dependency exit code
+            # back without adding its own summary.
+            self._write_executable(
+                bin_directory / "gh",
                 "#!/usr/bin/env python3\n"
                 "import sys\n"
                 "print(sys.stdin.read(), end='')\n"
                 "print('delegated success', file=sys.stderr)\n",
-                encoding="utf-8",
             )
-            fake_uv.chmod(0o755)
+            self._write_executable(
+                automation_bin / "hephaestus-tidy",
+                "#!/usr/bin/env python3\n"
+                "import subprocess\n"
+                "command = [\n"
+                "    'gh',\n"
+                "    'tidy',\n"
+                "    '--rebase-all',\n"
+                "    '--auto-delete-merged',\n"
+                "    '--trunk',\n"
+                "    'main',\n"
+                "    '--skip-gc',\n"
+                "]\n"
+                "result = subprocess.run(command, check=False)\n"
+                "raise SystemExit(result.returncode)\n",
+            )
+            self._write_executable(
+                bin_directory / "uv",
+                "#!/usr/bin/env python3\n"
+                "import subprocess\n"
+                "import sys\n"
+                "from pathlib import Path\n"
+                "arguments = sys.argv[1:]\n"
+                "if (\n"
+                "    len(arguments) < 5\n"
+                "    or arguments[0] != 'run'\n"
+                "    or arguments[1] != '--project'\n"
+                "    or arguments[3] != '--locked'\n"
+                "    or arguments[4] != 'hephaestus-tidy'\n"
+                "):\n"
+                "    raise SystemExit(2)\n"
+                "project = Path(arguments[2])\n"
+                "command = [str(project / 'bin' / 'hephaestus-tidy'), *arguments[5:]]\n"
+                "result = subprocess.run(command, check=False)\n"
+                "raise SystemExit(result.returncode)\n",
+            )
             environment = os.environ.copy()
             environment["PATH"] = f"{bin_directory}{os.pathsep}{environment['PATH']}"
 
