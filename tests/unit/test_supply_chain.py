@@ -1412,6 +1412,16 @@ jobs:
         )
         self.assertEqual("release", release["jobs"]["release"]["environment"])
         self.assertEqual("release", release["jobs"]["publish-npm"]["environment"])
+        preflight_step = next(
+            step
+            for step in release["jobs"]["preflight"]["steps"]
+            if step.get("name") == "Verify the release environment configuration"
+        )
+        self.assertEqual(
+            "python scripts/ci_policy.py release-environment",
+            preflight_step["run"],
+        )
+        self.assertEqual("${{ github.token }}", preflight_step["env"]["GH_TOKEN"])
         self.assertNotIn("environment", release["jobs"]["preflight"])
         self.assertNotIn("environment", release["jobs"]["required"])
         self.assertEqual(

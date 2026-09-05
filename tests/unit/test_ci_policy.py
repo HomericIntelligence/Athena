@@ -518,6 +518,73 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(2, run_json.call_count)
         self.assertIn("--paginate", run_json.call_args_list[1].args[0])
 
+    def test_release_environment_command_requires_reviewers_and_v_tag_policy(
+        self,
+    ) -> None:
+        environment = {
+            "GITHUB_REPOSITORY": "owner/repository",
+        }
+        responses = [
+            {
+                "protection_rules": [
+                    {
+                        "type": "required_reviewers",
+                        "reviewers": [{"id": 1, "login": "maintainer"}],
+                    }
+                ],
+                "deployment_branch_policy": {"custom_branch_policies": True},
+            },
+            [
+                {
+                    "branch_policies": [
+                        {"name": "v*"},
+                        {"name": "main"},
+                    ]
+                }
+            ],
+        ]
+        with (
+            patch.dict(os.environ, environment, clear=False),
+            patch("scripts.ci_policy._run_json", side_effect=responses) as run_json,
+        ):
+            self.assertEqual(0, ci_policy.main(["release-environment"]))
+
+        self.assertEqual(2, run_json.call_count)
+        self.assertIn(
+            "deployment-branch-policies",
+            " ".join(run_json.call_args_list[1].args[0]),
+        )
+
+    def test_release_environment_command_rejects_unprotected_environment(self) -> None:
+        environment = {
+            "GITHUB_REPOSITORY": "owner/repository",
+        }
+        responses = [
+            {
+                "protection_rules": [
+                    {"type": "required_reviewers", "reviewers": []},
+                ],
+                "deployment_branch_policy": {"custom_branch_policies": False},
+            },
+            [
+                {
+                    "branch_policies": [
+                        {"name": "main"},
+                    ]
+                }
+            ],
+        ]
+        with (
+            patch.dict(os.environ, environment, clear=False),
+            patch("scripts.ci_policy._run_json", side_effect=responses),
+            self.assertRaises(SystemExit) as raised,
+        ):
+            ci_policy.main(["release-environment"])
+
+        failure = str(raised.exception)
+        self.assertIn("reviewer", failure)
+        self.assertIn("v*", failure)
+
     def test_pr_policy_command_fails_on_policy_violation(self) -> None:
         environment = {
             "GITHUB_REPOSITORY": "owner/repository",

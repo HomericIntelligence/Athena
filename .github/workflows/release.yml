@@ -26,6 +26,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Verify the release environment configuration
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/ci_policy.py release-environment
       - name: Verify the signed tag and its ancestry from protected main
         env:
           GH_TOKEN: ${{ github.token }}

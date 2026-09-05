@@ -83,7 +83,9 @@ jobs:
 This call emits the `agent-contract / validate-agent-contract` check. Add the caller job to the
 repository's aggregate required gate.
 Release publication is also gated by the protected `release` environment, which requires maintainer
-approval. See [`CONTRIBUTING.md`](../../CONTRIBUTING.md) for the rollback and re-release procedure.
+approval. The release workflow reads that environment configuration before publication and fails if
+the required reviewers or the `v*` tag policy are missing. See [`CONTRIBUTING.md`](../../CONTRIBUTING.md)
+for the rollback and re-release procedure.
 
 The required workflow handles the `merge_group` `checks_requested` event. It also handles these entry
 points:

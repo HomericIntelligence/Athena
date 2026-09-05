@@ -173,6 +173,67 @@ def _release_command(repo_root: Path) -> int:
     return 0
 
 
+def _release_environment_command() -> int:
+    repository = os.environ["GITHUB_REPOSITORY"]
+    environment = _run_json(["gh", "api", f"repos/{repository}/environments/release"])
+    protection_rules = environment.get("protection_rules")
+    if not isinstance(protection_rules, list):
+        raise TypeError(
+            "GitHub returned a release environment protection rule list that is invalid."
+        )
+    errors: list[str] = []
+    required_reviewers = [
+        rule
+        for rule in protection_rules
+        if isinstance(rule, dict)
+        and rule.get("type") == "required_reviewers"
+        and isinstance(rule.get("reviewers"), list)
+        and rule["reviewers"]
+    ]
+    if not required_reviewers:
+        errors.append("The release environment must require at least one reviewer.")
+    deployment_branch_policy = environment.get("deployment_branch_policy")
+    if not isinstance(
+        deployment_branch_policy, dict
+    ) or not deployment_branch_policy.get("custom_branch_policies"):
+        errors.append(
+            "The release environment must use custom deployment branch policies."
+        )
+    branch_policy_pages = _run_json(
+        [
+            "gh",
+            "api",
+            "--paginate",
+            "--slurp",
+            f"repos/{repository}/environments/release/deployment-branch-policies",
+        ]
+    )
+    if not isinstance(branch_policy_pages, list):
+        raise TypeError("GitHub returned a release branch policy list that is invalid.")
+    branch_policy_names: list[str] = []
+    for page in branch_policy_pages:
+        if not isinstance(page, dict):
+            raise TypeError(
+                "GitHub returned a release branch policy page that is invalid."
+            )
+        branch_policies = page.get("branch_policies")
+        if not isinstance(branch_policies, list):
+            raise TypeError(
+                "GitHub returned a release branch policy list that is invalid."
+            )
+        branch_policy_names.extend(
+            str(policy["name"])
+            for policy in branch_policies
+            if isinstance(policy, dict) and isinstance(policy.get("name"), str)
+        )
+    if "v*" not in branch_policy_names:
+        errors.append("The release environment must allow the `v*` tag policy.")
+    if errors:
+        raise SystemExit("\n".join(errors))
+    print("The release environment configuration passed.")
+    return 0
+
+
 def _suppression_command(repo_root: Path) -> int:
     result = subprocess.run(
         ["git", "ls-files", "*.sh", "*.yml", "*.yaml", "justfile"],
@@ -225,6 +286,7 @@ def main(argv: list[str] | None = None) -> int:
             "publish-release",
             "required-jobs",
             "release",
+            "release-environment",
             "suppressions",
         ),
     )
@@ -236,6 +298,8 @@ def main(argv: list[str] | None = None) -> int:
         return _required_jobs_command()
     if args.command == "release":
         return _release_command(args.root.resolve())
+    if args.command == "release-environment":
+        return _release_environment_command()
     if args.command == "publish-release":
         return _publish_release_command(args.root.resolve())
     return _suppression_command(args.root.resolve())
