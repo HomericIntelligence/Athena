@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import sys
 from typing import Any
@@ -50,6 +51,22 @@ _SHELL_CONTROL_OPERATORS = {
     ";",
     "|",
     "&",
+}
+
+_COMMAND_WRAPPERS = {
+    "builtin",
+    "command",
+    "env",
+    "exec",
+    "sudo",
+    "time",
+}
+
+_COMMAND_WRAPPER_OPTIONS = {
+    "command",
+    "env",
+    "sudo",
+    "time",
 }
 
 
@@ -129,6 +146,52 @@ def _parse_forced_refspec(token: str) -> str | None:
     return destination or refspec or None
 
 
+def _is_shell_assignment(token: str) -> bool:
+    """Return whether token is a leading shell assignment."""
+    return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", token))
+
+
+def _consume_command_prefix(tokens: list[str]) -> int:
+    """Return the index of the actual command token after shell wrappers."""
+    index = 0
+
+    while index < len(tokens):
+        token = tokens[index]
+
+        if token in {"(", ")"} or _is_shell_assignment(token):
+            index += 1
+            continue
+
+        if token not in _COMMAND_WRAPPERS:
+            break
+
+        index += 1
+        if token not in _COMMAND_WRAPPER_OPTIONS:
+            continue
+
+        while index < len(tokens):
+            option = tokens[index]
+            if option in {"(", ")"} or _is_shell_assignment(option):
+                index += 1
+                continue
+
+            if not option.startswith("-"):
+                break
+
+            index += 1
+            if index < len(tokens):
+                value = tokens[index]
+                if (
+                    value not in {"(", ")"}
+                    and not _is_shell_assignment(value)
+                    and not value.startswith("-")
+                ):
+                    index += 1
+            continue
+
+    return index
+
+
 def _iter_command_segments(command: str) -> list[list[str]]:
     segments: list[list[str]] = []
 
@@ -157,7 +220,10 @@ def _iter_command_segments(command: str) -> list[list[str]]:
 def _is_unguarded_force_push_segment(tokens: list[str]) -> bool:
     """Return whether one command segment is an unguarded Git push."""
     if not tokens or tokens[0] != "git":
-        return False
+        start = _consume_command_prefix(tokens)
+        if start >= len(tokens) or tokens[start] != "git":
+            return False
+        tokens = tokens[start:]
 
     index = 1
     while index < len(tokens):
@@ -205,7 +271,7 @@ def _is_unguarded_force_push_segment(tokens: list[str]) -> bool:
 
 
 def is_unguarded_force_push(command: str) -> bool:
-    """Return whether command is a Git push with force but no lease guard."""
+    """Return whether command has a Git push with force but no lease guard."""
     for tokens in _iter_command_segments(command):
         if _is_unguarded_force_push_segment(tokens):
             return True
