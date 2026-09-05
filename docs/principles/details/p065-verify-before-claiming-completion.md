@@ -15,6 +15,19 @@ This rule uses established verification practice and evidence from software deli
 source owns this rule. Athena's [evidence-integrity policy](../../../docs/policies/evidence-integrity.md)
 specifies accurate reports with recorded commands, revisions, and environments.
 
+## Validation receipt
+
+This head has one current repository document check.
+
+```text
+head: 95c882506082cf736b2c7fc8fc594ccefb63dc7a
+command: just markdownlint
+argv: uv run pymarkdown -d MD013,MD024,MD033,MD041,MD046 scan README.md AGENTS.md CLAUDE.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md docs skills
+environment: local worktree; CPython 3.13.11
+exit status: 0
+output: the command printed interpreter and virtual-environment setup lines and did not print markdownlint diagnostics
+```
+
 ## Decision rule
 
 Do not report an expectation as a completion claim. Examine the delivered state. Use current,
