@@ -8,6 +8,68 @@ import sys
 from typing import Any
 
 
+_GLOBAL_OPTIONS_WITH_VALUE = {
+    "-C",
+    "-c",
+    "--attr-source",
+    "--config-env",
+    "--exec-path",
+    "--git-dir",
+    "--list-cmds",
+    "--namespace",
+    "--super-prefix",
+    "--work-tree",
+}
+
+_GLOBAL_FLAGS = {
+    "--bare",
+    "--glob-pathspecs",
+    "--help",
+    "--html-path",
+    "--icase-pathspecs",
+    "--info-path",
+    "--literal-pathspecs",
+    "--man-path",
+    "--no-advice",
+    "--no-lazy-fetch",
+    "--no-optional-locks",
+    "--no-pager",
+    "--no-replace-objects",
+    "--noglob-pathspecs",
+    "--paginate",
+    "--version",
+    "-P",
+    "-h",
+    "-p",
+    "-v",
+}
+
+
+def _consume_git_global_option(tokens: list[str], index: int) -> int | None:
+    """Return the next token index after a recognized git global option."""
+    token = tokens[index]
+
+    if token in _GLOBAL_FLAGS:
+        return index + 1
+
+    if "=" in token:
+        option, _, _ = token.partition("=")
+        if option in _GLOBAL_OPTIONS_WITH_VALUE:
+            return index + 1
+
+    if token in _GLOBAL_OPTIONS_WITH_VALUE:
+        if index + 1 >= len(tokens):
+            return None
+        return index + 2
+
+    return None
+
+
+def _is_forced_refspec(token: str) -> bool:
+    """Return whether a push refspec forces an update."""
+    return token.startswith("+")
+
+
 def is_unguarded_force_push(command: str) -> bool:
     """Return whether command is a Git push with force but no lease guard."""
     try:
@@ -19,23 +81,26 @@ def is_unguarded_force_push(command: str) -> bool:
         return False
 
     index = 1
-    while index < len(tokens) and tokens[index] in {"-C", "--git-dir", "--work-tree"}:
-        index += 2
-    while index < len(tokens) and tokens[index].startswith("--"):
-        if tokens[index] == "--" or "=" not in tokens[index]:
+    while index < len(tokens):
+        if tokens[index] == "push":
             break
-        index += 1
+
+        next_index = _consume_git_global_option(tokens, index)
+        if next_index is None:
+            return False
+        index = next_index
 
     if index >= len(tokens) or tokens[index] != "push":
         return False
 
     push_tokens = tokens[index + 1 :]
-    has_lease = any(
-        token == "--force-with-lease" or token.startswith("--force-with-lease=")
-        for token in push_tokens
-    )
     has_force = any(token in {"--force", "-f"} for token in push_tokens)
-    return has_force and not has_lease
+    has_forced_refspec = any(
+        _is_forced_refspec(token)
+        for token in push_tokens
+        if not token.startswith("-")
+    )
+    return has_forced_refspec or has_force
 
 
 def main() -> int:

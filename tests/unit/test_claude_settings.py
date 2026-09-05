@@ -47,6 +47,13 @@ class ClaudeSettingsTests(unittest.TestCase):
             "git push --force origin feature/x",
             "git push --force origin main",
             "git push -f origin feature/x",
+            "git -c user.name=x push -f origin feature/x",
+            "git --no-pager push --force origin feature/x",
+            "git push --force-with-lease=refs/heads/feature --force origin feature/x",
+            "git push --force origin feature/x --force-with-lease=refs/heads/feature",
+            "git push --force-with-lease=refs/heads/feature -f origin feature/x",
+            "git push -f origin feature/x --force-with-lease=refs/heads/feature",
+            "git push origin +feature:feature",
             "git -C /tmp/repo push --force origin feature/x",
         ):
             with self.subTest(command=command):
