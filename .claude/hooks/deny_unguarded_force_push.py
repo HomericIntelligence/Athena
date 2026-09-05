@@ -44,6 +44,25 @@ _GLOBAL_FLAGS = {
     "-v",
 }
 
+_SHELL_CONTROL_OPERATORS = {
+    "&&",
+    "||",
+    ";",
+    "|",
+    "&",
+}
+
+
+def _tokenize_bash_command(command: str) -> list[str] | None:
+    """Split a Bash command into tokens with operator tokens preserved."""
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    except ValueError:
+        return None
+
+    lexer.whitespace_split = True
+    return list(lexer)
+
 
 def _consume_git_global_option(tokens: list[str], index: int) -> int | None:
     """Return the next token index after a recognized git global option."""
@@ -72,10 +91,15 @@ def _is_forced_refspec(token: str) -> bool:
 
 def is_unguarded_force_push(command: str) -> bool:
     """Return whether command is a Git push with force but no lease guard."""
-    try:
-        tokens = shlex.split(command)
-    except ValueError:
+    if "\n" in command or "\r" in command:
+        return True
+
+    tokens = _tokenize_bash_command(command)
+    if tokens is None:
         return False
+
+    if any(token in _SHELL_CONTROL_OPERATORS for token in tokens):
+        return True
 
     if not tokens or tokens[0] != "git":
         return False

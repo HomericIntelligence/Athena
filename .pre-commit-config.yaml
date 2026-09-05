@@ -3,13 +3,15 @@ repos:
     rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # v6.0.0
     hooks:
       - id: trailing-whitespace
+        exclude: ^\.agents/
       - id: end-of-file-fixer
-        exclude: ^\.agents/plugins/marketplace\.json$
+        exclude: ^\.agents/
       - id: check-merge-conflict
       - id: check-added-large-files
         args: ["--maxkb=512"]
       - id: mixed-line-ending
         args: ["--fix=lf"]
+        exclude: ^\.agents/
       - id: check-yaml
       - id: check-json
       - id: check-toml
