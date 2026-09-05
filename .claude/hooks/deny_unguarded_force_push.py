@@ -134,12 +134,17 @@ def _is_unguarded_force_push_segment(tokens: list[str]) -> bool:
 
     push_tokens = tokens[index + 1 :]
     has_force = any(token in {"--force", "-f"} for token in push_tokens)
+    has_force_with_lease = any(
+        token == "--force-with-lease"
+        or token.startswith("--force-with-lease=")
+        for token in push_tokens
+    )
     has_forced_refspec = any(
         _is_forced_refspec(token)
         for token in push_tokens
         if not token.startswith("-")
     )
-    return has_forced_refspec or has_force
+    return has_force or (has_forced_refspec and not has_force_with_lease)
 
 
 def is_unguarded_force_push(command: str) -> bool:
