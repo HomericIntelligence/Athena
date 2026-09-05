@@ -89,6 +89,11 @@ def _is_forced_refspec(token: str) -> bool:
     return token.startswith("+")
 
 
+def _has_short_option_flag(token: str, flag: str) -> bool:
+    """Return whether a short option cluster includes one flag."""
+    return token.startswith("-") and not token.startswith("--") and flag in token[1:]
+
+
 def _iter_command_segments(command: str) -> list[list[str]]:
     segments: list[list[str]] = []
 
@@ -133,7 +138,7 @@ def _is_unguarded_force_push_segment(tokens: list[str]) -> bool:
         return False
 
     push_tokens = tokens[index + 1 :]
-    has_force = any(token in {"--force", "-f"} for token in push_tokens)
+    has_force = any(token == "--force" or _has_short_option_flag(token, "f") for token in push_tokens)
     has_force_with_lease = any(
         token == "--force-with-lease"
         or token.startswith("--force-with-lease=")

@@ -68,6 +68,8 @@ class ClaudeSettingsTests(unittest.TestCase):
             "git push --force origin feature/x",
             "git push --force origin main",
             "git push -f origin feature/x",
+            "git push -uf origin main",
+            "git push -fu origin main",
             "git -c user.name=x push -f origin feature/x",
             "git --no-pager push --force origin feature/x",
             "git push --force-with-lease=refs/heads/feature --force origin feature/x",
