@@ -12,8 +12,8 @@ specifies. Report the command, revision, environment, result, and important veri
 **Classification:** Athena synthesis.
 
 This rule uses established verification practice and evidence from software delivery. No verified
-source owns this rule. Athena's evidence-integrity policy specifies accurate reports with recorded
-commands, revisions, and environments.
+source owns this rule. Athena's [evidence-integrity policy](../../../docs/policies/evidence-integrity.md)
+specifies accurate reports with recorded commands, revisions, and environments.
 
 ## Decision rule
 
