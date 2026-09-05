@@ -1040,6 +1040,7 @@ class PullRequestScriptTests(unittest.TestCase):
             "REVIEW_REQUIRED", evidence["merge_readiness"]["review_decision"]
         )
         self.assertNotIn("reviewDecision", evidence["pull_request"])
+        self.assertNotIn("reviews", evidence["pull_request"])
         self.assertEqual(["skills/pr-review/SKILL.md"], evidence["changed_files"])
         self.assertEqual(evidence["changed_files"], evidence["changed_paths"])
         self.assertEqual("SUCCESS", evidence["checks"][0]["state"])
@@ -1149,6 +1150,87 @@ class PullRequestScriptTests(unittest.TestCase):
             head_oid,
             pending["checks"][0]["head_sha"],
         )
+
+    def test_collect_evidence_ignores_review_records_when_inputs_match(
+        self,
+    ) -> None:
+        outputs: dict[str, dict[str, Any]] = {}
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            repository = root / "repo"
+            initialize_repository(repository)
+            base_oid = git(repository, "rev-parse", "HEAD")
+            (repository / "reviewed.txt").write_text("exact head\n", encoding="utf-8")
+            git(repository, "add", "reviewed.txt")
+            git(repository, "commit", "--quiet", "-m", "test: exact review head")
+            head_oid = git(repository, "rev-parse", "HEAD")
+            check_runs = {
+                "total_count": 1,
+                "check_runs": [
+                    {
+                        "id": 1,
+                        "name": "required-checks-gate",
+                        "head_sha": head_oid,
+                        "status": "completed",
+                        "conclusion": "success",
+                    }
+                ],
+            }
+            review_payloads = {
+                "empty": [],
+                "approved": [
+                    {
+                        "author": {"login": "reviewer"},
+                        "state": "APPROVED",
+                    }
+                ],
+            }
+
+            for label, reviews in review_payloads.items():
+                with self.subTest(label=label):
+                    case_root = root / label
+                    case_root.mkdir()
+                    env = self.make_fake_tools(case_root, [])
+                    env["FAKE_GH_VIEW_JSON"] = json.dumps(
+                        {
+                            "number": 9,
+                            "body": "",
+                            "isDraft": False,
+                            "baseRefOid": base_oid,
+                            "headRefOid": head_oid,
+                            "closingIssuesReferences": [],
+                            "reviewDecision": "REVIEW_REQUIRED",
+                            "reviews": reviews,
+                        }
+                    )
+                    env["FAKE_GH_REQUIRE_REPOSITORY"] = "owner/repository"
+                    env["FAKE_GH_EXPECTED_CHECK_HEAD"] = head_oid
+                    env["FAKE_GH_CHECK_RUNS_JSON"] = json.dumps(check_runs)
+                    result = run_script(
+                        "skills/pr-review/scripts/collect_evidence.py",
+                        "--expected-base-oid",
+                        base_oid,
+                        "--expected-head-oid",
+                        head_oid,
+                        "--expected-host",
+                        "github.com",
+                        "--expected-repository",
+                        "owner/repository",
+                        "--expected-pr-number",
+                        "9",
+                        "--expected-pr-url",
+                        "https://github.com/owner/repository/pull/9",
+                        "9",
+                        cwd=repository,
+                        env=env,
+                    )
+
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    outputs[label] = json.loads(result.stdout)
+
+        self.assertEqual(outputs["empty"], outputs["approved"])
+        self.assertNotIn("reviews", outputs["empty"]["pull_request"])
+        self.assertNotIn("reviews", outputs["approved"]["pull_request"])
 
     def test_collect_evidence_tolerates_missing_review_decision(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

@@ -3152,16 +3152,19 @@ class ImmutableEvidenceTests(unittest.TestCase):
 
     def test_emits_final_revalidated_metadata(self) -> None:
         initial = pull_request()
+        initial["reviewDecision"] = "REVIEW_REQUIRED"
         initial["reviews"] = [{"id": "initial"}]
         final = pull_request()
+        final["reviewDecision"] = "APPROVED"
         final["reviews"] = [{"id": "final"}]
 
         result, _, _, _ = self.run_collector([initial, final])
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(
-            [{"id": "final"}], json.loads(result.stdout)["pull_request"]["reviews"]
+            "APPROVED", json.loads(result.stdout)["merge_readiness"]["review_decision"]
         )
+        self.assertNotIn("reviews", json.loads(result.stdout)["pull_request"])
 
     def test_immutable_changed_paths_ignore_replacement_refs(self) -> None:
         result, call_count, _, _ = self.run_collector(

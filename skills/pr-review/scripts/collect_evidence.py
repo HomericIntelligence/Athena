@@ -46,7 +46,7 @@ from skills._cli import (
 # file-list fallback only for backward compatibility.
 FIELDS = (
     "number,title,body,state,isDraft,author,baseRefName,headRefName,"
-    "baseRefOid,headRefOid,reviews,reviewDecision,statusCheckRollup,"
+    "baseRefOid,headRefOid,reviewDecision,statusCheckRollup,"
     "closingIssuesReferences,url"
 )
 ISSUE_FIELDS = "id,number,url,title,body,state"
@@ -1542,7 +1542,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "pull_request": {
             key: value
             for key, value in final_metadata.items()
-            if key != "reviewDecision"
+            if key not in {"reviewDecision", "reviews"}
         },
         "merge_readiness": merge_readiness(final_metadata),
     }
