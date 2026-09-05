@@ -1,7 +1,7 @@
 # This Containerfile builds the athena-ci image for Athena plugin validation.
 # Continuous integration (CI) uses this image.
 #
-# This image contains Python 3.13. This version satisfies requires-python >=3.13,<3.14.
+# This image contains Python 3.13.15. This version satisfies requires-python >=3.13,<3.14.
 # The image contains uv and the locked development environment.
 # The image contains the pre-commit hook environments.
 # The image uses the non-root user 'ci' for compatibility with rootless Podman.
@@ -24,7 +24,7 @@
 # Each supported container engine downloads the same archive.
 # This method does not copy the official uv container image between registries.
 # ============================================================================
-FROM python:3.13-slim@sha256:6771159cd4fa5d9bba1258caf0b82e6b73458c694d178ad97c5e925c2d0e1a91 AS uv
+FROM python:3.13.15-slim@sha256:cc9dffa47c8294ba9bb795a8dfaeb7b76f2b30acade2c52a461a2999d127eb00 AS uv
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
@@ -36,7 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
 # ============================================================================
 # Stage 1 installs uv and the locked project environment.
 # ============================================================================
-FROM python:3.13-slim@sha256:6771159cd4fa5d9bba1258caf0b82e6b73458c694d178ad97c5e925c2d0e1a91 AS builder
+FROM python:3.13.15-slim@sha256:cc9dffa47c8294ba9bb795a8dfaeb7b76f2b30acade2c52a461a2999d127eb00 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1 \
@@ -88,7 +88,7 @@ RUN git init . && \
 # ============================================================================
 # Stage 2 builds the minimal runtime image without build tools.
 # ============================================================================
-FROM python:3.13-slim@sha256:6771159cd4fa5d9bba1258caf0b82e6b73458c694d178ad97c5e925c2d0e1a91
+FROM python:3.13.15-slim@sha256:cc9dffa47c8294ba9bb795a8dfaeb7b76f2b30acade2c52a461a2999d127eb00
 
 LABEL org.opencontainers.image.title="athena-ci"
 LABEL org.opencontainers.image.description="This Athena continuous integration container validates, lints, and builds packages."
