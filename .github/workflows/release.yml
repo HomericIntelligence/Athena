@@ -20,12 +20,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
+      actions: read
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Verify the release environment configuration
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/ci_policy.py release-environment
       - name: Verify the signed tag and its ancestry from protected main
         env:
           GH_TOKEN: ${{ github.token }}
@@ -45,6 +50,7 @@ jobs:
     needs: required
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    environment: release
     permissions:
       contents: write
     steps:
@@ -65,6 +71,7 @@ jobs:
     needs: required
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    environment: release
     permissions:
       contents: read
       id-token: write

@@ -63,8 +63,43 @@ requires focused maintainer review and validator coverage.
 ## Release process
 
 After required checks pass, a maintainer creates a signed `vX.Y.Z` tag. The release workflow
-revalidates the repository, builds a portable plugin archive, and publishes a GitHub release. No
-Python wheel or source distribution is produced.
+revalidates the repository, builds a portable plugin archive, and publishes a GitHub release. Both
+publish jobs use the protected `release` environment. A maintainer must approve the environment
+deployment before GitHub or npm publication starts. No Python wheel or source distribution is
+produced.
+
+Before the first release, a repository administrator must create the `release` environment in
+Settings > Environments. Add at least one required reviewer and restrict deployment to the
+repository's release tags (for example, `v*`). Keep the environment name exactly `release`.
+GitHub can create a missing environment without these protection rules. Before a release tag is
+created, verify the configuration with the GitHub CLI. Replace `<OWNER>/<REPOSITORY>` with the
+repository name:
+
+```bash
+gh api repos/<OWNER>/<REPOSITORY>/environments/release \
+  --jq '{reviewers: (.protection_rules | map(select(.type == "required_reviewers")) | length), policy: .deployment_branch_policy}'
+gh api repos/<OWNER>/<REPOSITORY>/environments/release/deployment-branch-policies \
+  --jq '.branch_policies[] | .name'
+```
+
+The first command must show at least one required-reviewer rule and a custom deployment policy.
+The second command must show `v*`. Do not create a release tag when either check does not show the
+required result.
+
+If a published release is defective, use this rollback procedure:
+
+1. Delete the GitHub release and its assets. Keep the tag for the next step:
+   `gh release delete vX.Y.Z --cleanup-tag=false`.
+2. Invalidate the published version by deleting the remote tag:
+   `git push origin :refs/tags/vX.Y.Z`. Delete the matching local tag with `git tag -d vX.Y.Z`.
+   Never re-create a version after its assets were published publicly.
+3. Fix the defect on `main` through the normal pull request and merge queue process.
+4. Create the next patch version as a fresh signed annotated tag on the fixed, queue-merged
+   commit, then run the full release gate. For example: `vX.Y.(Z+1)`.
+
+npm does not provide a safe, general unpublish path after its short unpublish window. Deprecate the
+published package version, then publish the next patch version:
+`npm deprecate @homericintelligence/athena-opencode@X.Y.Z "Defective release; use X.Y.(Z+1)"`.
 
 ## Rejection criteria
 
