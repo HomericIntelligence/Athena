@@ -310,6 +310,85 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             scenarios["APPROVED"]["merge_readiness"],
         )
 
+    def test_review_verdict_splits_blocking_failures_from_coverage_gaps(self) -> None:
+        review_assessment = {
+            "architecture_aligned": True,
+            "coverage_complete": True,
+            "grade": "A",
+            "required_findings": 0,
+        }
+        reviewed_source = {
+            "base_oid": "a" * 40,
+            "head_oid": "b" * 40,
+            "paths": ("reviewed.txt",),
+        }
+        passing_checks = [
+            {
+                "conclusion": "success",
+                "head_sha": "b" * 40,
+                "name": "required-checks-gate",
+                "status": "completed",
+            }
+        ]
+        cases = (
+            (
+                "required_findings",
+                {**review_assessment, "required_findings": 1},
+                reviewed_source,
+                passing_checks,
+                "NO-GO",
+            ),
+            (
+                "architecture_misaligned",
+                {**review_assessment, "architecture_aligned": False},
+                reviewed_source,
+                passing_checks,
+                "NO-GO",
+            ),
+            (
+                "failed_check",
+                review_assessment,
+                reviewed_source,
+                (
+                    {
+                        "conclusion": "failure",
+                        "head_sha": "b" * 40,
+                        "name": "required-checks-gate",
+                        "status": "completed",
+                    },
+                ),
+                "NO-GO",
+            ),
+            (
+                "missing_exact_head_evidence",
+                review_assessment,
+                reviewed_source,
+                (),
+                "NO-GO",
+            ),
+            (
+                "coverage_gap",
+                {**review_assessment, "coverage_complete": False},
+                reviewed_source,
+                passing_checks,
+                "CONDITIONAL GO",
+            ),
+            (
+                "missing_binding",
+                review_assessment,
+                {**reviewed_source, "head_oid": ""},
+                passing_checks,
+                "NO-GO",
+            ),
+        )
+
+        for case_name, assessment, source, checks, expected in cases:
+            with self.subTest(case_name=case_name):
+                self.assertEqual(
+                    expected,
+                    self.delivery.review_verdict(assessment, source, checks),
+                )
+
     def test_auto_merge_requires_valid_matching_policy_head_oids(self) -> None:
         merge_readiness = {"review_decision": "APPROVED"}
         policy_state = {

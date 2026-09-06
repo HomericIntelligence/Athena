@@ -98,13 +98,52 @@ class DeliveryResult:
     label: str = GO_LABEL
 
 
+def _has_valid_review_binding(reviewed_source: dict[str, Any]) -> bool:
+    head_oid = reviewed_source.get("head_oid")
+    return (
+        bool(reviewed_source.get("base_oid"))
+        and isinstance(head_oid, str)
+        and bool(head_oid)
+        and bool(reviewed_source.get("paths"))
+    )
+
+
+def _is_blocking_review_failure(
+    review_assessment: dict[str, Any],
+    reviewed_source: dict[str, Any],
+    checks: Sequence[dict[str, Any]],
+) -> bool:
+    required_findings = review_assessment.get("required_findings")
+    if isinstance(required_findings, int) and required_findings > 0:
+        return True
+    if review_assessment.get("architecture_aligned") is False:
+        return True
+    grade = review_assessment.get("grade")
+    if isinstance(grade, str) and grade in {"C", "D", "F"}:
+        return True
+    if not _has_valid_review_binding(reviewed_source):
+        return True
+    head_oid = reviewed_source.get("head_oid")
+    if checks:
+        return any(
+            not isinstance(check, dict)
+            or check.get("head_sha") != head_oid
+            or check.get("status") != "completed"
+            or check.get("conclusion") != "success"
+            for check in checks
+        )
+    return review_assessment.get("coverage_complete") is True
+
+
 def review_verdict(
     review_assessment: dict[str, Any],
     reviewed_source: dict[str, Any],
     checks: Sequence[dict[str, Any]],
 ) -> str:
-    """Return the technical verdict from review and exact-head check evidence."""
+    """Return the technical verdict from review evidence and exact-head checks."""
     head_oid = reviewed_source.get("head_oid")
+    if _is_blocking_review_failure(review_assessment, reviewed_source, checks):
+        return "NO-GO"
     if (
         review_assessment.get("architecture_aligned") is True
         and review_assessment.get("required_findings") == 0

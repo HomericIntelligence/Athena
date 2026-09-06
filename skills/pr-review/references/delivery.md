@@ -49,8 +49,8 @@ workflow. GitLab can report a verdict. This skill must not enable GitLab auto-me
 | Verdict | Required conditions |
 | --- | --- |
 | **GO** | Use only for the default profile. Require grade A (93–100). Require aligned architecture or an evidenced intentional change. Require zero `required` findings. Require complete applicable source, scope, requirements, language, and validation coverage. Require all host-selected local checks to pass on the reviewed head. A delivered GO also requires the verified GO-delivery postconditions. |
-| **CONDITIONAL GO** | Require architecture to pass. Require no open `required` source finding. Require a score of at least B. Use when a remediable review condition remains. Examples include incomplete source, scope, requirement, language, or validation coverage; a local validation gap; or deliberately limited CI-free evidence. State each condition. |
-| **NO-GO** | Use for a score below B or a `required` finding. Also use it for a material or unexplained architecture violation or failed required local validation. Use it for an invalid, stale, or drifted identity, scope, requirement, path, or current-head binding. |
+| **CONDITIONAL GO** | Require architecture to pass. Require no open `required` source finding. Require a score of at least B. Use when a remediable review condition remains. Examples include incomplete source, scope, requirement, language, or validation coverage; a local validation gap; or deliberately limited CI-free evidence. State each condition. Use NO-GO for a required finding, a material architecture violation, failed required validation, or an invalid or stale exact-head binding. |
+| **NO-GO** | Use for a score below B or a `required` finding. Also use it for a material or unexplained architecture violation, failed required validation, or an invalid, stale, or drifted identity, scope, requirement, path, or current-head binding. |
 
 ### Merge readiness
 
