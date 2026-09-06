@@ -367,11 +367,36 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                 "NO-GO",
             ),
             (
+                "malformed_exact_head_binding",
+                review_assessment,
+                {
+                    "base_oid": "not-a-commit",
+                    "head_oid": "also-not-a-commit",
+                    "paths": ("reviewed.txt",),
+                },
+                (
+                    {
+                        "conclusion": "success",
+                        "head_sha": "also-not-a-commit",
+                        "name": "required-checks-gate",
+                        "status": "completed",
+                    },
+                ),
+                "NO-GO",
+            ),
+            (
                 "coverage_gap",
                 {**review_assessment, "coverage_complete": False},
                 reviewed_source,
                 passing_checks,
                 "CONDITIONAL GO",
+            ),
+            (
+                "unknown_grade",
+                {**review_assessment, "grade": "Z"},
+                reviewed_source,
+                passing_checks,
+                "NO-GO",
             ),
             (
                 "missing_binding",

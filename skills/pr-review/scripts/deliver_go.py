@@ -98,14 +98,51 @@ class DeliveryResult:
     label: str = GO_LABEL
 
 
-def _has_valid_review_binding(reviewed_source: dict[str, Any]) -> bool:
-    head_oid = reviewed_source.get("head_oid")
-    return (
-        bool(reviewed_source.get("base_oid"))
-        and isinstance(head_oid, str)
-        and bool(head_oid)
-        and bool(reviewed_source.get("paths"))
-    )
+_VALID_REVIEW_GRADES = {"A", "B", "C", "D", "F"}
+
+
+def _validated_review_binding(
+    reviewed_source: dict[str, Any],
+) -> tuple[str, str] | None:
+    try:
+        base_oid = require_commit_oid(
+            reviewed_source.get("base_oid"), "reviewed_source.base_oid"
+        )
+        head_oid = require_commit_oid(
+            reviewed_source.get("head_oid"), "reviewed_source.head_oid"
+        )
+    except RuntimeError:
+        return None
+    if not reviewed_source.get("paths"):
+        return None
+    return base_oid, head_oid
+
+
+def _validated_review_assessment(
+    review_assessment: dict[str, Any],
+) -> dict[str, Any] | None:
+    if not isinstance(review_assessment, dict):
+        return None
+    architecture_aligned = review_assessment.get("architecture_aligned")
+    coverage_complete = review_assessment.get("coverage_complete")
+    required_findings = review_assessment.get("required_findings")
+    grade = review_assessment.get("grade")
+    if not isinstance(architecture_aligned, bool):
+        return None
+    if not isinstance(coverage_complete, bool):
+        return None
+    if isinstance(required_findings, bool) or not isinstance(required_findings, int):
+        return None
+    if required_findings < 0:
+        return None
+    if not isinstance(grade, str) or grade not in _VALID_REVIEW_GRADES:
+        return None
+    return {
+        "architecture_aligned": architecture_aligned,
+        "coverage_complete": coverage_complete,
+        "grade": grade,
+        "required_findings": required_findings,
+    }
 
 
 def _is_blocking_review_failure(
@@ -113,17 +150,19 @@ def _is_blocking_review_failure(
     reviewed_source: dict[str, Any],
     checks: Sequence[dict[str, Any]],
 ) -> bool:
-    required_findings = review_assessment.get("required_findings")
-    if isinstance(required_findings, int) and required_findings > 0:
+    validated_assessment = _validated_review_assessment(review_assessment)
+    if validated_assessment is None:
         return True
-    if review_assessment.get("architecture_aligned") is False:
+    binding = _validated_review_binding(reviewed_source)
+    if binding is None:
         return True
-    grade = review_assessment.get("grade")
-    if isinstance(grade, str) and grade in {"C", "D", "F"}:
+    _, head_oid = binding
+    if validated_assessment["required_findings"] > 0:
         return True
-    if not _has_valid_review_binding(reviewed_source):
+    if validated_assessment["architecture_aligned"] is False:
         return True
-    head_oid = reviewed_source.get("head_oid")
+    if validated_assessment["grade"] in {"C", "D", "F"}:
+        return True
     if checks:
         return any(
             not isinstance(check, dict)
@@ -132,7 +171,7 @@ def _is_blocking_review_failure(
             or check.get("conclusion") != "success"
             for check in checks
         )
-    return review_assessment.get("coverage_complete") is True
+    return validated_assessment["coverage_complete"] is True
 
 
 def review_verdict(
@@ -141,18 +180,20 @@ def review_verdict(
     checks: Sequence[dict[str, Any]],
 ) -> str:
     """Return the technical verdict from review evidence and exact-head checks."""
-    head_oid = reviewed_source.get("head_oid")
+    validated_assessment = _validated_review_assessment(review_assessment)
+    if validated_assessment is None:
+        return "NO-GO"
+    binding = _validated_review_binding(reviewed_source)
+    if binding is None:
+        return "NO-GO"
+    _, head_oid = binding
     if _is_blocking_review_failure(review_assessment, reviewed_source, checks):
         return "NO-GO"
     if (
-        review_assessment.get("architecture_aligned") is True
-        and review_assessment.get("required_findings") == 0
-        and review_assessment.get("coverage_complete") is True
-        and review_assessment.get("grade") == "A"
-        and bool(reviewed_source.get("base_oid"))
-        and isinstance(head_oid, str)
-        and bool(head_oid)
-        and bool(reviewed_source.get("paths"))
+        validated_assessment["architecture_aligned"] is True
+        and validated_assessment["required_findings"] == 0
+        and validated_assessment["coverage_complete"] is True
+        and validated_assessment["grade"] == "A"
         and bool(checks)
         and all(
             isinstance(check, dict)
