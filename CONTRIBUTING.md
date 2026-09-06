@@ -101,6 +101,19 @@ npm does not provide a safe, general unpublish path after its short unpublish wi
 published package version, then publish the next patch version:
 `npm deprecate @homericintelligence/athena-opencode@X.Y.Z "Defective release; use X.Y.(Z+1)"`.
 
+## Definition of done
+
+A change is done when:
+
+- `just all` passes locally.
+- Each completion claim has runnable evidence that follows the
+  [evidence integrity policy](docs/policies/evidence-integrity.md).
+- Documentation and skill frontmatter follow `AGENTS.md` and the
+  [development policy](docs/policies/development.md).
+- Commits are signed Conventional Commits with a Developer Certificate of Origin (DCO)
+  attestation.
+- The pull request passes the current-head [required checks](docs/policies/required-checks.md).
+
 ## Rejection criteria
 
 Athena rejects a pull request that does one or more of these actions:
