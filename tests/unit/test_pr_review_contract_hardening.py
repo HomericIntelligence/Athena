@@ -3164,7 +3164,9 @@ class ImmutableEvidenceTests(unittest.TestCase):
         self.assertEqual(
             "APPROVED", json.loads(result.stdout)["merge_readiness"]["review_decision"]
         )
-        self.assertNotIn("reviews", json.loads(result.stdout)["pull_request"])
+        self.assertEqual(
+            [{"id": "final"}], json.loads(result.stdout)["pull_request"]["reviews"]
+        )
 
     def test_immutable_changed_paths_ignore_replacement_refs(self) -> None:
         result, call_count, _, _ = self.run_collector(

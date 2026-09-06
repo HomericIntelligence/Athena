@@ -1010,6 +1010,12 @@ class PullRequestScriptTests(unittest.TestCase):
                     "title": "Portable Athena",
                     "author": {"login": "reviewer"},
                     "reviewDecision": "REVIEW_REQUIRED",
+                    "reviews": [
+                        {
+                            "author": {"login": "independent-reviewer"},
+                            "state": "COMMENTED",
+                        }
+                    ],
                     "statusCheckRollup": [{"name": "required-checks-gate"}],
                 }
             )
@@ -1040,12 +1046,21 @@ class PullRequestScriptTests(unittest.TestCase):
             "REVIEW_REQUIRED", evidence["merge_readiness"]["review_decision"]
         )
         self.assertNotIn("reviewDecision", evidence["pull_request"])
-        self.assertNotIn("reviews", evidence["pull_request"])
+        self.assertEqual(
+            [
+                {
+                    "author": {"login": "independent-reviewer"},
+                    "state": "COMMENTED",
+                }
+            ],
+            evidence["pull_request"]["reviews"],
+        )
         self.assertEqual(["skills/pr-review/SKILL.md"], evidence["changed_files"])
         self.assertEqual(evidence["changed_files"], evidence["changed_paths"])
         self.assertEqual("SUCCESS", evidence["checks"][0]["state"])
         self.assertNotIn("commits", requested_fields.split(","))
         self.assertNotIn("files", requested_fields.split(","))
+        self.assertIn("reviews", requested_fields.split(","))
 
     def test_collect_evidence_keeps_review_inputs_identical_when_approval_changes(
         self,
@@ -1087,6 +1102,12 @@ class PullRequestScriptTests(unittest.TestCase):
                             "headRefOid": head_oid,
                             "closingIssuesReferences": [],
                             "reviewDecision": decision,
+                            "reviews": [
+                                {
+                                    "author": {"login": "independent-reviewer"},
+                                    "state": "COMMENTED",
+                                }
+                            ],
                         }
                     )
                     env["FAKE_GH_REQUIRE_REPOSITORY"] = "owner/repository"
@@ -1116,34 +1137,29 @@ class PullRequestScriptTests(unittest.TestCase):
 
         pending = outputs["REVIEW_REQUIRED"]
         approved = outputs["APPROVED"]
-        source_keys = (
-            "changed_files",
-            "changed_paths",
-            "changed_path_manifest",
-            "reviewed_identity",
-            "reviewed_scope",
-        )
-        source_evidence = {
-            decision: {key: evidence[key] for key in source_keys}
-            for decision, evidence in outputs.items()
-        }
-        check_evidence = {
+        verdict_inputs = {
             decision: {
-                "checks": evidence["checks"],
-                "binding": evidence["check_evidence"],
+                key: value
+                for key, value in evidence.items()
+                if key != "merge_readiness"
             }
             for decision, evidence in outputs.items()
         }
 
-        self.assertEqual(
-            source_evidence["REVIEW_REQUIRED"], source_evidence["APPROVED"]
-        )
-        self.assertEqual(check_evidence["REVIEW_REQUIRED"], check_evidence["APPROVED"])
-        self.assertEqual(
-            pending["pull_request"],
-            approved["pull_request"],
-        )
+        self.assertEqual(verdict_inputs["REVIEW_REQUIRED"], verdict_inputs["APPROVED"])
         self.assertNotEqual(pending["merge_readiness"], approved["merge_readiness"])
+        self.assertEqual(
+            "REVIEW_REQUIRED", pending["merge_readiness"]["review_decision"]
+        )
+        self.assertEqual("APPROVED", approved["merge_readiness"]["review_decision"])
+        self.assertEqual(
+            "blocked",
+            pending["merge_readiness"]["auto_merge_approval_gate"],
+        )
+        self.assertEqual(
+            "satisfied",
+            approved["merge_readiness"]["auto_merge_approval_gate"],
+        )
         self.assertEqual(head_oid, pending["reviewed_identity"]["head_oid"])
         self.assertEqual(head_oid, pending["check_evidence"]["head_oid"])
         self.assertEqual(
@@ -1151,27 +1167,7 @@ class PullRequestScriptTests(unittest.TestCase):
             pending["checks"][0]["head_sha"],
         )
 
-        def review_verdict(evidence: dict[str, Any]) -> str:
-            head_oid = evidence["reviewed_identity"]["head_oid"]
-            checks = evidence["checks"]
-            checks_match_head = all(check["head_sha"] == head_oid for check in checks)
-            checks_pass = all(check["conclusion"] == "success" for check in checks)
-            if checks and checks_match_head and checks_pass:
-                return "GO"
-            return "CONDITIONAL GO"
-
-        def auto_merge_eligible(evidence: dict[str, Any]) -> bool:
-            return (
-                review_verdict(evidence) == "GO"
-                and evidence["merge_readiness"]["review_decision"] == "APPROVED"
-            )
-
-        self.assertEqual("GO", review_verdict(pending))
-        self.assertEqual("GO", review_verdict(approved))
-        self.assertFalse(auto_merge_eligible(pending))
-        self.assertTrue(auto_merge_eligible(approved))
-
-    def test_collect_evidence_ignores_review_records_when_inputs_match(
+    def test_collect_evidence_preserves_review_records_as_review_context(
         self,
     ) -> None:
         outputs: dict[str, dict[str, Any]] = {}
@@ -1248,9 +1244,12 @@ class PullRequestScriptTests(unittest.TestCase):
                     self.assertEqual(0, result.returncode, result.stderr)
                     outputs[label] = json.loads(result.stdout)
 
-        self.assertEqual(outputs["empty"], outputs["approved"])
-        self.assertNotIn("reviews", outputs["empty"]["pull_request"])
-        self.assertNotIn("reviews", outputs["approved"]["pull_request"])
+        self.assertNotEqual(outputs["empty"], outputs["approved"])
+        self.assertEqual([], outputs["empty"]["pull_request"]["reviews"])
+        self.assertEqual(
+            review_payloads["approved"],
+            outputs["approved"]["pull_request"]["reviews"],
+        )
 
     def test_collect_evidence_tolerates_missing_review_decision(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1269,6 +1268,9 @@ class PullRequestScriptTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         evidence = json.loads(result.stdout)
         self.assertEqual("UNAVAILABLE", evidence["merge_readiness"]["review_decision"])
+        self.assertEqual(
+            "blocked", evidence["merge_readiness"]["auto_merge_approval_gate"]
+        )
 
     def test_collect_evidence_rejects_pr_from_another_repository(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

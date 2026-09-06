@@ -46,7 +46,7 @@ from skills._cli import (
 # file-list fallback only for backward compatibility.
 FIELDS = (
     "number,title,body,state,isDraft,author,baseRefName,headRefName,"
-    "baseRefOid,headRefOid,reviewDecision,statusCheckRollup,"
+    "baseRefOid,headRefOid,reviewDecision,reviews,statusCheckRollup,"
     "closingIssuesReferences,url"
 )
 ISSUE_FIELDS = "id,number,url,title,body,state"
@@ -1332,6 +1332,9 @@ def merge_readiness(metadata: dict[str, Any]) -> dict[str, str]:
     if not isinstance(decision, str) or not decision:
         decision = "UNAVAILABLE"
     return {
+        "auto_merge_approval_gate": (
+            "satisfied" if decision == "APPROVED" else "blocked"
+        ),
         "authority": (
             "Repository-policy evidence excluded from the review verdict and scope digests."
         ),
@@ -1542,7 +1545,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "pull_request": {
             key: value
             for key, value in final_metadata.items()
-            if key not in {"reviewDecision", "reviews"}
+            if key != "reviewDecision"
         },
         "merge_readiness": merge_readiness(final_metadata),
     }

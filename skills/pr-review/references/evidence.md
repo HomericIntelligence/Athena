@@ -222,9 +222,13 @@ verdict inputs, `reviewed_scope`, and all scope digests, so an approval change d
 technical review. GitHub `REVIEW_REQUIRED` can therefore accompany a GO review verdict when the only
 missing gate is an approval. Auto-merge still requires every forge policy gate to pass.
 
+Retain the top-level GitHub review records in `pull_request` as review context. Exclude only the
+aggregate GitHub `reviewDecision` value from `pull_request` and verdict inputs. A review record can
+contain findings or discussion context in addition to approval state, so do not discard the record.
+
 | Record | Required content |
 | --- | --- |
-| `merge_readiness` | `review_decision` from GitHub `reviewDecision` or `UNAVAILABLE`, plus an `authority` note; excluded from verdict inputs and scope digests. |
+| `merge_readiness` | `review_decision` from GitHub `reviewDecision` or `UNAVAILABLE`, `auto_merge_approval_gate` set to `satisfied` only for `APPROVED` and otherwise set to `blocked`, plus an `authority` note; excluded from verdict inputs and scope digests. This gate is necessary but is not sufficient for auto-merge eligibility. |
 
 ### Collect and verify GitLab evidence
 
