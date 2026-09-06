@@ -651,9 +651,11 @@ if (
 
             with (
                 patch("scripts.package_plugin.subprocess.run", return_value=completed),
-                self.assertRaises(PackageError),
+                self.assertRaises(PackageError) as raised,
             ):
                 package_plugin._validate_repository(root)
+
+            self.assertIs(type(raised.exception), PackageError)
 
     def test_validate_repository_maps_exit_two_to_package_operational_error(
         self,
@@ -721,6 +723,22 @@ if (
 
             self.assertEqual(1, result)
             self.assertIn("not valid JSON", errors.getvalue())
+
+    def test_cli_reports_unreadable_plugin_metadata_as_exit_two(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            create_repository(root)
+            errors = io.StringIO()
+
+            with (
+                patch("scripts.package_plugin._validate_repository"),
+                patch.object(Path, "read_text", side_effect=OSError("read failed")),
+                redirect_stderr(errors),
+            ):
+                result = main(["--root", str(root)])
+
+            self.assertEqual(2, result)
+            self.assertIn("read failed", errors.getvalue())
 
     def test_cli_reports_operational_build_failure_as_exit_two(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
