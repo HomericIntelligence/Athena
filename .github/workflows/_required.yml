@@ -55,7 +55,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.local/share/containers/storage
-          key: podman-athena-${{ runner.os }}-${{ hashFiles('uv.lock', '.pre-commit-config.yaml') }}
+          key: podman-athena-${{ runner.os }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
             podman-athena-${{ runner.os }}-
       - name: Build CI image with Podman
@@ -83,7 +83,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.local/share/containers/storage
-          key: podman-athena-${{ runner.os }}-${{ hashFiles('uv.lock', '.pre-commit-config.yaml') }}
+          key: podman-athena-${{ runner.os }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
             podman-athena-${{ runner.os }}-
       - name: Build CI image with Podman
@@ -107,7 +107,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.local/share/containers/storage
-          key: podman-athena-${{ runner.os }}-${{ hashFiles('uv.lock', '.pre-commit-config.yaml') }}
+          key: podman-athena-${{ runner.os }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
             podman-athena-${{ runner.os }}-
       - name: Build CI image with Podman

@@ -48,10 +48,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     UV_LINK_MODE=copy \
     PATH="/opt/athena-venv/bin:$PATH"
 
-# Install the build dependencies and Git.
+# Install the build dependencies.
 # Install security updates that the pinned base image does not contain.
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
-    git \
     curl \
     ca-certificates \
     gcc \
@@ -66,7 +65,7 @@ COPY --from=uv /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/
 
 # Layer 1 copies the dependency files. Dependency changes invalidate this cache layer.
 WORKDIR /opt/athena-build
-COPY uv.lock pyproject.toml .pre-commit-config.yaml README.md ./
+COPY uv.lock pyproject.toml README.md ./
 
 # Layer 2 installs the locked development dependencies in the virtual environment.
 # The --no-install-project option defers installation of the project.
