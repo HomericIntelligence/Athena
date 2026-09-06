@@ -102,10 +102,7 @@ The helper must reject a different returned target. `exit 2` means that there is
 Do not fetch through an ambient checkout remote. Do not pull through an ambient checkout remote. Do
 not clone through an ambient checkout remote. Do not invoke a remote helper through an ambient
 checkout remote. Do not otherwise acquire objects through that remote. Use exact OIDs only after you
-verify the local commit objects. As an alternative, use
-`<installed-skill>/scripts/materialize_snapshot.py --repository <owner/repository> --pr-number <number> --base-ref <branch> --base-oid <oid> --head-oid <oid>`
-to materialize a host-owned read-only snapshot inside the same quota boundary. The helper binds the
-snapshot to the canonical target and both OIDs.
+verify the local commit objects.
 
 The default GitHub collector first keeps the local immutable-read path. If either captured object is
 absent, the collector creates a disposable repository. It fetches only `refs/heads/<base>` and
