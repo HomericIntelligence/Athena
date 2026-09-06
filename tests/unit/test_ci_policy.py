@@ -535,6 +535,39 @@ jobs:
                     find_uv_pin_drift(container, {"workflow.yml": self.WORKFLOW})
                 )
 
+    def test_missing_active_checksum_verification_fails_closed(self) -> None:
+        cases = {
+            "removed": self.CONTAINER.replace(" | sha256sum --check", ""),
+            "commented": self.CONTAINER.replace(
+                " | sha256sum --check", " # | sha256sum --check"
+            ),
+        }
+
+        for case, container in cases.items():
+            with self.subTest(case=case):
+                findings = find_uv_pin_drift(container, {"workflow.yml": self.WORKFLOW})
+                self.assertTrue(findings)
+                self.assertTrue(
+                    any("SHA-256" in finding for finding in findings), findings
+                )
+
+    def test_mixed_case_setup_uv_identity_is_inspected(self) -> None:
+        workflow = (
+            self.WORKFLOW.rstrip()
+            + """
+      - uses: Astral-Sh/Setup-UV@def
+        with:
+          version: "0.10.8"
+"""
+        )
+
+        findings = find_uv_pin_drift(self.CONTAINER, {"workflow.yml": workflow})
+
+        self.assertEqual(1, len(findings))
+        self.assertIn("workflow.yml", findings[0])
+        self.assertIn("0.10.8", findings[0])
+        self.assertIn("0.12.1", findings[0])
+
     def test_zero_setup_uv_steps_fails_closed(self) -> None:
         findings = find_uv_pin_drift(self.CONTAINER, {"workflow.yml": "jobs: {}\n"})
         self.assertEqual(1, len(findings))

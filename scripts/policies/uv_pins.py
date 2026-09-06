@@ -11,7 +11,10 @@ _UV_URL = re.compile(
     r"https://github\.com/astral-sh/uv/releases/download/"
     r"(?P<version>\d+\.\d+\.\d+)/uv-x86_64-unknown-linux-gnu\.tar\.gz"
 )
-_UV_CHECKSUM = re.compile(r"echo\s+[\"']?(?P<checksum>\S+)\s+/tmp/uv\.tar\.gz")
+_UV_CHECKSUM = re.compile(
+    r"echo\s+[\"']?(?P<checksum>\S+)\s+/tmp/uv\.tar\.gz[\"']?"
+    r"\s*\|\s*sha256sum\s+--check\b"
+)
 _HEX_CHECKSUM = re.compile(r"[0-9a-f]{64}")
 _SETUP_UV = "astral-sh/setup-uv@"
 
@@ -34,7 +37,7 @@ def _workflow_versions(value: Any) -> list[str | None]:
     if isinstance(value, dict):
         versions: list[str | None] = []
         uses = value.get("uses")
-        if isinstance(uses, str) and uses.startswith(_SETUP_UV):
+        if isinstance(uses, str) and uses.casefold().startswith(_SETUP_UV):
             step_with = value.get("with", {})
             versions.append(
                 step_with.get("version") if isinstance(step_with, dict) else None
