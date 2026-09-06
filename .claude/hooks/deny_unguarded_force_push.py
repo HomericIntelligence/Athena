@@ -57,23 +57,6 @@ _SHELL_INTERPRETERS = {
     "sh",
 }
 
-_UNSUPPORTED_COMMAND_STARTS = {
-    "case",
-    "do",
-    "done",
-    "elif",
-    "else",
-    "esac",
-    "fi",
-    "for",
-    "function",
-    "if",
-    "select",
-    "then",
-    "until",
-    "while",
-}
-
 _ENV_FLAGS = {
     "-i",
     "--ignore-environment",
@@ -197,6 +180,11 @@ def _is_shell_assignment(token: str) -> bool:
 def _is_shell_interpreter(token: str) -> bool:
     """Return whether token selects a shell that can run nested commands."""
     return token.rsplit("/", maxsplit=1)[-1] in _SHELL_INTERPRETERS
+
+
+def _is_git_executable(token: str) -> bool:
+    """Return whether token selects the Git executable."""
+    return token.rsplit("/", maxsplit=1)[-1] == "git"
 
 
 def _extract_parenthesized_payload(command: str, start: int) -> tuple[str | None, int]:
@@ -422,7 +410,7 @@ def _is_unguarded_force_push_segment(tokens: list[str]) -> bool:
         command = _extract_shell_c_command(tokens, 0)
         return bool(command and is_unguarded_force_push(command))
 
-    if tokens[0] != "git":
+    if not _is_git_executable(tokens[0]):
         return False
 
     index = 1

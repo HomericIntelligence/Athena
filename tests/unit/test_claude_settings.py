@@ -94,6 +94,8 @@ class ClaudeSettingsTests(unittest.TestCase):
             "git push origin +feature:feature",
             "git push --force-with-lease=refs/heads/feature origin +main:main",
             "git -C /tmp/repo push --force origin feature/x",
+            "/usr/bin/git push -f origin main",
+            "./git push -f origin main",
             "env -i git push -f origin main",
             "true && git push -f origin main",
             "git push -f origin main; echo hi",
@@ -109,6 +111,7 @@ class ClaudeSettingsTests(unittest.TestCase):
         for command in (
             "env git push --force-with-lease origin main",
             "command git push --force-with-lease origin main",
+            "/usr/bin/git push --force-with-lease origin main",
             "bash -c 'git push --force-with-lease origin main'",
             "sh -c 'git push --force-with-lease origin main'",
         ):
