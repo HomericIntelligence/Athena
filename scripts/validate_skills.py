@@ -58,19 +58,31 @@ class ValidationError(NamedTuple):
 
     surface: str
     reason: str
+    operational: bool = False
 
 
 def _read_json(
     path: Path, surface: str, repo_root: Path = REPO_ROOT
 ) -> tuple[dict[str, object] | None, list[ValidationError]]:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
         return None, [
             ValidationError(
                 surface,
                 f"The validator cannot read '{path.relative_to(repo_root)}'. "
                 f"The operation returned this diagnostic.\n{exc}",
+                True,
+            )
+        ]
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        return None, [
+            ValidationError(
+                surface,
+                f"The file '{path.relative_to(repo_root)}' must contain valid JSON. "
+                f"The parser returned this diagnostic.\n{exc}",
             )
         ]
     if not isinstance(data, dict):
@@ -130,6 +142,7 @@ def _validate_skills(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
                     "skills",
                     f"The validator cannot read 'skills/{directory.name}/SKILL.md'. "
                     f"The operation returned this diagnostic.\n{exc}",
+                    True,
                 )
             )
             continue
@@ -374,8 +387,6 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
             or "__pycache__" in relative_path.parts
         ):
             continue
-        if relative_path.as_posix() == "scripts/validate_skills.py":
-            continue
         if path.suffix.lower() in {
             ".gif",
             ".ico",
@@ -394,6 +405,7 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
                     "self-contained",
                     f"The validator cannot inspect '{relative_path}'. "
                     f"The operation returned this diagnostic.\n{exc}",
+                    True,
                 )
             )
             continue
@@ -435,6 +447,7 @@ def _validate_cli_conventions(repo_root: Path = REPO_ROOT) -> list[ValidationErr
                     "cli",
                     f"The validator cannot read '{path.relative_to(repo_root)}'. "
                     f"The operation returned this diagnostic.\n{exc}",
+                    True,
                 )
             )
             continue
@@ -541,6 +554,7 @@ def _validate_repo_review_scorecard(
                 "repo-review",
                 "The validator cannot read the scorecard. "
                 f"The operation returned this diagnostic.\n{error}",
+                True,
             )
         ]
     sections = [match.group("name") for match in REPO_REVIEW_SECTION.finditer(criteria)]
@@ -694,7 +708,7 @@ def validate_repository(repo_root: Path) -> list[ValidationError]:
         *_validate_repo_review_scorecard(repo_root),
         *_validate_ruleset_policy(repo_root),
         *(
-            ValidationError("agent-contract", error.reason)
+            ValidationError("agent-contract", error.reason, error.operational)
             for error in validate_agent_contract(repo_root)
         ),
     ]
@@ -743,7 +757,7 @@ def main(argv: list[str] | None = None) -> int:
         print("The Athena skill validation failed:", file=sys.stderr)
         for error in errors:
             print(f"  - {error.surface}: {error.reason}", file=sys.stderr)
-        return 2
+        return 2 if any(error.operational for error in errors) else 1
     if not args.quiet:
         print("The Athena skill validation passed.")
     return 0

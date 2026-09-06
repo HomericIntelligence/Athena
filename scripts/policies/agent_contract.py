@@ -52,6 +52,7 @@ class AgentContractError(NamedTuple):
 
     path: str
     reason: str
+    operational: bool = False
 
 
 class Principle(NamedTuple):
@@ -220,11 +221,13 @@ def _read_root_document(
     )
     if failure is None:
         return text, []
-    return None, [AgentContractError(filename, f"The root '{filename}' {failure}")]
+    return None, [
+        AgentContractError(filename, f"The root '{filename}' {failure}", True)
+    ]
 
 
-def _catalog_error(reason: str) -> AgentContractError:
-    return AgentContractError("docs/principles/README.md", reason)
+def _catalog_error(reason: str, *, operational: bool = False) -> AgentContractError:
+    return AgentContractError("docs/principles/README.md", reason, operational)
 
 
 def _unsafe_character(text: str) -> str | None:
@@ -270,7 +273,9 @@ def parse_principles_catalog(
         catalog_root, catalog_relative_path, MAX_CATALOG_BYTES
     )
     if failure is not None:
-        return (), [_catalog_error(f"The principles catalog {failure}")]
+        return (), [
+            _catalog_error(f"The principles catalog {failure}", operational=True)
+        ]
     assert text is not None
 
     unsafe_character = _unsafe_character(text)
@@ -365,7 +370,8 @@ def parse_principles_catalog(
             errors.append(
                 _catalog_error(
                     f"The '{identifier}' detail file is missing or is not regular: "
-                    f"'{detail_path}'. {detail_failure}"
+                    f"'{detail_path}'. {detail_failure}",
+                    operational=True,
                 )
             )
         principles.append(Principle(identifier, name, description, detail_path))

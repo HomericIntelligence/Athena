@@ -61,7 +61,7 @@ def _verify_checksum(artifact: Path, checksum: Path) -> None:
 def _verify_spdx(path: Path, *, expected_name: str, version: str) -> None:
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, ValueError) as error:
         raise ValueError(
             f"The tool cannot parse SPDX document '{path.name}'. "
             f"The operation returned this diagnostic.\n{error}"

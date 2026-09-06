@@ -91,6 +91,10 @@ class PackageError(RuntimeError):
     """This error identifies repository content that violates the package contract."""
 
 
+class PackageOperationalError(PackageError):
+    """This error identifies a failure that prevented package inspection."""
+
+
 def forbidden_name(path: PurePosixPath) -> bool:
     """Return whether a portable archive member is misplaced or sensitive."""
     lowered_parts = tuple(part.lower() for part in path.parts)
@@ -117,11 +121,18 @@ def read_plugin_version(repo_root: Path) -> str:
     """Read and validate the Semantic Versioning (SemVer) value in the plugin manifest."""
     manifest = repo_root / ".codex-plugin" / "plugin.json"
     try:
-        document = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
-        raise PackageError(
+        text = manifest.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise PackageOperationalError(
             f"The tool cannot read the plugin version from '{manifest}'. "
             f"The operation returned this diagnostic.\n{error}"
+        ) from error
+    try:
+        document = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise PackageError(
+            f"The plugin manifest is not valid JSON: '{manifest}'. "
+            f"The repository content returned this diagnostic.\n{error}"
         ) from error
     version = document.get("version") if isinstance(document, dict) else None
     if not isinstance(version, str) or SEMVER_PATTERN.fullmatch(version) is None:
@@ -171,7 +182,7 @@ def inspect_archive(archive_path: Path) -> None:
         with tarfile.open(archive_path, mode="r:gz") as archive:
             members = archive.getmembers()
     except (OSError, tarfile.TarError) as error:
-        raise PackageError(
+        raise PackageOperationalError(
             f"The tool cannot inspect archive '{archive_path}'. "
             f"The operation returned this diagnostic.\n{error}"
         ) from error
@@ -271,6 +282,10 @@ def _validate_repository(repo_root: Path) -> None:
         check=False,
     )
     if result.returncode != 0:
+        if result.returncode == 2:
+            raise PackageOperationalError(
+                "The repository validation could not complete."
+            )
         raise PackageError("The repository validation failed.")
 
 
@@ -287,9 +302,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         repo_root = _repository_root(arguments.root)
         _validate_repository(repo_root)
         archive_path, checksum_path = build_package(repo_root)
-    except (PackageError, OSError, subprocess.SubprocessError) as error:
+    except PackageOperationalError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+    except PackageError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
+    except (OSError, subprocess.SubprocessError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
     print(f"The tool built '{archive_path}' and '{checksum_path}'.")
     return 0
 
