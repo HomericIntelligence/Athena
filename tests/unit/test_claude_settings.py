@@ -99,16 +99,27 @@ class ClaudeSettingsTests(unittest.TestCase):
             "git push -f origin main; echo hi",
             "echo ok\ngit push -f origin main",
             "if true; then git push -f origin main; fi",
+            "( git push -f origin main )",
         ):
             with self.subTest(command=command):
                 self.assertTrue(HOOK.is_unguarded_force_push(command))
 
+    def test_wrapped_guarded_force_push_is_not_denied(self) -> None:
+        """Shell wrappers do not block a guarded force push."""
+        for command in (
+            "env git push --force-with-lease origin main",
+            "command git push --force-with-lease origin main",
+            "bash -c 'git push --force-with-lease origin main'",
+            "sh -c 'git push --force-with-lease origin main'",
+        ):
+            with self.subTest(command=command):
+                self.assertFalse(HOOK.is_unguarded_force_push(command))
+
     def test_wrapped_unguarded_force_push_is_denied(self) -> None:
-        """Shell wrappers cannot bypass the force-push guard."""
+        """Shell wrappers still deny an unguarded force push."""
         for command in (
             "env git push -f origin main",
             "command git push -f origin main",
-            "( git push -f origin main )",
             "bash -c 'git push -f origin main'",
             "sh -c 'git push -f origin main'",
         ):
@@ -125,6 +136,17 @@ class ClaudeSettingsTests(unittest.TestCase):
         ):
             with self.subTest(command=command):
                 self.assertTrue(HOOK.is_unguarded_force_push(command))
+
+    def test_command_substitution_without_force_push_is_not_denied(self) -> None:
+        """A harmless substitution does not trigger the force-push guard."""
+        for command in (
+            "echo $(date)",
+            "echo `date`",
+            "cat <(printf safe)",
+            "cat >(printf safe)",
+        ):
+            with self.subTest(command=command):
+                self.assertFalse(HOOK.is_unguarded_force_push(command))
 
     def test_literal_substitution_markers_are_not_denied(self) -> None:
         """Literal substitution markers do not trigger the guard."""

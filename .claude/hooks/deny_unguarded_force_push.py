@@ -88,12 +88,28 @@ _ENV_OPTIONS_WITH_VALUE = {
     "--block-signal",
 }
 
-_UNSUPPORTED_WRAPPERS = {
+_TRANSPARENT_WRAPPERS = {
     "builtin",
     "command",
     "exec",
     "sudo",
     "time",
+}
+
+_CONTROL_KEYWORDS = {
+    "case",
+    "do",
+    "else",
+    "elif",
+    "fi",
+    "for",
+    "function",
+    "if",
+    "select",
+    "then",
+    "until",
+    "while",
+    "esac",
 }
 
 
@@ -183,37 +199,114 @@ def _is_shell_interpreter(token: str) -> bool:
     return token.rsplit("/", maxsplit=1)[-1] in _SHELL_INTERPRETERS
 
 
-def _has_shell_substitution(command: str) -> bool:
-    """Return whether a command has active shell substitution syntax."""
+def _extract_parenthesized_payload(command: str, start: int) -> tuple[str | None, int]:
+    """Return the payload inside a balanced parenthesized shell expansion."""
     quote: str | None = None
     escaped = False
+    depth = 1
+    index = start
 
-    for index, character in enumerate(command):
+    while index < len(command):
+        character = command[index]
+
         if escaped:
             escaped = False
-            continue
-
-        if character == "\\" and quote != "'":
+        elif character == "\\" and quote != "'":
             escaped = True
-            continue
-
-        if character == "'" and quote != '"':
+        elif character == "'" and quote != '"':
             quote = None if quote == "'" else "'"
-            continue
-
-        if character == '"' and quote != "'":
+        elif character == '"' and quote != "'":
             quote = None if quote == '"' else '"'
-            continue
+        elif quote != "'":
+            if character == "(":
+                depth += 1
+            elif character == ")":
+                depth -= 1
+                if depth == 0:
+                    return command[start:index], index + 1
 
-        if quote == "'":
-            continue
+        index += 1
 
-        if character == "`" or (
-            character in {"$", "<", ">"} and command[index + 1 : index + 2] == "("
-        ):
-            return True
+    return None, start
+
+
+def _extract_backtick_payload(command: str, start: int) -> tuple[str | None, int]:
+    """Return the payload inside a backtick shell expansion."""
+    escaped = False
+    index = start
+
+    while index < len(command):
+        character = command[index]
+
+        if escaped:
+            escaped = False
+        elif character == "\\":
+            escaped = True
+        elif character == "`":
+            return command[start:index], index + 1
+
+        index += 1
+
+    return None, start
+
+
+def _contains_unguarded_force_push_shell_expansion(command: str) -> bool:
+    """Return whether an active shell expansion contains an unsafe push."""
+    quote: str | None = None
+    escaped = False
+    index = 0
+
+    while index < len(command):
+        character = command[index]
+
+        if escaped:
+            escaped = False
+        elif character == "\\" and quote != "'":
+            escaped = True
+        elif character == "'" and quote != '"':
+            quote = None if quote == "'" else "'"
+        elif character == '"' and quote != "'":
+            quote = None if quote == '"' else '"'
+        elif quote != "'":
+            if character == "`":
+                payload, next_index = _extract_backtick_payload(command, index + 1)
+                if payload is None:
+                    return False
+                if is_unguarded_force_push(payload):
+                    return True
+                index = next_index - 1
+            elif character in {"$", "<", ">"} and command[index + 1 : index + 2] == "(":
+                payload, next_index = _extract_parenthesized_payload(command, index + 2)
+                if payload is None:
+                    return False
+                if is_unguarded_force_push(payload):
+                    return True
+                index = next_index - 1
+        index += 1
 
     return False
+
+
+def _extract_shell_c_command(tokens: list[str], start: int) -> str | None:
+    """Return the command string passed to a shell -c wrapper."""
+    index = start + 1
+
+    while index < len(tokens):
+        token = tokens[index]
+
+        if token in {"(", ")"}:
+            index += 1
+            continue
+        if token == "-" or (token.startswith("-") and not token.startswith("--")):
+            if "c" in token[1:]:
+                if index + 1 >= len(tokens):
+                    return None
+                return tokens[index + 1]
+            index += 1
+            continue
+        break
+
+    return None
 
 
 def _consume_env_prefix(tokens: list[str], index: int) -> int | None:
@@ -252,9 +345,6 @@ def _consume_env_prefix(tokens: list[str], index: int) -> int | None:
         if token.startswith("-"):
             return None
 
-        if token in _UNSUPPORTED_COMMAND_STARTS:
-            return None
-
         break
 
     return index
@@ -274,11 +364,9 @@ def _consume_command_prefix(tokens: list[str]) -> int | None:
             index += 1
             continue
 
-        if token in _UNSUPPORTED_COMMAND_STARTS:
-            return None
-
-        if token in _UNSUPPORTED_WRAPPERS:
-            return None
+        if token in _CONTROL_KEYWORDS or token in _TRANSPARENT_WRAPPERS:
+            index += 1
+            continue
 
         if token != "env":
             break
@@ -318,22 +406,24 @@ def _iter_command_segments(command: str) -> list[list[str]]:
 
 def _is_unguarded_force_push_segment(tokens: list[str]) -> bool:
     """Return whether one command segment is an unguarded Git push."""
-    if not tokens or tokens[0] != "git":
-        start = _consume_command_prefix(tokens)
-        if start is None:
-            for index, token in enumerate(tokens):
-                if _is_shell_interpreter(token):
-                    return True
-                if token == "git":
-                    return _is_unguarded_force_push_segment(tokens[index:])
-            return False
-        if start >= len(tokens):
-            return False
-        if _is_shell_interpreter(tokens[start]):
-            return True
-        if tokens[start] != "git":
-            return False
-        tokens = tokens[start:]
+    if not tokens:
+        return False
+
+    if len(tokens) >= 2 and tokens[0] == "(" and tokens[-1] == ")":
+        return _is_unguarded_force_push_segment(tokens[1:-1])
+
+    start = _consume_command_prefix(tokens)
+    if start is None or start >= len(tokens):
+        return False
+
+    tokens = tokens[start:]
+
+    if _is_shell_interpreter(tokens[0]):
+        command = _extract_shell_c_command(tokens, 0)
+        return bool(command and is_unguarded_force_push(command))
+
+    if tokens[0] != "git":
+        return False
 
     index = 1
     while index < len(tokens):
@@ -385,7 +475,7 @@ def _is_unguarded_force_push_segment(tokens: list[str]) -> bool:
 
 def is_unguarded_force_push(command: str) -> bool:
     """Return whether command has a Git push with force but no lease guard."""
-    if _has_shell_substitution(command):
+    if _contains_unguarded_force_push_shell_expansion(command):
         return True
 
     for tokens in _iter_command_segments(command):
