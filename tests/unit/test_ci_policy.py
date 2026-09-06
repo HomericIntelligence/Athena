@@ -6,6 +6,7 @@ import io
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr
@@ -14,6 +15,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts import ci_policy
+from scripts.policies.uv_pins import find_uv_pin_drift
 
 
 def write_checksum(artifact: Path) -> None:
@@ -474,6 +476,189 @@ class SuppressionPolicyTests(unittest.TestCase):
         self.assertTrue(diagnostic)
 
 
+class UvPinsPolicyTests(unittest.TestCase):
+    CONTAINER = (
+        "curl https://github.com/astral-sh/uv/releases/download/0.12.1/"
+        "uv-x86_64-unknown-linux-gnu.tar.gz -o /tmp/uv.tar.gz\n"
+        'echo "' + "a" * 64 + '  /tmp/uv.tar.gz" | sha256sum --check\n'
+    )
+    WORKFLOW = """
+jobs:
+  build:
+    steps:
+      - uses: astral-sh/setup-uv@abc
+        with:
+          version: "0.12.1"
+"""
+
+    def test_consistent_pins_have_no_findings(self) -> None:
+        self.assertEqual(
+            [], find_uv_pin_drift(self.CONTAINER, {"workflow.yml": self.WORKFLOW})
+        )
+
+    def test_drift_names_workflow_and_both_versions(self) -> None:
+        findings = find_uv_pin_drift(
+            self.CONTAINER,
+            {"workflow.yml": self.WORKFLOW.replace("0.12.1", "0.10.8")},
+        )
+        self.assertEqual(1, len(findings))
+        self.assertIn("workflow.yml", findings[0])
+        self.assertIn("0.10.8", findings[0])
+        self.assertIn("0.12.1", findings[0])
+
+    def test_multiple_steps_detect_partial_drift(self) -> None:
+        workflow = self.WORKFLOW.replace(
+            "    steps:",
+            '    steps:\n      - uses: astral-sh/setup-uv@def\n        with:\n          version: "0.10.8"',
+        )
+        findings = find_uv_pin_drift(self.CONTAINER, {"workflow.yml": workflow})
+        self.assertEqual(1, len(findings))
+
+    def test_commented_container_url_does_not_override_active_pin(self) -> None:
+        container = (
+            "# curl https://github.com/astral-sh/uv/releases/download/0.12.1/"
+            "uv-x86_64-unknown-linux-gnu.tar.gz -o /tmp/uv.tar.gz\n"
+            + self.CONTAINER.replace("0.12.1", "0.13.0")
+        )
+        workflow = self.WORKFLOW.replace("0.12.1", "0.13.0")
+
+        self.assertEqual([], find_uv_pin_drift(container, {"workflow.yml": workflow}))
+
+    def test_non_download_url_does_not_override_download_pin(self) -> None:
+        expected_url = (
+            "https://github.com/astral-sh/uv/releases/download/0.12.1/"
+            "uv-x86_64-unknown-linux-gnu.tar.gz"
+        )
+        container = f"RUN echo '{expected_url}'\n" + self.CONTAINER.replace(
+            "0.12.1", "0.13.0"
+        )
+
+        findings = find_uv_pin_drift(container, {"workflow.yml": self.WORKFLOW})
+
+        self.assertEqual(1, len(findings))
+        self.assertIn("0.12.1", findings[0])
+        self.assertIn("0.13.0", findings[0])
+
+    def test_malformed_container_pin_fails_closed(self) -> None:
+        for container in (
+            self.CONTAINER.replace("download/0.12.1", "download/not-a-version"),
+            self.CONTAINER.replace("a" * 64, "missing"),
+            self.CONTAINER.replace("a" * 64, "g" * 64),
+        ):
+            with self.subTest(container=container):
+                self.assertTrue(
+                    find_uv_pin_drift(container, {"workflow.yml": self.WORKFLOW})
+                )
+
+    def test_missing_active_checksum_verification_fails_closed(self) -> None:
+        cases = {
+            "removed": self.CONTAINER.replace(" | sha256sum --check", ""),
+            "commented": self.CONTAINER.replace(
+                " | sha256sum --check", " # | sha256sum --check"
+            ),
+        }
+
+        for case, container in cases.items():
+            with self.subTest(case=case):
+                findings = find_uv_pin_drift(container, {"workflow.yml": self.WORKFLOW})
+                self.assertTrue(findings)
+                self.assertTrue(
+                    any("SHA-256" in finding for finding in findings), findings
+                )
+
+    def test_checksum_pipeline_obeys_shell_comments_and_line_continuations(
+        self,
+    ) -> None:
+        download = self.CONTAINER.splitlines()[0]
+        checksum_echo = 'echo "' + "a" * 64 + '  /tmp/uv.tar.gz"'
+        cases = (
+            (
+                "inline_comment",
+                f"{download}\nRUN true # {checksum_echo} | sha256sum --check\n",
+                True,
+            ),
+            (
+                "uncontinued_newline",
+                f"{download}\n{checksum_echo}\n  | sha256sum --check\n",
+                True,
+            ),
+            (
+                "continued_newline",
+                f"{download}\n{checksum_echo} \\\n  | sha256sum --check\n",
+                False,
+            ),
+            (
+                "quoted_hash",
+                (
+                    f"{download}\nRUN printf '%s\\n' '# checksum follows' && \\\n"
+                    f"  {checksum_echo} \\\n"
+                    "  | sha256sum --check\n"
+                ),
+                False,
+            ),
+            (
+                "quoted_pipeline",
+                (
+                    f"{download}\nRUN printf '%s\\n' "
+                    f"'{checksum_echo} | sha256sum --check'\n"
+                ),
+                True,
+            ),
+            (
+                "mid_word_hash",
+                (
+                    f"{download}\nRUN printf '%s\\n' foo#bar && \\\n"
+                    f"  {checksum_echo} \\\n"
+                    "  | sha256sum --check\n"
+                ),
+                False,
+            ),
+        )
+
+        for case, container, checksum_finding_expected in cases:
+            with self.subTest(case=case):
+                findings = find_uv_pin_drift(container, {"workflow.yml": self.WORKFLOW})
+
+                self.assertEqual(
+                    checksum_finding_expected,
+                    any("SHA-256" in finding for finding in findings),
+                    findings,
+                )
+
+    def test_mixed_case_setup_uv_identity_is_inspected(self) -> None:
+        workflow = (
+            self.WORKFLOW.rstrip()
+            + """
+      - uses: Astral-Sh/Setup-UV@def
+        with:
+          version: "0.10.8"
+"""
+        )
+
+        findings = find_uv_pin_drift(self.CONTAINER, {"workflow.yml": workflow})
+
+        self.assertEqual(1, len(findings))
+        self.assertIn("workflow.yml", findings[0])
+        self.assertIn("0.10.8", findings[0])
+        self.assertIn("0.12.1", findings[0])
+
+    def test_zero_setup_uv_steps_fails_closed(self) -> None:
+        findings = find_uv_pin_drift(self.CONTAINER, {"workflow.yml": "jobs: {}\n"})
+        self.assertEqual(1, len(findings))
+        self.assertIn("No astral-sh/setup-uv", findings[0])
+
+    def test_repository_pins_are_consistent(self) -> None:
+        root = Path(__file__).parents[2]
+        container = (root / "ci" / "Containerfile").read_text(encoding="utf-8")
+        workflow_root = root / ".github" / "workflows"
+        workflows = {
+            str(path.relative_to(root)): path.read_text(encoding="utf-8")
+            for pattern in ("*.yml", "*.yaml")
+            for path in workflow_root.glob(pattern)
+        }
+        self.assertEqual([], find_uv_pin_drift(container, workflows))
+
+
 class CommandTests(unittest.TestCase):
     def test_pr_policy_command_wraps_subprocess_failure(self) -> None:
         environment = {
@@ -637,6 +822,58 @@ class CommandTests(unittest.TestCase):
 
         self.assertEqual(2, result)
         self.assertIn("error: command produced malformed JSON", error.getvalue())
+
+    def test_uv_pins_command_detects_drift_in_yaml_workflow(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            (root / "ci").mkdir()
+            workflows = root / ".github" / "workflows"
+            workflows.mkdir(parents=True)
+            (root / "ci" / "Containerfile").write_text(
+                UvPinsPolicyTests.CONTAINER, encoding="utf-8"
+            )
+            (workflows / "required.yml").write_text(
+                UvPinsPolicyTests.WORKFLOW, encoding="utf-8"
+            )
+            (workflows / "drift.yaml").write_text(
+                UvPinsPolicyTests.WORKFLOW.replace("0.12.1", "0.10.8"),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(SystemExit, r"drift\.yaml.*0\.10\.8.*0\.12\.1"):
+                ci_policy.main(["uv-pins", "--root", str(root)])
+
+    def test_plain_python_command_does_not_require_pyyaml(self) -> None:
+        root = Path(__file__).parents[2]
+        script = Path(ci_policy.__file__).resolve()
+        program = f"""
+import builtins
+import runpy
+import sys
+
+real_import = builtins.__import__
+
+
+def reject_yaml(name, *args, **kwargs):
+    if name == "yaml":
+        raise ModuleNotFoundError("No module named 'yaml'")
+    return real_import(name, *args, **kwargs)
+
+
+builtins.__import__ = reject_yaml
+sys.argv = [{str(script)!r}, "suppressions", "--root", {str(root)!r}]
+runpy.run_path({str(script)!r}, run_name="__main__")
+"""
+
+        result = subprocess.run(
+            [sys.executable, "-I", "-c", program],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("no silent-failure suppressions", result.stdout)
 
     def test_pr_policy_command_collects_paginated_github_evidence(self) -> None:
         environment = {

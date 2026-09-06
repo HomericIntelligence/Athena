@@ -47,6 +47,32 @@ class LocalCiOrchestratorTests(unittest.TestCase):
             self.assertNotEqual(0, result.returncode, result.stdout)
             self.assertIn(subset, result.stderr)
 
+    def test_all_subset_runs_uv_pin_check(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            fake_engine = Path(temporary) / "fake-container-engine"
+            fake_engine.write_text(
+                "#!/bin/sh\n"
+                'case "$*" in\n'
+                '  *"ci_policy.py uv-pins"*) exit 23 ;;\n'
+                "  *) exit 0 ;;\n"
+                "esac\n",
+                encoding="utf-8",
+            )
+            fake_engine.chmod(0o755)
+            environment = os.environ.copy()
+            environment["CONTAINER_ENGINE"] = str(fake_engine)
+            result = subprocess.run(
+                [str(RUN_CI_LOCAL), "all"],
+                cwd=ROOT,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("uv-pins", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
