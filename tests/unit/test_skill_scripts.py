@@ -1251,26 +1251,60 @@ class PullRequestScriptTests(unittest.TestCase):
             outputs["approved"]["pull_request"]["reviews"],
         )
 
-    def test_collect_evidence_tolerates_missing_review_decision(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            root = Path(temporary_directory)
-            env = self.make_fake_tools(root, [])
-            env["FAKE_GH_VIEW_JSON"] = json.dumps({"number": 9})
-            env["FAKE_GH_FILES_JSON"] = "[]"
-            env["FAKE_GH_CHECKS"] = "[]"
-            result = run_script(
-                "skills/pr-review/scripts/collect_evidence.py",
-                "9",
-                cwd=root,
-                env=env,
-            )
-
-        self.assertEqual(0, result.returncode, result.stderr)
-        evidence = json.loads(result.stdout)
-        self.assertEqual("UNAVAILABLE", evidence["merge_readiness"]["review_decision"])
-        self.assertEqual(
-            "blocked", evidence["merge_readiness"]["auto_merge_approval_gate"]
+    def test_collect_evidence_classifies_only_known_approval_gate_states(self) -> None:
+        cases = (
+            ("missing", {"number": 9}, "UNAVAILABLE", "unknown"),
+            (
+                "null",
+                {"number": 9, "reviewDecision": None},
+                "UNAVAILABLE",
+                "unknown",
+            ),
+            (
+                "review_required",
+                {"number": 9, "reviewDecision": "REVIEW_REQUIRED"},
+                "REVIEW_REQUIRED",
+                "blocked",
+            ),
+            (
+                "changes_requested",
+                {"number": 9, "reviewDecision": "CHANGES_REQUESTED"},
+                "CHANGES_REQUESTED",
+                "blocked",
+            ),
+            (
+                "approved",
+                {"number": 9, "reviewDecision": "APPROVED"},
+                "APPROVED",
+                "satisfied",
+            ),
         )
+
+        for case, metadata, expected_decision, expected_gate in cases:
+            with self.subTest(case=case):
+                with tempfile.TemporaryDirectory() as temporary_directory:
+                    root = Path(temporary_directory)
+                    env = self.make_fake_tools(root, [])
+                    env["FAKE_GH_VIEW_JSON"] = json.dumps(metadata)
+                    env["FAKE_GH_FILES_JSON"] = "[]"
+                    env["FAKE_GH_CHECKS"] = "[]"
+                    result = run_script(
+                        "skills/pr-review/scripts/collect_evidence.py",
+                        "9",
+                        cwd=root,
+                        env=env,
+                    )
+
+                self.assertEqual(0, result.returncode, result.stderr)
+                evidence = json.loads(result.stdout)
+                self.assertEqual(
+                    expected_decision,
+                    evidence["merge_readiness"]["review_decision"],
+                )
+                self.assertEqual(
+                    expected_gate,
+                    evidence["merge_readiness"]["auto_merge_approval_gate"],
+                )
 
     def test_collect_evidence_rejects_pr_from_another_repository(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

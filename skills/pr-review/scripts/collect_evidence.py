@@ -1331,10 +1331,13 @@ def merge_readiness(metadata: dict[str, Any]) -> dict[str, str]:
     decision = metadata.get("reviewDecision")
     if not isinstance(decision, str) or not decision:
         decision = "UNAVAILABLE"
+    approval_gate = {
+        "APPROVED": "satisfied",
+        "CHANGES_REQUESTED": "blocked",
+        "REVIEW_REQUIRED": "blocked",
+    }.get(decision, "unknown")
     return {
-        "auto_merge_approval_gate": (
-            "satisfied" if decision == "APPROVED" else "blocked"
-        ),
+        "auto_merge_approval_gate": approval_gate,
         "authority": (
             "Repository-policy evidence excluded from the review verdict and scope digests."
         ),

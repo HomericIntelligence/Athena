@@ -228,7 +228,11 @@ contain findings or discussion context in addition to approval state, so do not 
 
 | Record | Required content |
 | --- | --- |
-| `merge_readiness` | `review_decision` from GitHub `reviewDecision` or `UNAVAILABLE`, `auto_merge_approval_gate` set to `satisfied` only for `APPROVED` and otherwise set to `blocked`, plus an `authority` note; excluded from verdict inputs and scope digests. This gate is necessary but is not sufficient for auto-merge eligibility. |
+| `merge_readiness` | `review_decision` from GitHub `reviewDecision` or `UNAVAILABLE`, `auto_merge_approval_gate` set to `satisfied` for `APPROVED`, `blocked` for `REVIEW_REQUIRED` or `CHANGES_REQUESTED`, and `unknown` for unavailable or unrecognized values, plus an `authority` note; excluded from verdict inputs and scope digests. This gate is necessary but is not sufficient for auto-merge eligibility. |
+
+`unknown` does not show that an approval blocks the PR. It also does not show that the repository
+requires no approval. Withhold auto-merge until the full policy rebind proves the gate is
+`satisfied` or `not_required`. The collector does not fetch rulesets and cannot emit `not_required`.
 
 ### Collect and verify GitLab evidence
 
