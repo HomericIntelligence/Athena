@@ -155,7 +155,7 @@ workflow and the user's answers to its prompts control the removal decision.
 
 - Invoke `tidy` for dependency-locked delegation to Hephaestus branch and worktree cleanup.
 - Before you report completion or start cleanup, get fresh runnable evidence. Follow the
-  evidence-integrity policy.
+  [evidence-integrity policy](../../docs/policies/evidence-integrity.md).
 
 ---
 
