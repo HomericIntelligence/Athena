@@ -225,15 +225,17 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             "head_oid": "b" * 40,
             "paths": ("reviewed.txt",),
         }
-        ci_evidence = {
-            "required-checks-gate": {
-                "head_oid": "b" * 40,
-                "state": "SUCCESS",
+        checks = [
+            {
+                "conclusion": "success",
+                "head_sha": "b" * 40,
+                "name": "required-checks-gate",
+                "status": "completed",
             }
-        }
+        ]
         scenarios = {
             "REVIEW_REQUIRED": {
-                "ci_evidence": ci_evidence,
+                "checks": checks,
                 "merge_readiness": {"review_decision": "REVIEW_REQUIRED"},
                 "policy_state": {
                     "head_oid": "b" * 40,
@@ -245,7 +247,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                 "reviewed_source": reviewed_source,
             },
             "APPROVED": {
-                "ci_evidence": ci_evidence,
+                "checks": checks,
                 "merge_readiness": {"review_decision": "APPROVED"},
                 "policy_state": {
                     "head_oid": "b" * 40,
@@ -264,11 +266,11 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         for review_decision, scenario in scenarios.items():
             with self.subTest(review_decision=review_decision):
                 self.assertEqual(reviewed_source, scenario["reviewed_source"])
-                self.assertEqual(ci_evidence, scenario["ci_evidence"])
+                self.assertEqual(checks, scenario["checks"])
                 review_verdicts[review_decision] = self.delivery.review_verdict(
                     review_assessment,
                     scenario["reviewed_source"],
-                    scenario["ci_evidence"],
+                    scenario["checks"],
                 )
                 auto_merge_eligibility[review_decision] = (
                     self.delivery.auto_merge_eligible(
@@ -291,8 +293,8 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             scenarios["APPROVED"]["reviewed_source"],
         )
         self.assertEqual(
-            scenarios["REVIEW_REQUIRED"]["ci_evidence"],
-            scenarios["APPROVED"]["ci_evidence"],
+            scenarios["REVIEW_REQUIRED"]["checks"],
+            scenarios["APPROVED"]["checks"],
         )
         self.assertEqual(
             delivery_statuses["REVIEW_REQUIRED"], delivery_statuses["APPROVED"]

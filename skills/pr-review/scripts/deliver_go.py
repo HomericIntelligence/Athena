@@ -101,9 +101,9 @@ class DeliveryResult:
 def review_verdict(
     review_assessment: dict[str, Any],
     reviewed_source: dict[str, Any],
-    ci_evidence: dict[str, Any],
+    checks: Sequence[dict[str, Any]],
 ) -> str:
-    """Return the technical verdict from review and exact-head evidence."""
+    """Return the technical verdict from review and exact-head check evidence."""
     head_oid = reviewed_source.get("head_oid")
     if (
         review_assessment.get("architecture_aligned") is True
@@ -114,12 +114,13 @@ def review_verdict(
         and isinstance(head_oid, str)
         and bool(head_oid)
         and bool(reviewed_source.get("paths"))
-        and bool(ci_evidence)
+        and bool(checks)
         and all(
             isinstance(check, dict)
-            and check.get("head_oid") == head_oid
-            and check.get("state") == "SUCCESS"
-            for check in ci_evidence.values()
+            and check.get("head_sha") == head_oid
+            and check.get("status") == "completed"
+            and check.get("conclusion") == "success"
+            for check in checks
         )
     ):
         return "GO"
