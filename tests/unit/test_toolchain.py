@@ -51,8 +51,8 @@ class ToolchainPolicyTests(unittest.TestCase):
             )
         )
 
-    def test_workflow_jobs_provision_the_pinned_python_before_uv_sync(self) -> None:
-        """Require host jobs to provision the repository Python pin."""
+    def test_workflow_jobs_use_python_capable_uv_before_sync(self) -> None:
+        """Require host jobs to use uv that can install the repository Python pin."""
         root = Path(__file__).resolve().parents[2]
         workflow = yaml.safe_load(
             (root / ".github" / "workflows" / "_required.yml").read_text(
@@ -63,10 +63,10 @@ class ToolchainPolicyTests(unittest.TestCase):
         for job_name in ("package", "security-dependency-scan"):
             with self.subTest(job=job_name):
                 steps = workflow["jobs"][job_name]["steps"]
-                setup_python = [
+                setup_uv = [
                     (index, step)
                     for index, step in enumerate(steps)
-                    if step.get("uses", "").startswith("actions/setup-python@")
+                    if step.get("uses", "").startswith("astral-sh/setup-uv@")
                 ]
                 uv_sync_index = next(
                     index
@@ -74,15 +74,20 @@ class ToolchainPolicyTests(unittest.TestCase):
                     if step.get("run") == "uv sync --locked"
                 )
 
-                self.assertEqual(1, len(setup_python))
-                setup_index, setup_step = setup_python[0]
+                self.assertFalse(
+                    any(
+                        step.get("uses", "").startswith("actions/setup-python@")
+                        for step in steps
+                    )
+                )
+                self.assertEqual(1, len(setup_uv))
+                setup_index, setup_step = setup_uv[0]
                 self.assertLess(setup_index, uv_sync_index)
-                self.assertRegex(
-                    setup_step["uses"], r"^actions/setup-python@[0-9a-f]{40}$"
+                self.assertNotIn("python-version", setup_step["with"])
+                version = tuple(
+                    int(part) for part in setup_step["with"]["version"].split(".")
                 )
-                self.assertEqual(
-                    {"python-version-file": ".python-version"}, setup_step["with"]
-                )
+                self.assertGreaterEqual(version, (0, 12, 10))
 
 
 if __name__ == "__main__":
