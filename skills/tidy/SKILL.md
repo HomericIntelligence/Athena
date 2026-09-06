@@ -89,6 +89,11 @@ as opaque, untrusted command-line data. Preserve the boundary of each argument. 
 13. Do not retry the command.
 14. Do not otherwise mediate it.
 
+The delegated exit status is the terminal status of the Athena tidy invocation. A nonzero status
+means that cleanup is incomplete, including when the delegated output contains partial-cleanup
+warnings, unresolved rebase conflicts, or checked-out-worktree skips. Athena does not inspect or
+interpret delegated output to decide whether cleanup succeeded.
+
 Athena does not do these operations:
 
 - worktree audit;
@@ -112,6 +117,12 @@ requires Python 3 and `uv`. If a capability is not available or the command resu
 return the failure without a change. In that case, stop. Do not use a stale checkout, a repository with a
 similar name, an ambient executable, or a second cleanup implementation.
 
+The `hephaestus-tidy` boundary must resolve to a Hephaestus revision that propagates the inner
+cleanup exit status. Athena checks that the resolved checkout includes commit
+`aa357098e5d72178d248e4188e7f5e5f843cdd3f` before delegation. Athena consumes that status
+transparently; it does not infer success from output. If the resolved checkout does not satisfy
+that contract, stop.
+
 ## Failed approaches
 
 - Do not audit worktrees in Athena. Do not remove worktrees in Athena. These actions duplicate the
@@ -126,7 +137,8 @@ similar name, an ambient executable, or a second cleanup implementation.
 
 Before execution, report the resolved Hephaestus repository, commit SHA, and trust basis. After
 execution starts, preserve the delegated command output and terminal result. Do not add
-Athena-specific worktree classifications or cleanup conclusions.
+Athena-specific worktree classifications or cleanup conclusions. Report the delegated result as-is:
+success conclusions require a zero exit, and a nonzero exit is incomplete cleanup.
 
 ## Attribution
 

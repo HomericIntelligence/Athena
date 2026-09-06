@@ -217,7 +217,7 @@ class ScriptConventionTests(unittest.TestCase):
             (
                 "skills/tidy/scripts/run_tidy.py",
                 ("/tmp/automation",),
-                "uv",
+                "git",
                 127,
             ),
         )
@@ -234,6 +234,34 @@ class ScriptConventionTests(unittest.TestCase):
                     result = run_script(path, *arguments, cwd=root, env=environment)
 
                     assert_cli_failure(self, result, returncode, missing_command)
+
+    def test_run_tidy_reports_missing_uv_after_a_successful_git_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            bin_directory = root / "bin"
+            bin_directory.mkdir()
+            (bin_directory / "python3").symlink_to(sys.executable)
+            git_stub = bin_directory / "git"
+            git_stub.write_text(
+                "#!/usr/bin/env python3\nimport sys\nsys.exit(0)\n",
+                encoding="utf-8",
+            )
+            git_stub.chmod(0o755)
+            environment = os.environ.copy()
+            environment["PATH"] = str(bin_directory)
+
+            result = run_script(
+                "skills/tidy/scripts/run_tidy.py",
+                "/tmp/automation",
+                cwd=root,
+                env=environment,
+            )
+
+        assert_cli_failure(self, result, 127, "uv")
+        self.assertIn(
+            "The required command is not available: 'uv'.",
+            result.stderr,
+        )
 
 
 class RetrievableSkillSelectorTests(unittest.TestCase):
@@ -2038,6 +2066,294 @@ class WorktreeScriptTests(unittest.TestCase):
 
 
 class TidyDelegationTests(unittest.TestCase):
+    REQUIRED_HEPHAESTUS_TIDY_REVISION = "aa357098e5d72178d248e4188e7f5e5f843cdd3f"
+
+    @staticmethod
+    def _write_executable(path: Path, source: str) -> None:
+        path.write_text(source, encoding="utf-8")
+        path.chmod(0o755)
+
+    def _write_git_revision_gate(
+        self,
+        path: Path,
+        automation_checkout: Path,
+        *,
+        exit_code: int,
+        hostile_environment: dict[str, str] | None = None,
+    ) -> None:
+        self._write_executable(
+            path,
+            "#!/usr/bin/env python3\n"
+            "import os\n"
+            "import sys\n"
+            "arguments = sys.argv[1:]\n"
+            f"expected_checkout = {str(automation_checkout)!r}\n"
+            f"required_revision = {self.REQUIRED_HEPHAESTUS_TIDY_REVISION!r}\n"
+            f"hostile_environment = {hostile_environment or {}!r}\n"
+            "safe_environment = {\n"
+            "    'GIT_ATTR_NOSYSTEM': '1',\n"
+            "    'GIT_CONFIG_GLOBAL': os.devnull,\n"
+            "    'GIT_CONFIG_NOSYSTEM': '1',\n"
+            "    'GIT_CONFIG_SYSTEM': os.devnull,\n"
+            "    'GIT_GRAFT_FILE': os.devnull,\n"
+            "    'GIT_NO_LAZY_FETCH': '1',\n"
+            "    'GIT_NO_REPLACE_OBJECTS': '1',\n"
+            "    'GIT_OPTIONAL_LOCKS': '0',\n"
+            "    'GIT_TERMINAL_PROMPT': '0',\n"
+            "}\n"
+            "if (\n"
+            "    arguments[:3] != ['-c', 'core.commitGraph=false', '--no-replace-objects']\n"
+            "    or len(arguments) != 9\n"
+            "    or arguments[3] != '-C'\n"
+            "    or arguments[4] != expected_checkout\n"
+            "    or arguments[5] != 'merge-base'\n"
+            "    or arguments[6] != '--is-ancestor'\n"
+            "    or arguments[7] != required_revision\n"
+            "    or arguments[8] != 'HEAD'\n"
+            "    or any(os.environ.get(key) == value for key, value in hostile_environment.items())\n"
+            "    or any(os.environ.get(key) != value for key, value in safe_environment.items())\n"
+            "):\n"
+            "    raise SystemExit(2)\n"
+            f"raise SystemExit({exit_code})\n",
+        )
+
+    def test_tidy_revision_gate_ignores_hostile_git_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            automation_checkout = root / "trusted automation"
+            automation_checkout.mkdir()
+            target_repository = root / "target repository"
+            target_repository.mkdir()
+            bin_directory = root / "bin"
+            bin_directory.mkdir()
+            hostile_environment = {
+                "GIT_ALTERNATE_OBJECT_DIRECTORIES": str(root / "alternate objects"),
+                "GIT_DIR": str(root / "hostile.git"),
+                "GIT_OBJECT_DIRECTORY": str(root / "objects"),
+                "GIT_REPLACE_REF_BASE": "refs/hostile/replace/",
+                "GIT_WORK_TREE": str(root / "hostile worktree"),
+            }
+            self._write_git_revision_gate(
+                bin_directory / "git",
+                automation_checkout,
+                exit_code=0,
+                hostile_environment=hostile_environment,
+            )
+            self._write_executable(
+                bin_directory / "uv",
+                "#!/usr/bin/env python3\n"
+                "import os\n"
+                f"hostile_environment = {hostile_environment!r}\n"
+                "if any(os.environ.get(key) != value for key, value in hostile_environment.items()):\n"
+                "    raise SystemExit(98)\n"
+                "raise SystemExit(37)\n",
+            )
+            environment = os.environ.copy()
+            environment.update(hostile_environment)
+            environment["PATH"] = f"{bin_directory}{os.pathsep}{environment['PATH']}"
+
+            result = run_script(
+                "skills/tidy/scripts/run_tidy.py",
+                str(automation_checkout),
+                cwd=target_repository,
+                env=environment,
+            )
+
+        self.assertEqual(37, result.returncode, result.stderr)
+
+    def test_tidy_rejects_stale_hephaestus_checkout_before_delegation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            automation_checkout = root / "trusted automation"
+            automation_checkout.mkdir()
+            target_repository = root / "target repository"
+            target_repository.mkdir()
+            bin_directory = root / "bin"
+            bin_directory.mkdir()
+            self._write_git_revision_gate(
+                bin_directory / "git", automation_checkout, exit_code=1
+            )
+            self._write_executable(
+                bin_directory / "uv",
+                "#!/usr/bin/env python3\nraise SystemExit(99)\n",
+            )
+            environment = os.environ.copy()
+            environment["PATH"] = f"{bin_directory}{os.pathsep}{environment['PATH']}"
+
+            result = run_script(
+                "skills/tidy/scripts/run_tidy.py",
+                str(automation_checkout),
+                cwd=target_repository,
+                env=environment,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("stale", result.stderr)
+        self.assertNotIn("All branches rebased cleanly", result.stdout)
+        self.assertNotIn("All branches rebased cleanly", result.stderr)
+
+    def test_tidy_propagates_partial_cleanup_failure_without_success_conclusion(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            automation_checkout = root / "trusted automation"
+            automation_checkout.mkdir()
+            automation_bin = automation_checkout / "bin"
+            automation_bin.mkdir()
+            target_repository = root / "target repository"
+            target_repository.mkdir()
+            bin_directory = root / "bin"
+            bin_directory.mkdir()
+            self._write_git_revision_gate(
+                bin_directory / "git", automation_checkout, exit_code=0
+            )
+            # Model the fixed Hephaestus boundary. `uv` runs the project-local
+            # tidy shim, and the shim returns the delegated `gh tidy` status.
+            self._write_executable(
+                bin_directory / "gh",
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "print('partial cleanup: rebase conflict remains unresolved')\n"
+                "print('checked-out worktree skipped', file=sys.stderr)\n"
+                "raise SystemExit(128)\n",
+            )
+            self._write_executable(
+                automation_bin / "hephaestus-tidy",
+                "#!/usr/bin/env python3\n"
+                "import subprocess\n"
+                "import sys\n"
+                "command = [\n"
+                "    'gh',\n"
+                "    'tidy',\n"
+                "    '--rebase-all',\n"
+                "    '--auto-delete-merged',\n"
+                "    '--trunk',\n"
+                "    'main',\n"
+                "    '--skip-gc',\n"
+                "]\n"
+                "result = subprocess.run(command, check=False)\n"
+                "raise SystemExit(result.returncode)\n",
+            )
+            self._write_executable(
+                bin_directory / "uv",
+                "#!/usr/bin/env python3\n"
+                "import subprocess\n"
+                "import sys\n"
+                "from pathlib import Path\n"
+                "arguments = sys.argv[1:]\n"
+                "if (\n"
+                "    len(arguments) < 5\n"
+                "    or arguments[0] != 'run'\n"
+                "    or arguments[1] != '--project'\n"
+                "    or arguments[3] != '--locked'\n"
+                "    or arguments[4] != 'hephaestus-tidy'\n"
+                "):\n"
+                "    raise SystemExit(2)\n"
+                "project = Path(arguments[2])\n"
+                "command = [str(project / 'bin' / 'hephaestus-tidy'), *arguments[5:]]\n"
+                "result = subprocess.run(command, check=False)\n"
+                "raise SystemExit(result.returncode)\n",
+            )
+            environment = os.environ.copy()
+            environment["PATH"] = f"{bin_directory}{os.pathsep}{environment['PATH']}"
+
+            result = run_script(
+                "skills/tidy/scripts/run_tidy.py",
+                str(automation_checkout),
+                cwd=target_repository,
+                env=environment,
+            )
+
+        self.assertEqual(128, result.returncode)
+        self.assertEqual(
+            "partial cleanup: rebase conflict remains unresolved\n", result.stdout
+        )
+        self.assertEqual("checked-out worktree skipped\n", result.stderr)
+        self.assertNotIn("All branches rebased cleanly", result.stdout)
+        self.assertNotIn("All branches rebased cleanly", result.stderr)
+
+    def test_tidy_zero_exit_passes_output_through_transparently(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            automation_checkout = root / "trusted automation"
+            automation_checkout.mkdir()
+            automation_bin = automation_checkout / "bin"
+            automation_bin.mkdir()
+            target_repository = root / "target repository"
+            target_repository.mkdir()
+            bin_directory = root / "bin"
+            bin_directory.mkdir()
+            self._write_git_revision_gate(
+                bin_directory / "git", automation_checkout, exit_code=0
+            )
+            # The shim keeps stdin attached and passes the dependency exit code
+            # back without adding its own summary.
+            self._write_executable(
+                bin_directory / "gh",
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "print(sys.stdin.read(), end='')\n"
+                "print('delegated success', file=sys.stderr)\n",
+            )
+            self._write_executable(
+                automation_bin / "hephaestus-tidy",
+                "#!/usr/bin/env python3\n"
+                "import subprocess\n"
+                "command = [\n"
+                "    'gh',\n"
+                "    'tidy',\n"
+                "    '--rebase-all',\n"
+                "    '--auto-delete-merged',\n"
+                "    '--trunk',\n"
+                "    'main',\n"
+                "    '--skip-gc',\n"
+                "]\n"
+                "result = subprocess.run(command, check=False)\n"
+                "raise SystemExit(result.returncode)\n",
+            )
+            self._write_executable(
+                bin_directory / "uv",
+                "#!/usr/bin/env python3\n"
+                "import subprocess\n"
+                "import sys\n"
+                "from pathlib import Path\n"
+                "arguments = sys.argv[1:]\n"
+                "if (\n"
+                "    len(arguments) < 5\n"
+                "    or arguments[0] != 'run'\n"
+                "    or arguments[1] != '--project'\n"
+                "    or arguments[3] != '--locked'\n"
+                "    or arguments[4] != 'hephaestus-tidy'\n"
+                "):\n"
+                "    raise SystemExit(2)\n"
+                "project = Path(arguments[2])\n"
+                "command = [str(project / 'bin' / 'hephaestus-tidy'), *arguments[5:]]\n"
+                "result = subprocess.run(command, check=False)\n"
+                "raise SystemExit(result.returncode)\n",
+            )
+            environment = os.environ.copy()
+            environment["PATH"] = f"{bin_directory}{os.pathsep}{environment['PATH']}"
+
+            result = run_script(
+                "skills/tidy/scripts/run_tidy.py",
+                str(automation_checkout),
+                cwd=target_repository,
+                env=environment,
+                input_text="interactive sentinel\n",
+            )
+
+        self.assertEqual(0, result.returncode)
+        self.assertEqual("interactive sentinel\n", result.stdout)
+        self.assertEqual("delegated success\n", result.stderr)
+
+    def test_tidy_delegate_remains_process_replacement_without_capture(self) -> None:
+        source = (ROOT / "skills/tidy/scripts/run_tidy.py").read_text(encoding="utf-8")
+
+        self.assertIn("os.execvp(", source)
+        self.assertIn("subprocess.run(", source)
+        self.assertNotIn("capture_output", source)
+
     def test_tidy_delegate_preserves_process_contract(self) -> None:
         delegate = ROOT / "skills/tidy/scripts/run_tidy.py"
         self.assertTrue(delegate.is_file(), "the thin tidy delegate must exist")
@@ -2050,6 +2366,9 @@ class TidyDelegationTests(unittest.TestCase):
             target_repository.mkdir()
             bin_directory = root / "bin"
             bin_directory.mkdir()
+            self._write_git_revision_gate(
+                bin_directory / "git", automation_checkout, exit_code=0
+            )
             fake_uv = bin_directory / "uv"
             fake_uv.write_text(
                 "#!/usr/bin/env python3\n"
