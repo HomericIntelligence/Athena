@@ -60,7 +60,11 @@ class ToolchainPolicyTests(unittest.TestCase):
             )
         )
 
-        for job_name in ("package", "security-dependency-scan"):
+        for job_name in (
+            "package",
+            "security-dependency-scan",
+            "pi-upstream-inventory-watch",
+        ):
             with self.subTest(job=job_name):
                 steps = workflow["jobs"][job_name]["steps"]
                 setup_uv = [
