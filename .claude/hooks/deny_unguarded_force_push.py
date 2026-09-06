@@ -183,6 +183,39 @@ def _is_shell_interpreter(token: str) -> bool:
     return token.rsplit("/", maxsplit=1)[-1] in _SHELL_INTERPRETERS
 
 
+def _has_shell_substitution(command: str) -> bool:
+    """Return whether a command has active shell substitution syntax."""
+    quote: str | None = None
+    escaped = False
+
+    for index, character in enumerate(command):
+        if escaped:
+            escaped = False
+            continue
+
+        if character == "\\" and quote != "'":
+            escaped = True
+            continue
+
+        if character == "'" and quote != '"':
+            quote = None if quote == "'" else "'"
+            continue
+
+        if character == '"' and quote != "'":
+            quote = None if quote == '"' else '"'
+            continue
+
+        if quote == "'":
+            continue
+
+        if character == "`" or (
+            character in {"$", "<", ">"} and command[index + 1 : index + 2] == "("
+        ):
+            return True
+
+    return False
+
+
 def _consume_env_prefix(tokens: list[str], index: int) -> int | None:
     """Return the index of the command after env options."""
     while index < len(tokens):
@@ -352,6 +385,9 @@ def _is_unguarded_force_push_segment(tokens: list[str]) -> bool:
 
 def is_unguarded_force_push(command: str) -> bool:
     """Return whether command has a Git push with force but no lease guard."""
+    if _has_shell_substitution(command):
+        return True
+
     for tokens in _iter_command_segments(command):
         if _is_unguarded_force_push_segment(tokens):
             return True

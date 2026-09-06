@@ -115,6 +115,27 @@ class ClaudeSettingsTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertTrue(HOOK.is_unguarded_force_push(command))
 
+    def test_command_substitution_cannot_bypass_force_push_guard(self) -> None:
+        """Command substitution cannot hide an unguarded force push."""
+        for command in (
+            "echo $(git push -f origin main)",
+            "echo `git push -f origin main`",
+            "cat <(git push -f origin main)",
+            "cat >(git push -f origin main)",
+        ):
+            with self.subTest(command=command):
+                self.assertTrue(HOOK.is_unguarded_force_push(command))
+
+    def test_literal_substitution_markers_are_not_denied(self) -> None:
+        """Literal substitution markers do not trigger the guard."""
+        for command in (
+            "echo '$(git push -f origin main)'",
+            "echo '`git push -f origin main`'",
+            "echo \\$(git push -f origin main)",
+        ):
+            with self.subTest(command=command):
+                self.assertFalse(HOOK.is_unguarded_force_push(command))
+
     def test_plain_git_words_do_not_trigger_guard(self) -> None:
         """Plain text that mentions git does not trigger the guard."""
         command = "echo git push -f origin main"
