@@ -124,15 +124,48 @@ def _checksum_from_tokens(tokens: list[tuple[str, bool]]) -> str | None:
     return None
 
 
+def _download_version_from_tokens(tokens: list[tuple[str, bool]]) -> str | None:
+    if tokens and not tokens[0][1] and tokens[0][0].casefold() == "run":
+        tokens = tokens[1:]
+
+    for index, token in enumerate(tokens):
+        if token != ("curl", False):
+            continue
+        if index > 0:
+            previous_value, previous_is_operator = tokens[index - 1]
+            if not previous_is_operator or previous_value not in _COMMAND_BOUNDARIES:
+                continue
+
+        command_end = next(
+            (
+                command_index
+                for command_index in range(index + 1, len(tokens))
+                if tokens[command_index][1]
+                and tokens[command_index][0] in _COMMAND_BOUNDARIES
+            ),
+            len(tokens),
+        )
+        arguments = tokens[index + 1 : command_end]
+        writes_archive = any(
+            arguments[argument_index] == ("-o", False)
+            and arguments[argument_index + 1] == ("/tmp/uv.tar.gz", False)
+            for argument_index in range(len(arguments) - 1)
+        )
+        if not writes_archive:
+            continue
+        for value, is_operator in arguments:
+            if not is_operator and (match := _UV_URL.search(value)) is not None:
+                return match.group("version")
+    return None
+
+
 def _container_pin(container_text: str) -> tuple[str | None, str | None]:
     token_lines = _shell_token_lines(container_text)
-    url_match = next(
+    version = next(
         (
-            match
+            value
             for line in token_lines
-            for value, is_operator in line
-            if not is_operator
-            if (match := _UV_URL.search(value)) is not None
+            if (value := _download_version_from_tokens(line)) is not None
         ),
         None,
     )
@@ -145,7 +178,7 @@ def _container_pin(container_text: str) -> tuple[str | None, str | None]:
         None,
     )
     return (
-        url_match.group("version") if url_match else None,
+        version,
         checksum,
     )
 
