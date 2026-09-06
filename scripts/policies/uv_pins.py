@@ -11,60 +11,142 @@ _UV_URL = re.compile(
     r"https://github\.com/astral-sh/uv/releases/download/"
     r"(?P<version>\d+\.\d+\.\d+)/uv-x86_64-unknown-linux-gnu\.tar\.gz"
 )
-_UV_CHECKSUM = re.compile(
-    r"\becho[^\S\r\n]+[\"']?(?P<checksum>\S+)[^\S\r\n]+"
-    r"/tmp/uv\.tar\.gz[\"']?[^\S\r\n]*\|[^\S\r\n]*"
-    r"sha256sum[^\S\r\n]+--check\b"
-)
+_CHECKSUM_ARGUMENT = re.compile(r"(?P<checksum>\S+)[^\S\r\n]+/tmp/uv\.tar\.gz")
 _HEX_CHECKSUM = re.compile(r"[0-9a-f]{64}")
 _SHELL_CONTINUATION = re.compile(r"\\\r?\n[ \t]*")
 _SETUP_UV = "astral-sh/setup-uv@"
+_COMMAND_BOUNDARIES = frozenset({"&&", "||", ";", "|", "&"})
 
 
-def _active_shell_text(container_text: str) -> str:
-    """Return logical shell lines without comments outside quotes."""
+def _finish_word(
+    tokens: list[tuple[str, bool]], word: list[str], word_started: bool
+) -> None:
+    if word_started:
+        tokens.append(("".join(word), False))
+        word.clear()
+
+
+def _shell_token_lines(container_text: str) -> list[list[tuple[str, bool]]]:
+    """Return logical shell lines as word and operator tokens."""
     logical_text = _SHELL_CONTINUATION.sub(" ", container_text)
-    active: list[str] = []
-    quote: str | None = None
-    escaped = False
-    in_comment = False
+    token_lines: list[list[tuple[str, bool]]] = []
 
-    for character in logical_text:
-        if in_comment:
-            if character in "\r\n":
-                active.append(character)
-                in_comment = False
-            continue
-        if escaped:
-            active.append(character)
-            escaped = False
-            continue
-        if character == "\\" and quote != "'":
-            active.append(character)
-            escaped = True
-            continue
-        if character in {"'", '"'}:
-            if quote is None:
+    for line in logical_text.splitlines():
+        tokens: list[tuple[str, bool]] = []
+        word: list[str] = []
+        word_started = False
+        quote: str | None = None
+        escaped = False
+        index = 0
+
+        while index < len(line):
+            character = line[index]
+            if escaped:
+                word.append(character)
+                word_started = True
+                escaped = False
+            elif character == "\\" and quote != "'":
+                word_started = True
+                escaped = True
+            elif quote is not None:
+                if character == quote:
+                    quote = None
+                else:
+                    word.append(character)
+            elif character in {"'", '"'}:
                 quote = character
-            elif quote == character:
-                quote = None
-            active.append(character)
-            continue
-        if character == "#" and quote is None:
-            in_comment = True
-            continue
-        active.append(character)
+                word_started = True
+            elif character == "#" and not word_started:
+                break
+            elif character.isspace():
+                _finish_word(tokens, word, word_started)
+                word_started = False
+            elif character in {"&", "|", ";"}:
+                _finish_word(tokens, word, word_started)
+                word_started = False
+                operator = character
+                if (
+                    character in {"&", "|"}
+                    and index + 1 < len(line)
+                    and line[index + 1] == character
+                ):
+                    operator += character
+                    index += 1
+                tokens.append((operator, True))
+            else:
+                word.append(character)
+                word_started = True
+            index += 1
 
-    return "".join(active)
+        if escaped:
+            word.append("\\")
+        _finish_word(tokens, word, word_started)
+        token_lines.append(tokens)
+
+    return token_lines
+
+
+def _checksum_from_tokens(tokens: list[tuple[str, bool]]) -> str | None:
+    if tokens and not tokens[0][1] and tokens[0][0].casefold() == "run":
+        tokens = tokens[1:]
+
+    for index, token in enumerate(tokens):
+        if token != ("echo", False):
+            continue
+        if index > 0:
+            previous_value, previous_is_operator = tokens[index - 1]
+            if not previous_is_operator or previous_value not in _COMMAND_BOUNDARIES:
+                continue
+
+        argument_index = index + 1
+        if argument_index >= len(tokens) or tokens[argument_index][1]:
+            continue
+        argument_match = _CHECKSUM_ARGUMENT.fullmatch(tokens[argument_index][0])
+        if argument_match is not None:
+            pipe_index = argument_index + 1
+            checksum = argument_match.group("checksum")
+        elif (
+            argument_index + 1 < len(tokens)
+            and not tokens[argument_index + 1][1]
+            and tokens[argument_index + 1][0] == "/tmp/uv.tar.gz"
+        ):
+            pipe_index = argument_index + 2
+            checksum = tokens[argument_index][0]
+        else:
+            continue
+
+        if tokens[pipe_index : pipe_index + 3] == [
+            ("|", True),
+            ("sha256sum", False),
+            ("--check", False),
+        ]:
+            return checksum
+    return None
 
 
 def _container_pin(container_text: str) -> tuple[str | None, str | None]:
-    active_text = _active_shell_text(container_text)
-    url_match = _UV_URL.search(active_text)
-    checksum_match = _UV_CHECKSUM.search(active_text)
+    token_lines = _shell_token_lines(container_text)
+    url_match = next(
+        (
+            match
+            for line in token_lines
+            for value, is_operator in line
+            if not is_operator
+            if (match := _UV_URL.search(value)) is not None
+        ),
+        None,
+    )
+    checksum = next(
+        (
+            value
+            for line in token_lines
+            if (value := _checksum_from_tokens(line)) is not None
+        ),
+        None,
+    )
     return (
         url_match.group("version") if url_match else None,
-        checksum_match.group("checksum") if checksum_match else None,
+        checksum,
     )
 
 

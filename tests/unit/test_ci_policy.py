@@ -581,6 +581,23 @@ jobs:
                 ),
                 False,
             ),
+            (
+                "quoted_pipeline",
+                (
+                    f"{download}\nRUN printf '%s\\n' "
+                    f"'{checksum_echo} | sha256sum --check'\n"
+                ),
+                True,
+            ),
+            (
+                "mid_word_hash",
+                (
+                    f"{download}\nRUN printf '%s\\n' foo#bar && \\\n"
+                    f"  {checksum_echo} \\\n"
+                    "  | sha256sum --check\n"
+                ),
+                False,
+            ),
         )
 
         for case, container, checksum_finding_expected in cases:
