@@ -163,7 +163,13 @@ def _manifest_versions(repo_root: Path) -> dict[str, str]:
     versions: dict[str, str] = {}
     for name, path in paths.items():
         relative_path = path.relative_to(repo_root)
-        text = path.read_text(encoding="utf-8")
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as error:
+            raise OSError(
+                f"The manifest cannot be read: '{relative_path}'. "
+                f"The operation returned this diagnostic.\n{error}"
+            ) from error
         try:
             manifest = json.loads(text)
         except json.JSONDecodeError as error:
@@ -176,7 +182,13 @@ def _manifest_versions(repo_root: Path) -> dict[str, str]:
                 "The manifest does not have the required 'version' field: "
                 f"'{relative_path}'."
             )
-        versions[name] = str(manifest["version"])
+        version = manifest["version"]
+        if not isinstance(version, str):
+            raise ManifestPolicyError(
+                "The manifest does not have the required 'version' field: "
+                f"'{relative_path}'."
+            )
+        versions[name] = version
     return versions
 
 
