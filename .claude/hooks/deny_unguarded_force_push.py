@@ -8,7 +8,6 @@ import shlex
 import sys
 from typing import Any
 
-
 _GLOBAL_OPTIONS_WITH_VALUE = {
     "-C",
     "-c",
@@ -51,6 +50,11 @@ _SHELL_CONTROL_OPERATORS = {
     ";",
     "|",
     "&",
+}
+
+_SHELL_INTERPRETERS = {
+    "bash",
+    "sh",
 }
 
 _UNSUPPORTED_COMMAND_STARTS = {
@@ -174,6 +178,11 @@ def _is_shell_assignment(token: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", token))
 
 
+def _is_shell_interpreter(token: str) -> bool:
+    """Return whether token selects a shell that can run nested commands."""
+    return token.rsplit("/", maxsplit=1)[-1] in _SHELL_INTERPRETERS
+
+
 def _consume_env_prefix(tokens: list[str], index: int) -> int | None:
     """Return the index of the command after env options."""
     while index < len(tokens):
@@ -194,7 +203,11 @@ def _consume_env_prefix(tokens: list[str], index: int) -> int | None:
             if index + 1 >= len(tokens):
                 return None
             value = tokens[index + 1]
-            if value in {"(", ")"} or _is_shell_assignment(value) or value.startswith("-"):
+            if (
+                value in {"(", ")"}
+                or _is_shell_assignment(value)
+                or value.startswith("-")
+            ):
                 return None
             index += 2
             continue
@@ -276,10 +289,16 @@ def _is_unguarded_force_push_segment(tokens: list[str]) -> bool:
         start = _consume_command_prefix(tokens)
         if start is None:
             for index, token in enumerate(tokens):
+                if _is_shell_interpreter(token):
+                    return True
                 if token == "git":
                     return _is_unguarded_force_push_segment(tokens[index:])
             return False
-        if start >= len(tokens) or tokens[start] != "git":
+        if start >= len(tokens):
+            return False
+        if _is_shell_interpreter(tokens[start]):
+            return True
+        if tokens[start] != "git":
             return False
         tokens = tokens[start:]
 
@@ -297,7 +316,10 @@ def _is_unguarded_force_push_segment(tokens: list[str]) -> bool:
         return False
 
     push_tokens = tokens[index + 1 :]
-    has_force = any(token == "--force" or _has_short_option_flag(token, "f") for token in push_tokens)
+    has_force = any(
+        token == "--force" or _has_short_option_flag(token, "f")
+        for token in push_tokens
+    )
     if has_force:
         return True
 

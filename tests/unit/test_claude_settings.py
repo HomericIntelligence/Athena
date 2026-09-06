@@ -104,11 +104,13 @@ class ClaudeSettingsTests(unittest.TestCase):
                 self.assertTrue(HOOK.is_unguarded_force_push(command))
 
     def test_wrapped_unguarded_force_push_is_denied(self) -> None:
-        """Bash wrappers cannot bypass the force-push guard."""
+        """Shell wrappers cannot bypass the force-push guard."""
         for command in (
             "env git push -f origin main",
             "command git push -f origin main",
             "( git push -f origin main )",
+            "bash -c 'git push -f origin main'",
+            "sh -c 'git push -f origin main'",
         ):
             with self.subTest(command=command):
                 self.assertTrue(HOOK.is_unguarded_force_push(command))
