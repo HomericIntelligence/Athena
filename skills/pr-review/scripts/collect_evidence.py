@@ -46,7 +46,8 @@ from skills._cli import (
 # file-list fallback only for backward compatibility.
 FIELDS = (
     "number,title,body,state,isDraft,author,baseRefName,headRefName,"
-    "baseRefOid,headRefOid,reviews,statusCheckRollup,closingIssuesReferences,url"
+    "baseRefOid,headRefOid,reviewDecision,reviews,statusCheckRollup,"
+    "closingIssuesReferences,url"
 )
 ISSUE_FIELDS = "id,number,url,title,body,state"
 READ_CHUNK_SIZE = 64 * 1024
@@ -1325,6 +1326,25 @@ def pr_metadata(
     return metadata
 
 
+def merge_readiness(metadata: dict[str, Any]) -> dict[str, str]:
+    """Return forge approval state as evidence separate from the review verdict."""
+    decision = metadata.get("reviewDecision")
+    if not isinstance(decision, str) or not decision:
+        decision = "UNAVAILABLE"
+    approval_gate = {
+        "APPROVED": "satisfied",
+        "CHANGES_REQUESTED": "blocked",
+        "REVIEW_REQUIRED": "blocked",
+    }.get(decision, "unknown")
+    return {
+        "auto_merge_approval_gate": approval_gate,
+        "authority": (
+            "Repository-policy evidence excluded from the review verdict and scope digests."
+        ),
+        "review_decision": decision,
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argument_parser(description=__doc__)
     parser.add_argument(
@@ -1525,7 +1545,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         "changed_files": changed_files,
         "changed_paths": changed_files,
         "checks": checks,
-        "pull_request": final_metadata,
+        "pull_request": {
+            key: value
+            for key, value in final_metadata.items()
+            if key != "reviewDecision"
+        },
+        "merge_readiness": merge_readiness(final_metadata),
     }
     if identity is not None:
         evidence["reviewed_identity"] = identity.as_json()

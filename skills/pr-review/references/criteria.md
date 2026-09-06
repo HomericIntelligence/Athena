@@ -33,6 +33,9 @@ and review output.
   when you assess integration and repository condition. Review compatibility, dependencies, gates,
   cleanup, and release evidence as one safe handoff.
 
+An unapproved but technically clean review can earn GO. Report approval state separately because the
+forge owns repository acceptance and merging.
+
 ## Requirements and prior work
 
 - Verify these items against the actual change:
