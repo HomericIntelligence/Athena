@@ -18,6 +18,7 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import unquote, urlsplit
 
+from scripts import package_plugin
 from scripts.package_plugin import (
     ARCHIVE_ROOTS,
     REQUIRED_MEMBERS,
@@ -639,6 +640,34 @@ if (
         ):
             inspect_archive(Path(temporary_directory) / "missing.tar.gz")
 
+    def test_validate_repository_maps_exit_one_to_package_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            completed = subprocess.CompletedProcess(
+                ["python"], 1, stdout="", stderr="validation failed"
+            )
+
+            with (
+                patch("scripts.package_plugin.subprocess.run", return_value=completed),
+                self.assertRaises(PackageError),
+            ):
+                package_plugin._validate_repository(root)
+
+    def test_validate_repository_maps_exit_two_to_package_operational_error(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            completed = subprocess.CompletedProcess(
+                ["python"], 2, stdout="", stderr="validation could not complete"
+            )
+
+            with (
+                patch("scripts.package_plugin.subprocess.run", return_value=completed),
+                self.assertRaises(PackageOperationalError),
+            ):
+                package_plugin._validate_repository(root)
+
     def test_cli_validates_and_builds_explicit_repository(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -707,6 +736,23 @@ if (
 
         self.assertEqual(2, result)
         self.assertIn("output is not writable", errors.getvalue())
+
+    def test_cli_reports_operational_validation_failure_as_exit_two(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            errors = io.StringIO()
+            with (
+                patch(
+                    "scripts.package_plugin._validate_repository",
+                    side_effect=PackageOperationalError("validation-sentinel-42"),
+                ),
+                redirect_stderr(errors),
+            ):
+                result = main(["--root", str(root)])
+
+        self.assertEqual(2, result)
+        self.assertIn("validation-sentinel-42", errors.getvalue())
+        self.assertNotIn("Traceback", errors.getvalue())
 
 
 if __name__ == "__main__":

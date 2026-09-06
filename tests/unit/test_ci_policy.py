@@ -534,7 +534,46 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(2, result)
         self.assertIn("invalid tag reference", error.getvalue())
 
-    def test_release_command_reports_manifest_without_version(self) -> None:
+    def test_release_command_reports_invalid_manifest_content_as_policy(self) -> None:
+        environment = {
+            "GITHUB_REPOSITORY": "owner/repository",
+            "GITHUB_REF_NAME": "v1.2.3",
+            "GITHUB_SHA": "commit",
+        }
+        for case, content, diagnostic in (
+            ("malformed-json", "{\n", "valid JSON"),
+            ("missing-version", "{}\n", "version"),
+        ):
+            with (
+                self.subTest(case=case),
+                tempfile.TemporaryDirectory() as temporary_directory,
+            ):
+                root = Path(temporary_directory)
+                manifest = root / ".claude-plugin" / "plugin.json"
+                manifest.parent.mkdir()
+                manifest.write_text(content, encoding="utf-8")
+                responses = [
+                    {"object": {"type": "tag", "sha": "tag-object"}},
+                    {
+                        "object": {"sha": "commit"},
+                        "verification": {"verified": True},
+                    },
+                    {"protected": True},
+                ]
+                error = io.StringIO()
+
+                with (
+                    patch.dict(os.environ, environment, clear=False),
+                    patch("scripts.ci_policy._run_json", side_effect=responses),
+                    redirect_stderr(error),
+                ):
+                    result = ci_policy.main(["release", "--root", str(root)])
+
+                self.assertEqual(1, result)
+                self.assertIn(diagnostic, error.getvalue())
+                self.assertNotIn("Traceback", error.getvalue())
+
+    def test_release_command_reports_unreadable_manifest_as_operational(self) -> None:
         environment = {
             "GITHUB_REPOSITORY": "owner/repository",
             "GITHUB_REF_NAME": "v1.2.3",
@@ -551,9 +590,7 @@ class CommandTests(unittest.TestCase):
         error = io.StringIO()
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            manifest = root / ".claude-plugin" / "plugin.json"
-            manifest.parent.mkdir()
-            manifest.write_text("{}\n", encoding="utf-8")
+            (root / ".claude-plugin" / "plugin.json").mkdir(parents=True)
 
             with (
                 patch.dict(os.environ, environment, clear=False),
@@ -563,7 +600,7 @@ class CommandTests(unittest.TestCase):
                 result = ci_policy.main(["release", "--root", str(root)])
 
         self.assertEqual(2, result)
-        self.assertIn("version", error.getvalue())
+        self.assertIn("error:", error.getvalue())
         self.assertNotIn("Traceback", error.getvalue())
 
     def test_pr_policy_command_reports_missing_environment(self) -> None:
@@ -713,6 +750,35 @@ class CommandTests(unittest.TestCase):
         failure = str(raised.exception)
         self.assertIn("reviewer", failure)
         self.assertIn("v*", failure)
+
+    def test_release_environment_command_reports_operational_failures(self) -> None:
+        cases: tuple[tuple[str, dict[str, str], list[object] | None, str], ...] = (
+            (
+                "missing repository",
+                {},
+                None,
+                "missing required environment variable: GITHUB_REPOSITORY",
+            ),
+            (
+                "non-object response",
+                {"GITHUB_REPOSITORY": "owner/repository"},
+                [],
+                "GitHub returned a release environment response that is invalid.",
+            ),
+        )
+        for case, environment, response, diagnostic in cases:
+            with self.subTest(case=case):
+                error = io.StringIO()
+                with (
+                    patch.dict(os.environ, environment, clear=True),
+                    patch("scripts.ci_policy._run_json", return_value=response),
+                    redirect_stderr(error),
+                ):
+                    result = ci_policy.main(["release-environment"])
+
+                self.assertEqual(2, result)
+                self.assertIn(diagnostic, error.getvalue())
+                self.assertNotIn("Traceback", error.getvalue())
 
     def test_pr_policy_command_fails_on_policy_violation(self) -> None:
         environment = {

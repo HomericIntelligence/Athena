@@ -467,6 +467,49 @@ class DistributionTests(unittest.TestCase):
                 self.assertEqual(2, result)
                 self.assertIn("read failed", errors.getvalue())
 
+    def test_cli_reports_agent_contract_content_failures_as_exit_one(self) -> None:
+        (self.fixture / "CLAUDE.md").write_text("@not-agents.md\n", encoding="utf-8")
+        errors = io.StringIO()
+
+        with redirect_stderr(errors):
+            result = validator.main(["--root", str(self.fixture)])
+
+        self.assertEqual(1, result)
+        self.assertIn("CLAUDE.md", errors.getvalue())
+        self.assertNotIn("Traceback", errors.getvalue())
+
+    def test_cli_reports_agent_contract_read_failures_as_exit_two(self) -> None:
+        cases = (
+            ("missing file", None),
+            ("invalid UTF-8", b"\xff"),
+        )
+
+        for name, content in cases:
+            with (
+                self.subTest(name=name),
+                tempfile.TemporaryDirectory() as temporary_directory,
+            ):
+                root = Path(temporary_directory) / "repository"
+                shutil.copytree(self.fixture, root)
+                path = root / "CLAUDE.md"
+                if content is None:
+                    path.unlink()
+                else:
+                    path.write_bytes(content)
+                errors = io.StringIO()
+
+                with (
+                    patch.object(
+                        validator, "_validate_layout_and_policy", return_value=[]
+                    ),
+                    redirect_stderr(errors),
+                ):
+                    result = validator.main(["--root", str(root)])
+
+                self.assertEqual(2, result)
+                self.assertIn("CLAUDE.md", errors.getvalue())
+                self.assertNotIn("Traceback", errors.getvalue())
+
     def test_distributable_coverage_prefixed_file_is_inspected(self) -> None:
         repository = "HomericIntelligence/" + "UnapprovedRepository"
         (self.fixture / "docs" / ".coverage-bypass.md").write_text(

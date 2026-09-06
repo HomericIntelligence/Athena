@@ -36,6 +36,10 @@ __all__ = (
 )
 
 
+class ManifestPolicyError(ValueError):
+    """This error identifies repository manifest content that violates policy."""
+
+
 def _run_json(command: list[str]) -> Any:
     result = subprocess.run(command, check=False, capture_output=True, text=True)
     if result.returncode != 0:
@@ -158,15 +162,21 @@ def _manifest_versions(repo_root: Path) -> dict[str, str]:
     }
     versions: dict[str, str] = {}
     for name, path in paths.items():
-        manifest = json.loads(path.read_text(encoding="utf-8"))
+        relative_path = path.relative_to(repo_root)
+        text = path.read_text(encoding="utf-8")
         try:
-            versions[name] = str(manifest["version"])
-        except KeyError as error:
-            relative_path = path.relative_to(repo_root)
-            raise ValueError(
-                f"The manifest does not have the required 'version' field: "
-                f"'{relative_path}'."
+            manifest = json.loads(text)
+        except json.JSONDecodeError as error:
+            raise ManifestPolicyError(
+                f"The manifest must contain valid JSON: '{relative_path}'. "
+                f"The parser returned this diagnostic.\n{error}"
             ) from error
+        if not isinstance(manifest, dict) or "version" not in manifest:
+            raise ManifestPolicyError(
+                "The manifest does not have the required 'version' field: "
+                f"'{relative_path}'."
+            )
+        versions[name] = str(manifest["version"])
     return versions
 
 
@@ -224,8 +234,12 @@ def _release_command(repo_root: Path) -> int:
 
 
 def _release_environment_command() -> int:
-    repository = os.environ["GITHUB_REPOSITORY"]
+    repository = _required_env("GITHUB_REPOSITORY")
     environment = _run_json(["gh", "api", f"repos/{repository}/environments/release"])
+    if not isinstance(environment, dict):
+        raise TypeError(
+            "GitHub returned a release environment response that is invalid."
+        )
     protection_rules = environment.get("protection_rules")
     if not isinstance(protection_rules, list):
         raise TypeError(
@@ -354,6 +368,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "publish-release":
             return _publish_release_command(args.root.resolve())
         return _suppression_command(args.root.resolve())
+    except ManifestPolicyError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
     except (OSError, subprocess.SubprocessError, TypeError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2

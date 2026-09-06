@@ -708,7 +708,7 @@ def validate_repository(repo_root: Path) -> list[ValidationError]:
         *_validate_repo_review_scorecard(repo_root),
         *_validate_ruleset_policy(repo_root),
         *(
-            ValidationError("agent-contract", error.reason)
+            ValidationError("agent-contract", error.reason, error.operational)
             for error in validate_agent_contract(repo_root)
         ),
     ]
