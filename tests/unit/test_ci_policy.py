@@ -551,6 +551,48 @@ jobs:
                     any("SHA-256" in finding for finding in findings), findings
                 )
 
+    def test_checksum_pipeline_obeys_shell_comments_and_line_continuations(
+        self,
+    ) -> None:
+        download = self.CONTAINER.splitlines()[0]
+        checksum_echo = 'echo "' + "a" * 64 + '  /tmp/uv.tar.gz"'
+        cases = (
+            (
+                "inline_comment",
+                f"{download}\nRUN true # {checksum_echo} | sha256sum --check\n",
+                True,
+            ),
+            (
+                "uncontinued_newline",
+                f"{download}\n{checksum_echo}\n  | sha256sum --check\n",
+                True,
+            ),
+            (
+                "continued_newline",
+                f"{download}\n{checksum_echo} \\\n  | sha256sum --check\n",
+                False,
+            ),
+            (
+                "quoted_hash",
+                (
+                    f"{download}\nRUN printf '%s\\n' '# checksum follows' && \\\n"
+                    f"  {checksum_echo} \\\n"
+                    "  | sha256sum --check\n"
+                ),
+                False,
+            ),
+        )
+
+        for case, container, checksum_finding_expected in cases:
+            with self.subTest(case=case):
+                findings = find_uv_pin_drift(container, {"workflow.yml": self.WORKFLOW})
+
+                self.assertEqual(
+                    checksum_finding_expected,
+                    any("SHA-256" in finding for finding in findings),
+                    findings,
+                )
+
     def test_mixed_case_setup_uv_identity_is_inspected(self) -> None:
         workflow = (
             self.WORKFLOW.rstrip()

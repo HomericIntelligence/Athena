@@ -12,19 +12,54 @@ _UV_URL = re.compile(
     r"(?P<version>\d+\.\d+\.\d+)/uv-x86_64-unknown-linux-gnu\.tar\.gz"
 )
 _UV_CHECKSUM = re.compile(
-    r"echo\s+[\"']?(?P<checksum>\S+)\s+/tmp/uv\.tar\.gz[\"']?"
-    r"\s*\|\s*sha256sum\s+--check\b"
+    r"\becho[^\S\r\n]+[\"']?(?P<checksum>\S+)[^\S\r\n]+"
+    r"/tmp/uv\.tar\.gz[\"']?[^\S\r\n]*\|[^\S\r\n]*"
+    r"sha256sum[^\S\r\n]+--check\b"
 )
 _HEX_CHECKSUM = re.compile(r"[0-9a-f]{64}")
+_SHELL_CONTINUATION = re.compile(r"\\\r?\n[ \t]*")
 _SETUP_UV = "astral-sh/setup-uv@"
 
 
+def _active_shell_text(container_text: str) -> str:
+    """Return logical shell lines without comments outside quotes."""
+    logical_text = _SHELL_CONTINUATION.sub(" ", container_text)
+    active: list[str] = []
+    quote: str | None = None
+    escaped = False
+    in_comment = False
+
+    for character in logical_text:
+        if in_comment:
+            if character in "\r\n":
+                active.append(character)
+                in_comment = False
+            continue
+        if escaped:
+            active.append(character)
+            escaped = False
+            continue
+        if character == "\\" and quote != "'":
+            active.append(character)
+            escaped = True
+            continue
+        if character in {"'", '"'}:
+            if quote is None:
+                quote = character
+            elif quote == character:
+                quote = None
+            active.append(character)
+            continue
+        if character == "#" and quote is None:
+            in_comment = True
+            continue
+        active.append(character)
+
+    return "".join(active)
+
+
 def _container_pin(container_text: str) -> tuple[str | None, str | None]:
-    active_text = "\n".join(
-        line
-        for line in container_text.splitlines()
-        if not line.lstrip().startswith("#")
-    )
+    active_text = _active_shell_text(container_text)
     url_match = _UV_URL.search(active_text)
     checksum_match = _UV_CHECKSUM.search(active_text)
     return (
