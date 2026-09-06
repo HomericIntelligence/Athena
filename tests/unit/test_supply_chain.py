@@ -1564,6 +1564,19 @@ jobs:
                     if reference and not reference.startswith(("./", "$/")):
                         self.assertRegex(reference, r"^[^@]+@[0-9a-f]{40}$")
 
+    def test_required_job_environments_do_not_use_runner_context(self) -> None:
+        """Job environments must use contexts available before runner selection."""
+        root = Path(__file__).resolve().parents[2]
+        required = yaml.safe_load(
+            (root / ".github" / "workflows" / "_required.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        for job_name, job in required["jobs"].items():
+            with self.subTest(job=job_name):
+                self.assertNotIn("${{ runner.", json.dumps(job.get("env", {})))
+
     def test_pi_upstream_inventory_watch_stays_outside_required_gate(
         self,
     ) -> None:

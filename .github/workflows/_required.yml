@@ -373,7 +373,6 @@ jobs:
     env:
       PI_UPSTREAM_REPOSITORY: https://github.com/earendil-works/pi.git
       PI_UPSTREAM_REF: main
-      PI_UPSTREAM_SOURCE_ROOT: ${{ runner.temp }}/athena-pi-upstream
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -393,6 +392,8 @@ jobs:
         with:
           grype-version: v0.115.0
       - name: Fetch the upstream Pi source inventory
+        env:
+          PI_UPSTREAM_SOURCE_ROOT: ${{ runner.temp }}/athena-pi-upstream
         run: |
           mkdir -p "$PI_UPSTREAM_SOURCE_ROOT"
           git -C "$PI_UPSTREAM_SOURCE_ROOT" init
@@ -402,6 +403,7 @@ jobs:
       - name: Scan the full upstream Pi source tree
         env:
           GH_TOKEN: ${{ github.token }}
+          PI_UPSTREAM_SOURCE_ROOT: ${{ runner.temp }}/athena-pi-upstream
         run: |
           mkdir -p dist-internal
           "${{ steps.syft.outputs.cmd }}" scan "$PI_UPSTREAM_SOURCE_ROOT" -o json \
