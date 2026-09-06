@@ -235,6 +235,34 @@ class ScriptConventionTests(unittest.TestCase):
 
                     assert_cli_failure(self, result, returncode, missing_command)
 
+    def test_run_tidy_reports_missing_uv_after_a_successful_git_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            bin_directory = root / "bin"
+            bin_directory.mkdir()
+            (bin_directory / "python3").symlink_to(sys.executable)
+            git_stub = bin_directory / "git"
+            git_stub.write_text(
+                "#!/usr/bin/env python3\nimport sys\nsys.exit(0)\n",
+                encoding="utf-8",
+            )
+            git_stub.chmod(0o755)
+            environment = os.environ.copy()
+            environment["PATH"] = str(bin_directory)
+
+            result = run_script(
+                "skills/tidy/scripts/run_tidy.py",
+                "/tmp/automation",
+                cwd=root,
+                env=environment,
+            )
+
+        assert_cli_failure(self, result, 127, "uv")
+        self.assertIn(
+            "The required command is not available: 'uv'.",
+            result.stderr,
+        )
+
 
 class RetrievableSkillSelectorTests(unittest.TestCase):
     def test_lists_only_flat_retrievable_main_skills(self) -> None:
