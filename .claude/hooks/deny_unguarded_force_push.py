@@ -162,6 +162,19 @@ def _parse_force_with_lease(token: str) -> tuple[bool, str | None]:
     return False, None
 
 
+def _is_git_alias_config(tokens: list[str], index: int) -> bool:
+    """Return whether one git config option defines an alias."""
+    token = tokens[index]
+
+    if token.startswith("-c") and token != "-c":
+        return token[2:].startswith("alias.")
+
+    if token == "-c" and index + 1 < len(tokens):
+        return tokens[index + 1].startswith("alias.")
+
+    return False
+
+
 def _parse_forced_refspec(token: str) -> str | None:
     """Return the pushed destination ref for one forced refspec."""
     if not _is_forced_refspec(token):
@@ -367,6 +380,40 @@ def _consume_command_prefix(tokens: list[str]) -> int | None:
     return index
 
 
+def _is_shell_stdin_token(token: str) -> bool:
+    """Return whether one shell token reads commands from stdin."""
+    return token == "<" or token.startswith("<<") or token.startswith("<(")
+
+
+def _is_shell_stdin_segment(tokens: list[str], fed_by_pipe: bool) -> bool:
+    """Return whether one shell segment can read commands from stdin."""
+    start = _consume_command_prefix(tokens)
+    if start is None or start >= len(tokens):
+        return False
+
+    tokens = tokens[start:]
+    if not _is_shell_interpreter(tokens[0]):
+        return False
+
+    for token in tokens[1:]:
+        if token in _SHELL_CONTROL_OPERATORS:
+            break
+
+        if token == "-c" or _has_short_option_flag(token, "c"):
+            return False
+
+        if token == "-s" or _has_short_option_flag(token, "s"):
+            return True
+
+        if _is_shell_stdin_token(token):
+            return True
+
+        if not token.startswith("-"):
+            break
+
+    return fed_by_pipe
+
+
 def _iter_command_segments(command: str) -> list[list[str]]:
     segments: list[list[str]] = []
 
@@ -390,6 +437,42 @@ def _iter_command_segments(command: str) -> list[list[str]]:
             segments.append(segment)
 
     return segments
+
+
+def _iter_command_segments_with_sources(command: str) -> list[tuple[list[str], bool]]:
+    """Return command segments and whether a pipe feeds each one."""
+    segments: list[tuple[list[str], bool]] = []
+
+    for line in command.splitlines():
+        tokens = _tokenize_bash_command(line)
+        if tokens is None:
+            return []
+
+        segment: list[str] = []
+        fed_by_pipe = False
+
+        for token in tokens:
+            if token in _SHELL_CONTROL_OPERATORS:
+                if segment:
+                    segments.append((segment, fed_by_pipe))
+                    segment = []
+                fed_by_pipe = token == "|"
+                continue
+
+            segment.append(token)
+
+        if segment:
+            segments.append((segment, fed_by_pipe))
+
+    return segments
+
+
+def _contains_shell_stdin_execution(command: str) -> bool:
+    """Return whether a shell command can read new commands from stdin."""
+    for tokens, fed_by_pipe in _iter_command_segments_with_sources(command):
+        if _is_shell_stdin_segment(tokens, fed_by_pipe):
+            return True
+    return False
 
 
 def _is_unguarded_force_push_segment(tokens: list[str]) -> bool:
@@ -418,6 +501,9 @@ def _is_unguarded_force_push_segment(tokens: list[str]) -> bool:
         if tokens[index] == "push":
             break
 
+        if _is_git_alias_config(tokens, index):
+            return True
+
         next_index = _consume_git_global_option(tokens, index)
         if next_index is None:
             return False
@@ -432,6 +518,9 @@ def _is_unguarded_force_push_segment(tokens: list[str]) -> bool:
         for token in push_tokens
     )
     if has_force:
+        return True
+
+    if any(token == "--mirror" for token in push_tokens):
         return True
 
     unscoped_leases = 0
@@ -463,6 +552,9 @@ def _is_unguarded_force_push_segment(tokens: list[str]) -> bool:
 
 def is_unguarded_force_push(command: str) -> bool:
     """Return whether command has a Git push with force but no lease guard."""
+    if _contains_shell_stdin_execution(command):
+        return True
+
     if _contains_unguarded_force_push_shell_expansion(command):
         return True
 

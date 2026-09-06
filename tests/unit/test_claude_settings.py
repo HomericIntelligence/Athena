@@ -102,9 +102,15 @@ class ClaudeSettingsTests(unittest.TestCase):
             "echo ok\ngit push -f origin main",
             "if true; then git push -f origin main; fi",
             "( git push -f origin main )",
+            "git push --mirror origin main",
         ):
             with self.subTest(command=command):
                 self.assertTrue(HOOK.is_unguarded_force_push(command))
+
+    def test_git_alias_config_is_denied(self) -> None:
+        """Git alias config is denied in this hook path."""
+        command = "git -c alias.fp='push -f' fp origin main"
+        self.assertTrue(HOOK.is_unguarded_force_push(command))
 
     def test_wrapped_guarded_force_push_is_not_denied(self) -> None:
         """Shell wrappers do not block a guarded force push."""
@@ -136,6 +142,17 @@ class ClaudeSettingsTests(unittest.TestCase):
             "echo `git push -f origin main`",
             "cat <(git push -f origin main)",
             "cat >(git push -f origin main)",
+        ):
+            with self.subTest(command=command):
+                self.assertTrue(HOOK.is_unguarded_force_push(command))
+
+    def test_shell_stdin_execution_is_denied(self) -> None:
+        """Shell input from stdin is denied."""
+        for command in (
+            "printf 'git push -f origin main' | bash",
+            "bash <<< 'git push -f origin main'",
+            "bash < script.sh",
+            "bash -s",
         ):
             with self.subTest(command=command):
                 self.assertTrue(HOOK.is_unguarded_force_push(command))
