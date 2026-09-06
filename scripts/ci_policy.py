@@ -336,7 +336,14 @@ def _uv_pins_command(repo_root: Path) -> int:
     from scripts.policies.uv_pins import find_uv_pin_drift
 
     container_path = repo_root / "ci" / "Containerfile"
-    workflow_paths = sorted((repo_root / ".github" / "workflows").glob("*.yml"))
+    workflow_root = repo_root / ".github" / "workflows"
+    workflow_paths = sorted(
+        {
+            path
+            for pattern in ("*.yml", "*.yaml")
+            for path in workflow_root.glob(pattern)
+        }
+    )
     workflow_texts = {
         str(path.relative_to(repo_root)): path.read_text(encoding="utf-8")
         for path in workflow_paths

@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import builtins
 import io
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
 from unittest.mock import patch
 
 from scripts import ci_policy
@@ -544,9 +543,11 @@ jobs:
     def test_repository_pins_are_consistent(self) -> None:
         root = Path(__file__).parents[2]
         container = (root / "ci" / "Containerfile").read_text(encoding="utf-8")
+        workflow_root = root / ".github" / "workflows"
         workflows = {
             str(path.relative_to(root)): path.read_text(encoding="utf-8")
-            for path in (root / ".github" / "workflows").glob("*.yml")
+            for pattern in ("*.yml", "*.yaml")
+            for path in workflow_root.glob(pattern)
         }
         self.assertEqual([], find_uv_pin_drift(container, workflows))
 
@@ -715,25 +716,57 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(2, result)
         self.assertIn("error: command produced malformed JSON", error.getvalue())
 
-    def test_plain_python_command_does_not_require_pyyaml(self) -> None:
-        real_import = builtins.__import__
-
-        def reject_yaml(name: str, *args: Any, **kwargs: Any) -> Any:
-            if name == "yaml":
-                raise ModuleNotFoundError("No module named 'yaml'")
-            return real_import(name, *args, **kwargs)
-
-        with (
-            patch("builtins.__import__", side_effect=reject_yaml),
-            tempfile.TemporaryDirectory() as temporary_directory,
-        ):
+    def test_uv_pins_command_detects_drift_in_yaml_workflow(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            (root / "workflow.yml").write_text("run: safe-command\n", encoding="utf-8")
-            with patch("scripts.ci_policy.subprocess.run") as run:
-                run.return_value.stdout = "workflow.yml\n"
-                self.assertEqual(
-                    0, ci_policy.main(["suppressions", "--root", str(root)])
-                )
+            (root / "ci").mkdir()
+            workflows = root / ".github" / "workflows"
+            workflows.mkdir(parents=True)
+            (root / "ci" / "Containerfile").write_text(
+                UvPinsPolicyTests.CONTAINER, encoding="utf-8"
+            )
+            (workflows / "required.yml").write_text(
+                UvPinsPolicyTests.WORKFLOW, encoding="utf-8"
+            )
+            (workflows / "drift.yaml").write_text(
+                UvPinsPolicyTests.WORKFLOW.replace("0.12.1", "0.10.8"),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(SystemExit, r"drift\.yaml.*0\.10\.8.*0\.12\.1"):
+                ci_policy.main(["uv-pins", "--root", str(root)])
+
+    def test_plain_python_command_does_not_require_pyyaml(self) -> None:
+        root = Path(__file__).parents[2]
+        script = Path(ci_policy.__file__).resolve()
+        program = f"""
+import builtins
+import runpy
+import sys
+
+real_import = builtins.__import__
+
+
+def reject_yaml(name, *args, **kwargs):
+    if name == "yaml":
+        raise ModuleNotFoundError("No module named 'yaml'")
+    return real_import(name, *args, **kwargs)
+
+
+builtins.__import__ = reject_yaml
+sys.argv = [{str(script)!r}, "suppressions", "--root", {str(root)!r}]
+runpy.run_path({str(script)!r}, run_name="__main__")
+"""
+
+        result = subprocess.run(
+            [sys.executable, "-I", "-c", program],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("no silent-failure suppressions", result.stdout)
 
     def test_pr_policy_command_collects_paginated_github_evidence(self) -> None:
         environment = {
