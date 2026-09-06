@@ -4,6 +4,8 @@ import re
 import unittest
 from pathlib import Path
 
+import yaml
+
 
 class ToolchainPolicyTests(unittest.TestCase):
     """Verify the repository-tooling interpreter contract."""
@@ -48,6 +50,39 @@ class ToolchainPolicyTests(unittest.TestCase):
                 for copy_command in copied_files
             )
         )
+
+    def test_workflow_jobs_provision_the_pinned_python_before_uv_sync(self) -> None:
+        """Require host jobs to provision the repository Python pin."""
+        root = Path(__file__).resolve().parents[2]
+        workflow = yaml.safe_load(
+            (root / ".github" / "workflows" / "_required.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        for job_name in ("package", "security-dependency-scan"):
+            with self.subTest(job=job_name):
+                steps = workflow["jobs"][job_name]["steps"]
+                setup_python = [
+                    (index, step)
+                    for index, step in enumerate(steps)
+                    if step.get("uses", "").startswith("actions/setup-python@")
+                ]
+                uv_sync_index = next(
+                    index
+                    for index, step in enumerate(steps)
+                    if step.get("run") == "uv sync --locked"
+                )
+
+                self.assertEqual(1, len(setup_python))
+                setup_index, setup_step = setup_python[0]
+                self.assertLess(setup_index, uv_sync_index)
+                self.assertRegex(
+                    setup_step["uses"], r"^actions/setup-python@[0-9a-f]{40}$"
+                )
+                self.assertEqual(
+                    {"python-version-file": ".python-version"}, setup_step["with"]
+                )
 
 
 if __name__ == "__main__":
