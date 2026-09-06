@@ -1151,6 +1151,26 @@ class PullRequestScriptTests(unittest.TestCase):
             pending["checks"][0]["head_sha"],
         )
 
+        def review_verdict(evidence: dict[str, Any]) -> str:
+            head_oid = evidence["reviewed_identity"]["head_oid"]
+            checks = evidence["checks"]
+            checks_match_head = all(check["head_sha"] == head_oid for check in checks)
+            checks_pass = all(check["conclusion"] == "success" for check in checks)
+            if checks and checks_match_head and checks_pass:
+                return "GO"
+            return "CONDITIONAL GO"
+
+        def auto_merge_eligible(evidence: dict[str, Any]) -> bool:
+            return (
+                review_verdict(evidence) == "GO"
+                and evidence["merge_readiness"]["review_decision"] == "APPROVED"
+            )
+
+        self.assertEqual("GO", review_verdict(pending))
+        self.assertEqual("GO", review_verdict(approved))
+        self.assertFalse(auto_merge_eligible(pending))
+        self.assertTrue(auto_merge_eligible(approved))
+
     def test_collect_evidence_ignores_review_records_when_inputs_match(
         self,
     ) -> None:
