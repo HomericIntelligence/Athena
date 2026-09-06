@@ -214,12 +214,23 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self.assertGreater(forge.events.count("read"), 3)
 
     def test_delivery_keeps_go_when_review_readiness_changes(self) -> None:
+        review_assessment = {
+            "architecture_aligned": True,
+            "coverage_complete": True,
+            "grade": "A",
+            "required_findings": 0,
+        }
         reviewed_source = {
             "base_oid": "a" * 40,
             "head_oid": "b" * 40,
             "paths": ("reviewed.txt",),
         }
-        ci_evidence = {"required-checks-gate": "SUCCESS"}
+        ci_evidence = {
+            "required-checks-gate": {
+                "head_oid": "b" * 40,
+                "state": "SUCCESS",
+            }
+        }
         scenarios = {
             "REVIEW_REQUIRED": {
                 "ci_evidence": ci_evidence,
@@ -248,11 +259,17 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         }
         delivery_statuses: dict[str, str] = {}
         auto_merge_eligibility: dict[str, bool] = {}
+        review_verdicts: dict[str, str] = {}
 
         for review_decision, scenario in scenarios.items():
             with self.subTest(review_decision=review_decision):
                 self.assertEqual(reviewed_source, scenario["reviewed_source"])
                 self.assertEqual(ci_evidence, scenario["ci_evidence"])
+                review_verdicts[review_decision] = self.delivery.review_verdict(
+                    review_assessment,
+                    scenario["reviewed_source"],
+                    scenario["ci_evidence"],
+                )
                 auto_merge_eligibility[review_decision] = (
                     self.delivery.auto_merge_eligible(
                         scenario["merge_readiness"], scenario["policy_state"]
@@ -279,6 +296,10 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         )
         self.assertEqual(
             delivery_statuses["REVIEW_REQUIRED"], delivery_statuses["APPROVED"]
+        )
+        self.assertEqual("GO", review_verdicts["REVIEW_REQUIRED"])
+        self.assertEqual(
+            review_verdicts["REVIEW_REQUIRED"], review_verdicts["APPROVED"]
         )
         self.assertFalse(auto_merge_eligibility["REVIEW_REQUIRED"])
         self.assertTrue(auto_merge_eligibility["APPROVED"])

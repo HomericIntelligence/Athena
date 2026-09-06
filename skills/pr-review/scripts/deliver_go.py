@@ -98,6 +98,34 @@ class DeliveryResult:
     label: str = GO_LABEL
 
 
+def review_verdict(
+    review_assessment: dict[str, Any],
+    reviewed_source: dict[str, Any],
+    ci_evidence: dict[str, Any],
+) -> str:
+    """Return the technical verdict from review and exact-head evidence."""
+    head_oid = reviewed_source.get("head_oid")
+    if (
+        review_assessment.get("architecture_aligned") is True
+        and review_assessment.get("required_findings") == 0
+        and review_assessment.get("coverage_complete") is True
+        and review_assessment.get("grade") == "A"
+        and bool(reviewed_source.get("base_oid"))
+        and isinstance(head_oid, str)
+        and bool(head_oid)
+        and bool(reviewed_source.get("paths"))
+        and bool(ci_evidence)
+        and all(
+            isinstance(check, dict)
+            and check.get("head_oid") == head_oid
+            and check.get("state") == "SUCCESS"
+            for check in ci_evidence.values()
+        )
+    ):
+        return "GO"
+    return "CONDITIONAL GO"
+
+
 def auto_merge_eligible(
     merge_readiness: dict[str, Any] | None,
     policy_state: dict[str, Any] | None,
