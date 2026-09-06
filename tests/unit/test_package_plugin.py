@@ -630,8 +630,10 @@ if (
                 encoding="utf-8",
             )
 
-            with self.assertRaises(PackageError):
+            with self.assertRaises(PackageError) as raised:
                 read_plugin_version(root)
+
+            self.assertIs(type(raised.exception), PackageError)
 
     def test_inspect_archive_reports_read_failure_as_operational(self) -> None:
         with (
