@@ -18,6 +18,10 @@ the implementation pull request. Complete all validation before the first tag wr
    `required-checks-gate` checks.
 6. Confirm that the local checkout has no changes.
 7. Confirm that the operator can sign a Git tag and administer repository rulesets.
+8. Confirm that the protected `release` environment contains
+   `AGENT_CONTRACT_RULESET_PROOF_TOKEN`. Use a fine-grained token for this repository with
+   Administration permission set to read-only. Give the token only to the live ruleset readback
+   step.
 
 Use one private temporary directory for the operation evidence:
 
@@ -62,6 +66,10 @@ Stop when a command fails. Do not create the tag.
 Read the current ruleset list. Stop if more than one tag ruleset has the expected name. If one
 ruleset exists, validate its complete live content and do not change it. If none exists, create it
 from the tracked policy.
+
+The live readback must use `AGENT_CONTRACT_RULESET_PROOF_TOKEN`. A response without
+`bypass_actors` is an authority failure. It is not proof of policy drift or proof of a no-bypass
+policy. Stop if the response does not contain this field.
 
 ```bash
 gh api repos/HomericIntelligence/Athena/rulesets \
@@ -215,3 +223,10 @@ The release record is complete only when it contains the tag object SHA, commit 
 SHA-256, three required workflow run URLs, live ruleset digest, URL-resolution count, and both
 rejection records. Each rejection record must contain GitHub error `GH013` and the exact protected
 tag ref. A network, authentication, or local Git failure is not ruleset-rejection evidence.
+
+## Recover the immutable `agent-contract-v1.0.0` release
+
+Do not delete or retarget `agent-contract-v1.0.0`. Keep failed workflow run `34090390986` as
+historical evidence. Use the fixed tooling on `main` to verify and publish the release record for
+that tag. Use the next immutable tag, `agent-contract-v1.0.1`, to prove the repaired tag-triggered
+workflow path.

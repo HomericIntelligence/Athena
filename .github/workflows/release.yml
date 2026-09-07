@@ -95,6 +95,7 @@ jobs:
     name: verify-agent-contract-release
     needs: required
     if: startsWith(github.ref_name, 'agent-contract-v')
+    environment: release
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -109,7 +110,7 @@ jobs:
           persist-credentials: false
       - name: Verify live agent-contract tag protection
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.AGENT_CONTRACT_RULESET_PROOF_TOKEN }}
         run: python scripts/ci_policy.py agent-contract-live-ruleset
       - name: Bind the annotated tag to its commit
         run: printf 'AGENT_CONTRACT_COMMIT=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_ENV"

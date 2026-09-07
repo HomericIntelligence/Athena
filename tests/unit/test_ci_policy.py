@@ -176,7 +176,15 @@ class PullRequestPolicyTests(unittest.TestCase):
             [], agent_contract_release.agent_contract_release_errors(**evidence)
         )
 
+        recovery_evidence = {**evidence, "tag": "agent-contract-v1.0.1"}
+        self.assertEqual(
+            [],
+            agent_contract_release.agent_contract_release_errors(**recovery_evidence),
+        )
+
         for name, replacement in (
+            ("wrong-tag", {"tag": "v1.0.1"}),
+            ("invalid-semver-tag", {"tag": "agent-contract-v01.0.1"}),
             ("lightweight", {"tag_ref": {"object": {"type": "commit"}}}),
             (
                 "unsigned",
@@ -240,6 +248,12 @@ class PullRequestPolicyTests(unittest.TestCase):
                 body.replace(values["commit_sha"], "e" * 40), **values
             )
         )
+        recovery_body = agent_contract_release.render_release_record(
+            tag="agent-contract-v1.0.1", **values
+        )
+        self.assertTrue(
+            recovery_body.startswith("# agent-contract-v1.0.1 release record")
+        )
 
     def test_agent_contract_ruleset_cli_checks_tracked_and_live_state(self) -> None:
         root = Path(__file__).resolve().parents[2]
@@ -265,6 +279,51 @@ class PullRequestPolicyTests(unittest.TestCase):
                 0,
                 ci_policy.main(["agent-contract-live-ruleset", "--root", str(root)]),
             )
+
+    def test_agent_contract_live_ruleset_missing_bypass_actors_reports_authority_gap(
+        self,
+    ) -> None:
+        root = Path(__file__).resolve().parents[2]
+        tracked = agent_contract_release.expected_tag_ruleset()
+        live = {**tracked, "id": 42}
+        del live["bypass_actors"]
+
+        with (
+            patch.dict(
+                os.environ, {"GITHUB_REPOSITORY": "owner/repository"}, clear=False
+            ),
+            patch(
+                "scripts.ci_policy._run_json",
+                side_effect=[
+                    [{"id": 42, "name": tracked["name"], "target": "tag"}],
+                    live,
+                ],
+            ),
+            self.assertRaisesRegex(SystemExit, "cannot prove the no-bypass policy"),
+        ):
+            ci_policy.main(["agent-contract-live-ruleset", "--root", str(root)])
+
+    def test_agent_contract_live_ruleset_distinguishes_authority_gap_from_policy_drift(
+        self,
+    ) -> None:
+        root = Path(__file__).resolve().parents[2]
+        tracked = agent_contract_release.expected_tag_ruleset()
+        live = {**tracked, "id": 42, "bypass_actors": [{"actor_id": 1}]}
+
+        with (
+            patch.dict(
+                os.environ, {"GITHUB_REPOSITORY": "owner/repository"}, clear=False
+            ),
+            patch(
+                "scripts.ci_policy._run_json",
+                side_effect=[
+                    [{"id": 42, "name": tracked["name"], "target": "tag"}],
+                    live,
+                ],
+            ),
+            self.assertRaisesRegex(SystemExit, "has one or more bypass actors"),
+        ):
+            ci_policy.main(["agent-contract-live-ruleset", "--root", str(root)])
 
     def test_agent_contract_release_cli_supports_pre_tag_readiness(self) -> None:
         commit = "a" * 40

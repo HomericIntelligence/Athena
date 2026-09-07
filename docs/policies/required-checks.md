@@ -139,6 +139,10 @@ version until that release protects the tag from deletion and retargeting.
 The tracked `.github/rulesets/homeric-agent-contract-tags.json` policy targets only
 `refs/tags/agent-contract-v*`. It has no bypass actor. It blocks tag update and deletion, and it does
 not block the first tag creation. The live ruleset must match the tracked policy before tag creation.
+The protected `release` environment must contain `AGENT_CONTRACT_RULESET_PROOF_TOKEN`. This secret
+must be a fine-grained token for this repository with Administration permission set to read-only.
+Only the live ruleset readback step can use this token. The default Actions token cannot prove the
+no-bypass policy because its detailed ruleset response omits `bypass_actors`.
 
 The `agent-contract-v*` release path is separate from the package `v*` release path. It invokes the
 agent-contract provider and the complete required workflow. It does not publish plugin archives or

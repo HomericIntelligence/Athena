@@ -1100,6 +1100,37 @@ jobs:
         self.assertNotIn("npm publish", contract_text)
         self.assertNotIn("publish-release", contract_text)
 
+    def test_agent_contract_release_uses_ruleset_proof_secret_only_for_live_readback(
+        self,
+    ) -> None:
+        root = Path(__file__).resolve().parents[2]
+        release = yaml.safe_load(
+            (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        )
+        contract = release["jobs"]["agent-contract-release"]
+
+        self.assertEqual("release", contract["environment"])
+        self.assertEqual(
+            {
+                "actions": "read",
+                "checks": "read",
+                "contents": "read",
+                "pull-requests": "read",
+            },
+            contract["permissions"],
+        )
+        live_step = next(
+            step
+            for step in contract["steps"]
+            if step.get("name") == "Verify live agent-contract tag protection"
+        )
+        self.assertEqual(
+            "${{ secrets.AGENT_CONTRACT_RULESET_PROOF_TOKEN }}",
+            live_step["env"]["GH_TOKEN"],
+        )
+        other_steps = [step for step in contract["steps"] if step is not live_step]
+        self.assertNotIn("AGENT_CONTRACT_RULESET_PROOF_TOKEN", json.dumps(other_steps))
+
     def test_agent_contract_consumers_use_the_immutable_release_tag(self) -> None:
         root = Path(__file__).resolve().parents[2]
         candidates = [

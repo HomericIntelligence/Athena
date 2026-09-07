@@ -25,6 +25,7 @@ from scripts.policies.agent_contract_release import (
     AGENT_CONTRACT_TAG,
     agent_contract_release_errors,
     catalog_sha256,
+    is_agent_contract_tag,
     live_tag_ruleset_errors,
     principle_detail_paths,
     release_record_errors,
@@ -376,6 +377,11 @@ def _live_agent_contract_ruleset(
     live = _run_json(["gh", "api", f"repos/{repository}/rulesets/{matches[0]['id']}"])
     if not isinstance(live, dict):
         raise TypeError("GitHub returned an invalid live tag ruleset.")
+    if "bypass_actors" not in live:
+        raise SystemExit(
+            "The GitHub token cannot prove the no-bypass policy because the detailed "
+            "live ruleset response omits 'bypass_actors'."
+        )
     errors = live_tag_ruleset_errors(tracked, live)
     if errors:
         raise SystemExit("\n".join(errors))
@@ -505,8 +511,11 @@ def _agent_contract_release_command(repo_root: Path, *, pre_tag: bool) -> int:
 def _resolved_agent_contract_url_count(
     repo_root: Path, repository: str, tag: str
 ) -> int:
-    if tag != AGENT_CONTRACT_TAG:
-        raise SystemExit(f"The agent-contract tag must be '{AGENT_CONTRACT_TAG}'.")
+    if not is_agent_contract_tag(tag):
+        raise SystemExit(
+            "The agent-contract tag must match "
+            "'agent-contract-v<major>.<minor>.<patch>'."
+        )
     paths = principle_detail_paths(repo_root)
     for path in paths:
         result = _run_json(
@@ -550,11 +559,11 @@ def _agent_contract_no_main_consumer_command(repo_root: Path) -> int:
     return 0
 
 
-def _read_rejection(path: Path | None, name: str) -> str:
+def _read_rejection(path: Path | None, name: str, tag: str = AGENT_CONTRACT_TAG) -> str:
     if path is None:
         raise OSError(f"The {name} rejection evidence file is required.")
     text = path.read_text(encoding="utf-8").strip()
-    required_markers = ("GH013", f"refs/tags/{AGENT_CONTRACT_TAG}")
+    required_markers = ("GH013", f"refs/tags/{tag}")
     if not text or any(marker not in text for marker in required_markers):
         raise ValueError(
             f"The {name} evidence does not record a GitHub ruleset rejection."
@@ -610,17 +619,17 @@ def _agent_contract_release_record_command(
         "resolved_url_count": _resolved_agent_contract_url_count(
             repo_root, repository, tag
         ),
-        "retarget_rejection": _read_rejection(retarget_rejection_file, "retarget"),
-        "deletion_rejection": _read_rejection(deletion_rejection_file, "deletion"),
+        "retarget_rejection": _read_rejection(retarget_rejection_file, "retarget", tag),
+        "deletion_rejection": _read_rejection(deletion_rejection_file, "deletion", tag),
     }
-    body = render_release_record(**values)
+    body = render_release_record(tag=tag, **values)
     if output is not None:
         output.write_text(body, encoding="utf-8")
     if verify_release:
         release = _run_json(["gh", "api", f"repos/{repository}/releases/tags/{tag}"])
         if not isinstance(release, dict) or not isinstance(release.get("body"), str):
             raise TypeError("GitHub returned an invalid release record.")
-        errors = release_record_errors(release["body"], **values)
+        errors = release_record_errors(release["body"], tag=tag, **values)
         if errors:
             raise SystemExit("\n".join(errors))
     if output is None and not verify_release:
