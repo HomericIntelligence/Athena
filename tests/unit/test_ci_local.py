@@ -46,17 +46,28 @@ class LocalCiOrchestratorTests(unittest.TestCase):
         (bin_directory / "dirname").symlink_to(self._dirname_target())
         return bin_directory
 
-    def _install_fake_engine(self, bin_directory: Path, *names: str) -> Path:
-        engine = self._write_executable(
-            bin_directory / "fake-container-engine",
+    def _install_fake_engine(
+        self,
+        bin_directory: Path,
+        *names: str,
+        failing_fragment: str | None = None,
+    ) -> Path:
+        body = [
+            'printf "%s\\n" "$*" >> "$FAKE_LOG"\n',
+            'case "$*" in\n',
+        ]
+        if failing_fragment is not None:
+            body.append(f'  *"{failing_fragment}"*) exit 23 ;;\n')
+        body.extend(
             (
-                'printf "%s\\n" "$*" >> "$FAKE_LOG"\n'
-                'case "$*" in\n'
-                '  *"image exists athena-ci:local"*) exit 0 ;;\n'
-                '  *"images -q athena-ci:local"*) exit 0 ;;\n'
-                "  *) exit 0 ;;\n"
-                "esac\n"
-            ),
+                '  *"image exists athena-ci:local"*) exit 0 ;;\n',
+                '  *"images -q athena-ci:local"*) exit 0 ;;\n',
+                "  *) exit 0 ;;\n",
+                "esac\n",
+            )
+        )
+        engine = self._write_executable(
+            bin_directory / "fake-container-engine", "".join(body)
         )
         for name in names:
             (bin_directory / name).symlink_to(engine)
@@ -65,12 +76,7 @@ class LocalCiOrchestratorTests(unittest.TestCase):
     def _install_failing_image_engine(self, bin_directory: Path) -> Path:
         return self._write_executable(
             bin_directory / "fake-container-engine",
-            (
-                'case "$*" in\n'
-                '  *image*) exit 1 ;;\n'
-                "  *) exit 0 ;;\n"
-                "esac\n"
-            ),
+            'case "$*" in\n  *image*) exit 1 ;;\n  *) exit 0 ;;\nesac\n',
         )
 
     def _assert_log_contains(self, log_text: str, fragments: tuple[str, ...]) -> None:
@@ -248,7 +254,10 @@ class LocalCiOrchestratorTests(unittest.TestCase):
             self.assertEqual(0, result.returncode)
             self.assertIn("All selected local CI checks passed.", result.stdout)
             self.assertEqual("", result.stderr)
-            self.assertIn("The script selected Podman as the rootless container engine.", result.stdout)
+            self.assertIn(
+                "The script selected Podman as the rootless container engine.",
+                result.stdout,
+            )
             self.assertIn("The command uses this local CI image", result.stdout)
             self._assert_log_contains(log_text, fragments)
             self.assertTrue(
@@ -258,6 +267,29 @@ class LocalCiOrchestratorTests(unittest.TestCase):
                 ),
                 log_text,
             )
+
+    def test_reports_failed_container_command_for_static_subset(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary = Path(temporary_directory)
+            bin_directory = self._create_temp_bin(temporary)
+            log_path = temporary / "engine.log"
+            self._install_fake_engine(
+                bin_directory,
+                "podman",
+                failing_fragment="uv run ruff check scripts tests skills",
+            )
+            environment = os.environ.copy()
+            environment["PATH"] = str(bin_directory)
+            environment["FAKE_LOG"] = str(log_path)
+
+            result = self._run_local_ci(environment, "static")
+            log_text = log_path.read_text(encoding="utf-8")
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("The 'static' check failed.", result.stderr)
+        self.assertIn("These checks failed: 'static'.", result.stderr)
+        self.assertIn("uv run ruff check scripts tests skills", log_text)
+        self.assertNotIn("All selected local CI checks passed.", result.stdout)
 
     def test_rejects_unknown_subset(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
