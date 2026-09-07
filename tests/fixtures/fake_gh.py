@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 
@@ -50,6 +51,9 @@ def check_run_response(arguments: list[str]) -> object | None:
 def main() -> int:
     arguments = sys.argv[1:]
     if arguments[:2] == ["auth", "status"]:
+        delay = float(os.environ.get("FAKE_GH_AUTH_STATUS_SLEEP_SECONDS", "0"))
+        if delay > 0:
+            time.sleep(delay)
         exit_code = int(os.environ.get("FAKE_GH_AUTH_STATUS_EXIT", "0"))
         stdout = os.environ.get(
             "FAKE_GH_AUTH_STATUS_STDOUT",
@@ -115,6 +119,9 @@ def main() -> int:
         print(os.environ.get("FAKE_GH_CHECKS", "[]"))
         return int(os.environ.get("FAKE_GH_CHECKS_EXIT", "0"))
     if arguments[:2] == ["repo", "view"]:
+        delay = float(os.environ.get("FAKE_GH_REPO_VIEW_SLEEP_SECONDS", "0"))
+        if delay > 0:
+            time.sleep(delay)
         if os.environ.get("FAKE_GH_FORBID_REPO_VIEW") == "1":
             print("ambient repository lookup is forbidden", file=sys.stderr)
             return 10

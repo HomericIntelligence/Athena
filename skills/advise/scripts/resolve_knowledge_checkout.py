@@ -27,6 +27,7 @@ from skills._cli import (
 DEFAULT_KNOWLEDGE_ROOT = Path.home() / ".agent_brain" / "knowledge"
 DEFAULT_ORGANIZATION_OWNER = "HomericIntelligence"
 REPOSITORY_NAME = "Mnemosyne"
+BEST_EFFORT_REMOTE_TIMEOUT_SECONDS = 2.0
 OWNER_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
 FULL_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
@@ -69,20 +70,43 @@ def expected_repository() -> str:
 
 def repository_from_origin(origin: str) -> str:
     """Return the repository identity encoded in a Git origin URL or path."""
+    owner: str | None = None
+    repository: str | None = None
     if origin.startswith("git@") and ":" in origin and "://" not in origin:
-        candidate = origin.rsplit(":", maxsplit=1)[1]
+        host, candidate = origin.split(":", maxsplit=1)
+        if host != "git@github.com":
+            raise RuntimeError(
+                f"The origin is not a trusted GitHub repository URL: '{origin}'."
+            )
+        segments = [
+            segment for segment in candidate.replace("\\", "/").split("/") if segment
+        ]
+        if len(segments) != 2:
+            raise RuntimeError(
+                f"The origin does not identify an owner and repository: '{origin}'."
+            )
+        owner, repository = segments
     else:
         parsed = urlparse(origin)
-        candidate = parsed.path if parsed.scheme else origin
-    segments = [segment for segment in candidate.replace("\\", "/").split("/") if segment]
-    if len(segments) < 2:
-        raise RuntimeError(
-            f"The origin does not identify an owner and repository: '{origin}'."
-        )
-    owner = segments[-2]
-    repository = segments[-1]
-    if repository.endswith(".git"):
-        repository = repository[:-4]
+        if parsed.scheme not in {"https", "ssh"}:
+            raise RuntimeError(
+                f"The origin is not a trusted GitHub repository URL: '{origin}'."
+            )
+        if parsed.hostname != "github.com":
+            raise RuntimeError(
+                f"The origin is not a trusted GitHub repository URL: '{origin}'."
+            )
+        segments = [
+            segment for segment in parsed.path.replace("\\", "/").split("/") if segment
+        ]
+        if len(segments) != 2:
+            raise RuntimeError(
+                f"The origin does not identify an owner and repository: '{origin}'."
+            )
+        owner, repository = segments
+    assert owner is not None
+    assert repository is not None
+    repository = repository.removesuffix(".git")
     if not OWNER_PATTERN.fullmatch(owner):
         raise RuntimeError(
             f"The origin does not identify a valid repository owner: '{origin}'."
@@ -95,17 +119,24 @@ def repository_from_origin(origin: str) -> str:
 
 
 def run_git(
-    cwd: Path, *arguments: str
+    cwd: Path, *arguments: str, timeout: float | None = None
 ) -> subprocess.CompletedProcess[str]:
     """Run Git with the immutable read boundary."""
-    return run_command(
-        ["git", *git_read_arguments(), *arguments],
-        capture_output=True,
-        cwd=cwd,
-        env=git_read_environment(),
-        text=True,
-        check=False,
-    )
+    try:
+        return run_command(
+            ["git", *git_read_arguments(), *arguments],
+            capture_output=True,
+            cwd=cwd,
+            env=git_read_environment(),
+            text=True,
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(
+            f"The git {' '.join(arguments)} command timed out after "
+            f"{timeout:.1f} seconds."
+        ) from error
 
 
 def git_text(cwd: Path, *arguments: str) -> str:
@@ -131,7 +162,7 @@ def validate_local_checkout(knowledge_root: Path) -> LocalCheckout:
             f"The knowledge checkout root does not match the requested path: "
             f"'{knowledge_root}'."
         )
-    origin = git_text(knowledge_root, "remote", "get-url", "origin")
+    origin = git_text(knowledge_root, "config", "--get", "remote.origin.url")
     repository = repository_from_origin(origin)
     revision = git_text(knowledge_root, "rev-parse", "HEAD")
     if not FULL_SHA_PATTERN.fullmatch(revision):
@@ -145,12 +176,12 @@ def validate_local_checkout(knowledge_root: Path) -> LocalCheckout:
         "--untracked-files=all",
     )
     if status:
-        raise RuntimeError(
-            "The knowledge checkout is dirty:\n" + status
-        )
+        raise RuntimeError("The knowledge checkout is dirty:\n" + status)
     branch_result = run_git(knowledge_root, "branch", "--show-current")
     if branch_result.returncode != 0:
-        message = branch_result.stderr.strip() or "The current branch could not be read."
+        message = (
+            branch_result.stderr.strip() or "The current branch could not be read."
+        )
         raise RuntimeError(message)
     branch = branch_result.stdout.strip() or None
     return LocalCheckout(
@@ -164,12 +195,19 @@ def validate_local_checkout(knowledge_root: Path) -> LocalCheckout:
 
 def gh_command(*arguments: str) -> subprocess.CompletedProcess[str]:
     """Run `gh` and return the completed process."""
-    return run_command(
-        ["gh", *arguments],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        return run_command(
+            ["gh", *arguments],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=BEST_EFFORT_REMOTE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(
+            f"The gh {' '.join(arguments)} command timed out after "
+            f"{BEST_EFFORT_REMOTE_TIMEOUT_SECONDS:.1f} seconds."
+        ) from error
 
 
 def parse_repo_view(output: str, expected: str) -> str:
@@ -178,7 +216,10 @@ def parse_repo_view(output: str, expected: str) -> str:
     if not isinstance(value, dict):
         raise TypeError("GitHub returned repository metadata that is not valid.")
     name_with_owner = value.get("nameWithOwner")
-    if isinstance(name_with_owner, str) and name_with_owner.casefold() != expected.casefold():
+    if (
+        isinstance(name_with_owner, str)
+        and name_with_owner.casefold() != expected.casefold()
+    ):
         raise RuntimeError(
             f"GitHub returned a different repository than expected: '{name_with_owner}'."
         )
@@ -211,7 +252,19 @@ def refresh_local_checkout(
             freshness_limit="freshness could not be verified or updated",
             limitations=limitations,
         )
-    auth_result = gh_command("auth", "status", "--hostname", "github.com")
+    try:
+        auth_result = gh_command("auth", "status", "--hostname", "github.com")
+    except RuntimeError as error:
+        reason = str(error)
+        if mode == "write":
+            raise
+        limitations.append(reason)
+        return RefreshOutcome(
+            revision=checkout.revision,
+            refresh_state="unavailable",
+            freshness_limit="freshness could not be verified or updated",
+            limitations=limitations,
+        )
     if auth_result.returncode != 0:
         reason = (
             auth_result.stderr.strip()
@@ -227,14 +280,26 @@ def refresh_local_checkout(
             freshness_limit="freshness could not be verified or updated",
             limitations=limitations,
         )
-    repo_result = gh_command(
-        "repo",
-        "view",
-        "--repo",
-        f"github.com/{expected}",
-        "--json",
-        "nameWithOwner,defaultBranchRef",
-    )
+    try:
+        repo_result = gh_command(
+            "repo",
+            "view",
+            "--repo",
+            f"github.com/{expected}",
+            "--json",
+            "nameWithOwner,defaultBranchRef",
+        )
+    except RuntimeError as error:
+        reason = str(error)
+        if mode == "write":
+            raise
+        limitations.append(reason)
+        return RefreshOutcome(
+            revision=checkout.revision,
+            refresh_state="unavailable",
+            freshness_limit="freshness could not be verified or updated",
+            limitations=limitations,
+        )
     if repo_result.returncode != 0:
         reason = (
             repo_result.stderr.strip()
@@ -250,7 +315,19 @@ def refresh_local_checkout(
             freshness_limit="freshness could not be verified or updated",
             limitations=limitations,
         )
-    default_branch = parse_repo_view(repo_result.stdout, expected)
+    try:
+        default_branch = parse_repo_view(repo_result.stdout, expected)
+    except (json.JSONDecodeError, TypeError) as error:
+        reason = str(error)
+        if mode == "write":
+            raise RuntimeError(reason) from error
+        limitations.append(reason)
+        return RefreshOutcome(
+            revision=checkout.revision,
+            refresh_state="unavailable",
+            freshness_limit="freshness could not be verified or updated",
+            limitations=limitations,
+        )
     if checkout.branch is None:
         reason = "The knowledge checkout is detached and cannot be refreshed."
         if mode == "write":
@@ -276,7 +353,25 @@ def refresh_local_checkout(
             freshness_limit="freshness could not be verified or updated",
             limitations=limitations,
         )
-    fetch_result = run_git(checkout.root, "fetch", "origin", default_branch)
+    try:
+        fetch_result = run_git(
+            checkout.root,
+            "fetch",
+            "origin",
+            default_branch,
+            timeout=BEST_EFFORT_REMOTE_TIMEOUT_SECONDS,
+        )
+    except RuntimeError as error:
+        reason = str(error)
+        if mode == "write":
+            raise
+        limitations.append(reason)
+        return RefreshOutcome(
+            revision=checkout.revision,
+            refresh_state="unavailable",
+            freshness_limit="freshness could not be verified or updated",
+            limitations=limitations,
+        )
     if fetch_result.returncode != 0:
         reason = (
             fetch_result.stderr.strip()
