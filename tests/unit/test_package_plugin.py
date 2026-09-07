@@ -28,11 +28,7 @@ from scripts.package_plugin import (
     read_plugin_version,
 )
 
-from .package_markdown_helpers import (
-    local_markdown_targets,
-    markdown_anchors,
-    technical_english_targets,
-)
+from . import package_markdown_helpers as md
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -350,7 +346,7 @@ if (
                     continue
                 source = archive.extractfile(name)
                 assert source is not None
-                targets = technical_english_targets(source.read().decode("utf-8"))
+                targets = md.technical_english_targets(source.read().decode("utf-8"))
                 if name.endswith("/SKILL.md"):
                     self.assertTrue(targets, f"{name} has no policy link")
                 for target in targets:
@@ -376,7 +372,7 @@ if (
                     continue
                 source = archive.extractfile(name)
                 assert source is not None
-                for target, fragment in local_markdown_targets(
+                for target, fragment in md.local_markdown_targets(
                     source.read().decode("utf-8")
                 ):
                     checked += 1
@@ -394,7 +390,9 @@ if (
                     elif fragment and resolved.endswith(".md"):
                         target_source = archive.extractfile(resolved)
                         assert target_source is not None
-                        anchors = markdown_anchors(target_source.read().decode("utf-8"))
+                        anchors = md.markdown_anchors(
+                            target_source.read().decode("utf-8")
+                        )
                         if fragment.casefold() not in anchors:
                             unresolved.append(
                                 f"{name} -> {target}#{fragment} (anchor does not exist)"

@@ -13,11 +13,7 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
-from .package_markdown_helpers import (
-    local_markdown_targets,
-    markdown_anchors,
-    technical_english_targets,
-)
+from . import package_markdown_helpers as md
 
 ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / "scripts" / "package_opencode.py"
@@ -60,7 +56,7 @@ class PackageOpenCodeTests(unittest.TestCase):
         checked = 0
         unresolved: list[str] = []
         for markdown_path in sorted(artifact_root.rglob("*.md")):
-            for target, fragment in local_markdown_targets(
+            for target, fragment in md.local_markdown_targets(
                 markdown_path.read_text(encoding="utf-8")
             ):
                 checked += 1
@@ -75,7 +71,7 @@ class PackageOpenCodeTests(unittest.TestCase):
                 elif not resolved.exists():
                     unresolved.append(f"{source} -> {target} (target does not exist)")
                 elif fragment and resolved.suffix.casefold() == ".md":
-                    anchors = markdown_anchors(resolved.read_text(encoding="utf-8"))
+                    anchors = md.markdown_anchors(resolved.read_text(encoding="utf-8"))
                     if fragment.casefold() not in anchors:
                         unresolved.append(
                             f"{source} -> {target}#{fragment} (anchor does not exist)"
@@ -156,7 +152,7 @@ class PackageOpenCodeTests(unittest.TestCase):
         for markdown_path in sorted(skills_root.rglob("*.md")):
             if markdown_path == skills_root / "TECHNICAL_ENGLISH.md":
                 continue
-            targets = technical_english_targets(
+            targets = md.technical_english_targets(
                 markdown_path.read_text(encoding="utf-8")
             )
             if markdown_path.name == "SKILL.md":
@@ -180,7 +176,7 @@ class PackageOpenCodeTests(unittest.TestCase):
         )
 
         for label, readme, package_root in locations:
-            targets = technical_english_targets(readme.read_text(encoding="utf-8"))
+            targets = md.technical_english_targets(readme.read_text(encoding="utf-8"))
             self.assertTrue(targets, f"{label} README has no policy link")
             for target in targets:
                 with self.subTest(location=label, target=target):
