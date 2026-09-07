@@ -3,26 +3,56 @@
 
 from __future__ import annotations
 
+import argparse
+import importlib.util
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, cast
 from urllib.parse import urlparse
 
-if __package__ in {None, ""}:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from skills._cli import (
-    argument_parser,
-    git_read_arguments,
-    git_read_environment,
-    run_command,
-)
+class _CliModule(Protocol):
+    """Describe the shared helpers loaded from the installed skill corpus."""
+
+    argument_parser: Callable[..., argparse.ArgumentParser]
+    git_read_arguments: Callable[[], tuple[str, ...]]
+    git_read_environment: Callable[[], dict[str, str]]
+    run_command: Callable[..., subprocess.CompletedProcess[str]]
+
+
+def _load_installed_cli_module() -> _CliModule:
+    """Load the sibling shared helper from an installed skill corpus."""
+    cli_path = Path(__file__).resolve().parents[2] / "_cli.py"
+    spec = importlib.util.spec_from_file_location("athena_installed_cli", cli_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(
+            f"The installed Athena CLI helper is unavailable: '{cli_path}'."
+        )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return cast(_CliModule, module)
+
+
+if __package__ in {None, ""}:
+    _cli = _load_installed_cli_module()
+    argument_parser = _cli.argument_parser
+    git_read_arguments = _cli.git_read_arguments
+    git_read_environment = _cli.git_read_environment
+    run_command = _cli.run_command
+else:
+    from skills._cli import (
+        argument_parser,
+        git_read_arguments,
+        git_read_environment,
+        run_command,
+    )
 
 DEFAULT_KNOWLEDGE_ROOT = Path.home() / ".agent_brain" / "knowledge"
 DEFAULT_ORGANIZATION_OWNER = "HomericIntelligence"
@@ -30,6 +60,25 @@ REPOSITORY_NAME = "Mnemosyne"
 BEST_EFFORT_REMOTE_TIMEOUT_SECONDS = 2.0
 OWNER_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
 FULL_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+SAFE_LOCAL_CONFIG_KEYS = frozenset(
+    {
+        "core.bare",
+        "core.filemode",
+        "core.ignorecase",
+        "core.logallrefupdates",
+        "core.precomposeunicode",
+        "core.repositoryformatversion",
+        "remote.origin.fetch",
+        "remote.origin.url",
+    }
+)
+SAFE_BRANCH_CONFIG_PATTERN = re.compile(r"^branch\..+\.(?:merge|remote)$")
+SAFE_LOCAL_GIT_OVERRIDES = (
+    "-c",
+    f"core.hooksPath={os.devnull}",
+    "-c",
+    "core.fsmonitor=false",
+)
 
 
 @dataclass(frozen=True)
@@ -124,7 +173,12 @@ def run_git(
     """Run Git with the immutable read boundary."""
     try:
         return run_command(
-            ["git", *git_read_arguments(), *arguments],
+            [
+                "git",
+                *git_read_arguments(),
+                *SAFE_LOCAL_GIT_OVERRIDES,
+                *arguments,
+            ],
             capture_output=True,
             cwd=cwd,
             env=git_read_environment(),
@@ -137,6 +191,34 @@ def run_git(
             f"The git {' '.join(arguments)} command timed out after "
             f"{timeout:.1f} seconds."
         ) from error
+
+
+def require_safe_local_git_configuration(cwd: Path) -> None:
+    """Reject local Git settings that can redirect or execute refresh work."""
+    result = run_git(
+        cwd,
+        "config",
+        "--local",
+        "--name-only",
+        "--null",
+        "--list",
+        "--includes",
+    )
+    if result.returncode != 0:
+        message = result.stderr.strip() or "The local Git configuration cannot be read."
+        raise RuntimeError(message)
+    keys = [value.casefold() for value in result.stdout.split("\0") if value]
+    unsafe = sorted(
+        key
+        for key in keys
+        if key not in SAFE_LOCAL_CONFIG_KEYS
+        and SAFE_BRANCH_CONFIG_PATTERN.fullmatch(key) is None
+    )
+    if unsafe:
+        raise RuntimeError(
+            "The knowledge checkout has unsafe local Git configuration: "
+            + ", ".join(unsafe)
+        )
 
 
 def git_text(cwd: Path, *arguments: str) -> str:
@@ -236,50 +318,49 @@ def parse_repo_view(output: str, expected: str) -> str:
     return default_branch
 
 
+def unavailable_refresh(
+    checkout: LocalCheckout,
+    mode: str,
+    limitations: list[str],
+    reason: str,
+    *,
+    cause: BaseException | None = None,
+) -> RefreshOutcome:
+    """Apply the read-only fallback or the write-mode failure policy."""
+    if mode == "write":
+        raise RuntimeError(reason) from cause
+    limitations.append(reason)
+    return RefreshOutcome(
+        revision=checkout.revision,
+        refresh_state="unavailable",
+        freshness_limit="freshness could not be verified or updated",
+        limitations=limitations,
+    )
+
+
 def refresh_local_checkout(
     checkout: LocalCheckout, expected: str, mode: str
 ) -> RefreshOutcome:
     """Attempt a best-effort refresh and report the result."""
     limitations: list[str] = []
     if shutil.which("gh") is None:
-        reason = "The required command is not available: 'gh'."
-        if mode == "write":
-            raise RuntimeError(reason)
-        limitations.append(reason)
-        return RefreshOutcome(
-            revision=checkout.revision,
-            refresh_state="unavailable",
-            freshness_limit="freshness could not be verified or updated",
-            limitations=limitations,
+        return unavailable_refresh(
+            checkout,
+            mode,
+            limitations,
+            "The required command is not available: 'gh'.",
         )
     try:
         auth_result = gh_command("auth", "status", "--hostname", "github.com")
     except RuntimeError as error:
-        reason = str(error)
-        if mode == "write":
-            raise
-        limitations.append(reason)
-        return RefreshOutcome(
-            revision=checkout.revision,
-            refresh_state="unavailable",
-            freshness_limit="freshness could not be verified or updated",
-            limitations=limitations,
-        )
+        return unavailable_refresh(checkout, mode, limitations, str(error), cause=error)
     if auth_result.returncode != 0:
         reason = (
             auth_result.stderr.strip()
             or auth_result.stdout.strip()
             or "GitHub authentication is unavailable."
         )
-        if mode == "write":
-            raise RuntimeError(reason)
-        limitations.append(reason)
-        return RefreshOutcome(
-            revision=checkout.revision,
-            refresh_state="unavailable",
-            freshness_limit="freshness could not be verified or updated",
-            limitations=limitations,
-        )
+        return unavailable_refresh(checkout, mode, limitations, reason)
     try:
         repo_result = gh_command(
             "repo",
@@ -290,103 +371,87 @@ def refresh_local_checkout(
             "nameWithOwner,defaultBranchRef",
         )
     except RuntimeError as error:
-        reason = str(error)
-        if mode == "write":
-            raise
-        limitations.append(reason)
-        return RefreshOutcome(
-            revision=checkout.revision,
-            refresh_state="unavailable",
-            freshness_limit="freshness could not be verified or updated",
-            limitations=limitations,
-        )
+        return unavailable_refresh(checkout, mode, limitations, str(error), cause=error)
     if repo_result.returncode != 0:
         reason = (
             repo_result.stderr.strip()
             or repo_result.stdout.strip()
             or "GitHub repository discovery failed."
         )
-        if mode == "write":
-            raise RuntimeError(reason)
-        limitations.append(reason)
-        return RefreshOutcome(
-            revision=checkout.revision,
-            refresh_state="unavailable",
-            freshness_limit="freshness could not be verified or updated",
-            limitations=limitations,
-        )
+        return unavailable_refresh(checkout, mode, limitations, reason)
     try:
         default_branch = parse_repo_view(repo_result.stdout, expected)
     except (json.JSONDecodeError, TypeError) as error:
-        reason = str(error)
-        if mode == "write":
-            raise RuntimeError(reason) from error
-        limitations.append(reason)
-        return RefreshOutcome(
-            revision=checkout.revision,
-            refresh_state="unavailable",
-            freshness_limit="freshness could not be verified or updated",
-            limitations=limitations,
-        )
+        return unavailable_refresh(checkout, mode, limitations, str(error), cause=error)
     if checkout.branch is None:
-        reason = "The knowledge checkout is detached and cannot be refreshed."
-        if mode == "write":
-            raise RuntimeError(reason)
-        limitations.append(reason)
-        return RefreshOutcome(
-            revision=checkout.revision,
-            refresh_state="unavailable",
-            freshness_limit="freshness could not be verified or updated",
-            limitations=limitations,
+        return unavailable_refresh(
+            checkout,
+            mode,
+            limitations,
+            "The knowledge checkout is detached and cannot be refreshed.",
         )
     if checkout.branch != default_branch:
         reason = (
             "The knowledge checkout branch does not match the remote default "
             f"branch: '{checkout.branch}' != '{default_branch}'."
         )
-        if mode == "write":
-            raise RuntimeError(reason)
-        limitations.append(reason)
-        return RefreshOutcome(
-            revision=checkout.revision,
-            refresh_state="unavailable",
-            freshness_limit="freshness could not be verified or updated",
-            limitations=limitations,
+        return unavailable_refresh(checkout, mode, limitations, reason)
+    try:
+        require_safe_local_git_configuration(checkout.root)
+        current_revision = git_text(checkout.root, "rev-parse", "HEAD")
+    except RuntimeError as error:
+        return unavailable_refresh(checkout, mode, limitations, str(error), cause=error)
+    if current_revision != checkout.revision:
+        return unavailable_refresh(
+            checkout,
+            mode,
+            limitations,
+            "The knowledge checkout revision changed before refresh.",
         )
+    trusted_url = f"https://github.com/{expected}.git"
     try:
         fetch_result = run_git(
             checkout.root,
             "fetch",
-            "origin",
+            "--no-tags",
+            trusted_url,
             default_branch,
             timeout=BEST_EFFORT_REMOTE_TIMEOUT_SECONDS,
         )
     except RuntimeError as error:
-        reason = str(error)
-        if mode == "write":
-            raise
-        limitations.append(reason)
-        return RefreshOutcome(
-            revision=checkout.revision,
-            refresh_state="unavailable",
-            freshness_limit="freshness could not be verified or updated",
-            limitations=limitations,
-        )
+        return unavailable_refresh(checkout, mode, limitations, str(error), cause=error)
     if fetch_result.returncode != 0:
         reason = (
             fetch_result.stderr.strip()
             or fetch_result.stdout.strip()
             or f"The knowledge checkout could not fetch origin/{default_branch}."
         )
-        if mode == "write":
-            raise RuntimeError(reason)
-        limitations.append(reason)
-        return RefreshOutcome(
-            revision=checkout.revision,
-            refresh_state="unavailable",
-            freshness_limit="freshness could not be verified or updated",
-            limitations=limitations,
+        return unavailable_refresh(checkout, mode, limitations, reason)
+    try:
+        require_safe_local_git_configuration(checkout.root)
+        fetched_revision = git_text(checkout.root, "rev-parse", "FETCH_HEAD")
+    except RuntimeError as error:
+        return unavailable_refresh(checkout, mode, limitations, str(error), cause=error)
+    if not FULL_SHA_PATTERN.fullmatch(fetched_revision):
+        reason = (
+            f"The upstream revision is not a full commit SHA: '{fetched_revision}'."
         )
+        return unavailable_refresh(checkout, mode, limitations, reason)
+    ancestor_result = run_git(
+        checkout.root,
+        "merge-base",
+        "--is-ancestor",
+        checkout.revision,
+        fetched_revision,
+    )
+    if ancestor_result.returncode != 0:
+        reason = (
+            "The local knowledge revision is not an ancestor of the upstream revision."
+            if ancestor_result.returncode == 1
+            else ancestor_result.stderr.strip()
+            or "The knowledge checkout ancestry could not be verified."
+        )
+        return unavailable_refresh(checkout, mode, limitations, reason)
     merge_result = run_git(checkout.root, "merge", "--ff-only", "FETCH_HEAD")
     if merge_result.returncode != 0:
         reason = (
@@ -394,16 +459,12 @@ def refresh_local_checkout(
             or merge_result.stdout.strip()
             or "The knowledge checkout could not fast-forward."
         )
-        if mode == "write":
-            raise RuntimeError(reason)
-        limitations.append(reason)
-        return RefreshOutcome(
-            revision=checkout.revision,
-            refresh_state="unavailable",
-            freshness_limit="freshness could not be verified or updated",
-            limitations=limitations,
-        )
+        return unavailable_refresh(checkout, mode, limitations, reason)
     revision = git_text(checkout.root, "rev-parse", "HEAD")
+    if revision != fetched_revision:
+        raise RuntimeError(
+            "The knowledge checkout does not match the verified upstream revision."
+        )
     return RefreshOutcome(
         revision=revision,
         refresh_state="updated",

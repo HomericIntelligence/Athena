@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import shutil
@@ -54,13 +55,6 @@ def create_checkout(root: Path) -> tuple[Path, Path, str]:
     git(root, "clone", "--quiet", str(remote), str(knowledge_root))
     origin_url = "https://github.com/" + "HomericIntelligence/" + "Mnemosyne.git"
     git(knowledge_root, "remote", "set-url", "origin", origin_url)
-    git(
-        knowledge_root,
-        "config",
-        "--add",
-        f"url.{remote.as_posix()}.insteadOf",
-        origin_url,
-    )
     return remote, knowledge_root, git(knowledge_root, "rev-parse", "HEAD")
 
 
@@ -107,27 +101,32 @@ def build_env(
     repo_view_stderr: str = "",
     auth_stderr: str = "",
     git_fetch_sleep_seconds: float = 0,
+    git_fetch_remote: Path | None = None,
 ) -> dict[str, str]:
     """Return an isolated tool path and fake `gh` environment."""
     bin_dir = root / "bin"
     bin_dir.mkdir(parents=True)
     (bin_dir / "python3").symlink_to(sys.executable)
-    if git_fetch_sleep_seconds > 0:
+    if git_fetch_sleep_seconds > 0 or git_fetch_remote is not None:
         git_wrapper = bin_dir / "git"
+        trusted_url = f"https://github.com/{repository}.git"
+        replacement = str(git_fetch_remote) if git_fetch_remote else trusted_url
         git_wrapper.write_text(
             "\n".join(
                 [
-                    "#!/bin/sh",
-                    'for arg in "$@"; do',
-                    '  if [ "$arg" = fetch ]; then',
+                    f"#!{sys.executable}",
+                    "import os",
+                    "import sys",
+                    "import time",
+                    "arguments = sys.argv[1:]",
+                    "if 'fetch' in arguments:",
+                    f"    time.sleep({git_fetch_sleep_seconds})",
                     (
-                        "    python3 -c 'import time; "
-                        f"time.sleep({git_fetch_sleep_seconds})'"
+                        "    arguments = ["
+                        f"{replacement!r} if value == {trusted_url!r} else value "
+                        "for value in arguments]"
                     ),
-                    "    break",
-                    "  fi",
-                    "done",
-                    f'exec {GIT_PATH} "$@"',
+                    f"os.execv({GIT_PATH!r}, [{GIT_PATH!r}, *arguments])",
                     "",
                 ]
             ),
@@ -197,6 +196,8 @@ def test_resolver_module_coverage_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Exercise the resolver control flow in process for coverage."""
+    cli_module = resolver._load_installed_cli_module()
+    assert cli_module.git_read_arguments()
     _remote, knowledge_root, revision = create_checkout(tmp_path)
     checkout = resolver.validate_local_checkout(knowledge_root)
     assert checkout.revision == revision
@@ -351,6 +352,13 @@ def test_resolver_module_coverage_paths(
             return updates["merge"]
         if arguments[:2] == ("rev-parse", "HEAD"):
             return updates["rev-parse"]
+        if arguments[:2] == ("rev-parse", "FETCH_HEAD"):
+            return subprocess.CompletedProcess[str](
+                args=["git", "rev-parse", "FETCH_HEAD"],
+                returncode=0,
+                stdout=revision,
+                stderr="",
+            )
         if arguments[:2] == ("branch", "--show-current"):
             return subprocess.CompletedProcess[str](
                 args=["git", "branch", "--show-current"],
@@ -527,6 +535,7 @@ def test_read_only_uses_local_checkout_when_fetch_fails(tmp_path: Path) -> None:
     env = build_env(
         tmp_path / "fetch-fails",
         include_gh=True,
+        git_fetch_remote=remote,
         repo_view_json={
             "defaultBranchRef": {"name": "main"},
             "nameWithOwner": "HomericIntelligence/" + "Mnemosyne",
@@ -554,11 +563,12 @@ def test_read_only_uses_local_checkout_when_fetch_times_out(
     tmp_path: Path,
 ) -> None:
     remote, knowledge_root, revision = create_checkout(tmp_path)
-    _updated_revision = push_followup_commit(tmp_path, remote)
+    push_followup_commit(tmp_path, remote)
     env = build_env(
         tmp_path / "fetch-timeout",
         include_gh=True,
         git_fetch_sleep_seconds=4,
+        git_fetch_remote=remote,
     )
     result = run_resolver(
         knowledge_root,
@@ -581,7 +591,11 @@ def test_read_only_uses_local_checkout_when_fetch_times_out(
 def test_successful_refresh_reports_the_updated_revision(tmp_path: Path) -> None:
     remote, knowledge_root, revision = create_checkout(tmp_path)
     updated_revision = push_followup_commit(tmp_path, remote)
-    env = build_env(tmp_path / "refresh-success", include_gh=True)
+    env = build_env(
+        tmp_path / "refresh-success",
+        include_gh=True,
+        git_fetch_remote=remote,
+    )
     result = run_resolver(
         knowledge_root,
         "--mode",
@@ -598,6 +612,131 @@ def test_successful_refresh_reports_the_updated_revision(tmp_path: Path) -> None
     assert payload["local_revision"] == revision
     assert payload["refresh_state"] == "updated"
     assert payload["freshness_limit"] == "freshness verified by upstream refresh"
+
+
+def test_refresh_rejects_local_url_rewrite_configuration(tmp_path: Path) -> None:
+    remote, knowledge_root, revision = create_checkout(tmp_path)
+    origin_url = git(knowledge_root, "config", "--get", "remote.origin.url")
+    git(
+        knowledge_root,
+        "config",
+        "--add",
+        f"url.{remote.as_posix()}.insteadOf",
+        origin_url,
+    )
+    result = run_resolver(
+        knowledge_root,
+        "--mode",
+        "read-only",
+        "--knowledge-root",
+        str(knowledge_root),
+        "--json",
+        env=build_env(tmp_path / "unsafe-local-config", include_gh=True),
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = resolver_json(result)
+    assert payload["revision"] == revision
+    assert payload["refresh_state"] == "unavailable"
+    assert "unsafe local Git configuration" in payload["limitations"][0]
+    write_result = run_resolver(
+        knowledge_root,
+        "--mode",
+        "write",
+        "--knowledge-root",
+        str(knowledge_root),
+        "--json",
+        env=build_env(tmp_path / "unsafe-write-config", include_gh=True),
+    )
+    assert_failure(write_result, "unsafe local Git configuration")
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("core.fsmonitor", "true"),
+        ("core.hooksPath", "hooks"),
+        ("credential.helper", "!true"),
+        ("filter.untrusted.clean", "true"),
+    ],
+)
+def test_refresh_rejects_local_configuration_with_execution_effects(
+    tmp_path: Path,
+    key: str,
+    value: str,
+) -> None:
+    _remote, knowledge_root, _revision = create_checkout(tmp_path)
+    git(knowledge_root, "config", key, value)
+
+    with pytest.raises(RuntimeError, match="unsafe local Git configuration"):
+        resolver.require_safe_local_git_configuration(knowledge_root)
+
+
+def test_write_mode_rejects_a_local_revision_ahead_of_upstream(
+    tmp_path: Path,
+) -> None:
+    remote, knowledge_root, _revision = create_checkout(tmp_path)
+    (knowledge_root / "skill.md").write_text("base\nlocal\n", encoding="utf-8")
+    git(
+        knowledge_root,
+        "-c",
+        "user.name=Athena Tests",
+        "-c",
+        "user.email=athena-tests@example.invalid",
+        "commit",
+        "--quiet",
+        "-am",
+        "test: local ahead",
+    )
+    local_revision = git(knowledge_root, "rev-parse", "HEAD")
+    result = run_resolver(
+        knowledge_root,
+        "--mode",
+        "write",
+        "--knowledge-root",
+        str(knowledge_root),
+        "--json",
+        env=build_env(
+            tmp_path / "local-ahead",
+            include_gh=True,
+            git_fetch_remote=remote,
+        ),
+    )
+
+    assert_failure(result, "not an ancestor of the upstream revision")
+    assert git(knowledge_root, "rev-parse", "HEAD") == local_revision
+
+
+def test_direct_script_bootstraps_from_an_opencode_skill_layout(
+    tmp_path: Path,
+) -> None:
+    skill_root = tmp_path / "skills" / "athena"
+    staged_script = skill_root / "advise" / "scripts" / SCRIPT.name
+    staged_script.parent.mkdir(parents=True)
+    shutil.copy2(ROOT / "skills" / "_cli.py", skill_root / "_cli.py")
+    shutil.copy2(SCRIPT, staged_script)
+
+    result = subprocess.run(
+        [sys.executable, str(staged_script), "--help"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Resolve a trusted Mnemosyne checkout" in result.stdout
+
+
+def test_skill_commands_use_the_installed_resolver_path() -> None:
+    repo_relative = "skills/advise/scripts/resolve_knowledge_checkout.py"
+    installed = (
+        "<installed-advise-skill-directory>/scripts/resolve_knowledge_checkout.py"
+    )
+    for relative_path in ("skills/advise/SKILL.md", "skills/learn/SKILL.md"):
+        content = (ROOT / relative_path).read_text(encoding="utf-8")
+        assert repo_relative not in content
+        assert installed in content
 
 
 def test_write_mode_requires_refresh_and_fails_closed_on_missing_gh(
@@ -667,7 +806,11 @@ def test_write_mode_requires_refresh_and_uses_the_updated_revision(
 ) -> None:
     remote, knowledge_root, revision = create_checkout(tmp_path)
     updated_revision = push_followup_commit(tmp_path, remote)
-    env = build_env(tmp_path / "write-refresh-success", include_gh=True)
+    env = build_env(
+        tmp_path / "write-refresh-success",
+        include_gh=True,
+        git_fetch_remote=remote,
+    )
     result = run_resolver(
         knowledge_root,
         "--mode",
@@ -727,6 +870,9 @@ def test_resolver_module_defensive_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Cover defensive branches that the process tests do not reach."""
+    monkeypatch.setattr(importlib.util, "spec_from_file_location", lambda *_: None)
+    with pytest.raises(RuntimeError, match="CLI helper is unavailable"):
+        resolver._load_installed_cli_module()
     remote, knowledge_root, revision = create_checkout(tmp_path)
     checkout = resolver.validate_local_checkout(knowledge_root)
     assert checkout.revision == revision

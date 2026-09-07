@@ -39,8 +39,9 @@ workflow decisions:
 ## Use local knowledge as a best effort
 
 Use the read-only knowledge path in the
-[`dependency-resolution` contract](../../docs/dependency-resolution.md). Run
-`skills/advise/scripts/resolve_knowledge_checkout.py --mode read-only --knowledge-root "$HOME/.agent_brain/knowledge" --json`
+[`dependency-resolution` contract](../../docs/dependency-resolution.md). Resolve the installed
+`advise` skill directory. Then run
+`python3 "<installed-advise-skill-directory>/scripts/resolve_knowledge_checkout.py" --mode read-only --knowledge-root "$HOME/.agent_brain/knowledge" --json`
 before you try a network operation. Inspect Mnemosyne at the reported checkout path.
 
 If the checkout has a readable `HEAD`, bind retrieval to that commit. If the helper reports a
@@ -62,7 +63,7 @@ task. Do not substitute a different repository.
 ## Retrieve
 
 1. Resolve this installed skill's directory.
-2. Run `skills/advise/scripts/resolve_knowledge_checkout.py --mode read-only --knowledge-root "$HOME/.agent_brain/knowledge" --json`.
+2. Run `python3 "<installed-advise-skill-directory>/scripts/resolve_knowledge_checkout.py" --mode read-only --knowledge-root "$HOME/.agent_brain/knowledge" --json`.
 3. If the helper succeeds, use the reported checkout path and revision.
 4. Run `scripts/list_retrievable_skills.py <knowledge-root>` by its absolute path.
 5. If the helper succeeds, use only the paths that it returns.

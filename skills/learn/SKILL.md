@@ -52,8 +52,9 @@ workflow-specific rules:
 ## Inspect local knowledge
 
 Use the read-only path in the
-[`dependency-resolution` contract](../../docs/dependency-resolution.md). Run
-`skills/advise/scripts/resolve_knowledge_checkout.py --mode read-only --knowledge-root "$HOME/.agent_brain/knowledge" --json`
+[`dependency-resolution` contract](../../docs/dependency-resolution.md). Resolve the installed
+`advise` skill directory. Then run
+`python3 "<installed-advise-skill-directory>/scripts/resolve_knowledge_checkout.py" --mode read-only --knowledge-root "$HOME/.agent_brain/knowledge" --json`
 before you classify the corpus. Inspect Mnemosyne at the reported checkout path. If the checkout
 has a readable `HEAD`, bind discovery to that commit. If the helper reports a freshness limit, keep
 that limit in the lesson.
@@ -73,7 +74,7 @@ decision that you could not check.
 Before a durable write, complete normal dependency resolution and revalidation. This step can create
 or update the checkout. Then repeat duplicate and open-PR discovery against the resolved delivery
 revision. Run
-`skills/advise/scripts/resolve_knowledge_checkout.py --mode write --knowledge-root "$HOME/.agent_brain/knowledge" --json`
+`python3 "<installed-advise-skill-directory>/scripts/resolve_knowledge_checkout.py" --mode write --knowledge-root "$HOME/.agent_brain/knowledge" --json`
 and require it to report an updated revision before you continue. Use the canonical default branch
 for a new PR. Bind the delivery worktree to that exact commit identifier. A stale local checkout is
 sufficient for discovery. It is not sufficient for publication.
@@ -85,7 +86,7 @@ This phase is read-only.
 1. Run `advise` with the proposed lesson. Treat `no-local-guidance` as a limit, not a blocker.
 2. Define retrieval intent by the trigger, context, desired outcome, constraints, and failure mode.
 3. Do not use a title, issue number, or session wording as identity.
-4. Run `skills/advise/scripts/resolve_knowledge_checkout.py --mode read-only --knowledge-root "$HOME/.agent_brain/knowledge" --json`.
+4. Run `python3 "<installed-advise-skill-directory>/scripts/resolve_knowledge_checkout.py" --mode read-only --knowledge-root "$HOME/.agent_brain/knowledge" --json`.
 5. Resolve the installed `advise/scripts/list_retrievable_skills.py` helper.
 6. Run the helper by its absolute path against the reported knowledge checkout.
 7. If the helper is missing or fails, report the selector limit. Use the bounded fallback from
