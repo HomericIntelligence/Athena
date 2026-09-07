@@ -8,10 +8,20 @@ from pathlib import Path
 from typing import Any
 
 from scripts.policies.agent_contract import CONTRACT_TAG, parse_principles_catalog
+from scripts.semver import SEMVER_PATTERN
 
 AGENT_CONTRACT_TAG = CONTRACT_TAG
 AGENT_CONTRACT_REF_PATTERN = "refs/tags/agent-contract-v*"
 AGENT_CONTRACT_RULESET_NAME = "homeric-agent-contract-tags"
+AGENT_CONTRACT_TAG_PREFIX = "agent-contract-v"
+
+
+def is_agent_contract_tag(tag: str) -> bool:
+    """Return whether a tag is a complete agent-contract release version."""
+    return tag.startswith(AGENT_CONTRACT_TAG_PREFIX) and (
+        SEMVER_PATTERN.fullmatch(tag.removeprefix(AGENT_CONTRACT_TAG_PREFIX))
+        is not None
+    )
 
 
 def expected_tag_ruleset() -> dict[str, Any]:
@@ -48,11 +58,18 @@ def tag_ruleset_errors(document: object) -> list[str]:
         return ["The agent-contract tag ruleset must be a JSON object."]
     expected = expected_tag_ruleset()
     errors: list[str] = []
-    for field in ("name", "target", "enforcement", "bypass_actors", "conditions"):
+    for field in ("name", "target", "enforcement", "conditions"):
         if document.get(field) != expected[field]:
             errors.append(
                 f"The agent-contract tag ruleset has an invalid '{field}' field."
             )
+    if "bypass_actors" not in document:
+        errors.append(
+            "The agent-contract tag ruleset is missing the required "
+            "'bypass_actors' field."
+        )
+    elif document["bypass_actors"] != []:
+        errors.append("The agent-contract tag ruleset has one or more bypass actors.")
     rule_types = _rule_types(document)
     if rule_types is None:
         errors.append("The agent-contract tag ruleset must contain valid rules.")
@@ -121,8 +138,11 @@ def agent_contract_release_errors(
 ) -> list[str]:
     """Return violations in tag identity and required release evidence."""
     errors: list[str] = []
-    if tag != AGENT_CONTRACT_TAG:
-        errors.append(f"The agent-contract tag must be '{AGENT_CONTRACT_TAG}'.")
+    if not is_agent_contract_tag(tag):
+        errors.append(
+            "The agent-contract tag must match "
+            "'agent-contract-v<major>.<minor>.<patch>'."
+        )
     if main_sha != commit:
         errors.append("The agent-contract commit must be the exact main commit.")
     commit_verification = (
@@ -239,8 +259,10 @@ def _record_values(
     }
 
 
-def render_release_record(**values: Any) -> str:
+def render_release_record(*, tag: str = AGENT_CONTRACT_TAG, **values: Any) -> str:
     """Render a deterministic GitHub Release record from verified readbacks."""
+    if not is_agent_contract_tag(tag):
+        raise ValueError("The release record needs a valid agent-contract tag.")
     record = _record_values(**values)
     workflow_urls = record["workflow_urls"]
     if not isinstance(workflow_urls, list) or not all(
@@ -249,7 +271,7 @@ def render_release_record(**values: Any) -> str:
         raise TypeError("The workflow URL evidence must be a list of strings.")
     workflows = "\n".join(f"- {url}" for url in workflow_urls)
     return (
-        f"# {AGENT_CONTRACT_TAG} release record\n\n"
+        f"# {tag} release record\n\n"
         f"- Tag object SHA: `{record['tag_object_sha']}`\n"
         f"- Commit SHA: `{record['commit_sha']}`\n"
         f"- Catalog SHA-256: `{record['catalog_sha256']}`\n"
@@ -262,9 +284,11 @@ def render_release_record(**values: Any) -> str:
     )
 
 
-def release_record_errors(body: str, **values: Any) -> list[str]:
+def release_record_errors(
+    body: str, *, tag: str = AGENT_CONTRACT_TAG, **values: Any
+) -> list[str]:
     """Return violations in one published GitHub Release record."""
-    expected = render_release_record(**values)
+    expected = render_release_record(tag=tag, **values)
     if body != expected:
         return ["The GitHub Release record does not match the verified evidence."]
     return []
