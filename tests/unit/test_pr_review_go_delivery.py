@@ -430,6 +430,80 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self.assertIn("name=repository", calls[0])
         self.assertIn("number=7", calls[0])
 
+    def test_github_adapter_rejects_incomplete_or_malformed_snapshots(self) -> None:
+        cases: tuple[tuple[tuple[str | int, ...], object], ...] = (
+            (("number",), 8),
+            (("reviewThreads", "pageInfo", "hasNextPage"), True),
+            (("reviewThreads", "nodes"), None),
+            (("reviewThreads", "nodes", 0), None),
+            (("reviewThreads", "nodes", 0, "comments"), None),
+            (
+                ("reviewThreads", "nodes", 0, "comments", "pageInfo", "hasNextPage"),
+                True,
+            ),
+            (("reviewThreads", "nodes", 0, "comments", "nodes"), None),
+            (("reviewThreads", "nodes", 0, "comments", "nodes", 0), None),
+            (("reviewThreads", "nodes", 0, "id"), None),
+            (("reviewThreads", "nodes", 0, "isResolved"), None),
+            (("labels",), None),
+            (("labels", "pageInfo", "hasNextPage"), True),
+            (("labels", "nodes"), None),
+            (("labels", "nodes", 0), None),
+        )
+        for path, value in cases:
+            document = json.loads(self.github_snapshot_json())
+            target = document["data"]["repository"]["pullRequest"]
+            for key in path[:-1]:
+                target = target[key]
+            target[path[-1]] = value
+            with (
+                self.subTest(path=path),
+                patch.object(
+                    self.delivery, "_gh", return_value=json.dumps(document)
+                ) as query,
+                self.assertRaises(self.delivery.DeliveryError),
+            ):
+                self.delivery.GitHubForge(self.binding()).snapshot()
+            query.assert_called_once()
+        with (
+            patch.object(
+                self.delivery,
+                "_gh",
+                return_value='{"data":{"repository":{"pullRequest":null}}}',
+            ),
+            self.assertRaises(self.delivery.DeliveryError),
+        ):
+            self.delivery.GitHubForge(self.binding()).snapshot()
+
+    def test_invalid_responses_prevent_all_forge_mutations(self) -> None:
+        from dataclasses import replace
+
+        thread = self.thread()
+        valid = self.plan(thread)
+        cases = (
+            (valid, valid),
+            (replace(valid, thread_id="unknown"),),
+            (replace(valid, thread_id=None),),
+            (replace(valid, body=" "),),
+            (replace(valid, conversation_sha256="stale"),),
+        )
+        for responses in cases:
+            forge = FakeForge(self.delivery, threads=(thread,))
+            with (
+                self.subTest(responses=responses),
+                self.assertRaises(self.delivery.DeliveryError),
+            ):
+                self.delivery.deliver_go(forge, self.binding(), responses)
+            self.assertTrue(all(event == "read" for event in forge.events))
+        forge = FakeForge(self.delivery, threads=(thread,))
+        snapshot = replace(forge.snapshot(), threads=(thread, thread))
+        with (
+            patch.object(forge, "snapshot", return_value=snapshot),
+            self.assertRaises(self.delivery.DeliveryError),
+        ):
+            self.delivery.deliver_go(forge, self.binding(), (valid,))
+        self.assertTrue(all(event == "read" for event in forge.events))
+
     def test_github_adapter_posts_bound_reply_and_resolution_mutations(self) -> None:
         calls: list[tuple[str, ...]] = []
 
@@ -486,6 +560,13 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             ),
             calls[0],
         )
+
+    def test_manifest_loader_rejects_non_object_document(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "manifest.json"
+            path.write_text("[]", encoding="utf-8")
+            with self.assertRaises(self.delivery.DeliveryError):
+                self.delivery.load_response_manifest(path, self.binding())
 
     def test_manifest_loader_accepts_bound_document_and_rejects_drift(self) -> None:
         thread = self.thread()
