@@ -320,7 +320,7 @@ def _release_environment_command() -> int:
     )
     if not isinstance(branch_policy_pages, list):
         raise TypeError("GitHub returned a release branch policy list that is invalid.")
-    branch_policy_names: list[str] = []
+    tag_policy_names: list[str] = []
     for page in branch_policy_pages:
         if not isinstance(page, dict):
             raise TypeError(
@@ -331,13 +331,19 @@ def _release_environment_command() -> int:
             raise TypeError(
                 "GitHub returned a release branch policy list that is invalid."
             )
-        branch_policy_names.extend(
+        tag_policy_names.extend(
             str(policy["name"])
             for policy in branch_policies
-            if isinstance(policy, dict) and isinstance(policy.get("name"), str)
+            if isinstance(policy, dict)
+            and isinstance(policy.get("name"), str)
+            and policy.get("type") == "tag"
         )
-    if "v*" not in branch_policy_names:
+    if "v*" not in tag_policy_names:
         errors.append("The release environment must allow the `v*` tag policy.")
+    if "agent-contract-v*" not in tag_policy_names:
+        errors.append(
+            "The release environment must allow the `agent-contract-v*` tag policy."
+        )
     if errors:
         raise SystemExit("\n".join(errors))
     print("The release environment configuration passed.")

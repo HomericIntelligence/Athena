@@ -23,6 +23,9 @@ the implementation pull request. Complete all validation before the first tag wr
    Administration permission set to read-only. Give the token only to the live ruleset readback
    step.
 
+The current `main` equality in step 2 applies before tag creation. During recovery after `main`
+advances, verify the preserved tag target with its original exact-commit evidence.
+
 Use one private temporary directory for the operation evidence:
 
 ```bash

@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -182,6 +183,18 @@ class PullRequestPolicyTests(unittest.TestCase):
             agent_contract_release.agent_contract_release_errors(**recovery_evidence),
         )
 
+        historical_evidence = {**evidence, "main_sha": "d" * 40}
+        self.assertEqual(
+            [],
+            agent_contract_release.agent_contract_release_errors(**historical_evidence),
+        )
+        self.assertIn(
+            "The agent-contract commit must be the exact main commit.",
+            agent_contract_release.agent_contract_release_errors(
+                **historical_evidence, pre_tag=True
+            ),
+        )
+
         for name, replacement in (
             ("wrong-tag", {"tag": "v1.0.1"}),
             ("invalid-semver-tag", {"tag": "agent-contract-v01.0.1"}),
@@ -195,7 +208,6 @@ class PullRequestPolicyTests(unittest.TestCase):
                     }
                 },
             ),
-            ("wrong-main", {"main_sha": "d" * 40}),
             (
                 "unverified-main",
                 {
@@ -1411,7 +1423,7 @@ runpy.run_path({str(script)!r}, run_name="__main__")
         self.assertEqual(2, run_json.call_count)
         self.assertIn("--paginate", run_json.call_args_list[1].args[0])
 
-    def test_release_environment_command_requires_reviewers_and_v_tag_policy(
+    def test_release_environment_command_requires_reviewers_and_tag_policies(
         self,
     ) -> None:
         environment = {
@@ -1430,8 +1442,8 @@ runpy.run_path({str(script)!r}, run_name="__main__")
             [
                 {
                     "branch_policies": [
-                        {"name": "v*"},
-                        {"name": "main"},
+                        {"name": "v*", "type": "tag"},
+                        {"name": "agent-contract-v*", "type": "tag"},
                     ]
                 }
             ],
@@ -1447,6 +1459,64 @@ runpy.run_path({str(script)!r}, run_name="__main__")
             "deployment-branch-policies",
             " ".join(run_json.call_args_list[1].args[0]),
         )
+
+    def test_release_environment_command_rejects_missing_or_wrong_tag_policy(
+        self,
+    ) -> None:
+        environment = {
+            "GITHUB_REPOSITORY": "owner/repository",
+        }
+        environment_response = {
+            "protection_rules": [
+                {
+                    "type": "required_reviewers",
+                    "reviewers": [{"id": 1, "login": "maintainer"}],
+                }
+            ],
+            "deployment_branch_policy": {"custom_branch_policies": True},
+        }
+        cases = (
+            (
+                "missing package policy",
+                [{"name": "agent-contract-v*", "type": "tag"}],
+                "`v*` tag policy",
+            ),
+            (
+                "missing agent-contract policy",
+                [{"name": "v*", "type": "tag"}],
+                "`agent-contract-v*` tag policy",
+            ),
+            (
+                "package policy has branch type",
+                [
+                    {"name": "v*", "type": "branch"},
+                    {"name": "agent-contract-v*", "type": "tag"},
+                ],
+                "`v*` tag policy",
+            ),
+            (
+                "agent-contract policy has branch type",
+                [
+                    {"name": "v*", "type": "tag"},
+                    {"name": "agent-contract-v*", "type": "branch"},
+                ],
+                "`agent-contract-v*` tag policy",
+            ),
+        )
+        for name, policies, expected_error in cases:
+            with (
+                self.subTest(name),
+                patch.dict(os.environ, environment, clear=False),
+                patch(
+                    "scripts.ci_policy._run_json",
+                    side_effect=[
+                        environment_response,
+                        [{"branch_policies": policies}],
+                    ],
+                ),
+                self.assertRaisesRegex(SystemExit, re.escape(expected_error)),
+            ):
+                ci_policy.main(["release-environment"])
 
     def test_release_environment_command_rejects_unprotected_environment(self) -> None:
         environment = {

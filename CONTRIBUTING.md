@@ -69,8 +69,8 @@ deployment before GitHub or npm publication starts. No Python wheel or source di
 produced.
 
 Before the first release, a repository administrator must create the `release` environment in
-Settings > Environments. Add at least one required reviewer and restrict deployment to the
-repository's release tags (for example, `v*`). Keep the environment name exactly `release`.
+Settings > Environments. Add at least one required reviewer. Add tag policies for `v*` and
+`agent-contract-v*`. Keep the environment name exactly `release`.
 GitHub can create a missing environment without these protection rules. Before a release tag is
 created, verify the configuration with the GitHub CLI. Replace `<OWNER>/<REPOSITORY>` with the
 repository name:
@@ -79,12 +79,12 @@ repository name:
 gh api repos/<OWNER>/<REPOSITORY>/environments/release \
   --jq '{reviewers: (.protection_rules | map(select(.type == "required_reviewers")) | length), policy: .deployment_branch_policy}'
 gh api repos/<OWNER>/<REPOSITORY>/environments/release/deployment-branch-policies \
-  --jq '.branch_policies[] | .name'
+  --jq '.branch_policies[] | {name, type}'
 ```
 
 The first command must show at least one required-reviewer rule and a custom deployment policy.
-The second command must show `v*`. Do not create a release tag when either check does not show the
-required result.
+The second command must show `v*` and `agent-contract-v*` with type `tag`. Do not create a release
+tag when either check does not show the required result.
 
 If a published release is defective, use this rollback procedure:
 
