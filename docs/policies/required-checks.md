@@ -108,16 +108,15 @@ dispatch or the weekly schedule.
 The tracked `main` ruleset records this staged merge-queue policy:
 
 - Use squash merges.
-- Use all-green grouping.
+- Use `HEADGREEN` grouping.
 - Permit a maximum of 10 builds in each group.
 - Permit a maximum of 5 merged entries in each group.
 - Require a minimum of 1 entry.
 - Require a minimum wait of 5 minutes.
-- Use a check timeout of 60 minutes.
+- Use a check timeout of 180 minutes.
 
-The repository records only that the queue is ready. Application or activation of this policy on
-GitHub is a separate rollout action. That action requires explicit authority after review and merge
-of this change.
+This issue updates only the tracked artifact and the local validator that reads it. GitHub
+application, live readback, rollback, and mutation remain outside this change.
 
 The required workflow also runs each week. Thus, dependency findings are refreshed between changes.
 
