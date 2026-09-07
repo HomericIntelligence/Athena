@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import shutil
 import stat
@@ -685,7 +686,10 @@ def remove_snapshot(root: Path) -> None:
             raise TypeError(REMOVE_ERROR)
         function(path)
 
-    shutil.rmtree(resolved, onexc=make_removable)
+    if "onexc" in inspect.signature(shutil.rmtree).parameters:
+        shutil.rmtree(resolved, onexc=make_removable)
+        return
+    shutil.rmtree(resolved, onerror=make_removable)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
