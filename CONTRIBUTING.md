@@ -101,6 +101,14 @@ npm does not provide a safe, general unpublish path after its short unpublish wi
 published package version, then publish the next patch version:
 `npm deprecate @homericintelligence/athena-opencode@X.Y.Z "Defective release; use X.Y.(Z+1)"`.
 
+### Agent-contract release
+
+Package `v*` tags and agent-contract `agent-contract-v*` tags use different release gates. An
+implementation pull request must not create an agent-contract tag. After that pull request merges,
+use the [agent-contract v1.0.0 release runbook](docs/runbooks/agent-contract-v1.0.0-release.md) to
+apply and read back tag protection, create the signed tag, verify all tagged principle URLs, test
+update and deletion rejection, and publish the GitHub Release record.
+
 ## Definition of done
 
 A change is done when:

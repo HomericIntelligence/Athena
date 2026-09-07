@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import tarfile
@@ -1048,6 +1049,77 @@ jobs:
         self.assertIn(
             "agent-contract", required["jobs"]["required-checks-gate"]["needs"]
         )
+
+    def test_agent_contract_tag_ruleset_is_immutable(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        path = root / ".github" / "rulesets" / "homeric-agent-contract-tags.json"
+
+        document = json.loads(path.read_text(encoding="utf-8"))
+
+        self.assertEqual("homeric-agent-contract-tags", document["name"])
+        self.assertEqual("tag", document["target"])
+        self.assertEqual("active", document["enforcement"])
+        self.assertEqual([], document["bypass_actors"])
+        self.assertEqual(
+            {
+                "ref_name": {
+                    "include": ["refs/tags/agent-contract-v*"],
+                    "exclude": [],
+                }
+            },
+            document["conditions"],
+        )
+        self.assertEqual(
+            {"update", "deletion"},
+            {rule["type"] for rule in document["rules"]},
+        )
+        self.assertEqual(2, len(document["rules"]))
+
+    def test_agent_contract_release_path_does_not_publish_packages(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        release = yaml.safe_load(
+            (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(["v*", "agent-contract-v*"], release["on"]["push"]["tags"])
+        jobs = release["jobs"]
+        self.assertEqual("startsWith(github.ref_name, 'v')", jobs["preflight"]["if"])
+        for name in ("release", "publish-npm"):
+            with self.subTest(job=name):
+                self.assertEqual("startsWith(github.ref_name, 'v')", jobs[name]["if"])
+        contract = jobs["agent-contract-release"]
+        self.assertEqual(
+            "startsWith(github.ref_name, 'agent-contract-v')", contract["if"]
+        )
+        contract_text = json.dumps(contract)
+        self.assertIn("agent-contract-live-ruleset", contract_text)
+        self.assertIn("agent-contract-release", contract_text)
+        self.assertIn("agent-contract-url-resolution", contract_text)
+        self.assertIn("git rev-parse HEAD", contract_text)
+        self.assertNotIn("github.sha", contract_text)
+        self.assertNotIn("npm publish", contract_text)
+        self.assertNotIn("publish-release", contract_text)
+
+    def test_agent_contract_consumers_use_the_immutable_release_tag(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        candidates = [
+            root / "README.md",
+            root / "AGENTS.md",
+            *sorted((root / "docs").rglob("*.md")),
+            *sorted((root / ".github").rglob("*.yml")),
+            *sorted((root / ".github").rglob("*.yaml")),
+        ]
+        forbidden = re.compile(
+            r"HomericIntelligence/Athena/\.github/workflows/_agent-contract\.yml@(?:main|master)"
+        )
+
+        violations = [
+            str(path.relative_to(root))
+            for path in candidates
+            if forbidden.search(path.read_text(encoding="utf-8"))
+        ]
+
+        self.assertEqual([], violations)
 
     def test_agent_contract_action_executes_only_the_provider_validator(self) -> None:
         root = Path(__file__).resolve().parents[2]

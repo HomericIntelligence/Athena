@@ -15,6 +15,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts.policies.agent_contract import validate_agent_contract
+from scripts.policies.agent_contract_release import tag_ruleset_errors
 from scripts.semver import SEMVER_PATTERN
 from skills._cli import argument_parser
 
@@ -355,6 +356,7 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
             )
     required_paths = (
         ".github/CODEOWNERS",
+        ".github/rulesets/homeric-agent-contract-tags.json",
         ".github/workflows/_required.yml",
         ".github/workflows/release.yml",
         "docs/policies/development.md",
@@ -612,7 +614,7 @@ def _validate_repo_review_scorecard(
 
 
 def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
-    """Require the tracked main ruleset to gate merges on current checks."""
+    """Require the tracked branch and tag rulesets to enforce current policy."""
     path = repo_root / ".github" / "rulesets" / "homeric-main-baseline.json"
     document, errors = _read_json(path, "ruleset", repo_root)
     if document is None:
@@ -690,6 +692,14 @@ def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationErro
             ValidationError(
                 "ruleset", "The merge queue policy does not match issue #28."
             )
+        )
+    tag_path = repo_root / ".github" / "rulesets" / "homeric-agent-contract-tags.json"
+    tag_document, tag_read_errors = _read_json(tag_path, "ruleset", repo_root)
+    errors.extend(tag_read_errors)
+    if tag_document is not None:
+        errors.extend(
+            ValidationError("ruleset", reason)
+            for reason in tag_ruleset_errors(tag_document)
         )
     return errors
 
