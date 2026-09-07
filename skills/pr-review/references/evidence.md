@@ -116,7 +116,7 @@ rejects any of these conditions:
 - a resource limit; or
 - an acquisition failure.
 
-The shipped helper `<installed-skill>/scripts/materialize_snapshot.py --repository <owner/repository> --pr-number <number> --base-ref <branch> --base-oid <oid> --head-oid <oid>` performs this materialization step when local objects are absent.
+The shipped helper `<installed-skill>/scripts/materialize_snapshot.py --repository <owner/repository> --pr-number <number> --base-ref <branch> --base-oid <oid> --head-oid <oid>` performs this materialization step when local objects are absent. For a change to this reference, attach reviewed-head receipts for `just markdownlint` and `just validate`, or equivalent host-bound checks, before publication.
 
 Acquire the snapshot inside one of these total-capacity quota boundaries:
 
