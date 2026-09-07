@@ -116,8 +116,7 @@ rejects any of these conditions:
 - a resource limit; or
 - an acquisition failure.
 
-The shipped helper `<installed-skill>/scripts/materialize_snapshot.py` performs this materialization
-step when local objects are absent.
+The shipped helper `<installed-skill>/scripts/materialize_snapshot.py --repository <owner/repository> --pr-number <number> --base-ref <branch> --base-oid <oid> --head-oid <oid>` performs this materialization step when local objects are absent.
 
 Acquire the snapshot inside one of these total-capacity quota boundaries:
 
@@ -164,11 +163,12 @@ Invoke the installed helper with every retained identity field:
 
 The helper scripts share `<installed-skill>/scripts/pr_identity.py`. That module provides
 `validate_pr_identifier`, `require_commit_oid`, and `require_github_repository` for canonical input
-checks before any evidence read. Require all seven identity arguments. Do not treat a legacy
-invocation as publication-eligible. The helper must use the retained `github.com/owner/repo` target.
-It must return final metadata, not initial metadata. It must fail on partial, non-open, changed, or
-mismatched data. In strict mode, do not use the mutable `/files` endpoint or newline-delimited paths.
-Retain these returned values:
+checks before any evidence read. These helpers enforce PR identity, commit OID, and repository
+canonicalization. Require all seven identity arguments. Do not treat a legacy invocation as
+publication-eligible. The helper must use the retained `github.com/owner/repo` target. It must
+return final metadata, not initial metadata. It must fail on partial, non-open, changed, or
+mismatched data. In strict mode, do not use the mutable `/files` endpoint or newline-delimited
+paths. Retain these returned values:
 
 - `changed_files`;
 - the backwards-compatible `changed_paths`;

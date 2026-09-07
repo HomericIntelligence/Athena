@@ -17,8 +17,7 @@ coverage.json
 venv/
 
 # Ignore secrets and credentials as an additional security control.
-# These ignore rules are one defense-in-depth layer.
-# Secret files must never be committed.
+# These ignore rules are one defense-in-depth layer. Secret files must never be committed.
 .env
 .env.*
 *.pem
