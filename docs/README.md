@@ -9,9 +9,12 @@ technical-English, and governance contracts. Do not copy these contracts for eac
   plugin-only distribution boundary.
 - [`adr/0002-local-first-knowledge-retrieval.md`](adr/0002-local-first-knowledge-retrieval.md): the
   local-first read boundary and strict mutation boundary for repository integrations.
+- [`adr/0003-best-effort-read-only-knowledge-refresh.md`](adr/0003-best-effort-read-only-knowledge-refresh.md):
+  the best-effort refresh rule for read-only Mnemosyne access.
 - [`host-compatibility.md`](host-compatibility.md): coding-harness capability mapping.
-- [`dependency-resolution.md`](dependency-resolution.md): local-first Mnemosyne reads and mandatory
-  repository resolution for Mnemosyne delivery and Hephaestus execution.
+- [`dependency-resolution.md`](dependency-resolution.md): local-first Mnemosyne reads with
+  best-effort refresh and mandatory repository resolution for Mnemosyne delivery and Hephaestus
+  execution.
 
 ## Policies
 

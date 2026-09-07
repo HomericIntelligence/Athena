@@ -461,11 +461,62 @@ class FakeGitHubCliFixtureTests(unittest.TestCase):
                 "",
             ),
             (
-                ("repo", "view"),
-                {"FAKE_GH_REPOSITORY": "owner/alternative"},
+                ("auth", "status", "--hostname", "github.com"),
+                {},
                 0,
-                {"nameWithOwner": "owner/alternative"},
+                "github.com\n  ✓ Logged in to github.com as fake-user\n",
                 "",
+            ),
+            (
+                ("auth", "status", "--hostname", "github.com"),
+                {
+                    "FAKE_GH_AUTH_STATUS_EXIT": "1",
+                    "FAKE_GH_AUTH_STATUS_STDERR": "authentication failed",
+                },
+                1,
+                "github.com\n  ✓ Logged in to github.com as fake-user\n",
+                "authentication failed\n",
+            ),
+            (
+                (
+                    "repo",
+                    "view",
+                    "--repo",
+                    "github.com/owner/repository",
+                    "--json",
+                    "nameWithOwner,defaultBranchRef",
+                ),
+                {
+                    "FAKE_GH_REQUIRE_REPOSITORY": "owner/repository",
+                    "FAKE_GH_REPOSITORY": "owner/alternative",
+                },
+                0,
+                {
+                    "defaultBranchRef": {"name": "main"},
+                    "nameWithOwner": "owner/alternative",
+                },
+                "",
+            ),
+            (
+                (
+                    "repo",
+                    "view",
+                    "--repo",
+                    "github.com/owner/repository",
+                    "--json",
+                    "nameWithOwner,defaultBranchRef",
+                ),
+                {
+                    "FAKE_GH_REQUIRE_REPOSITORY": "owner/repository",
+                    "FAKE_GH_REPO_VIEW_EXIT": "2",
+                    "FAKE_GH_REPO_VIEW_STDERR": "repository lookup failed",
+                },
+                2,
+                {
+                    "defaultBranchRef": {"name": "main"},
+                    "nameWithOwner": "owner/repository",
+                },
+                "repository lookup failed\n",
             ),
             (
                 ("repo", "view"),

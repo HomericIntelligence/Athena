@@ -52,10 +52,11 @@ workflow-specific rules:
 ## Inspect local knowledge
 
 Use the read-only path in the
-[`dependency-resolution` contract](../../docs/dependency-resolution.md). Inspect Mnemosyne at
-`$HOME/.agent_brain/knowledge`. If the checkout has a readable `HEAD`, bind discovery to that commit.
-Do not require upstream resolution, authentication, fetch, fast-forward, automatic-fork
-revalidation, or agreement with the newest repository revision.
+[`dependency-resolution` contract](../../docs/dependency-resolution.md). Run
+`skills/advise/scripts/resolve_knowledge_checkout.py --mode read-only --knowledge-root "$HOME/.agent_brain/knowledge" --json`
+before you classify the corpus. Inspect Mnemosyne at the reported checkout path. If the checkout
+has a readable `HEAD`, bind discovery to that commit. If the helper reports a freshness limit, keep
+that limit in the lesson.
 
 Report these items when they are available:
 
@@ -71,9 +72,11 @@ decision that you could not check.
 
 Before a durable write, complete normal dependency resolution and revalidation. This step can create
 or update the checkout. Then repeat duplicate and open-PR discovery against the resolved delivery
-revision. Use the canonical default branch for a new PR. Bind the delivery worktree to that exact
-commit identifier. A stale local checkout is sufficient for discovery. It is not sufficient for
-publication.
+revision. Run
+`skills/advise/scripts/resolve_knowledge_checkout.py --mode write --knowledge-root "$HOME/.agent_brain/knowledge" --json`
+and require it to report an updated revision before you continue. Use the canonical default branch
+for a new PR. Bind the delivery worktree to that exact commit identifier. A stale local checkout is
+sufficient for discovery. It is not sufficient for publication.
 
 ## Decide before you write
 
@@ -82,23 +85,24 @@ This phase is read-only.
 1. Run `advise` with the proposed lesson. Treat `no-local-guidance` as a limit, not a blocker.
 2. Define retrieval intent by the trigger, context, desired outcome, constraints, and failure mode.
 3. Do not use a title, issue number, or session wording as identity.
-4. Resolve the installed `advise/scripts/list_retrievable_skills.py` helper.
-5. Run the helper by its absolute path against the knowledge checkout.
-6. If the helper is missing or fails, report the selector limit. Use the bounded fallback from
+4. Run `skills/advise/scripts/resolve_knowledge_checkout.py --mode read-only --knowledge-root "$HOME/.agent_brain/knowledge" --json`.
+5. Resolve the installed `advise/scripts/list_retrievable_skills.py` helper.
+6. Run the helper by its absolute path against the reported knowledge checkout.
+7. If the helper is missing or fails, report the selector limit. Use the bounded fallback from
    `advise`: direct regular `*.md` children of `skills/`, with notes and history companions excluded.
    Do not recurse.
-7. If neither selector can list the corpus, continue source classification without a duplicate
+8. If neither selector can list the corpus, continue source classification without a duplicate
    decision. Before a durable write, repeat this step and require a bounded corpus list.
-8. Group only the selected main-skill paths by intent.
-9. Inspect each selected candidate, its `.history`, its applicable `.notes.md`, and available Git
+9. Group only the selected main-skill paths by intent.
+10. Inspect each selected candidate, its `.history`, its applicable `.notes.md`, and available Git
    history.
-10. Use this inspection to find provenance and prior consolidation.
-11. During read-only discovery, inspect open PRs when the remote capability is available. Report a
+11. Use this inspection to find provenance and prior consolidation.
+12. During read-only discovery, inspect open PRs when the remote capability is available. Report a
     failure as a limit. Before a durable write, enumerate the changed flat `skills/*.md` artifacts
     in each open PR in the resolved Mnemosyne repository.
-12. Derive intent from changed content. Do not use a title or path as sufficient duplicate evidence.
+13. Derive intent from changed content. Do not use a title or path as sufficient duplicate evidence.
     A title or path can identify a candidate.
-13. Before a write, record exactly one disposition.
+14. Before a write, record exactly one disposition.
 
 Do not select a write disposition until bounded corpus discovery and the required remote checks are
 complete. Read-only classification can return a candidate and its limits without a disposition.
