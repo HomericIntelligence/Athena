@@ -143,7 +143,7 @@ def agent_contract_release_errors(
             "The agent-contract tag must match "
             "'agent-contract-v<major>.<minor>.<patch>'."
         )
-    if main_sha != commit:
+    if pre_tag and main_sha != commit:
         errors.append("The agent-contract commit must be the exact main commit.")
     commit_verification = (
         main_commit.get("verification") if isinstance(main_commit, dict) else None
