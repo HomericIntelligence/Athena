@@ -1,4 +1,4 @@
-# Route default ownership to @mvillmow. The baseline ruleset does not require approvals.
+# Route default ownership to @mvillmow. The baseline ruleset still requires extra approval for unattributed changes.
 * @mvillmow
 
 # Assign the plugin-distribution files.

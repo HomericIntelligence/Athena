@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import io
 import json
@@ -13,7 +14,7 @@ import unittest
 from collections.abc import Callable
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,6 +23,59 @@ SPEC = importlib.util.spec_from_file_location("athena_validate_skills", MODULE_P
 assert SPEC is not None and SPEC.loader is not None
 validator = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(validator)
+
+
+def _ruleset_path(root: Path) -> Path:
+    return root / ".github" / "rulesets" / "homeric-main-baseline.json"
+
+
+def _ruleset_document(root: Path) -> dict[str, Any]:
+    return cast(
+        dict[str, Any], json.loads(_ruleset_path(root).read_text(encoding="utf-8"))
+    )
+
+
+def _write_ruleset_document(root: Path, document: dict[str, Any]) -> None:
+    _ruleset_path(root).write_text(json.dumps(document), encoding="utf-8")
+
+
+def _ruleset_rule(document: dict[str, Any], rule_type: str) -> dict[str, Any]:
+    rules = cast(list[dict[str, Any]], document["rules"])
+    return next(rule for rule in rules if rule["type"] == rule_type)
+
+
+def _ruleset_set_path(
+    document: dict[str, Any], path: tuple[str | int, ...], value: Any
+) -> None:
+    target: Any = document
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+
+
+def _ruleset_delete_path(document: dict[str, Any], path: tuple[str | int, ...]) -> None:
+    target: Any = document
+    for key in path[:-1]:
+        target = target[key]
+    del target[path[-1]]
+
+
+def _ruleset_insert_path(
+    document: dict[str, Any], path: tuple[str | int, ...], value: Any
+) -> None:
+    target: Any = document
+    for key in path[:-1]:
+        target = target[key]
+    target.insert(int(path[-1]), value)
+
+
+def _ruleset_append_path(
+    document: dict[str, Any], path: tuple[str | int, ...], value: Any
+) -> None:
+    target: Any = document
+    for key in path:
+        target = target[key]
+    target.append(value)
 
 
 class DistributionTests(unittest.TestCase):
@@ -612,120 +666,247 @@ class DistributionTests(unittest.TestCase):
             validator._validate_repo_review_scorecard, "repo-review"
         )
 
-    def test_ruleset_requires_a_current_main_merge_gate(self) -> None:
-        path = self.fixture / ".github" / "rulesets" / "homeric-main-baseline.json"
-        document = json.loads(path.read_text(encoding="utf-8"))
-        status_checks = next(
-            rule
-            for rule in document["rules"]
-            if rule["type"] == "required_status_checks"
-        )
-        status_checks["parameters"]["strict_required_status_checks_policy"] = True
-        path.write_text(json.dumps(document), encoding="utf-8")
+    def test_ruleset_matches_the_approved_live_baseline(self) -> None:
+        self.assertEqual(validator._validate_ruleset_policy(self.fixture), [])
 
-        self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
-
-        status_checks["parameters"]["strict_required_status_checks_policy"] = False
-        status_checks["parameters"]["required_status_checks"] = []
-        path.write_text(json.dumps(document), encoding="utf-8")
-
-        self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
-
-    def test_ruleset_requires_only_the_github_actions_aggregate_gate(self) -> None:
-        path = self.fixture / ".github" / "rulesets" / "homeric-main-baseline.json"
-        original = path.read_text(encoding="utf-8")
-        invalid_checks = {
-            "missing integration": [{"context": "required-checks-gate"}],
-            "wrong integration": [
-                {"context": "required-checks-gate", "integration_id": 1}
-            ],
-            "extra check": [
-                {"context": "required-checks-gate", "integration_id": 15368},
+    def test_ruleset_rejects_policy_drift_in_all_required_surfaces(self) -> None:
+        original_document = _ruleset_document(self.fixture)
+        cases: tuple[
+            tuple[str, str, tuple[str | int, ...], Any, str | None],
+            ...,
+        ] = (
+            (
+                "missing top-level key",
+                "delete",
+                ("bypass_actors",),
+                None,
+                "bypass_actors",
+            ),
+            (
+                "extra top-level key",
+                "set",
+                ("unexpected",),
+                True,
+                "unexpected",
+            ),
+            (
+                "wrong target",
+                "set",
+                ("target",),
+                "repository",
+                "target",
+            ),
+            (
+                "wrong enforcement",
+                "set",
+                ("enforcement",),
+                "evaluate",
+                "enforcement",
+            ),
+            (
+                "non-empty bypass actors",
+                "set",
+                ("bypass_actors",),
+                [{"actor_id": 1, "actor_type": "Integration", "bypass_mode": "always"}],
+                "bypass_actors",
+            ),
+            (
+                "missing default branch target",
+                "delete",
+                ("conditions", "ref_name", "include"),
+                None,
+                "include",
+            ),
+            (
+                "wrong branch target",
+                "set",
+                ("conditions", "ref_name", "include"),
+                ["refs/heads/main"],
+                "refs/heads/main",
+            ),
+            (
+                "missing rule",
+                "delete",
+                ("rules", 6),
+                None,
+                None,
+            ),
+            (
+                "duplicate rule",
+                "insert",
+                ("rules", 0),
+                copy.deepcopy(_ruleset_rule(original_document, "deletion")),
+                None,
+            ),
+            (
+                "unknown rule",
+                "append",
+                ("rules",),
+                {"type": "copilot"},
+                None,
+            ),
+            (
+                "pull request extra approval missing",
+                "set",
+                (
+                    "rules",
+                    3,
+                    "parameters",
+                    "require_extra_approval_for_unattributed_changes",
+                ),
+                False,
+                "require_extra_approval_for_unattributed_changes",
+            ),
+            (
+                "pull request mistyped merge method",
+                "set",
+                ("rules", 3, "parameters", "allowed_merge_methods"),
+                ["squash", True],
+                "allowed_merge_methods",
+            ),
+            (
+                "queue timeout too low",
+                "set",
+                ("rules", 4, "parameters", "check_response_timeout_minutes"),
+                179,
+                "check_response_timeout_minutes",
+            ),
+            (
+                "queue timeout too high",
+                "set",
+                ("rules", 4, "parameters", "check_response_timeout_minutes"),
+                181,
+                "check_response_timeout_minutes",
+            ),
+            (
+                "queue build concurrency too low",
+                "set",
+                ("rules", 4, "parameters", "max_entries_to_build"),
+                9,
+                "max_entries_to_build",
+            ),
+            (
+                "queue build concurrency too high",
+                "set",
+                ("rules", 4, "parameters", "max_entries_to_build"),
+                11,
+                "max_entries_to_build",
+            ),
+            (
+                "queue merge size too low",
+                "set",
+                ("rules", 4, "parameters", "min_entries_to_merge"),
+                0,
+                "min_entries_to_merge",
+            ),
+            (
+                "queue merge size too high",
+                "set",
+                ("rules", 4, "parameters", "min_entries_to_merge"),
+                6,
+                "min_entries_to_merge",
+            ),
+            (
+                "queue wait too low",
+                "set",
+                ("rules", 4, "parameters", "min_entries_to_merge_wait_minutes"),
+                4,
+                "min_entries_to_merge_wait_minutes",
+            ),
+            (
+                "queue wait too high",
+                "set",
+                ("rules", 4, "parameters", "min_entries_to_merge_wait_minutes"),
+                6,
+                "min_entries_to_merge_wait_minutes",
+            ),
+            (
+                "queue mistyped build concurrency",
+                "set",
+                ("rules", 4, "parameters", "max_entries_to_build"),
+                True,
+                "bool",
+            ),
+            (
+                "status check missing integration",
+                "delete",
+                (
+                    "rules",
+                    5,
+                    "parameters",
+                    "required_status_checks",
+                    0,
+                    "integration_id",
+                ),
+                None,
+                "integration_id",
+            ),
+            (
+                "status check wrong context",
+                "set",
+                ("rules", 5, "parameters", "required_status_checks", 0, "context"),
+                "required-checks",
+                "required-checks",
+            ),
+            (
+                "status check wrong integration",
+                "set",
+                (
+                    "rules",
+                    5,
+                    "parameters",
+                    "required_status_checks",
+                    0,
+                    "integration_id",
+                ),
+                1,
+                "integration_id",
+            ),
+            (
+                "status check mistyped integration",
+                "set",
+                (
+                    "rules",
+                    5,
+                    "parameters",
+                    "required_status_checks",
+                    0,
+                    "integration_id",
+                ),
+                True,
+                "bool",
+            ),
+            (
+                "status check extra entry",
+                "append",
+                ("rules", 5, "parameters", "required_status_checks"),
                 {"context": "smoke-test", "integration_id": 15368},
-            ],
-            "duplicate aggregate": [
-                {"context": "required-checks-gate", "integration_id": 15368},
-                {"context": "required-checks-gate", "integration_id": 15368},
-            ],
-            "extra field": [
-                {
-                    "context": "required-checks-gate",
-                    "integration_id": 15368,
-                    "unexpected": True,
-                }
-            ],
-        }
-        for name, checks in invalid_checks.items():
+                None,
+            ),
+        )
+        for name, action, path, value, literal in cases:
             with self.subTest(name=name):
-                document = json.loads(original)
-                status_checks = next(
-                    rule
-                    for rule in document["rules"]
-                    if rule["type"] == "required_status_checks"
-                )
-                status_checks["parameters"]["required_status_checks"] = checks
-                path.write_text(json.dumps(document), encoding="utf-8")
+                document = copy.deepcopy(original_document)
+                if action == "delete":
+                    _ruleset_delete_path(document, path)
+                elif action == "set":
+                    _ruleset_set_path(document, path, value)
+                elif action == "insert":
+                    _ruleset_insert_path(document, path, value)
+                elif action == "append":
+                    _ruleset_append_path(document, path, value)
+                else:
+                    self.fail(f"Unsupported action: {action}")
 
-                self.assert_validation_errors(
-                    validator._validate_ruleset_policy, "ruleset"
-                )
-
-        document = json.loads(original)
-        status_checks = next(
-            rule
-            for rule in document["rules"]
-            if rule["type"] == "required_status_checks"
-        )
-        document["rules"].append(json.loads(json.dumps(status_checks)))
-        path.write_text(json.dumps(document), encoding="utf-8")
-
-        self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
-
-    def test_ruleset_requires_squash_only_pull_request_merges(self) -> None:
-        path = self.fixture / ".github" / "rulesets" / "homeric-main-baseline.json"
-        document = json.loads(path.read_text(encoding="utf-8"))
-        pull_request = next(
-            rule for rule in document["rules"] if rule["type"] == "pull_request"
-        )
-        pull_request["parameters"]["allowed_merge_methods"] = ["merge", "squash"]
-        path.write_text(json.dumps(document), encoding="utf-8")
-
-        self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
-
-    def test_ruleset_requires_the_approved_staged_merge_queue_policy(self) -> None:
-        path = self.fixture / ".github" / "rulesets" / "homeric-main-baseline.json"
-        original = path.read_text(encoding="utf-8")
-        document = json.loads(original)
-        document["rules"] = [
-            rule for rule in document["rules"] if rule.get("type") != "merge_queue"
-        ]
-        path.write_text(json.dumps(document), encoding="utf-8")
-
-        self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
-
-        document = json.loads(original)
-        merge_queue = next(
-            (rule for rule in document["rules"] if rule.get("type") == "merge_queue"),
-            None,
-        )
-        if merge_queue is None:
-            merge_queue = {
-                "type": "merge_queue",
-                "parameters": {
-                    "check_response_timeout_minutes": 60,
-                    "grouping_strategy": "ALLGREEN",
-                    "max_entries_to_build": 10,
-                    "max_entries_to_merge": 5,
-                    "merge_method": "SQUASH",
-                    "min_entries_to_merge": 1,
-                    "min_entries_to_merge_wait_minutes": 5,
-                },
-            }
-            document["rules"].append(merge_queue)
-        merge_queue["parameters"]["merge_method"] = "MERGE"
-        path.write_text(json.dumps(document), encoding="utf-8")
-
-        self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
+                try:
+                    _write_ruleset_document(self.fixture, document)
+                    self.assert_validation_errors(
+                        validator._validate_ruleset_policy,
+                        "ruleset",
+                        literal=literal,
+                    )
+                finally:
+                    _write_ruleset_document(self.fixture, original_document)
 
     def test_ruleset_requires_immutable_agent_contract_tag_protection(self) -> None:
         path = (

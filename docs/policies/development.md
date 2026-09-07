@@ -122,5 +122,6 @@ or failure requirement to make text shorter.
 
 Human review and Code Owner review are optional for Athena changes. They are not required.
 `CODEOWNERS` records advisory ownership. The baseline ruleset does not require an approval count or a
-Code Owner approval. Workflow, release, dependency, and security-control changes remain subject to
-the required checks and requested-scope boundaries of the repository.
+Code Owner approval. The baseline ruleset still requires extra approval for unattributed changes.
+Workflow, release, dependency, and security-control changes remain subject to the required checks
+and requested-scope boundaries of the repository.
