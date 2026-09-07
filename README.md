@@ -124,7 +124,10 @@ sequentially with the current agent.
 
 ## Develop
 
-Prerequisites are Git, uv, Just, and Python 3.13 for repository validation only.
+Prerequisites are Git, uv, Just, and Python 3.13 for repository validation only. The checked-in
+`.python-version` file pins the default repository-tooling interpreter to the remediated Python 3.13
+patch. Set `UV_PYTHON` to another interpreter within the `>=3.13,<3.14` contract for compatibility
+tests.
 [Full environment setup lives in CONTRIBUTING.md](CONTRIBUTING.md#environment-setup).
 
 ## Layout

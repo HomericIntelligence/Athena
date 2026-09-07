@@ -273,7 +273,7 @@ def write_workflow(path: Path, action: str = "actions/checkout@" + "a" * 40) -> 
                             {"uses": action},
                             {
                                 "uses": "astral-sh/setup-uv@" + "b" * 40,
-                                "with": {"version": "0.10.8"},
+                                "with": {"version": "0.12.10"},
                             },
                         ]
                     },
@@ -355,7 +355,7 @@ class SbomTests(unittest.TestCase):
         self.assertNotIn("actions/download-artifact", package_names)
         self.assertEqual(1, len(document["documentDescribes"]))
         packages = {item["name"]: item for item in document["packages"]}
-        self.assertEqual("0.10.8", packages["uv"]["versionInfo"])
+        self.assertEqual("0.12.10", packages["uv"]["versionInfo"])
         self.assertEqual("1.2.3", packages["athena-build-linux-64"]["versionInfo"])
         relationship_types = {
             item["relationshipType"] for item in document["relationships"]
@@ -1449,6 +1449,77 @@ jobs:
         )
         self.assertIn("--provenance", publish_step["run"])
         self.assertNotIn("env", publish_step)
+
+    def test_package_inventories_the_pinned_uv_python_runtime(self) -> None:
+        """The package job retains evidence for the interpreter that uv uses."""
+        root = Path(__file__).resolve().parents[2]
+        required = yaml.safe_load(
+            (root / ".github" / "workflows" / "_required.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        package_steps = required["jobs"]["package"]["steps"]
+        inventory_step = next(
+            (
+                step
+                for step in package_steps
+                if step.get("name") == "Inventory the uv-managed Python runtime"
+            ),
+            None,
+        )
+
+        self.assertIsNotNone(inventory_step)
+        assert inventory_step is not None
+        inventory_run = inventory_step["run"]
+        self.assertIn(
+            "Path(sys.executable).resolve().parents[1]",
+            inventory_step["env"]["PYTHON_RUNTIME_ROOT_QUERY"],
+        )
+        self.assertEqual(
+            "dist-internal/syft-python-runtime.json",
+            inventory_step["env"]["PYTHON_RUNTIME_INVENTORY"],
+        )
+        self.assertIn('.get("name") == "python"', inventory_run)
+        self.assertIn('.get("version") == sys.argv[2]', inventory_run)
+        self.assertIn("$(cat .python-version)", inventory_run)
+
+        upload_step = next(
+            step
+            for step in package_steps
+            if step.get("with", {}).get("name") == "athena-sca-input"
+        )
+        self.assertIn(
+            "dist-internal/syft-python-runtime.json",
+            upload_step["with"]["path"],
+        )
+
+    def test_dependency_scan_gates_the_python_runtime_inventory(self) -> None:
+        """The required scan evaluates the retained Python runtime inventory."""
+        root = Path(__file__).resolve().parents[2]
+        required = yaml.safe_load(
+            (root / ".github" / "workflows" / "_required.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        jobs = required["jobs"]
+        scan_step = next(
+            step
+            for step in jobs["security-dependency-scan"]["steps"]
+            if "scripts/scan_vulnerabilities.py" in step.get("run", "")
+        )
+
+        self.assertIn(
+            "--inventory dist-internal/syft-python-runtime.json",
+            scan_step["run"],
+        )
+        self.assertIn(
+            "--report dist-internal/grype-python-runtime.json",
+            scan_step["run"],
+        )
+        self.assertIn(
+            "security-dependency-scan",
+            jobs["required-checks-gate"]["needs"],
+        )
 
     def test_pi_runtime_is_locked_updated_and_scanned_before_ci_executes_it(
         self,

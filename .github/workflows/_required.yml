@@ -162,7 +162,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          version: "0.12.1"
+          version: "0.12.10"
           enable-cache: true
       - name: Install locked build environment
         run: uv sync --locked
@@ -185,6 +185,30 @@ jobs:
             dist-reproducibility/athena-build-linux-64-*.spdx.json
           cmp dist/athena-build-linux-64-*.spdx.json.sha256 \
             dist-reproducibility/athena-build-linux-64-*.spdx.json.sha256
+      - name: Inventory the uv-managed Python runtime
+        env:
+          PYTHON_RUNTIME_INVENTORY: dist-internal/syft-python-runtime.json
+          PYTHON_RUNTIME_ROOT_QUERY: >-
+            from pathlib import Path; import sys;
+            print(Path(sys.executable).resolve().parents[1])
+        run: |
+          python_runtime_root="$(uv run python -c "$PYTHON_RUNTIME_ROOT_QUERY")"
+          "${{ steps.syft.outputs.cmd }}" scan "$python_runtime_root" -o json \
+            > "$PYTHON_RUNTIME_INVENTORY"
+          uv run python - "$PYTHON_RUNTIME_INVENTORY" "$(cat .python-version)" <<'PYTHON'
+          import json
+          import sys
+          from pathlib import Path
+
+          inventory = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          if not any(
+              artifact.get("name") == "python" and artifact.get("version") == sys.argv[2]
+              for artifact in inventory.get("artifacts", [])
+          ):
+              raise SystemExit(
+                  "The runtime inventory does not contain the pinned Python package."
+              )
+          PYTHON
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
@@ -309,6 +333,7 @@ jobs:
           name: athena-sca-input
           path: |
             dist-internal/syft-environment.json
+            dist-internal/syft-python-runtime.json
             dist-internal/syft-pi-source.json
             dist-internal/syft-pi-subagents.json
           if-no-files-found: error
@@ -327,7 +352,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          version: "0.12.1"
+          version: "0.12.10"
           enable-cache: true
       - name: Install locked scan environment
         run: uv sync --locked
@@ -346,6 +371,10 @@ jobs:
           uv run python scripts/scan_vulnerabilities.py \
             --inventory dist-internal/syft-environment.json \
             --report dist-internal/grype-environment.json \
+            --grype "${{ steps.grype.outputs.cmd }}"
+          uv run python scripts/scan_vulnerabilities.py \
+            --inventory dist-internal/syft-python-runtime.json \
+            --report dist-internal/grype-python-runtime.json \
             --grype "${{ steps.grype.outputs.cmd }}"
           uv run python scripts/scan_vulnerabilities.py \
             --inventory dist-internal/syft-pi-source.json \
@@ -381,7 +410,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          version: "0.12.1"
+          version: "0.12.10"
           enable-cache: true
       - name: Install locked scan environment
         run: uv sync --locked
