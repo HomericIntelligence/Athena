@@ -6,14 +6,14 @@ import importlib.util
 import io
 import json
 import os
-import re
 import shutil
 import subprocess
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+
+from . import package_markdown_helpers as md
 
 ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / "scripts" / "package_opencode.py"
@@ -21,47 +21,6 @@ SPEC = importlib.util.spec_from_file_location("athena_package_opencode", MODULE_
 assert SPEC is not None and SPEC.loader is not None
 package_opencode = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(package_opencode)
-
-MARKDOWN_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
-
-
-def technical_english_targets(markdown: str) -> list[str]:
-    """Return local links to the shipped technical-English policy."""
-    targets: list[str] = []
-    for target in MARKDOWN_LINK.findall(markdown):
-        path = target.split("#", 1)[0]
-        normalized_name = Path(path).name.lower().replace("-", "_")
-        if normalized_name == "technical_english.md":
-            targets.append(path)
-    return targets
-
-
-def local_markdown_targets(markdown: str) -> list[tuple[str, str]]:
-    """Return paths and fragments from local Markdown links."""
-    targets: list[tuple[str, str]] = []
-    for target in MARKDOWN_LINK.findall(markdown):
-        parsed = urlsplit(target)
-        if parsed.scheme or parsed.netloc or (not parsed.path and not parsed.fragment):
-            continue
-        targets.append((unquote(parsed.path), unquote(parsed.fragment)))
-    return targets
-
-
-def markdown_anchors(markdown: str) -> set[str]:
-    """Return GitHub-style anchors for the headings in a Markdown document."""
-    anchors: set[str] = set()
-    counts: dict[str, int] = {}
-    for line in markdown.splitlines():
-        match = re.match(r"^#{1,6}\s+(.+?)\s*#*\s*$", line)
-        if match is None:
-            continue
-        heading = re.sub(r"\[([^]]+)\]\([^)]+\)", r"\1", match.group(1))
-        heading = heading.replace("`", "")
-        base = re.sub(r"[^\w -]", "", heading.casefold()).replace(" ", "-")
-        occurrence = counts.get(base, 0)
-        counts[base] = occurrence + 1
-        anchors.add(base if occurrence == 0 else f"{base}-{occurrence}")
-    return anchors
 
 
 class PackageOpenCodeTests(unittest.TestCase):
@@ -97,7 +56,7 @@ class PackageOpenCodeTests(unittest.TestCase):
         checked = 0
         unresolved: list[str] = []
         for markdown_path in sorted(artifact_root.rglob("*.md")):
-            for target, fragment in local_markdown_targets(
+            for target, fragment in md.local_markdown_targets(
                 markdown_path.read_text(encoding="utf-8")
             ):
                 checked += 1
@@ -112,7 +71,7 @@ class PackageOpenCodeTests(unittest.TestCase):
                 elif not resolved.exists():
                     unresolved.append(f"{source} -> {target} (target does not exist)")
                 elif fragment and resolved.suffix.casefold() == ".md":
-                    anchors = markdown_anchors(resolved.read_text(encoding="utf-8"))
+                    anchors = md.markdown_anchors(resolved.read_text(encoding="utf-8"))
                     if fragment.casefold() not in anchors:
                         unresolved.append(
                             f"{source} -> {target}#{fragment} (anchor does not exist)"
@@ -193,7 +152,7 @@ class PackageOpenCodeTests(unittest.TestCase):
         for markdown_path in sorted(skills_root.rglob("*.md")):
             if markdown_path == skills_root / "TECHNICAL_ENGLISH.md":
                 continue
-            targets = technical_english_targets(
+            targets = md.technical_english_targets(
                 markdown_path.read_text(encoding="utf-8")
             )
             if markdown_path.name == "SKILL.md":
@@ -217,7 +176,7 @@ class PackageOpenCodeTests(unittest.TestCase):
         )
 
         for label, readme, package_root in locations:
-            targets = technical_english_targets(readme.read_text(encoding="utf-8"))
+            targets = md.technical_english_targets(readme.read_text(encoding="utf-8"))
             self.assertTrue(targets, f"{label} README has no policy link")
             for target in targets:
                 with self.subTest(location=label, target=target):
