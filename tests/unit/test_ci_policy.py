@@ -9,12 +9,15 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from collections.abc import Callable
 from contextlib import redirect_stderr
 from hashlib import sha256
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 from scripts import ci_policy
+from scripts.policies import agent_contract_release
 from scripts.policies.uv_pins import find_uv_pin_drift
 
 
@@ -76,6 +79,434 @@ class PullRequestPolicyTests(unittest.TestCase):
         self.assertEqual(
             {"package": "skipped", "pr-policy": "skipped"},
             ci_policy.failed_required_jobs("pull_request", results),
+        )
+
+    def test_agent_contract_ruleset_policy_is_exact_and_no_bypass(self) -> None:
+        document = agent_contract_release.expected_tag_ruleset()
+
+        self.assertEqual([], agent_contract_release.tag_ruleset_errors(document))
+
+        mutations: dict[str, Callable[[dict[str, Any]], None]] = {
+            "target": lambda value: value.update(target="branch"),
+            "enforcement": lambda value: value.update(enforcement="evaluate"),
+            "include": lambda value: value["conditions"]["ref_name"].update(
+                include=["refs/tags/*"]
+            ),
+            "bypass": lambda value: value.update(bypass_actors=[{"actor_id": 1}]),
+            "update": lambda value: value.update(
+                rules=[rule for rule in value["rules"] if rule["type"] != "update"]
+            ),
+            "deletion": lambda value: value.update(
+                rules=[rule for rule in value["rules"] if rule["type"] != "deletion"]
+            ),
+            "creation": lambda value: value["rules"].append({"type": "creation"}),
+            "status": lambda value: value["rules"].append(
+                {"type": "required_status_checks", "parameters": {}}
+            ),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name=name):
+                candidate = json.loads(json.dumps(document))
+                mutate(candidate)
+                self.assertTrue(agent_contract_release.tag_ruleset_errors(candidate))
+
+    def test_live_agent_contract_ruleset_normalizes_provider_metadata(self) -> None:
+        tracked = agent_contract_release.expected_tag_ruleset()
+        live = json.loads(json.dumps(tracked))
+        live.update(id=42, source="HomericIntelligence/Athena", node_id="node")
+        live["rules"][0]["ruleset_source_type"] = "Repository"
+
+        self.assertEqual(
+            [], agent_contract_release.live_tag_ruleset_errors(tracked, live)
+        )
+
+        live["rules"].append({"type": "creation"})
+        self.assertTrue(agent_contract_release.live_tag_ruleset_errors(tracked, live))
+
+    def test_agent_contract_release_evidence_requires_every_green_surface(self) -> None:
+        commit = "a" * 40
+        pull_head = "b" * 40
+        tag_ref = {"object": {"type": "tag", "sha": "c" * 40}}
+        tag_object = {
+            "object": {"type": "commit", "sha": commit},
+            "verification": {"verified": True},
+        }
+        pull_requests = [
+            {
+                "state": "closed",
+                "merged_at": "2026-09-07T00:00:00Z",
+                "merge_commit_sha": commit,
+                "head": {"sha": pull_head},
+            }
+        ]
+        workflow_runs = [
+            {
+                "event": event,
+                "head_sha": sha,
+                "name": "Required Checks",
+                "conclusion": "success",
+                "html_url": f"https://example.invalid/{event}",
+            }
+            for event, sha in (
+                ("pull_request", pull_head),
+                ("merge_group", commit),
+                ("push", commit),
+            )
+        ]
+        check_runs = [
+            {"name": "validate-agent-contract", "conclusion": "success"},
+            {"name": "required-checks-gate", "conclusion": "success"},
+        ]
+
+        evidence: dict[str, Any] = {
+            "tag": agent_contract_release.AGENT_CONTRACT_TAG,
+            "commit": commit,
+            "main_sha": commit,
+            "main_commit": {
+                "sha": commit,
+                "verification": {"verified": True},
+            },
+            "tag_ref": tag_ref,
+            "tag_object": tag_object,
+            "pull_requests": pull_requests,
+            "workflow_runs": workflow_runs,
+            "check_runs": check_runs,
+        }
+        self.assertEqual(
+            [], agent_contract_release.agent_contract_release_errors(**evidence)
+        )
+
+        for name, replacement in (
+            ("lightweight", {"tag_ref": {"object": {"type": "commit"}}}),
+            (
+                "unsigned",
+                {
+                    "tag_object": {
+                        "object": {"type": "commit", "sha": commit},
+                        "verification": {"verified": False},
+                    }
+                },
+            ),
+            ("wrong-main", {"main_sha": "d" * 40}),
+            (
+                "unverified-main",
+                {
+                    "main_commit": {
+                        "sha": commit,
+                        "verification": {"verified": False},
+                    }
+                },
+            ),
+            ("missing-pr", {"pull_requests": []}),
+            (
+                "missing-merge-group",
+                {
+                    "workflow_runs": [
+                        run for run in workflow_runs if run["event"] != "merge_group"
+                    ]
+                },
+            ),
+            ("missing-provider", {"check_runs": check_runs[1:]}),
+        ):
+            with self.subTest(name=name):
+                candidate: dict[str, Any] = {**evidence, **replacement}
+                self.assertTrue(
+                    agent_contract_release.agent_contract_release_errors(**candidate)
+                )
+
+    def test_agent_contract_release_record_is_complete_and_bound(self) -> None:
+        values: dict[str, Any] = {
+            "tag_object_sha": "a" * 40,
+            "commit_sha": "b" * 40,
+            "catalog_sha256": "c" * 64,
+            "workflow_urls": [
+                "https://github.com/HomericIntelligence/Athena/actions/runs/1",
+                "https://github.com/HomericIntelligence/Athena/actions/runs/2",
+                "https://github.com/HomericIntelligence/Athena/actions/runs/3",
+            ],
+            "live_ruleset_sha256": "d" * 64,
+            "resolved_url_count": 91,
+            "retarget_rejection": "rejected: repository rule violation",
+            "deletion_rejection": "rejected: repository rule violation",
+        }
+
+        body = agent_contract_release.render_release_record(**values)
+
+        self.assertEqual(
+            [], agent_contract_release.release_record_errors(body, **values)
+        )
+        self.assertTrue(
+            agent_contract_release.release_record_errors(
+                body.replace(values["commit_sha"], "e" * 40), **values
+            )
+        )
+
+    def test_agent_contract_ruleset_cli_checks_tracked_and_live_state(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        tracked = agent_contract_release.expected_tag_ruleset()
+        live = {**tracked, "id": 42}
+        environment = {"GITHUB_REPOSITORY": "owner/repository"}
+
+        self.assertEqual(
+            0,
+            ci_policy.main(["agent-contract-tracked-ruleset", "--root", str(root)]),
+        )
+        with (
+            patch.dict(os.environ, environment, clear=False),
+            patch(
+                "scripts.ci_policy._run_json",
+                side_effect=[
+                    [{"id": 42, "name": tracked["name"], "target": "tag"}],
+                    live,
+                ],
+            ),
+        ):
+            self.assertEqual(
+                0,
+                ci_policy.main(["agent-contract-live-ruleset", "--root", str(root)]),
+            )
+
+    def test_agent_contract_release_cli_supports_pre_tag_readiness(self) -> None:
+        commit = "a" * 40
+        evidence = {
+            "main_sha": commit,
+            "main_commit": {
+                "sha": commit,
+                "verification": {"verified": True},
+            },
+            "tag_ref": None,
+            "tag_object": None,
+            "pull_requests": [
+                {
+                    "merged_at": "now",
+                    "merge_commit_sha": commit,
+                    "head": {"sha": "b" * 40},
+                }
+            ],
+            "workflow_runs": [
+                {
+                    "event": event,
+                    "head_sha": revision,
+                    "name": "Required Checks",
+                    "conclusion": "success",
+                    "html_url": f"https://example.invalid/{event}",
+                }
+                for event, revision in (
+                    ("pull_request", "b" * 40),
+                    ("merge_group", commit),
+                    ("push", commit),
+                )
+            ],
+            "check_runs": [
+                {"name": "validate-agent-contract", "conclusion": "success"},
+                {"name": "required-checks-gate", "conclusion": "success"},
+            ],
+        }
+        environment = {
+            "GITHUB_REPOSITORY": "owner/repository",
+            "AGENT_CONTRACT_COMMIT": commit,
+        }
+        with (
+            patch.dict(os.environ, environment, clear=True),
+            patch(
+                "scripts.ci_policy._collect_agent_contract_release_evidence",
+                return_value=evidence,
+            ) as collect,
+        ):
+            self.assertEqual(
+                0,
+                ci_policy.main(["agent-contract-release", "--pre-tag"]),
+            )
+
+        collect.assert_called_once_with("owner/repository", commit, pre_tag=True)
+
+    def test_agent_contract_release_evidence_collection_binds_tag_and_runs(
+        self,
+    ) -> None:
+        commit = "a" * 40
+        pull_head = "b" * 40
+        tag_sha = "c" * 40
+        pull = {
+            "merged_at": "now",
+            "merge_commit_sha": commit,
+            "head": {"sha": pull_head},
+        }
+        commit_run = {"event": "push", "head_sha": commit}
+        pull_run = {"event": "pull_request", "head_sha": pull_head}
+        tag_ref = {"object": {"type": "tag", "sha": tag_sha}}
+        tag_object = {
+            "object": {"type": "commit", "sha": commit},
+            "verification": {"verified": True},
+        }
+        responses = [
+            {"object": {"sha": commit}},
+            {"sha": commit, "verification": {"verified": True}},
+            [pull],
+            {"workflow_runs": [commit_run]},
+            {"workflow_runs": [pull_run]},
+            {"check_runs": [{"name": "required-checks-gate"}]},
+            tag_ref,
+            tag_object,
+        ]
+        with (
+            patch.dict(
+                os.environ,
+                {"AGENT_CONTRACT_TAG": agent_contract_release.AGENT_CONTRACT_TAG},
+                clear=False,
+            ),
+            patch("scripts.ci_policy._run_json", side_effect=responses) as run_json,
+        ):
+            evidence = ci_policy._collect_agent_contract_release_evidence(
+                "owner/repository", commit, pre_tag=False
+            )
+
+        self.assertEqual(commit, evidence["main_sha"])
+        self.assertEqual(
+            {"sha": commit, "verification": {"verified": True}},
+            evidence["main_commit"],
+        )
+        self.assertEqual([pull], evidence["pull_requests"])
+        self.assertEqual([commit_run, pull_run], evidence["workflow_runs"])
+        self.assertEqual(tag_ref, evidence["tag_ref"])
+        self.assertEqual(tag_object, evidence["tag_object"])
+        self.assertEqual(8, run_json.call_count)
+
+    def test_agent_contract_release_record_cli_writes_and_verifies(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        commit = "a" * 40
+        pull_head = "b" * 40
+        tag_sha = "c" * 40
+        workflow_runs = [
+            {
+                "event": event,
+                "head_sha": revision,
+                "name": "Required Checks",
+                "conclusion": "success",
+                "html_url": f"https://example.invalid/{event}",
+            }
+            for event, revision in (
+                ("pull_request", pull_head),
+                ("merge_group", commit),
+                ("push", commit),
+            )
+        ]
+        evidence = {
+            "main_sha": commit,
+            "main_commit": {
+                "sha": commit,
+                "verification": {"verified": True},
+            },
+            "tag_ref": {"object": {"type": "tag", "sha": tag_sha}},
+            "tag_object": {
+                "object": {"type": "commit", "sha": commit},
+                "verification": {"verified": True},
+            },
+            "pull_requests": [
+                {
+                    "merged_at": "now",
+                    "merge_commit_sha": commit,
+                    "head": {"sha": pull_head},
+                }
+            ],
+            "workflow_runs": workflow_runs,
+            "check_runs": [
+                {"name": "validate-agent-contract", "conclusion": "success"},
+                {"name": "required-checks-gate", "conclusion": "success"},
+            ],
+        }
+        tracked = agent_contract_release.expected_tag_ruleset()
+        environment = {
+            "GITHUB_REPOSITORY": "owner/repository",
+            "AGENT_CONTRACT_TAG": agent_contract_release.AGENT_CONTRACT_TAG,
+            "AGENT_CONTRACT_COMMIT": commit,
+        }
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary = Path(temporary_directory)
+            retarget = temporary / "retarget.txt"
+            deletion = temporary / "deletion.txt"
+            output = temporary / "release.md"
+            rejection = (
+                "remote: error: GH013: Repository rule violations found for "
+                "refs/tags/agent-contract-v1.0.0.\n"
+            )
+            retarget.write_text(rejection, encoding="utf-8")
+            deletion.write_text(rejection, encoding="utf-8")
+            arguments = [
+                "agent-contract-release-record",
+                "--root",
+                str(root),
+                "--retarget-rejection-file",
+                str(retarget),
+                "--deletion-rejection-file",
+                str(deletion),
+            ]
+            with (
+                patch.dict(os.environ, environment, clear=True),
+                patch(
+                    "scripts.ci_policy._collect_agent_contract_release_evidence",
+                    return_value=evidence,
+                ),
+                patch(
+                    "scripts.ci_policy._live_agent_contract_ruleset",
+                    return_value=tracked,
+                ),
+                patch(
+                    "scripts.ci_policy._resolved_agent_contract_url_count",
+                    return_value=91,
+                ),
+            ):
+                self.assertEqual(
+                    0, ci_policy.main([*arguments, "--output", str(output)])
+                )
+                body = output.read_text(encoding="utf-8")
+                with patch("scripts.ci_policy._run_json", return_value={"body": body}):
+                    self.assertEqual(
+                        0, ci_policy.main([*arguments, "--verify-release"])
+                    )
+
+        self.assertIn(tag_sha, body)
+        self.assertIn(commit, body)
+        self.assertIn("Resolved principle URLs: 91", body)
+
+    def test_agent_contract_release_record_rejects_unattributed_push_failure(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            evidence = Path(temporary_directory) / "rejection.txt"
+            evidence.write_text("Retarget rejected because the network failed.\n")
+
+            with self.assertRaisesRegex(ValueError, "GitHub ruleset rejection"):
+                ci_policy._read_rejection(evidence, "retarget")
+
+    def test_agent_contract_url_and_consumer_cli_checks(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        environment = {
+            "GITHUB_REPOSITORY": "owner/repository",
+            "AGENT_CONTRACT_TAG": agent_contract_release.AGENT_CONTRACT_TAG,
+        }
+        with (
+            patch.dict(os.environ, environment, clear=False),
+            patch(
+                "scripts.ci_policy.principle_detail_paths",
+                return_value=(
+                    "docs/principles/details/one.md",
+                    "docs/principles/details/two.md",
+                ),
+            ),
+            patch(
+                "scripts.ci_policy._run_json",
+                side_effect=[{"type": "file"}, {"type": "file"}],
+            ) as run_json,
+        ):
+            self.assertEqual(
+                0,
+                ci_policy.main(["agent-contract-url-resolution", "--root", str(root)]),
+            )
+
+        self.assertEqual(2, run_json.call_count)
+        self.assertEqual(
+            0,
+            ci_policy.main(["agent-contract-no-main-consumer", "--root", str(root)]),
         )
 
     def test_flattens_complete_paginated_commit_evidence(self) -> None:

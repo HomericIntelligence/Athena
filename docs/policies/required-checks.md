@@ -136,3 +136,15 @@ A release workflow never creates an artifact that did not pass the required chec
 [Issue #163](https://github.com/HomericIntelligence/Athena/issues/163) owns the protected
 `agent-contract-v*` release and its live tag ruleset. Consumers must not use an agent-contract
 version until that release protects the tag from deletion and retargeting.
+
+The tracked `.github/rulesets/homeric-agent-contract-tags.json` policy targets only
+`refs/tags/agent-contract-v*`. It has no bypass actor. It blocks tag update and deletion, and it does
+not block the first tag creation. The live ruleset must match the tracked policy before tag creation.
+
+The `agent-contract-v*` release path is separate from the package `v*` release path. It invokes the
+agent-contract provider and the complete required workflow. It does not publish plugin archives or
+npm packages. Its GitHub Release body is the authoritative release record. The record contains the
+tag object SHA, commit SHA, catalog SHA-256, required workflow run URLs, live ruleset readback, all
+91 tagged URL results, and the update and deletion rejection evidence. Use the
+[`agent-contract-v1.0.0` release runbook](../runbooks/agent-contract-v1.0.0-release.md) for the
+controlled operation and recovery steps.

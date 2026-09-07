@@ -2,7 +2,7 @@ name: Release
 
 "on":
   push:
-    tags: ["v*"]
+    tags: ["v*", "agent-contract-v*"]
 
 permissions:
   contents: read
@@ -17,6 +17,7 @@ jobs:
   preflight:
     name: verify-release-trust
     needs: agent-contract
+    if: startsWith(github.ref_name, 'v')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -38,7 +39,7 @@ jobs:
 
   required:
     name: required-checks
-    needs: preflight
+    needs: agent-contract
     permissions:
       contents: read
       issues: read
@@ -47,7 +48,8 @@ jobs:
 
   release:
     name: release
-    needs: required
+    needs: [preflight, required]
+    if: startsWith(github.ref_name, 'v')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: release
@@ -68,7 +70,8 @@ jobs:
 
   publish-npm:
     name: publish-npm
-    needs: required
+    needs: [preflight, required]
+    if: startsWith(github.ref_name, 'v')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: release
@@ -87,3 +90,36 @@ jobs:
         run: python scripts/package_opencode.py --output dist/opencode-npm
       - name: Publish npm package
         run: npm publish ./dist/opencode-npm --access public --provenance
+
+  agent-contract-release:
+    name: verify-agent-contract-release
+    needs: required
+    if: startsWith(github.ref_name, 'agent-contract-v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify live agent-contract tag protection
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/ci_policy.py agent-contract-live-ruleset
+      - name: Bind the annotated tag to its commit
+        run: printf 'AGENT_CONTRACT_COMMIT=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Verify the signed agent-contract tag and release evidence
+        env:
+          AGENT_CONTRACT_TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/ci_policy.py agent-contract-release
+      - name: Verify tagged principle URLs
+        env:
+          AGENT_CONTRACT_TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/ci_policy.py agent-contract-url-resolution

@@ -727,6 +727,41 @@ class DistributionTests(unittest.TestCase):
 
         self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
 
+    def test_ruleset_requires_immutable_agent_contract_tag_protection(self) -> None:
+        path = (
+            self.fixture / ".github" / "rulesets" / "homeric-agent-contract-tags.json"
+        )
+        original = path.read_text(encoding="utf-8")
+        mutations: dict[str, Callable[[dict[str, Any]], None]] = {
+            "target": lambda value: value.update(target="branch"),
+            "enforcement": lambda value: value.update(enforcement="evaluate"),
+            "pattern": lambda value: value["conditions"]["ref_name"].update(
+                include=["refs/tags/*"]
+            ),
+            "bypass": lambda value: value.update(bypass_actors=[{"actor_id": 1}]),
+            "missing-update": lambda value: value.update(
+                rules=[rule for rule in value["rules"] if rule["type"] != "update"]
+            ),
+            "missing-deletion": lambda value: value.update(
+                rules=[rule for rule in value["rules"] if rule["type"] != "deletion"]
+            ),
+            "creation": lambda value: value["rules"].append({"type": "creation"}),
+            "status": lambda value: value["rules"].append(
+                {"type": "required_status_checks", "parameters": {}}
+            ),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name=name):
+                document = json.loads(original)
+                mutate(document)
+                path.write_text(json.dumps(document), encoding="utf-8")
+                self.assert_validation_errors(
+                    validator._validate_ruleset_policy, "ruleset"
+                )
+
+        path.unlink()
+        self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
+
     def test_obsolete_distribution_path_fails(self) -> None:
         (self.fixture / "athena").mkdir()
         self.assert_validation_errors(

@@ -11,15 +11,27 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 sys.dont_write_bytecode = True
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from scripts.policies.agent_contract_release import (
+    AGENT_CONTRACT_TAG,
+    agent_contract_release_errors,
+    catalog_sha256,
+    live_tag_ruleset_errors,
+    principle_detail_paths,
+    release_record_errors,
+    render_release_record,
+    ruleset_sha256,
+    tag_ruleset_errors,
+)
 from scripts.policies.pull_request import evaluate_pull_request, flatten_commit_pages
 from scripts.policies.release import evaluate_release, verify_release_assets
 from scripts.policies.required_jobs import failed_required_jobs
@@ -27,6 +39,7 @@ from scripts.policies.suppressions import find_suppressions
 from skills._cli import argument_parser
 
 __all__ = (
+    "agent_contract_release_errors",
     "evaluate_pull_request",
     "evaluate_release",
     "failed_required_jobs",
@@ -38,6 +51,26 @@ __all__ = (
 
 class ManifestPolicyError(ValueError):
     """This error identifies repository manifest content that violates policy."""
+
+
+class _ReleaseEvidence(TypedDict):
+    main_sha: str
+    main_commit: object
+    pull_requests: list[object]
+    workflow_runs: list[object]
+    check_runs: list[object]
+    tag_ref: object | None
+    tag_object: object | None
+
+
+def _read_json_object(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError) as error:
+        raise OSError(f"The JSON file cannot be read: '{path}'. {error}") from error
+    if not isinstance(value, dict):
+        raise TypeError(f"The JSON file must contain an object: '{path}'.")
+    return value
 
 
 def _run_json(command: list[str]) -> Any:
@@ -310,6 +343,291 @@ def _release_environment_command() -> int:
     return 0
 
 
+def _tracked_agent_contract_ruleset(repo_root: Path) -> dict[str, Any]:
+    path = repo_root / ".github" / "rulesets" / "homeric-agent-contract-tags.json"
+    document = _read_json_object(path)
+    errors = tag_ruleset_errors(document)
+    if errors:
+        raise SystemExit("\n".join(errors))
+    return document
+
+
+def _agent_contract_tracked_ruleset_command(repo_root: Path) -> int:
+    _tracked_agent_contract_ruleset(repo_root)
+    print("The tracked agent-contract tag ruleset passed.")
+    return 0
+
+
+def _live_agent_contract_ruleset(
+    repository: str, tracked: dict[str, Any]
+) -> dict[str, Any]:
+    summaries = _run_json(["gh", "api", f"repos/{repository}/rulesets"])
+    if not isinstance(summaries, list):
+        raise TypeError("GitHub returned an invalid ruleset list.")
+    matches = [
+        summary
+        for summary in summaries
+        if isinstance(summary, dict)
+        and summary.get("name") == tracked["name"]
+        and summary.get("target") == "tag"
+    ]
+    if len(matches) != 1 or not isinstance(matches[0].get("id"), int):
+        raise SystemExit("The live agent-contract tag ruleset is missing or ambiguous.")
+    live = _run_json(["gh", "api", f"repos/{repository}/rulesets/{matches[0]['id']}"])
+    if not isinstance(live, dict):
+        raise TypeError("GitHub returned an invalid live tag ruleset.")
+    errors = live_tag_ruleset_errors(tracked, live)
+    if errors:
+        raise SystemExit("\n".join(errors))
+    return live
+
+
+def _agent_contract_live_ruleset_command(repo_root: Path) -> int:
+    repository = _required_env("GITHUB_REPOSITORY")
+    tracked = _tracked_agent_contract_ruleset(repo_root)
+    live = _live_agent_contract_ruleset(repository, tracked)
+    print(
+        "The live agent-contract tag ruleset matches the tracked policy at digest "
+        f"'{ruleset_sha256(live)}'."
+    )
+    return 0
+
+
+def _object_list(value: object, field: str) -> list[object]:
+    if not isinstance(value, dict) or not isinstance(value.get(field), list):
+        raise TypeError(f"GitHub returned an invalid '{field}' response.")
+    return list(value[field])
+
+
+def _collect_agent_contract_release_evidence(
+    repository: str, commit: str, *, pre_tag: bool
+) -> _ReleaseEvidence:
+    main_ref = _run_json(["gh", "api", f"repos/{repository}/git/ref/heads/main"])
+    if not isinstance(main_ref, dict) or not isinstance(main_ref.get("object"), dict):
+        raise TypeError("GitHub returned an invalid main reference.")
+    main_sha = main_ref["object"].get("sha")
+    if not isinstance(main_sha, str):
+        raise TypeError("GitHub returned an invalid main revision.")
+    main_commit = _run_json(["gh", "api", f"repos/{repository}/git/commits/{commit}"])
+    if not isinstance(main_commit, dict):
+        raise TypeError("GitHub returned an invalid main commit object.")
+    pull_requests = _run_json(
+        [
+            "gh",
+            "api",
+            "-H",
+            "Accept: application/vnd.github+json",
+            f"repos/{repository}/commits/{commit}/pulls",
+        ]
+    )
+    if not isinstance(pull_requests, list):
+        raise TypeError("GitHub returned an invalid pull-request list.")
+    pull_head = next(
+        (
+            pull.get("head", {}).get("sha")
+            for pull in pull_requests
+            if isinstance(pull, dict)
+            and pull.get("merge_commit_sha") == commit
+            and isinstance(pull.get("head"), dict)
+            and isinstance(pull["head"].get("sha"), str)
+        ),
+        None,
+    )
+    revisions = [commit, *([pull_head] if isinstance(pull_head, str) else [])]
+    workflow_runs: list[object] = []
+    for revision in dict.fromkeys(revisions):
+        response = _run_json(
+            [
+                "gh",
+                "api",
+                f"repos/{repository}/actions/runs?head_sha={revision}&per_page=100",
+            ]
+        )
+        workflow_runs.extend(_object_list(response, "workflow_runs"))
+    check_response = _run_json(
+        [
+            "gh",
+            "api",
+            "-H",
+            "Accept: application/vnd.github+json",
+            f"repos/{repository}/commits/{commit}/check-runs?per_page=100",
+        ]
+    )
+    evidence: _ReleaseEvidence = {
+        "main_sha": main_sha,
+        "main_commit": main_commit,
+        "pull_requests": pull_requests,
+        "workflow_runs": workflow_runs,
+        "check_runs": _object_list(check_response, "check_runs"),
+        "tag_ref": None,
+        "tag_object": None,
+    }
+    if pre_tag:
+        return evidence
+    tag = _required_env("AGENT_CONTRACT_TAG")
+    tag_ref = _run_json(["gh", "api", f"repos/{repository}/git/ref/tags/{tag}"])
+    if not isinstance(tag_ref, dict) or not isinstance(tag_ref.get("object"), dict):
+        raise TypeError("GitHub returned an invalid agent-contract tag reference.")
+    tag_sha = tag_ref["object"].get("sha")
+    if not isinstance(tag_sha, str):
+        raise TypeError(
+            "GitHub returned an invalid agent-contract tag object revision."
+        )
+    tag_object = _run_json(["gh", "api", f"repos/{repository}/git/tags/{tag_sha}"])
+    if not isinstance(tag_object, dict):
+        raise TypeError("GitHub returned an invalid agent-contract tag object.")
+    evidence["tag_ref"] = tag_ref
+    evidence["tag_object"] = tag_object
+    return evidence
+
+
+def _agent_contract_release_command(repo_root: Path, *, pre_tag: bool) -> int:
+    del repo_root
+    repository = _required_env("GITHUB_REPOSITORY")
+    tag = os.environ.get("AGENT_CONTRACT_TAG", AGENT_CONTRACT_TAG)
+    commit = _required_env("AGENT_CONTRACT_COMMIT")
+    evidence = _collect_agent_contract_release_evidence(
+        repository, commit, pre_tag=pre_tag
+    )
+    errors = agent_contract_release_errors(
+        tag=tag,
+        commit=commit,
+        pre_tag=pre_tag,
+        **evidence,
+    )
+    if errors:
+        raise SystemExit("\n".join(errors))
+    phase = "pre-tag readiness" if pre_tag else "signed tag"
+    print(f"The agent-contract {phase} policy passed for commit '{commit}'.")
+    return 0
+
+
+def _resolved_agent_contract_url_count(
+    repo_root: Path, repository: str, tag: str
+) -> int:
+    if tag != AGENT_CONTRACT_TAG:
+        raise SystemExit(f"The agent-contract tag must be '{AGENT_CONTRACT_TAG}'.")
+    paths = principle_detail_paths(repo_root)
+    for path in paths:
+        result = _run_json(
+            ["gh", "api", f"repos/{repository}/contents/{path}?ref={tag}"]
+        )
+        if not isinstance(result, dict) or result.get("type") != "file":
+            raise SystemExit(f"The tagged principle URL does not resolve: '{path}'.")
+    return len(paths)
+
+
+def _agent_contract_url_resolution_command(repo_root: Path) -> int:
+    repository = _required_env("GITHUB_REPOSITORY")
+    tag = _required_env("AGENT_CONTRACT_TAG")
+    count = _resolved_agent_contract_url_count(repo_root, repository, tag)
+    print(f"All {count} tagged principle URLs resolve.")
+    return 0
+
+
+def _agent_contract_no_main_consumer_command(repo_root: Path) -> int:
+    result = subprocess.run(
+        ["git", "ls-files", "README.md", "AGENTS.md", "docs", ".github"],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    forbidden = re.compile(
+        r"HomericIntelligence/Athena/\.github/workflows/_agent-contract\.yml@(?:main|master)"
+    )
+    violations = [
+        relative
+        for relative in result.stdout.splitlines()
+        if forbidden.search((repo_root / relative).read_text(encoding="utf-8"))
+    ]
+    if violations:
+        raise SystemExit(
+            "Agent-contract consumers must not pin a mutable branch: "
+            + ", ".join(violations)
+        )
+    print("No agent-contract consumer pins a mutable main branch.")
+    return 0
+
+
+def _read_rejection(path: Path | None, name: str) -> str:
+    if path is None:
+        raise OSError(f"The {name} rejection evidence file is required.")
+    text = path.read_text(encoding="utf-8").strip()
+    required_markers = ("GH013", f"refs/tags/{AGENT_CONTRACT_TAG}")
+    if not text or any(marker not in text for marker in required_markers):
+        raise ValueError(
+            f"The {name} evidence does not record a GitHub ruleset rejection."
+        )
+    return text
+
+
+def _agent_contract_release_record_command(
+    repo_root: Path,
+    *,
+    output: Path | None,
+    verify_release: bool,
+    retarget_rejection_file: Path | None,
+    deletion_rejection_file: Path | None,
+) -> int:
+    repository = _required_env("GITHUB_REPOSITORY")
+    tag = _required_env("AGENT_CONTRACT_TAG")
+    commit = _required_env("AGENT_CONTRACT_COMMIT")
+    evidence = _collect_agent_contract_release_evidence(
+        repository, commit, pre_tag=False
+    )
+    errors = agent_contract_release_errors(
+        tag=tag,
+        commit=commit,
+        pre_tag=False,
+        **evidence,
+    )
+    if errors:
+        raise SystemExit("\n".join(errors))
+    tracked = _tracked_agent_contract_ruleset(repo_root)
+    live = _live_agent_contract_ruleset(repository, tracked)
+    tag_ref = evidence["tag_ref"]
+    assert isinstance(tag_ref, dict) and isinstance(tag_ref.get("object"), dict)
+    workflow_runs = evidence["workflow_runs"]
+    assert isinstance(workflow_runs, list)
+    workflow_urls = sorted(
+        {
+            str(run["html_url"])
+            for run in workflow_runs
+            if isinstance(run, dict)
+            and run.get("name") == "Required Checks"
+            and run.get("conclusion") == "success"
+            and run.get("event") in {"pull_request", "merge_group", "push"}
+            and isinstance(run.get("html_url"), str)
+        }
+    )
+    values = {
+        "tag_object_sha": str(tag_ref["object"]["sha"]),
+        "commit_sha": commit,
+        "catalog_sha256": catalog_sha256(repo_root),
+        "workflow_urls": workflow_urls,
+        "live_ruleset_sha256": ruleset_sha256(live),
+        "resolved_url_count": _resolved_agent_contract_url_count(
+            repo_root, repository, tag
+        ),
+        "retarget_rejection": _read_rejection(retarget_rejection_file, "retarget"),
+        "deletion_rejection": _read_rejection(deletion_rejection_file, "deletion"),
+    }
+    body = render_release_record(**values)
+    if output is not None:
+        output.write_text(body, encoding="utf-8")
+    if verify_release:
+        release = _run_json(["gh", "api", f"repos/{repository}/releases/tags/{tag}"])
+        if not isinstance(release, dict) or not isinstance(release.get("body"), str):
+            raise TypeError("GitHub returned an invalid release record.")
+        errors = release_record_errors(release["body"], **values)
+        if errors:
+            raise SystemExit("\n".join(errors))
+    if output is None and not verify_release:
+        print(body, end="")
+    return 0
+
+
 def _suppression_command(repo_root: Path) -> int:
     result = subprocess.run(
         ["git", "ls-files", "*.sh", "*.yml", "*.yaml", "justfile"],
@@ -391,6 +709,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "command",
         choices=(
+            "agent-contract-live-ruleset",
+            "agent-contract-no-main-consumer",
+            "agent-contract-release",
+            "agent-contract-release-record",
+            "agent-contract-tracked-ruleset",
+            "agent-contract-url-resolution",
             "pr-policy",
             "publish-release",
             "required-jobs",
@@ -401,8 +725,33 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument("--root", type=Path, default=Path.cwd())
+    parser.add_argument("--pre-tag", action="store_true")
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--verify-release", action="store_true")
+    parser.add_argument("--retarget-rejection-file", type=Path)
+    parser.add_argument("--deletion-rejection-file", type=Path)
     args = parser.parse_args(argv)
     try:
+        if args.command == "agent-contract-tracked-ruleset":
+            return _agent_contract_tracked_ruleset_command(args.root.resolve())
+        if args.command == "agent-contract-live-ruleset":
+            return _agent_contract_live_ruleset_command(args.root.resolve())
+        if args.command == "agent-contract-release":
+            return _agent_contract_release_command(
+                args.root.resolve(), pre_tag=args.pre_tag
+            )
+        if args.command == "agent-contract-url-resolution":
+            return _agent_contract_url_resolution_command(args.root.resolve())
+        if args.command == "agent-contract-no-main-consumer":
+            return _agent_contract_no_main_consumer_command(args.root.resolve())
+        if args.command == "agent-contract-release-record":
+            return _agent_contract_release_record_command(
+                args.root.resolve(),
+                output=args.output,
+                verify_release=args.verify_release,
+                retarget_rejection_file=args.retarget_rejection_file,
+                deletion_rejection_file=args.deletion_rejection_file,
+            )
         if args.command == "pr-policy":
             return _pr_policy_command()
         if args.command == "required-jobs":
