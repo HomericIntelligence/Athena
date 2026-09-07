@@ -193,7 +193,7 @@ def _staging_entries(
         ),
     ]
     source_to_staged: dict[Path, PurePosixPath] = {}
-    staged_paths: set[PurePosixPath] = set()
+    staged_paths: set[PurePosixPath] = {SKILLS_ROOT / "_plugin.json"}
     for source_path, staged_path in entries:
         source_relative = _relative(source_path, repo_root)
         _validate_source(source_path, source_relative)
@@ -251,6 +251,10 @@ def stage_package(repo_root: Path, output_directory: Path | None = None) -> Path
                 staged_path,
                 source_to_staged,
             )
+    (destination / "skills" / "_plugin.json").write_text(
+        json.dumps({"version": manifest_version}, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     return destination
 
 
