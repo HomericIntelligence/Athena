@@ -127,3 +127,19 @@ class ValidationFailurePathTests(unittest.TestCase):
             )
         self.assertEqual(0, error.exception.code)
         self.assertIn("--catalog-root", output.getvalue())
+
+    def test_git_history_checks_preserve_command_failures(self) -> None:
+        cases = (
+            (_cli.require_complete_git_history, ()),
+            (_cli.require_unambiguous_git_merge_base, ("a" * 40, "b" * 40)),
+        )
+        for check_history, arguments in cases:
+            for diagnostic in ("repository unavailable", ""):
+                result = subprocess.CompletedProcess(["git"], 1, "", diagnostic)
+                with (
+                    self.subTest(check=check_history.__name__, diagnostic=diagnostic),
+                    patch("skills._cli.run_command", return_value=result),
+                    self.assertRaises(RuntimeError) as error,
+                ):
+                    check_history(*arguments)
+                self.assertIn(diagnostic or "git", str(error.exception))
