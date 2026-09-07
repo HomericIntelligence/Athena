@@ -4,8 +4,8 @@ Apply the [ASD-STE100 technical-English policy](../skills/TECHNICAL_ENGLISH.md) 
 in this document.
 
 **Why:** Athena must use trusted and current repositories when it changes Mnemosyne or executes
-Hephaestus. Read-only knowledge can use an older local checkout when it reports the revision and
-limits. Athena must not report an unverified remote or stale checkout as current.
+Hephaestus. Read-only knowledge can use a validated local checkout and then try a best-effort
+refresh. Athena must not report an unverified remote or stale checkout as current.
 
 ## At a glance
 
@@ -17,14 +17,16 @@ During normal resolution for a write or automation execution, Athena does these 
 
 A trust, authentication, checkout, or update failure stops that write or automation execution.
 
-All read-only Mnemosyne paths use an existing checkout as a best-effort source. This path does not
-require synchronization with the upstream repository. It must do these actions:
+All read-only Mnemosyne paths validate the local checkout first. If `gh`, authentication, and
+network access are available, Athena then tries a best-effort refresh. If the refresh cannot run
+or fails, Athena keeps the validated local checkout and reports the freshness limit. This path
+must do these actions:
 
 - bind use to the current `HEAD`;
-- report the current `HEAD`;
+- report the current `HEAD` or the refreshed revision;
 - report the freshness and trust limits;
 - never substitute a different repository; and
-- never make a durable write from that unchecked state.
+- never make a durable write from that checked state.
 
 If local knowledge is unavailable, stop only knowledge retrieval. Continue the primary task. The
 `learn` skill can classify a candidate, but it must complete normal resolution and duplicate checks
@@ -34,18 +36,21 @@ before a durable write.
 flowchart LR
     A["Resolve dependency"] --> B{"Read-only Mnemosyne use?"}
     B -->|yes| C{"Is a local checkout readable?"}
-    C -->|yes| D["Bind local HEAD and report limits"]
     C -->|no| E["Report no local guidance; continue primary task"]
-    B -->|no| F{"Is there an explicit owner?"}
-    F -->|yes| G["Validate override"]
-    F -->|no| H{"Is there a trusted organization fork?"}
-    H -->|yes| I["Use maintained fork"]
-    H -->|no| J["Use canonical upstream"]
-    G --> K["Verify origin and clean checkout"]
-    I --> K
-    J --> K
-    K --> L["Fetch, fast-forward, and bind SHA"]
-    L --> M["Revalidate automatic-fork trust before use"]
+    C -->|yes| D["Bind local HEAD and report limits"]
+    D --> F{"Can gh auth and discovery run?"}
+    F -->|yes| G["Try refresh, then report the updated revision or the local fallback"]
+    F -->|no| H["Keep the validated local revision and report the freshness limit"]
+    B -->|no| I{"Is there an explicit owner?"}
+    I -->|yes| J["Validate override"]
+    I -->|no| K{"Is there a trusted organization fork?"}
+    K -->|yes| L["Use maintained fork"]
+    K -->|no| M["Use canonical upstream"]
+    J --> N["Verify origin and clean checkout"]
+    L --> N
+    M --> N
+    N --> O["Fetch, fast-forward, and bind SHA"]
+    O --> P["Revalidate automatic-fork trust before use"]
 ```
 
 ## Component details
@@ -162,16 +167,12 @@ resolution and use.
 ### Read-only knowledge access
 
 Use this path for all read-only Mnemosyne retrieval. Inspect the existing checkout first. Bind use
-to the current `HEAD` without these actions:
+to the current `HEAD`. If `gh`, authentication, and network access are available, try a refresh. If
+the refresh cannot run or fails, keep the validated local checkout and report the freshness limit.
 
-- clone;
-- fetch;
-- fast-forward; or
-- revalidation of an automatic fork.
-
-Do not require the local checkout to have the newest Mnemosyne revision. Do not require its revision
-to agree with the installed Athena revision. The installed skill supplies its own retrieval
-contract.
+Do not require the local checkout to have the newest Mnemosyne revision. Do not require its
+revision to agree with the installed Athena revision. The installed skill supplies its own
+retrieval contract.
 
 Report this information:
 

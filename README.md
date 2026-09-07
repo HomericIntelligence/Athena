@@ -32,10 +32,11 @@ Athena has two repository integrations:
 | Automation | `HomericIntelligence/Hephaestus` | `HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER` | `$HOME/.agent_brain/automation` |
 
 Read-only Mnemosyne use is local-first under the
-[`dependency-resolution` contract](docs/dependency-resolution.md). An available stale checkout can
-supply best-effort guidance when Athena reports its revision and limits. Athena does not require the
-installed plugin and the knowledge checkout to have the newest or matching revisions. Missing local
-knowledge, authentication failure, and update failure do not stop the primary task.
+[`dependency-resolution` contract](docs/dependency-resolution.md). Athena validates the local
+checkout first, reports the revision and limits, and can refresh it when `gh`, authentication, and
+network access are available. If refresh cannot run or fails, Athena keeps the validated local
+revision and reports the freshness limit. Missing local knowledge, authentication failure, network
+failure, and update failure do not stop the primary task.
 
 Mnemosyne delivery and Hephaestus execution use trusted, current dependency checkouts. At these
 boundaries, an invalid override, a trust or authentication failure, a checkout mismatch, or an
