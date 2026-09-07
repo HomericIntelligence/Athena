@@ -6,7 +6,6 @@ import io
 import json
 import os
 import posixpath
-import re
 import shutil
 import subprocess
 import tarfile
@@ -16,7 +15,6 @@ from contextlib import redirect_stderr, redirect_stdout
 from hashlib import sha256
 from pathlib import Path
 from unittest.mock import patch
-from urllib.parse import unquote, urlsplit
 
 from scripts import package_plugin
 from scripts.package_plugin import (
@@ -30,47 +28,13 @@ from scripts.package_plugin import (
     read_plugin_version,
 )
 
+from .package_markdown_helpers import (
+    local_markdown_targets,
+    markdown_anchors,
+    technical_english_targets,
+)
+
 ROOT = Path(__file__).resolve().parents[2]
-MARKDOWN_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
-
-
-def technical_english_targets(markdown: str) -> list[str]:
-    """Return local links to the shipped technical-English policy."""
-    targets: list[str] = []
-    for target in MARKDOWN_LINK.findall(markdown):
-        path = target.split("#", 1)[0]
-        normalized_name = Path(path).name.lower().replace("-", "_")
-        if normalized_name == "technical_english.md":
-            targets.append(path)
-    return targets
-
-
-def local_markdown_targets(markdown: str) -> list[tuple[str, str]]:
-    """Return paths and fragments from local Markdown links."""
-    targets: list[tuple[str, str]] = []
-    for target in MARKDOWN_LINK.findall(markdown):
-        parsed = urlsplit(target)
-        if parsed.scheme or parsed.netloc or (not parsed.path and not parsed.fragment):
-            continue
-        targets.append((unquote(parsed.path), unquote(parsed.fragment)))
-    return targets
-
-
-def markdown_anchors(markdown: str) -> set[str]:
-    """Return GitHub-style anchors for the headings in a Markdown document."""
-    anchors: set[str] = set()
-    counts: dict[str, int] = {}
-    for line in markdown.splitlines():
-        match = re.match(r"^#{1,6}\s+(.+?)\s*#*\s*$", line)
-        if match is None:
-            continue
-        heading = re.sub(r"\[([^]]+)\]\([^)]+\)", r"\1", match.group(1))
-        heading = heading.replace("`", "")
-        base = re.sub(r"[^\w -]", "", heading.casefold()).replace(" ", "-")
-        occurrence = counts.get(base, 0)
-        counts[base] = occurrence + 1
-        anchors.add(base if occurrence == 0 else f"{base}-{occurrence}")
-    return anchors
 
 
 def create_repository(root: Path, *, version: str = "1.2.3") -> None:
