@@ -1261,6 +1261,49 @@ runpy.run_path({str(script)!r}, run_name="__main__")
         self.assertIn("--notes-file", run.call_args.args[0])
         self.assertIn(str(release_notes.resolve()), run.call_args.args[0])
 
+    def test_publish_release_command_rejects_missing_release_notes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory) / "repository" / "dist"
+            directory.mkdir(parents=True)
+            create_release_assets(directory)
+            environment = {
+                "GITHUB_REF_NAME": "v1.2.3",
+                "GITHUB_REPOSITORY": "owner/repository",
+            }
+            with (
+                patch.dict(os.environ, environment, clear=False),
+                patch("scripts.ci_policy.subprocess.run") as run,
+                self.assertRaisesRegex(ValueError, "release notes are missing"),
+            ):
+                ci_policy._publish_release_command(directory)
+
+        run.assert_not_called()
+
+    def test_pr_policy_command_rejects_malformed_closing_issues_references(
+        self,
+    ) -> None:
+        environment = {
+            "GITHUB_REPOSITORY": "owner/repository",
+            "PR_NUMBER": "9",
+            "REPO_OWNER": "owner",
+            "REPO_NAME": "repository",
+            "PR_AUTHOR": "contributor",
+        }
+        with (
+            patch.dict(os.environ, environment, clear=False),
+            patch(
+                "scripts.ci_policy._run_json",
+                return_value={"body": "Closes #1\n"},
+            ) as run_json,
+            self.assertRaisesRegex(
+                ValueError,
+                "GitHub returned a closingIssuesReferences field that is not valid.",
+            ),
+        ):
+            ci_policy._pr_policy_command()
+
+        run_json.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
