@@ -239,6 +239,31 @@ contain findings or discussion context in addition to approval state, so do not 
 requires no approval. Withhold auto-merge until the full policy rebind proves the gate is
 `satisfied` or `not_required`. The collector does not fetch rulesets and cannot emit `not_required`.
 
+### Collector compatibility and deprecation
+
+The shipped `collect_evidence.py` command retains its legacy invocation without expected identity
+arguments. This invocation is not deprecated. No removal release is scheduled. Its output remains
+ineligible for review publication. New consumers must use the strict invocation above.
+
+Before removal of the legacy invocation, maintainers must complete these steps:
+
+1. Open a compatibility issue that identifies the affected invocation, known consumers, and limits
+   of consumer discovery. No repository callers does not prove that external consumers are absent.
+2. Specify the strict replacement, migration instructions, last supported version, and proposed
+   removal version in that issue.
+3. Publish a deprecation notice with those versions and migration instructions in a tagged release.
+   Keep the legacy invocation supported through that notice release. The removal version must be a
+   later release. Keep the notice available to users of the affected versions.
+4. Verify the replacement against the documented result and failure contracts. Record validation
+   evidence for the exact removal head. Keep the legacy tests until the supported period ends.
+5. Obtain maintainer approval for the specified removal version and affected interface before the
+   removal change. Approval of this policy does not approve a removal.
+
+Migration must preserve the strict identity, scope, requirement, and path bindings. It must also
+preserve the output fields that this reference requires. If migration or validation is incomplete,
+retain the legacy invocation and defer removal. Use the last supported release only for legacy
+consumers; it does not make legacy evidence eligible for publication.
+
 ### Collect and verify GitLab evidence
 
 Retain these records. Re-fetch them before every GitLab publication:
