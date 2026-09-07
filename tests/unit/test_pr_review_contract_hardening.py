@@ -287,6 +287,22 @@ def linux_bounded_quota_available() -> bool:
 LINUX_BOUNDED_QUOTA_AVAILABLE = linux_bounded_quota_available()
 
 
+def python310_style_rmtree(captured: dict[str, object]) -> Callable[..., None]:
+    """Return a shutil.rmtree replacement without an onexc parameter."""
+
+    def fake_rmtree(
+        path: Path | str,
+        *,
+        onerror: Callable[[object, str, object], None] | None = None,
+        ignore_errors: bool = False,
+    ) -> None:
+        captured["path"] = path
+        captured["onerror"] = onerror
+        captured["ignore_errors"] = ignore_errors
+
+    return fake_rmtree
+
+
 class SnapshotMaterializationTests(unittest.TestCase):
     """Verify that the helper can get the exact pull-request source without caller trust."""
 
@@ -1509,6 +1525,65 @@ class LinuxBoundedSnapshotBehaviorTests(unittest.TestCase):
             )
 
         self.assertEqual([root], removed)
+
+    def test_materialize_snapshot_preserves_primary_error_with_python310_rmtree(
+        self,
+    ) -> None:
+        root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
+        resolved_root = root.resolve()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        captured: dict[str, object] = {}
+
+        with (
+            patch.object(self.snapshot.tempfile, "mkdtemp", return_value=str(root)),
+            patch.object(
+                self.snapshot,
+                "_create_quota_volume",
+                side_effect=lambda temporary_root, _: temporary_root / "source",
+            ),
+            patch.object(
+                self.snapshot,
+                "_acquire_into",
+                side_effect=RuntimeError("acquisition-sentinel-17"),
+            ),
+            patch.object(
+                self.snapshot.shutil,
+                "rmtree",
+                new=python310_style_rmtree(captured),
+            ),
+            self.assertRaisesRegex(RuntimeError, "acquisition-sentinel-17"),
+        ):
+            self.snapshot.materialize_snapshot(
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+        self.assertEqual(resolved_root, captured["path"])
+        self.assertIsNotNone(captured["onerror"])
+        self.assertTrue(callable(captured["onerror"]))
+        self.assertFalse(captured["ignore_errors"])
+
+    def test_remove_snapshot_uses_onerror_when_onexc_is_unavailable(self) -> None:
+        root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
+        resolved_root = root.resolve()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        (root / "source").mkdir()
+        captured: dict[str, object] = {}
+
+        with patch.object(
+            self.snapshot.shutil,
+            "rmtree",
+            new=python310_style_rmtree(captured),
+        ):
+            self.snapshot.remove_snapshot(root)
+
+        self.assertEqual(resolved_root, captured["path"])
+        self.assertIsNotNone(captured["onerror"])
+        self.assertTrue(callable(captured["onerror"]))
+        self.assertFalse(captured["ignore_errors"])
 
 
 class StrictSnapshotFallbackTests(unittest.TestCase):
