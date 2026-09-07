@@ -34,16 +34,17 @@ class LocalCiOrchestratorTests(unittest.TestCase):
         )
 
     @staticmethod
-    def _dirname_target() -> Path:
-        dirname = shutil.which("dirname")
-        if dirname is None:
-            raise RuntimeError("The dirname command is unavailable.")
-        return Path(dirname)
+    def _command_target(name: str) -> Path:
+        command = shutil.which(name)
+        if command is None:
+            raise RuntimeError(f"The {name} command is unavailable.")
+        return Path(command)
 
     def _create_temp_bin(self, temporary: Path) -> Path:
         bin_directory = temporary / "bin"
         bin_directory.mkdir()
-        (bin_directory / "dirname").symlink_to(self._dirname_target())
+        for name in ("dirname", "grep"):
+            (bin_directory / name).symlink_to(self._command_target(name))
         return bin_directory
 
     def _install_fake_engine(
@@ -54,14 +55,19 @@ class LocalCiOrchestratorTests(unittest.TestCase):
     ) -> Path:
         body = [
             'printf "%s\\n" "$*" >> "$FAKE_LOG"\n',
+            "engine_name=${0##*/}\n",
             'case "$*" in\n',
         ]
         if failing_fragment is not None:
             body.append(f'  *"{failing_fragment}"*) exit 23 ;;\n')
         body.extend(
             (
-                '  *"image exists athena-ci:local"*) exit 0 ;;\n',
-                '  *"images -q athena-ci:local"*) exit 0 ;;\n',
+                '  *"image exists athena-ci:local"*)\n',
+                '    [ "$engine_name" = "docker" ] && exit 1\n',
+                "    exit 0 ;;\n",
+                '  *"images -q athena-ci:local"*)\n',
+                '    [ "$engine_name" = "docker" ] && printf "%s\\n" "fake-image-id"\n',
+                "    exit 0 ;;\n",
                 "  *) exit 0 ;;\n",
                 "esac\n",
             )
@@ -109,6 +115,7 @@ class LocalCiOrchestratorTests(unittest.TestCase):
         self.assertEqual("", result.stderr)
         self.assertIn("The command uses this local CI image", result.stdout)
         self.assertIn("image exists athena-ci:local", log_text)
+        self.assertNotIn("images -q athena-ci:local", log_text)
         self.assertIn("run --rm", log_text)
 
     def test_falls_back_to_docker_when_podman_is_missing(self) -> None:
@@ -133,6 +140,7 @@ class LocalCiOrchestratorTests(unittest.TestCase):
         self.assertEqual("", result.stderr)
         self.assertIn("The command uses this local CI image", result.stdout)
         self.assertIn("image exists athena-ci:local", log_text)
+        self.assertIn("images -q athena-ci:local", log_text)
         self.assertIn("run --rm", log_text)
 
     def test_reports_missing_selected_engine(self) -> None:
