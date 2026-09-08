@@ -6,9 +6,11 @@ import hashlib
 import importlib.util
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -227,6 +229,23 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         with (
             patch.object(helper, "_worktree_inventory", side_effect=[first, second]),
             self.assertRaisesRegex(RuntimeError, "stable|changed"),
+        ):
+            helper.resolve_source_binding(self.repository)
+
+    def test_initial_worktree_binding_rejects_a_final_head_change(self) -> None:
+        helper = load_helper()
+        commit_file(self.repository, "source.txt", "base\n", "base")
+        head_oid = git(self.repository, "rev-parse", "HEAD")
+        tree_oid = git(self.repository, "rev-parse", "HEAD^{tree}")
+
+        with (
+            patch.object(
+                helper,
+                "_selected_commit",
+                side_effect=[head_oid, head_oid, "f" * 40],
+            ),
+            patch.object(helper, "_commit_tree", return_value=tree_oid),
+            self.assertRaisesRegex(RuntimeError, "changed"),
         ):
             helper.resolve_source_binding(self.repository)
 
@@ -526,6 +545,8 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         self.addCleanup(setattr, helper, "MAX_TOTAL_BYTES", original_total_limit)
         self.addCleanup(setattr, helper, "MAX_GIT_OUTPUT_BYTES", original_git_limit)
 
+        limits.MAX_PATH_COUNT = 3
+        helper.resolve_source_binding(self.repository)
         limits.MAX_PATH_COUNT = 2
         helper.resolve_source_binding(self.repository)
         limits.MAX_PATH_COUNT = 1
@@ -533,6 +554,8 @@ class RealignAssessmentManifestTests(unittest.TestCase):
             helper.resolve_source_binding(self.repository)
 
         limits.MAX_PATH_COUNT = original_path_limit
+        limits.MAX_FILE_BYTES = 4
+        helper.resolve_source_binding(self.repository)
         limits.MAX_FILE_BYTES = 3
         helper.resolve_source_binding(self.repository)
         limits.MAX_FILE_BYTES = 2
@@ -540,6 +563,8 @@ class RealignAssessmentManifestTests(unittest.TestCase):
             helper.resolve_source_binding(self.repository)
 
         limits.MAX_FILE_BYTES = original_file_limit
+        limits.MAX_TOTAL_BYTES = 6
+        helper.resolve_source_binding(self.repository)
         limits.MAX_TOTAL_BYTES = 5
         helper.resolve_source_binding(self.repository)
         limits.MAX_TOTAL_BYTES = 4
@@ -548,6 +573,11 @@ class RealignAssessmentManifestTests(unittest.TestCase):
 
         limits.MAX_TOTAL_BYTES = original_total_limit
         root_output = limits._git_bytes(self.repository, "rev-parse", "--show-toplevel")
+        limits.MAX_GIT_OUTPUT_BYTES = len(root_output) + 1
+        self.assertEqual(
+            root_output,
+            limits._git_bytes(self.repository, "rev-parse", "--show-toplevel"),
+        )
         limits.MAX_GIT_OUTPUT_BYTES = len(root_output)
         self.assertEqual(
             root_output,
@@ -556,6 +586,46 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         limits.MAX_GIT_OUTPUT_BYTES = len(root_output) - 1
         with self.assertRaisesRegex(RuntimeError, "output limit"):
             limits._git_bytes(self.repository, "rev-parse", "--show-toplevel")
+
+    def test_inventory_stops_parsing_at_the_path_limit(self) -> None:
+        helper = load_helper()
+        limits = cast(Any, helper)
+        original_path_limit = limits.MAX_PATH_COUNT
+        self.addCleanup(setattr, helper, "MAX_PATH_COUNT", original_path_limit)
+        limits.MAX_PATH_COUNT = 2
+        records = b"".join(
+            b"100644 blob " + (b"a" * 40) + b"\tfile-%d\0" % index
+            for index in range(100)
+        )
+
+        with (
+            patch.object(limits, "_git_bytes", return_value=records),
+            patch.object(limits.os, "fsdecode", wraps=os.fsdecode) as decode,
+            self.assertRaisesRegex(RuntimeError, "path limit"),
+        ):
+            limits._selected_inventory_entries(self.repository, "a" * 40, ".")
+
+        self.assertLessEqual(decode.call_count, 3)
+
+        tracked = b"".join(b"path-%d\0" % index for index in range(100))
+        with (
+            patch.object(limits, "_git_bytes", side_effect=[tracked, b""]),
+            patch.object(limits.os, "fsdecode", wraps=os.fsdecode) as decode,
+            self.assertRaisesRegex(RuntimeError, "path limit"),
+        ):
+            limits._worktree_paths(self.repository, ["."])
+
+        self.assertLessEqual(decode.call_count, 3)
+
+    def test_worktree_file_read_requires_bounded_readiness(self) -> None:
+        helper = load_helper()
+        (self.repository / "source.txt").write_text("source\n", encoding="utf-8")
+
+        with (
+            patch("select.select", return_value=([], [], [])),
+            self.assertRaisesRegex(RuntimeError, "time limit"),
+        ):
+            helper._worktree_snapshot_entry(self.repository, "source.txt")
 
     def test_git_read_timeout_includes_process_exit_after_output_closes(self) -> None:
         helper = load_helper()
@@ -677,6 +747,132 @@ class RealignAssessmentManifestTests(unittest.TestCase):
 
         self.assertIsInstance(raised.exception.__cause__, RuntimeError)
         self.assertTrue(process.killed)
+
+    def test_git_timeout_stops_a_descendant_that_inherits_the_pipes(self) -> None:
+        helper = load_helper()
+        limits = cast(Any, helper)
+        original_timeout = limits.GIT_TIMEOUT_SECONDS
+        self.addCleanup(setattr, helper, "GIT_TIMEOUT_SECONDS", original_timeout)
+        limits.GIT_TIMEOUT_SECONDS = 0.05
+        released = threading.Event()
+
+        class InheritedPipe:
+            def read(self, size: int) -> bytes:
+                del size
+                released.wait(timeout=2.0)
+                return b""
+
+            def close(self) -> None:
+                if not released.is_set():
+                    raise AssertionError("the inherited pipe was closed before release")
+
+        class ExitedParent:
+            def __init__(self) -> None:
+                self.stdout = InheritedPipe()
+                self.stderr = InheritedPipe()
+                self.pid = 4242
+
+            def poll(self) -> int:
+                return 0
+
+            def kill(self) -> None:
+                raise AssertionError("the exited parent cannot release inherited pipes")
+
+            def wait(self, timeout: float | None = None) -> int:
+                del timeout
+                return 0
+
+        started = time.monotonic()
+        with (
+            patch.object(limits.subprocess, "Popen", return_value=ExitedParent()),
+            patch.object(
+                limits.os, "killpg", side_effect=lambda pid, sig: released.set()
+            ) as kill_group,
+            self.assertRaisesRegex(RuntimeError, "time limit"),
+        ):
+            limits._git_bytes(self.repository, "status", "--porcelain=v1")
+
+        self.assertLess(time.monotonic() - started, 0.5)
+        kill_group.assert_called_with(4242, signal.SIGKILL)
+
+    def test_git_stream_close_error_is_not_silent(self) -> None:
+        helper = load_helper()
+        limits = cast(Any, helper)
+
+        class CloseFailingStream:
+            def read(self, size: int) -> bytes:
+                del size
+                return b""
+
+            def close(self) -> None:
+                raise OSError("synthetic close failure")
+
+        class FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = CloseFailingStream()
+                self.stderr = CloseFailingStream()
+
+            def poll(self) -> int:
+                return 0
+
+            def kill(self) -> None:
+                return None
+
+            def wait(self, timeout: float | None = None) -> int:
+                del timeout
+                return 0
+
+        with (
+            patch.object(limits.subprocess, "Popen", return_value=FakeProcess()),
+            self.assertRaisesRegex(RuntimeError, "close") as raised,
+        ):
+            limits._git_bytes(self.repository, "status", "--porcelain=v1")
+
+        self.assertIsInstance(raised.exception.__cause__, OSError)
+
+    def test_git_close_failure_preserves_the_primary_reader_failure(self) -> None:
+        helper = load_helper()
+        limits = cast(Any, helper)
+
+        class FailingStream:
+            def read(self, size: int) -> bytes:
+                del size
+                raise OSError("synthetic read failure")
+
+            def close(self) -> None:
+                raise OSError("synthetic close failure")
+
+        class EmptyStream(FailingStream):
+            def read(self, size: int) -> bytes:
+                del size
+                return b""
+
+        class FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = FailingStream()
+                self.stderr = EmptyStream()
+                self.returncode: int | None = None
+
+            def poll(self) -> int | None:
+                return self.returncode
+
+            def kill(self) -> None:
+                self.returncode = -9
+
+            def wait(self, timeout: float | None = None) -> int:
+                del timeout
+                if self.returncode is None:
+                    self.returncode = 0
+                return self.returncode
+
+        with (
+            patch.object(limits.subprocess, "Popen", return_value=FakeProcess()),
+            self.assertRaisesRegex(RuntimeError, "close") as raised,
+        ):
+            limits._git_bytes(self.repository, "status", "--porcelain=v1")
+
+        self.assertIsInstance(raised.exception.__cause__, RuntimeError)
+        self.assertRegex(str(raised.exception.__cause__), "read.*failed")
 
     def test_repair_preflight_binds_candidate_content_scope_and_dependencies(
         self,
@@ -806,6 +1002,62 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         )
         self.assertEqual(["RLG-002", "RLG-001"], result["candidate_ids"])
 
+    def test_repair_preflight_enforces_aggregate_candidate_bytes(self) -> None:
+        helper = load_helper()
+        limits = cast(Any, helper)
+        commit_file(self.repository, "one.txt", "11\n", "one")
+        selected = commit_file(self.repository, "two.txt", "22\n", "two")
+        source = helper.resolve_source_binding(self.repository, reference=selected)
+        report, _ = valid_report(helper, self.repository, source, "one.txt")
+        second = json.loads(json.dumps(report["candidates"][0]))
+        second["id"] = "RLG-002"
+        second["paths"] = ["two.txt"]
+        second["evidence"] = [
+            {
+                "path": "two.txt",
+                "content_sha256": hashlib.sha256(b"22\n").hexdigest(),
+            }
+        ]
+        report["candidates"].append(second)
+        original_total_limit = limits.MAX_TOTAL_BYTES
+        self.addCleanup(setattr, helper, "MAX_TOTAL_BYTES", original_total_limit)
+
+        limits.MAX_TOTAL_BYTES = 6
+        eligible = helper.repair_preflight(
+            self.repository,
+            report,
+            ["RLG-001", "RLG-002"],
+            approved_report_digest=helper.assessment_report_digest(report),
+        )
+        self.assertEqual("eligible", eligible["status"])
+        limits.MAX_TOTAL_BYTES = 5
+        with self.assertRaisesRegex(RuntimeError, "aggregate byte limit"):
+            helper.repair_preflight(
+                self.repository,
+                report,
+                ["RLG-001", "RLG-002"],
+                approved_report_digest=helper.assessment_report_digest(report),
+            )
+
+    def test_repair_preflight_has_one_overall_deadline(self) -> None:
+        helper = load_helper()
+        selected = commit_file(self.repository, "source.txt", "base\n", "base")
+        source = helper.resolve_source_binding(self.repository, reference=selected)
+        report, report_digest = valid_report(
+            helper, self.repository, source, "source.txt"
+        )
+
+        with (
+            patch.object(helper, "ASSESSMENT_TIMEOUT_SECONDS", 0.0, create=True),
+            self.assertRaisesRegex(RuntimeError, "time limit"),
+        ):
+            helper.repair_preflight(
+                self.repository,
+                report,
+                ["RLG-001"],
+                approved_report_digest=report_digest,
+            )
+
     def test_repair_preflight_rejects_invalid_candidate_and_source_contracts(
         self,
     ) -> None:
@@ -866,6 +1118,20 @@ class RealignAssessmentManifestTests(unittest.TestCase):
                     {**report, "source": stale_source}
                 ),
             )
+
+        for dependencies in (["bad-id"], ["RLG-002", "RLG-002"]):
+            malformed = json.loads(json.dumps(report))
+            malformed["candidates"][0]["dependencies"] = dependencies
+            with (
+                self.subTest(dependencies=dependencies),
+                self.assertRaisesRegex(RuntimeError, "dependency"),
+            ):
+                helper.repair_preflight(
+                    self.repository,
+                    malformed,
+                    ["RLG-001"],
+                    approved_report_digest=helper.assessment_report_digest(malformed),
+                )
         with self.assertRaisesRegex(RuntimeError, "source kind"):
             helper.inventory_manifest(
                 self.repository, {"source_kind": "unknown", "target": "."}
