@@ -77,6 +77,10 @@ class SourcePathAbsentError(RuntimeError):
 class SourcePathSymlinkError(RuntimeError):
     """A selected worktree path is a symbolic-link boundary."""
 
+    def __init__(self, message: str, *, target: bytes | None = None) -> None:
+        super().__init__(message)
+        self.target = target
+
 
 class SourcePathBoundaryError(RuntimeError):
     """A selected worktree path is not a regular file."""
@@ -270,6 +274,15 @@ def _git_bytes(
         deadline=deadline,
         operation="read-only Git command",
     )
+
+
+def _isolated_python_environment() -> dict[str, str]:
+    """Return a process environment without Python startup controls."""
+    return {
+        key: value
+        for key, value in git_read_environment().items()
+        if not key.startswith("PYTHON")
+    }
 
 
 def _git_text(
@@ -479,10 +492,22 @@ def _write_all(descriptor: int, document: bytes) -> None:
 def _internal_read_bound_file(
     repository_root: Path, relative_path: str, byte_limit: int
 ) -> int:
-    """Read one confined regular file inside a killable worker process."""
+    """Read one confined file or symbolic-link target inside a killable worker."""
     try:
         parent, filename = _open_parent(repository_root, relative_path)
         try:
+            path_mode = os.lstat(filename, dir_fd=parent).st_mode
+            if stat.S_ISLNK(path_mode):
+                raw_target = os.fsencode(os.readlink(filename, dir_fd=parent))
+                if len(raw_target) > byte_limit:
+                    print(
+                        "The symbolic-link target exceeded the file byte limit.",
+                        file=sys.stderr,
+                    )
+                    return 23
+                _write_all(1, b"symlink\n")
+                _write_all(1, raw_target)
+                return 0
             descriptor = os.open(
                 filename,
                 os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_NONBLOCK", 0),
@@ -530,6 +555,7 @@ def _bounded_file_snapshot(
     limit = MAX_FILE_BYTES if byte_limit is None else byte_limit
     command = [
         sys.executable,
+        "-I",
         os.path.abspath(__file__),
         INTERNAL_FILE_READ_COMMAND,
         os.fspath(repository_root),
@@ -539,7 +565,7 @@ def _bounded_file_snapshot(
     try:
         document = _run_bounded_process(
             command,
-            environment=git_read_environment(),
+            environment=_isolated_python_environment(),
             output_limit=limit + 1024,
             deadline=deadline,
             operation="bounded source-file read",
@@ -559,6 +585,17 @@ def _bounded_file_snapshot(
                 f"The source path is not a regular file: '{relative_path}'."
             ) from error
         raise
+    symlink_header = b"symlink\n"
+    if document.startswith(symlink_header):
+        raw_target = document[len(symlink_header) :]
+        if not raw_target:
+            raise RuntimeError(
+                "The bounded source-file worker returned malformed output."
+            )
+        raise SourcePathSymlinkError(
+            f"The source path is a symbolic link: '{relative_path}'.",
+            target=raw_target,
+        )
     raw_mode, separator, content = document.partition(b"\n")
     if separator != b"\n" or re.fullmatch(rb"[0-7]{4}", raw_mode) is None:
         raise RuntimeError("The bounded source-file worker returned malformed output.")
@@ -655,21 +692,23 @@ def _worktree_inventory(
                 }
             )
             continue
-        except SourcePathSymlinkError:
-            parent, filename = _open_parent(repository_root, path)
-            try:
-                target_value = os.readlink(filename, dir_fd=parent)
-            finally:
-                os.close(parent)
+        except SourcePathSymlinkError as error:
+            if error.target is None:
+                raise RuntimeError(
+                    f"The symbolic-link path changed during capture: '{path}'."
+                ) from error
             entries.append(
                 {
                     "path": path,
                     "kind": "symlink",
-                    "target": os.fsdecode(target_value),
+                    "target": os.fsdecode(error.target),
                     "source_kind": "worktree_overlay",
                     "head_oid": head_oid,
                 }
             )
+            total_bytes += len(error.target)
+            if total_bytes > MAX_TOTAL_BYTES:
+                raise RuntimeError("The assessment exceeded its aggregate byte limit.")
             continue
         except SourcePathBoundaryError:
             entries.append(

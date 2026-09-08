@@ -464,6 +464,36 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "symbolic link"):
             helper.guidance_snapshot_manifest(self.repository, binding, ["link.txt"])
 
+    def test_symbolic_link_targets_count_toward_the_aggregate_limit(self) -> None:
+        helper = load_helper()
+        limits = cast(Any, helper)
+        os.symlink("abcd", self.repository / "link.txt")
+        original_total_limit = limits.MAX_TOTAL_BYTES
+        self.addCleanup(setattr, helper, "MAX_TOTAL_BYTES", original_total_limit)
+
+        for byte_limit in (5, 4):
+            with self.subTest(byte_limit=byte_limit):
+                limits.MAX_TOTAL_BYTES = byte_limit
+                inventory = helper._worktree_inventory(self.repository, "0" * 40, ".")
+                self.assertEqual("abcd", inventory["entries"][0]["target"])
+
+        limits.MAX_TOTAL_BYTES = 3
+        with self.assertRaisesRegex(RuntimeError, "aggregate byte limit"):
+            helper._worktree_inventory(self.repository, "0" * 40, ".")
+
+    def test_symbolic_link_capture_honors_the_worker_deadline(self) -> None:
+        helper = load_helper()
+        os.symlink("target.txt", self.repository / "link.txt")
+
+        started = time.monotonic()
+        with self.assertRaisesRegex(RuntimeError, "time limit"):
+            helper._worktree_snapshot_entry(
+                self.repository,
+                "link.txt",
+                deadline=time.monotonic() - 1.0,
+            )
+        self.assertLess(time.monotonic() - started, 0.5)
+
     def test_validation_status_requires_honest_receipts(self) -> None:
         helper = load_helper()
         with self.assertRaisesRegex(RuntimeError, "requires a reason"):
@@ -722,16 +752,60 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         self.assertEqual(23, returncode)
         self.assertIn("file byte limit", errors.getvalue())
 
+        os.symlink("source.txt", self.repository / "link.txt")
+        output = []
+        with patch.object(
+            helper,
+            "_write_all",
+            side_effect=lambda descriptor, document: output.append(document),
+        ):
+            returncode = helper._internal_read_bound_file(
+                self.repository, "link.txt", 1024
+            )
+        self.assertEqual(0, returncode)
+        self.assertEqual([b"symlink\n", b"source.txt"], output)
+
     def test_bounded_file_worker_rejects_malformed_protocol_output(self) -> None:
         helper = load_helper()
 
-        for document in (b"", b"invalid-mode\ncontent"):
+        for document in (b"", b"invalid-mode\ncontent", b"symlink\n"):
             with (
                 self.subTest(document=document),
                 patch.object(helper, "_run_bounded_process", return_value=document),
                 self.assertRaisesRegex(RuntimeError, "malformed output"),
             ):
                 helper._bounded_file_snapshot(self.repository, "source.txt")
+
+    def test_internal_worker_ignores_repository_python_startup_code(self) -> None:
+        helper = load_helper()
+        sentinel = self.repository / "startup-code-ran"
+        commit_file(self.repository, "source.txt", "source\n", "source")
+        (self.repository / "sitecustomize.py").write_text(
+            "from pathlib import Path\n"
+            f"Path({str(sentinel)!r}).write_text('executed', encoding='utf-8')\n",
+            encoding="utf-8",
+        )
+        report_path = self.repository / "report.json"
+        report_path.write_text("{}\n", encoding="utf-8")
+        startup_environment = {
+            "PYTHONPATH": str(self.repository),
+            "PYTHONSTARTUP": str(self.repository / "sitecustomize.py"),
+            "PYTHONINSPECT": "1",
+            "PYTHONUSERBASE": str(self.repository),
+        }
+
+        with patch.dict(os.environ, startup_environment):
+            helper.resolve_source_binding(self.repository)
+            self.assertEqual({}, helper._read_report(report_path))
+            worker_environment = helper._isolated_python_environment()
+
+        self.assertFalse(sentinel.exists())
+        self.assertFalse(any(name.startswith("PYTHON") for name in worker_environment))
+        with patch.object(
+            helper, "_run_bounded_process", return_value=b"0644\nsource\n"
+        ) as run:
+            helper._bounded_file_snapshot(self.repository, "source.txt")
+        self.assertEqual("-I", run.call_args.args[0][1])
 
     def test_internal_file_worker_cli_validates_its_private_protocol(self) -> None:
         helper = load_helper()
