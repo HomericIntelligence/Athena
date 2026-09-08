@@ -26,11 +26,6 @@ repos:
         entry: just markdownlint
         language: system
         pass_filenames: false
-      - id: athena-validator-tests
-        name: Run the fast Athena contract tests
-        entry: just test-fast
-        language: system
-        pass_filenames: false
       - id: athena-python-lint
         name: Check the Athena repository tools
         entry: just lint

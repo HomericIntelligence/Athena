@@ -24,6 +24,10 @@ timeout.
     skill-local executable script.
   - It enforces Ruff, formatting, and strict mypy on repository scripts and skill-local scripts.
 
+  Pre-commit does not run pytest. Before a pull request is created, contributors must validate each
+  new or changed test with a focused local command. This focused result does not replace CI/CD test
+  tiers.
+
 - `markdownlint` validates public documents and the shipped `skills/**/*.md` product corpus. It does
   not verify ASD-STE100 conformance. Review applicable prose under the
   [ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.md).
@@ -77,9 +81,9 @@ The `nightly` pytest marker identifies integration-heavy tests. These tests use 
 installed package trees, or many subprocesses. The fast tier uses `not nightly`. New tests are in
 the fast tier unless an author adds the `nightly` marker.
 
-Pre-commit and pull-request continuous integration (CI) run the same fast test tier. The full test
-suite runs each day at 09:17 Coordinated Universal Time (UTC). The nightly workflow also supports a
-manual run. It does not join `required-checks-gate`.
+Pull-request continuous integration (CI) runs the fast test tier. Pre-commit does not run pytest.
+The full test suite runs each day at 09:17 Coordinated Universal Time (UTC). The nightly workflow
+also supports a manual run. It does not join `required-checks-gate`.
 
 A release calls the required workflow with `full-tests: true`. Thus, a release runs the full test
 suite and the coverage policy for the exact release revision.
