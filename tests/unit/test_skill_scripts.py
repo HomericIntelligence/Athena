@@ -210,6 +210,12 @@ class ScriptConventionTests(unittest.TestCase):
                 1,
             ),
             (
+                "skills/realign/scripts/resolve_assessment.py",
+                ("bind",),
+                "git",
+                1,
+            ),
+            (
                 "skills/systematic-debugging/scripts/repository_evidence.py",
                 ("pattern",),
                 "git",

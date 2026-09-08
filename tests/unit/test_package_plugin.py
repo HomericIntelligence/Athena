@@ -481,6 +481,22 @@ if (
                 member = archive.getmember("skills/repo-review/scripts/review.py")
             self.assertEqual(0o755, member.mode)
 
+    def test_realign_assessment_helper_is_packaged_as_executable(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            create_repository(root)
+            script = root / "skills/realign/scripts/resolve_assessment.py"
+            script.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+            script.chmod(0o755)
+
+            archive_path, _ = build_package(root)
+
+            with tarfile.open(archive_path, mode="r:gz") as archive:
+                member = archive.getmember(
+                    "skills/realign/scripts/resolve_assessment.py"
+                )
+            self.assertEqual(0o755, member.mode)
+
     def test_secret_documentation_name_is_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
