@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -12,10 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
-from typing import IO, Any
-
-if __package__ in {None, ""}:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from typing import IO, TYPE_CHECKING, Any
 
 from materialize_snapshot import (
     MaterializedSnapshot,
@@ -32,14 +30,32 @@ from pr_identity import (
     validate_pr_identifier,
 )
 
-from skills._cli import (
-    argument_parser,
-    git_read_arguments,
-    git_read_environment,
-    require_complete_git_history,
-    require_unambiguous_git_merge_base,
-    run_command,
-)
+if TYPE_CHECKING or __package__ not in {None, ""}:
+    from skills._cli import (
+        argument_parser,
+        git_read_arguments,
+        git_read_environment,
+        require_complete_git_history,
+        require_unambiguous_git_merge_base,
+        run_command,
+    )
+else:
+    _cli_path = Path(__file__).resolve().parents[2] / "_cli.py"
+    _cli_spec = importlib.util.spec_from_file_location(
+        "athena_installed_cli", _cli_path
+    )
+    if _cli_spec is None or _cli_spec.loader is None:
+        raise RuntimeError(
+            f"The installed Athena CLI helper is unavailable: '{_cli_path}'."
+        )
+    _cli = importlib.util.module_from_spec(_cli_spec)
+    _cli_spec.loader.exec_module(_cli)
+    argument_parser = _cli.argument_parser
+    git_read_arguments = _cli.git_read_arguments
+    git_read_environment = _cli.git_read_environment
+    require_complete_git_history = _cli.require_complete_git_history
+    require_unambiguous_git_merge_base = _cli.require_unambiguous_git_merge_base
+    run_command = _cli.run_command
 
 # Keep this query below GitHub's GraphQL complexity budget. Strict callers bind
 # changed paths to local immutable Git objects. Earlier callers use the REST
