@@ -86,8 +86,10 @@ Do not use these AISlop capabilities in this workflow:
 - `install`, `uninstall`, `aislop-tools`, or a package-manager installation; or
 - the model context protocol (MCP) server.
 
-`realign` reviews the current bound `HEAD`, overlay, and target. Git history can support a finding,
-but a comparison revision is not part of this scanner interface. AISlop repair and installation
+`realign` reviews one bound assessment source: the current `HEAD` and worktree overlay, or one
+selected commit tree. A comparison revision is not part of this scanner interface. Run AISlop only
+when the safe execution boundary can give it the same source and target as the assessment. Otherwise,
+continue static assessment and report the scanner-coverage gap. AISlop repair and installation
 capabilities have write, dependency, network, agent, or forge effects that this assessment does not
 authorize.
 

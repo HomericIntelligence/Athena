@@ -1,8 +1,8 @@
 ---
 name: realign
 license: BSD-3-Clause
-description: Find evidence-backed architecture drift and code anti-patterns, then repair only explicitly approved candidate IDs. Use for architecture realignment, excessive defensive flow, code-health refactoring, or low-quality generated code. AISlop is optional. Continue without it. Repair requires a current binding, approval, and safe validation. Require a sufficient green baseline for every behavior-preserving repair, except an approved first batch that changes only a false-green test oracle, test lifecycle, or validation gate and no product surface.
-argument-hint: "[TARGET] [--apply ID[,ID...]]"
+description: Find evidence-backed architecture drift and code anti-patterns, then repair only explicitly approved candidate IDs. Use for architecture realignment, excessive defensive flow, code-health refactoring, or low-quality generated code. AISlop is optional. Continue without it. Assessment can bind the worktree overlay or one selected commit tree. Repair requires the unchanged source binding, approval, and safe validation. Require a sufficient green baseline for every behavior-preserving repair, except an approved first batch that changes only a false-green test oracle, test lifecycle, or validation gate and no product surface.
+argument-hint: "[TARGET] [--ref COMMIT_OR_REF] [--apply ID[,ID...]]"
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 ---
 
@@ -39,23 +39,31 @@ Do not use this skill to infer who or what wrote code. Do not infer code quality
 
 ## Interface and modes
 
-The interface is `realign [TARGET] [--apply ID[,ID...]]`.
+The interface is `realign [TARGET] [--ref COMMIT_OR_REF] [--apply ID[,ID...]]`.
 
 ### Assessment mode
 
-Without `--apply`, do a read-only assessment. If `TARGET` is absent, inspect the complete bound
-repository. If `TARGET` is present, start at that path. Expand the scope only to connected callers,
-consumers, contracts, tests, configuration, dependencies, and architecture documents. Report each
-scope expansion.
+Without `--apply`, do a read-only assessment. Without `--ref`, bind the current `HEAD` and the
+tracked and untracked worktree overlay. With `--ref`, resolve the selector one time to one commit
+object identifier (OID), bind its tree OID, and read only that commit tree. This option selects one
+snapshot. It does not compare revisions. The current checkout can be at a different commit or have
+unrelated tracked and untracked changes.
 
-Before access, normalize `TARGET` and each scope-expansion path lexically against the bound
-repository root. Reject a path outside that root. Treat a symbolic link as bound metadata, and do
-not dereference it. Treat a submodule as a scope boundary. Apply these containment and no-follow
-rules to inventory, assessment, scanner traversal and arguments, validation, and repair. If the host
-cannot keep a path in this scope, stop that scope and report the coverage gap.
+If `TARGET` is absent, inspect the complete bound source. If `TARGET` is present, start at that path.
+Expand the scope only to connected callers, consumers, contracts, tests, configuration,
+dependencies, and architecture documents. Report each scope expansion.
 
-The assessment can read Git history as supporting evidence. It does not compare the repository with
-a user-selected revision. Do not add or accept a revision-comparison option.
+Before access, pass `TARGET`, each scope-expansion path, each caller-supplied architecture path, and
+each repair-candidate path through `normalize_repo_tree_path()`. Reject an empty or absolute path, a
+null byte, a `.` or `..` component, pathspec magic, and a path outside the repository tree. Use
+repository-rooted literal pathspecs. Treat a symbolic link as bound metadata, and do not dereference
+it. Treat a submodule as a scope boundary. Apply these containment and no-follow rules to inventory,
+assessment, scanner traversal and arguments, validation, and repair. If the host cannot keep a path
+in this scope, stop that scope and report the coverage gap.
+
+The assessment can read Git history as supporting evidence. Reject revision ranges, path selectors,
+reflog selectors, and selectors with `^@` or `^!`. A branch or tag name is only an input to the
+initial commit resolution. Do not resolve it again after the source binding exists.
 
 Do not write source, configuration, Git state, issues, pull requests, or other forge state during
 assessment. Stop after the report and approval checkpoint.
@@ -82,13 +90,16 @@ authority.
 
 ## Required inputs and capabilities
 
-Assessment requires these inputs:
+Assessment requires one of these source-input sets:
 
-- repository root;
-- current Git `HEAD` object identifier (OID);
-- content identity for the tracked and untracked worktree overlay;
-- target, if the user supplied one;
-- complete in-scope inventory;
+- For the default worktree source: repository root, current Git `HEAD` OID, tracked and untracked
+  overlay identity, target, and complete in-scope inventory.
+- For a selected commit: repository root, selected commit OID, selected tree OID, target, complete
+  tree inventory, source digest, and selected-snapshot entries for guidance and architecture
+  documents.
+
+Assessment also requires these inputs:
+
 - repository guidance and architecture sources; and
 - current validation evidence, when it is available.
 
@@ -109,11 +120,15 @@ Give an assessment subagent only an exact bound scope and a read-only task. Do n
 approval, candidate selection, or write authority. Before you use its evidence, verify its paths and
 claims against the same binding and confirm that the overlay did not change.
 
-Run assessment commands only through the safe execution boundary in the shared review contract. If
-the host cannot provide that boundary, do not run repository commands. Continue with safe read
-capabilities and report the command-evidence gap. If the host cannot bind Git `HEAD`, the overlay, or
-the complete scope, stop. If repair capabilities are absent, return a ready-to-apply repair plan. Do
-not claim that a repair occurred.
+Read-only Git metadata, object, tree, inventory, and hashing operations establish the source
+binding. They do not execute repository code and do not require the validation-execution boundary.
+Use the sanitized Git-read environment from `skills/_cli.py`. Tests, builds, scanners, and other
+commands that execute repository code require the safe execution boundary in the shared review
+contract. If that boundary is unavailable, continue a static assessment when the source binding is
+complete. Emit `validation.status=unavailable`, `static_assessment.continue=true`, and
+`repair_eligibility=false`. Do not infer that Git metadata is unavailable. If the host cannot bind
+the selected source or complete scope, stop. If repair capabilities are absent, return a
+ready-to-apply repair plan. Do not claim that a repair occurred.
 
 Run every repair validation command through a host-enforced boundary that has all properties in the
 shared review contract's safe execution boundary. Bind the repaired source as read-only while each
@@ -124,9 +139,13 @@ report the validation-coverage gap.
 
 ## Binding contract
 
-Before analysis, record the repository root and current `HEAD` OID. Record the complete status of
-tracked and untracked paths. Make a content identity from the in-scope mutable bytes and inventory.
-An OID alone does not bind the worktree overlay.
+Before analysis, use `resolve_assessment.py bind`. For a worktree assessment, record the repository
+root, `HEAD` OID, tree OID, complete tracked and untracked status, inventory, overlay digest, and
+source digest. An OID alone does not bind the worktree overlay. For a selected-commit assessment,
+record the initially supplied selector, resolved commit OID, tree OID, target, inventory digest, and
+source digest. Read source, guidance, realign references, and architecture documents with
+`snapshot_file_entry()` and `guidance_snapshot_manifest()` from the recorded commit. Do not read
+those selected-source bytes from the working directory.
 
 Bind these items too:
 
@@ -147,11 +166,14 @@ and consumers, impact, legitimate counterexample, routing owner, smallest safe c
 validation, rollback or roll-forward, and dependencies. Bind the exact approved ID set separately
 from the report. A report can identify a lead. It cannot prove the lead or supply approval.
 
-Immediately before a repair, bind all items again. Compare them with the assessment report. Stop all
-writes if `HEAD`, overlay content, inventory, target, architecture evidence, or a selected candidate
-changed. Separately compare the exact approved ID set and additional authority with the current
-repair request. Report a stale candidate or approval mismatch. Do not repair against an approximate
-match.
+Immediately before a repair, use `repair_preflight()` with only the explicit approved IDs. For a
+worktree source, reconstruct and compare `HEAD`, tree, overlay, inventory, target, architecture
+evidence, and each selected candidate. For a selected commit, verify the recorded commit and tree
+objects without resolving the original selector again. Reject a candidate path that overlaps
+existing work. A selected commit can start an isolated worktree at its recorded commit OID. Stop all
+writes if applicable source evidence or a selected candidate changed. Separately compare the exact
+approved ID set and additional authority with the current repair request. Report a stale candidate
+or approval mismatch. Do not repair against an approximate match.
 
 ## Progressive reference loading
 
@@ -230,10 +252,11 @@ and failure rules.
 
 ## Assessment workflow
 
-1. Parse the target and mode. Reject unknown options. Do not accept a comparison revision.
-2. Bind the repository, current `HEAD`, overlay, target, and complete connected inventory.
-3. Read repository guidance, architecture evidence, public contracts, and current validation
-   evidence.
+1. Parse the target, source selector, and mode. Reject unknown options and comparison revisions.
+2. Resolve `--ref` one time and bind the selected commit and tree, or bind the default `HEAD` and
+   worktree overlay. Bind the target and complete connected inventory to the same source.
+3. Read repository guidance, architecture evidence, public contracts, and source files from that
+   bound source. Record current validation evidence separately when it is available.
 4. Classify the architecture as aligned, intentionally changed with accepted design evidence, or
    unexplained drift.
 5. Classify each surface. Apply all applicable shared-review and language profiles. Record each
@@ -252,8 +275,10 @@ and failure rules.
    counterexample. A metric, style preference, or scanner diagnostic alone cannot make a finding.
 10. Remove duplicate symptoms. Put them under the causal architecture or contract problem.
 11. Route each candidate to `realign`, `simplify`, a specialized workflow, or `retain`.
-12. Rebind `HEAD`, overlay, inventory, target, and architecture evidence. If any item changed during
-    assessment, stop and report drift without final candidate IDs or an approval checkpoint.
+12. Rebind the recorded selected commit and tree, or `HEAD` and the worktree overlay. Rebind the
+    inventory, target, and architecture evidence from the same source. If any applicable item
+    changed during assessment, stop and report drift without final candidate IDs or an approval
+    checkpoint. Do not resolve a recorded branch or tag selector again.
 13. Sort supported candidates by dependency and then by location. Assign IDs in the form
     `RLG-001`. Do not change an ID inside the bound report.
 14. Produce the complete report. Stop at the approval checkpoint without a write.
@@ -275,7 +300,8 @@ in its correct workflow. Do not make one broad candidate to bypass an authority 
 For each supported candidate, report these fields:
 
 - stable ID;
-- bound repository root, `HEAD`, overlay identity, target, `path:line`, and affected lines;
+- bound repository root, source kind, target, `path:line`, and affected lines;
+- selected commit OID and tree OID, or worktree `HEAD` OID and overlay digest;
 - category, severity, independent disposition, confidence, and routing owner;
 - architecture contract, invariant, or applicable principle;
 - observed gap, reachable behavior, consumers, and impact;
@@ -322,9 +348,10 @@ specialized-workflow candidate through this exception.
    route that defect to `systematic-debugging` before a product repair.
 6. Order the approved candidates by their recorded dependencies. Before each batch, repeat the
    candidate proof in step 3 against the rebound state. Include the effects of completed approved
-   batches. Immediately before each write, rebind `HEAD`, overlay, inventory, target, and
-   architecture. Accept only the original binding plus the exact verified skill-owned changes in the
-   ledger. Stop on any other change and do not discard it.
+   batches. Immediately before each write, rebind the selected commit and tree or the worktree
+   `HEAD` and overlay. Rebind the inventory, target, and architecture from that source. Accept only
+   the original binding plus the exact verified skill-owned changes in the ledger. Stop on any
+   other change and do not discard it.
 7. Repair one coherent batch at a time. Make the smallest complete change for the approved root
    cause. Require each affected path to have no pre-existing overlay change. Before each write, bind
    the affected-path preimage and derive the exact expected postimage. Use a context-checked edit
@@ -368,7 +395,9 @@ behavior change, use `test-driven-development` and its RED-GREEN-REFACTOR sequen
 
 For assessment, report these items:
 
-- binding, inventory, target, and each scope expansion;
+- source kind, binding, inventory, target, and each scope expansion;
+- selected commit and tree OIDs, or worktree `HEAD` and overlay identity;
+- a source label on each source, guidance, and architecture entry;
 - architecture classification and supporting sources;
 - applicable and N/A profiles;
 - behavior baseline and validation receipts;
@@ -401,9 +430,11 @@ state that assessment, repair, validation, or review succeeded without fresh bou
 
 ## Stop and failure conditions
 
-Stop assessment if the repository root, `HEAD`, overlay identity, target, inventory, or architecture
-contract cannot be bound. Stop repair before a write if approval or any binding is missing, stale,
-ambiguous, or changed. Also stop the affected repair in these conditions:
+Stop assessment if the repository root, selected commit and tree, or worktree `HEAD` and overlay
+identity cannot be bound. Also stop if the target, inventory, or architecture contract cannot be
+bound from that same source. Unavailable validation execution does not stop a static assessment;
+report it and make repair ineligible. Stop repair before a write if approval or any applicable
+binding is missing, stale, ambiguous, or changed. Also stop the affected repair in these conditions:
 
 - existing user work overlaps the selected change;
 - the green behavior baseline is absent or insufficient for a behavior-preserving repair, and the

@@ -108,6 +108,7 @@ class InstalledSkillHelperTests(unittest.TestCase):
         self.assertIn("advise/scripts/list_retrievable_skills.py", helpers)
         self.assertIn("advise/scripts/resolve_knowledge_checkout.py", helpers)
         self.assertIn("pr-review/scripts/collect_evidence.py", helpers)
+        self.assertIn("realign/scripts/resolve_assessment.py", helpers)
         versions = ("1.2.3-rc.1+build.42", "2.0.0+second")
         installations: list[tuple[Path, str]] = []
         for index, version in enumerate(versions):
