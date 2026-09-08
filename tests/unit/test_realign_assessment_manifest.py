@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from functools import lru_cache
@@ -16,6 +17,7 @@ from io import StringIO
 from pathlib import Path
 from types import ModuleType
 from typing import Any, cast
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 HELPER = ROOT / "skills/realign/scripts/resolve_assessment.py"
@@ -214,6 +216,20 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "stale"):
             helper.inventory_manifest(self.repository, binding)
 
+    def test_initial_worktree_binding_rejects_an_unstable_capture(self) -> None:
+        helper = load_helper()
+        commit_file(self.repository, "source.txt", "base\n", "base")
+        head_oid = git(self.repository, "rev-parse", "HEAD")
+        first = helper._worktree_inventory(self.repository, head_oid, ".")
+        second = json.loads(json.dumps(first))
+        second["overlay_digest"] = "0" * 64
+
+        with (
+            patch.object(helper, "_worktree_inventory", side_effect=[first, second]),
+            self.assertRaisesRegex(RuntimeError, "stable|changed"),
+        ):
+            helper.resolve_source_binding(self.repository)
+
     def test_unavailable_validation_keeps_static_assessment_and_blocks_repair_eligibility(
         self,
     ) -> None:
@@ -243,7 +259,11 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         (self.repository / "docs/architecture.md").write_text(
             "dirty architecture\n", encoding="utf-8"
         )
-        binding = helper.resolve_source_binding(self.repository, reference=selected)
+        binding = helper.resolve_source_binding(
+            self.repository,
+            reference=selected,
+            evidence_paths=["AGENTS.md", "docs/architecture.md"],
+        )
 
         entries = helper.guidance_snapshot_manifest(
             self.repository, binding, ["AGENTS.md", "docs/architecture.md"]
@@ -262,6 +282,30 @@ class RealignAssessmentManifestTests(unittest.TestCase):
             {"selected_commit_tree"},
             {entry["source_kind"] for entry in entries},
         )
+
+    def test_selected_commit_guidance_requires_a_declared_bound_scope(self) -> None:
+        helper = load_helper()
+        commit_file(self.repository, "source.txt", "source\n", "source")
+        selected = commit_file(self.repository, "AGENTS.md", "guidance\n", "guidance")
+        undeclared = helper.resolve_source_binding(
+            self.repository, reference=selected, target="source.txt"
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "outside the bound"):
+            helper.guidance_snapshot_manifest(
+                self.repository, undeclared, ["AGENTS.md"]
+            )
+
+        declared = helper.resolve_source_binding(
+            self.repository,
+            reference=selected,
+            target="source.txt",
+            evidence_paths=["AGENTS.md"],
+        )
+        manifest = helper.guidance_snapshot_manifest(
+            self.repository, declared, ["AGENTS.md"]
+        )
+        self.assertEqual(["AGENTS.md"], [entry["path"] for entry in manifest])
 
     def test_source_entries_label_selected_commit_and_worktree_sources(self) -> None:
         helper = load_helper()
@@ -452,6 +496,7 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         selected = commit_file(self.repository, "source.txt", "base\n", "base")
         source = helper.resolve_source_binding(self.repository, reference=selected)
         incomplete = {
+            "schema_version": 1,
             "source": source,
             "validation": helper.validation_manifest(
                 available=False, reason="No safe execution boundary."
@@ -488,6 +533,8 @@ class RealignAssessmentManifestTests(unittest.TestCase):
             helper.resolve_source_binding(self.repository)
 
         limits.MAX_PATH_COUNT = original_path_limit
+        limits.MAX_FILE_BYTES = 3
+        helper.resolve_source_binding(self.repository)
         limits.MAX_FILE_BYTES = 2
         with self.assertRaisesRegex(RuntimeError, "file byte limit"):
             helper.resolve_source_binding(self.repository)
@@ -509,6 +556,127 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         limits.MAX_GIT_OUTPUT_BYTES = len(root_output) - 1
         with self.assertRaisesRegex(RuntimeError, "output limit"):
             limits._git_bytes(self.repository, "rev-parse", "--show-toplevel")
+
+    def test_git_read_timeout_includes_process_exit_after_output_closes(self) -> None:
+        helper = load_helper()
+        limits = cast(Any, helper)
+        original_timeout = limits.GIT_TIMEOUT_SECONDS
+        self.addCleanup(setattr, helper, "GIT_TIMEOUT_SECONDS", original_timeout)
+        limits.GIT_TIMEOUT_SECONDS = 0.3
+        bin_directory = self.repository / "bin"
+        bin_directory.mkdir()
+        fake_git = bin_directory / "git"
+        fake_git.write_text(
+            "#!/usr/bin/env python3\n"
+            "import os\n"
+            "import time\n"
+            "os.close(1)\n"
+            "os.close(2)\n"
+            "time.sleep(1)\n",
+            encoding="utf-8",
+        )
+        fake_git.chmod(0o755)
+
+        started = time.monotonic()
+        with (
+            patch.dict(
+                os.environ,
+                {"PATH": f"{bin_directory}{os.pathsep}{os.environ['PATH']}"},
+            ),
+            self.assertRaisesRegex(RuntimeError, "time limit"),
+        ):
+            limits._git_bytes(self.repository, "rev-parse", "--show-toplevel")
+
+        self.assertLess(time.monotonic() - started, 0.7)
+
+    def test_git_reader_error_cannot_become_partial_success(self) -> None:
+        helper = load_helper()
+        limits = cast(Any, helper)
+
+        class FailingStream:
+            def read(self, size: int) -> bytes:
+                del size
+                raise OSError("synthetic pipe read failure")
+
+            def close(self) -> None:
+                return None
+
+        class EmptyStream:
+            def read(self, size: int) -> bytes:
+                del size
+                return b""
+
+            def close(self) -> None:
+                return None
+
+        class FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = FailingStream()
+                self.stderr = EmptyStream()
+                self.returncode: int | None = None
+                self.killed = False
+
+            def poll(self) -> int | None:
+                return self.returncode
+
+            def kill(self) -> None:
+                self.killed = True
+                self.returncode = -9
+
+            def wait(self, timeout: float | None = None) -> int:
+                del timeout
+                if self.returncode is None:
+                    self.returncode = 0
+                return self.returncode
+
+        process = FakeProcess()
+        with (
+            patch.object(limits.subprocess, "Popen", return_value=process),
+            self.assertRaisesRegex(RuntimeError, "read.*failed") as raised,
+        ):
+            limits._git_bytes(self.repository, "status", "--porcelain=v1")
+
+        self.assertIsInstance(raised.exception.__cause__, OSError)
+        self.assertTrue(process.killed)
+
+    def test_git_failure_reports_when_the_process_cannot_be_reaped(self) -> None:
+        helper = load_helper()
+        limits = cast(Any, helper)
+
+        class EmptyStream:
+            def read(self, size: int) -> bytes:
+                del size
+                return b""
+
+            def close(self) -> None:
+                return None
+
+        class FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = EmptyStream()
+                self.stderr = EmptyStream()
+                self.killed = False
+
+            def poll(self) -> None:
+                return None
+
+            def kill(self) -> None:
+                self.killed = True
+
+            def wait(self, timeout: float | None = None) -> int:
+                raise subprocess.TimeoutExpired(
+                    "git", timeout if timeout is not None else 0.0
+                )
+
+        process = FakeProcess()
+        with (
+            patch.object(limits.subprocess, "Popen", return_value=process),
+            self.assertRaisesRegex(RuntimeError, "reap") as raised,
+        ):
+            limits._git_bytes(self.repository, "status", "--porcelain=v1")
+
+        self.assertIsInstance(raised.exception.__cause__, RuntimeError)
+        self.assertTrue(process.killed)
 
     def test_repair_preflight_binds_candidate_content_scope_and_dependencies(
         self,
@@ -571,6 +739,72 @@ class RealignAssessmentManifestTests(unittest.TestCase):
             approved_report_digest=helper.assessment_report_digest(resolved),
         )
         self.assertEqual("eligible", result["status"])
+
+    def test_repair_preflight_requires_the_supported_report_schema(self) -> None:
+        helper = load_helper()
+        selected = commit_file(self.repository, "source.txt", "base\n", "base")
+        source = helper.resolve_source_binding(self.repository, reference=selected)
+        report, _ = valid_report(helper, self.repository, source, "source.txt")
+
+        for value in (None, True, "1", 0, 2):
+            changed = json.loads(json.dumps(report))
+            if value is None:
+                del changed["schema_version"]
+            else:
+                changed["schema_version"] = value
+            with (
+                self.subTest(schema_version=value),
+                self.assertRaisesRegex(RuntimeError, "schema version"),
+            ):
+                helper.repair_preflight(
+                    self.repository,
+                    changed,
+                    ["RLG-001"],
+                    approved_report_digest=helper.assessment_report_digest(changed),
+                )
+
+    def test_repair_preflight_rejects_cycles_and_orders_dependencies(self) -> None:
+        helper = load_helper()
+        selected = commit_file(self.repository, "source.txt", "base\n", "base")
+        source = helper.resolve_source_binding(self.repository, reference=selected)
+        report, _ = valid_report(helper, self.repository, source, "source.txt")
+
+        self_dependent = json.loads(json.dumps(report))
+        self_dependent["candidates"][0]["dependencies"] = ["RLG-001"]
+        with self.assertRaisesRegex(RuntimeError, "dependency"):
+            helper.repair_preflight(
+                self.repository,
+                self_dependent,
+                ["RLG-001"],
+                approved_report_digest=helper.assessment_report_digest(self_dependent),
+            )
+
+        cyclic = json.loads(json.dumps(report))
+        second_candidate = json.loads(json.dumps(cyclic["candidates"][0]))
+        second_candidate["id"] = "RLG-002"
+        second_candidate["dependencies"] = ["RLG-001"]
+        cyclic["candidates"][0]["dependencies"] = ["RLG-002"]
+        cyclic["candidates"].append(second_candidate)
+        with self.assertRaisesRegex(RuntimeError, "cyclic"):
+            helper.repair_preflight(
+                self.repository,
+                cyclic,
+                ["RLG-001", "RLG-002"],
+                approved_report_digest=helper.assessment_report_digest(cyclic),
+            )
+
+        ordered = json.loads(json.dumps(report))
+        prerequisite = json.loads(json.dumps(ordered["candidates"][0]))
+        prerequisite["id"] = "RLG-002"
+        ordered["candidates"][0]["dependencies"] = ["RLG-002"]
+        ordered["candidates"].append(prerequisite)
+        result = helper.repair_preflight(
+            self.repository,
+            ordered,
+            ["RLG-001", "RLG-002"],
+            approved_report_digest=helper.assessment_report_digest(ordered),
+        )
+        self.assertEqual(["RLG-002", "RLG-001"], result["candidate_ids"])
 
     def test_repair_preflight_rejects_invalid_candidate_and_source_contracts(
         self,

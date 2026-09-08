@@ -48,6 +48,7 @@ MAX_FILE_BYTES = 64 * 1024 * 1024
 MAX_TOTAL_BYTES = 512 * 1024 * 1024
 MAX_PATH_COUNT = 250_000
 GIT_TIMEOUT_SECONDS = 30.0
+ASSESSMENT_SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,7 @@ def _git_bytes(repository_root: Path, *arguments: str) -> bytes:
         os.fspath(repository_root),
         *arguments,
     ]
+    failure: BaseException | None = None
     try:
         process = subprocess.Popen(
             command,
@@ -97,10 +99,14 @@ def _git_bytes(repository_root: Path, *arguments: str) -> bytes:
         process.kill()
         process.wait()
         raise RuntimeError("The read-only Git command did not expose output.")
-    chunks: queue.Queue[tuple[str, bytes] | None] = queue.Queue(maxsize=4)
+    chunks: queue.Queue[tuple[str, str, bytes | Exception | None]] = queue.Queue(
+        maxsize=4
+    )
     stop_readers = threading.Event()
 
-    def enqueue_output(item: tuple[str, bytes] | None) -> None:
+    def enqueue_output(
+        item: tuple[str, str, bytes | Exception | None],
+    ) -> None:
         """Queue output while allowing bounded failure cleanup."""
         while not stop_readers.is_set():
             try:
@@ -112,11 +118,14 @@ def _git_bytes(repository_root: Path, *arguments: str) -> bytes:
     def read_output(name: str, stream: Any) -> None:
         try:
             while chunk := stream.read(64 * 1024):
-                enqueue_output((name, chunk))
+                enqueue_output((name, "data", chunk))
                 if stop_readers.is_set():
                     return
-        finally:
-            enqueue_output(None)
+        # Transfer each stream failure to the coordinating thread.
+        except Exception as error:  # noqa: BLE001
+            enqueue_output((name, "error", error))
+        else:
+            enqueue_output((name, "done", None))
 
     readers = [
         threading.Thread(
@@ -145,33 +154,64 @@ def _git_bytes(repository_root: Path, *arguments: str) -> bytes:
             if remaining <= 0:
                 raise RuntimeError("The read-only Git command exceeded its time limit.")
             try:
-                chunk = chunks.get(timeout=remaining)
+                event = chunks.get(timeout=remaining)
             except queue.Empty as error:
                 raise RuntimeError(
                     "The read-only Git command exceeded its time limit."
                 ) from error
-            if chunk is None:
+            name, kind, payload = event
+            if kind == "error":
+                assert isinstance(payload, Exception)
+                raise RuntimeError(
+                    f"The read-only Git {name} read failed."
+                ) from payload
+            if kind == "done":
                 completed_readers += 1
                 continue
-            name, content = chunk
+            assert kind == "data" and isinstance(payload, bytes)
+            content = payload
             byte_count += len(content)
             if byte_count > MAX_GIT_OUTPUT_BYTES:
                 raise RuntimeError(
                     "The read-only Git command exceeded its output limit."
                 )
             (stdout if name == "stdout" else stderr).append(content)
-        returncode = process.wait()
-    except BaseException:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError("The read-only Git command exceeded its time limit.")
+        try:
+            returncode = process.wait(timeout=remaining)
+        except subprocess.TimeoutExpired as error:
+            raise RuntimeError(
+                "The read-only Git command exceeded its time limit."
+            ) from error
+    except BaseException as error:
+        failure = error
         if process.poll() is None:
             process.kill()
-        process.wait()
+        try:
+            process.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(
+                "The failed read-only Git process could not be reaped."
+            ) from error
         raise
     finally:
         stop_readers.set()
-        process.stdout.close()
-        process.stderr.close()
+        for stream in (process.stdout, process.stderr):
+            try:
+                stream.close()
+            except OSError:
+                pass
         for reader in readers:
             reader.join(timeout=1.0)
+        if any(reader.is_alive() for reader in readers):
+            cleanup_error = RuntimeError(
+                "The read-only Git output readers could not be stopped."
+            )
+            if failure is not None:
+                raise cleanup_error from failure
+            raise cleanup_error
     document = b"".join(stdout)
     if returncode != 0:
         message = b"".join(stderr).decode("utf-8", errors="replace").strip()
@@ -560,9 +600,20 @@ def resolve_source_binding(
 
     head_oid = _selected_commit(root, "HEAD")
     tree_oid = _commit_tree(root, head_oid)
-    inventory = _worktree_inventory(
+    first_inventory = _worktree_inventory(
         root, head_oid, normalized_target, normalized_evidence_paths
     )
+    observed_head_oid = _selected_commit(root, "HEAD")
+    observed_tree_oid = _commit_tree(root, observed_head_oid)
+    inventory = _worktree_inventory(
+        root, observed_head_oid, normalized_target, normalized_evidence_paths
+    )
+    if (
+        head_oid != observed_head_oid
+        or tree_oid != observed_tree_oid
+        or first_inventory != inventory
+    ):
+        raise RuntimeError("The worktree assessment source changed during binding.")
     binding = {
         "repository_root": os.fspath(root),
         "source_kind": "worktree_overlay",
@@ -735,13 +786,13 @@ def guidance_snapshot_manifest(
     normalized_paths = tuple(normalize_repo_tree_path(path) for path in paths)
     if len(normalized_paths) > MAX_PATH_COUNT:
         raise RuntimeError("The assessment exceeded its path limit.")
+    scopes = (
+        _target_path(cast(str | None, binding.get("target"))),
+        *_binding_evidence_paths(binding),
+    )
+    if any(not _path_is_in_scope(path, scopes) for path in normalized_paths):
+        raise RuntimeError("A guidance path is outside the bound source evidence.")
     if source_kind == "worktree_overlay":
-        scopes = (
-            _target_path(cast(str | None, binding.get("target"))),
-            *_binding_evidence_paths(binding),
-        )
-        if any(not _path_is_in_scope(path, scopes) for path in normalized_paths):
-            raise RuntimeError("A guidance path is outside the bound source evidence.")
         _verify_worktree_binding(root, binding)
     manifest: list[dict[str, Any]] = []
     total_bytes = 0
@@ -883,6 +934,12 @@ def _selected_candidates(
             or not correction
         ):
             raise RuntimeError("The assessment report contains a malformed candidate.")
+        if (
+            any(CANDIDATE_ID.fullmatch(item) is None for item in dependencies)
+            or len(dependencies) != len(set(dependencies))
+            or candidate_id in dependencies
+        ):
+            raise RuntimeError("A repair candidate dependency is malformed.")
         candidates[candidate_id] = (
             [normalize_repo_tree_path(path) for path in raw_paths],
             raw_candidate,
@@ -892,23 +949,44 @@ def _selected_candidates(
     ]
     if unknown:
         raise RuntimeError(f"The repair candidate is unknown: '{unknown[0]}'.")
+    selected_set = set(candidate_ids)
+    ordered_ids: list[str] = []
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(candidate_id: str) -> None:
+        if candidate_id in visiting:
+            raise RuntimeError("The repair candidate dependency graph is cyclic.")
+        if candidate_id in visited:
+            return
+        visiting.add(candidate_id)
+        candidate = candidates[candidate_id][1]
+        for dependency in cast(list[str], candidate["dependencies"]):
+            if dependency in selected_set:
+                visit(dependency)
+        visiting.remove(candidate_id)
+        visited.add(candidate_id)
+        ordered_ids.append(candidate_id)
+
+    for candidate_id in candidate_ids:
+        visit(candidate_id)
     paths = sorted(
-        {path for candidate_id in candidate_ids for path in candidates[candidate_id][0]}
+        {path for candidate_id in ordered_ids for path in candidates[candidate_id][0]}
     )
     if len(paths) > MAX_PATH_COUNT:
         raise RuntimeError("The assessment exceeded its path limit.")
-    selected = [candidates[candidate_id][1] for candidate_id in candidate_ids]
+    selected = [candidates[candidate_id][1] for candidate_id in ordered_ids]
     if any(candidate.get("status") != "open" for candidate in selected):
         raise RuntimeError("A selected repair candidate is not open.")
     for candidate in selected:
         for dependency in cast(list[str], candidate["dependencies"]):
             dependency_record = candidates.get(dependency)
-            if dependency not in candidate_ids and (
+            if dependency not in selected_set and (
                 dependency_record is None
                 or dependency_record[1].get("status") != "resolved"
             ):
                 raise RuntimeError("A repair candidate dependency is not satisfied.")
-    return list(candidate_ids), paths, selected
+    return ordered_ids, paths, selected
 
 
 def _path_is_in_scope(path: str, scopes: Sequence[str]) -> bool:
@@ -1002,6 +1080,9 @@ def repair_preflight(
 ) -> dict[str, Any]:
     """Rebind a report and reject stale evidence or overlapping user work."""
     root = _repository_root(repository_root)
+    schema_version = report.get("schema_version")
+    if isinstance(schema_version, bool) or schema_version != ASSESSMENT_SCHEMA_VERSION:
+        raise RuntimeError("The assessment report schema version is not supported.")
     source = report.get("source")
     if not isinstance(source, Mapping):
         raise TypeError("The assessment report source binding is malformed.")
@@ -1077,7 +1158,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 evidence_paths=arguments.guidance,
             )
             result = {
-                "schema_version": 1,
+                "schema_version": ASSESSMENT_SCHEMA_VERSION,
                 "source": source,
                 "inventory": inventory_manifest(repository_root, source),
                 "guidance": guidance_snapshot_manifest(
