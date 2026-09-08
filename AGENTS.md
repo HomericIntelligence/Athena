@@ -141,12 +141,12 @@ The marked block is a generated mirror of the canonical
   branded model tiers.
 - Use the host default model when tier selection is unavailable.
 - Run independent work sequentially when the host cannot delegate.
-- A coordinator must not run a validation check or test directly. It must select each applicable
-  check and delegate it to one bounded executor.
+- When the host supports delegation, a coordinator must select each applicable validation check or
+  test and delegate it to one bounded executor. Otherwise, it must run the check sequentially.
 - The executor must run only the specified checks. It must not edit product files unless the user
   separately directs it to do so.
-- When the host provides `gpt-5.6-luna` and the `xhigh` reasoning setting, select that executor.
-  Otherwise, use the host-default executor.
+- When the host can select executor capabilities, select one with the minimum capabilities for the
+  specified check. Otherwise, use the host-default executor.
 - When a check passes, the executor must report the exact command and a pass. When a check fails,
   it must report the exact command, the failed check or test, concise relevant output, and an
   evidence-based classification: product defect, environment failure, or flaky or unknown.
@@ -163,7 +163,8 @@ Agents can do these actions:
 
 - Read repository files.
 - Edit files in the scope that the user requested.
-- Delegate deterministic validation and use the executor report as evidence.
+- Delegate deterministic validation and use the executor report as evidence. When the host cannot
+  delegate, run deterministic validation sequentially.
 - Create the isolated branches or worktrees that the work needs.
 - Inspect GitHub without a write when this inspection is relevant.
 
@@ -257,7 +258,8 @@ Follow the durable-artifact and behavior-test rules in
 text-string tests. Do not create changelogs, generated documents, registries, inventories, or
 unrelated files without a demonstrated product consumer.
 
-After editing, delegate this check to an executor:
+After editing, delegate this check to an executor. When the host cannot delegate, run it
+sequentially:
 
 ```bash
 just all
