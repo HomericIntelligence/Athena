@@ -141,6 +141,15 @@ The marked block is a generated mirror of the canonical
   branded model tiers.
 - Use the host default model when tier selection is unavailable.
 - Run independent work sequentially when the host cannot delegate.
+- A coordinator must not run a validation check or test directly. It must select each applicable
+  check and delegate it to one bounded executor.
+- The executor must run only the specified checks. It must not edit product files unless the user
+  separately directs it to do so.
+- When the host provides `gpt-5.6-luna` and the `xhigh` reasoning setting, select that executor.
+  Otherwise, use the host-default executor.
+- When a check passes, the executor must report the exact command and a pass. When a check fails,
+  it must report the exact command, the failed check or test, concise relevant output, and an
+  evidence-based classification: product defect, environment failure, or flaky or unknown.
 - Treat invocation syntax as an example. Claude uses `/athena:<skill>`. Codex uses `$<skill>` or
   natural language. opencode uses natural language or its native skill invocation. Pi uses
   `/skill:<skill>`.
@@ -154,7 +163,7 @@ Agents can do these actions:
 
 - Read repository files.
 - Edit files in the scope that the user requested.
-- Run deterministic validation.
+- Delegate deterministic validation and use the executor report as evidence.
 - Create the isolated branches or worktrees that the work needs.
 - Inspect GitHub without a write when this inspection is relevant.
 
@@ -248,7 +257,7 @@ Follow the durable-artifact and behavior-test rules in
 text-string tests. Do not create changelogs, generated documents, registries, inventories, or
 unrelated files without a demonstrated product consumer.
 
-After editing, run:
+After editing, delegate this check to an executor:
 
 ```bash
 just all
