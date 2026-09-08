@@ -175,10 +175,11 @@ from the report. A report can identify a lead. It cannot prove the lead or suppl
 
 Immediately before a repair, use `repair_preflight()` with only the explicit approved IDs and the
 separately retained approved report digest. Require a versioned report. Each selected candidate must
-have `route: realign`, `status: open`, confined paths, source-content evidence for each path, a
-non-empty correction, and a dependency list. Each validation receipt must bind the source digest and
-record the exact argument vector, controlled environment, exit status, standard output, and standard
-error. Only complete successful receipts make repair eligible. For a
+have `status: open`, confined paths, source-content evidence for each path, a non-empty correction,
+and a dependency list. It must have `route: realign`, unless it complies with the compatible
+`simplify` contract below. Each validation receipt must bind the source digest and record the exact
+argument vector, controlled environment, exit status, standard output, and standard error. Only
+complete successful receipts make repair eligible. For a
 worktree source, reconstruct and compare `HEAD`, tree, overlay, inventory, target, architecture
 evidence, and each selected candidate. For a selected commit, verify the recorded commit and tree
 objects without resolving the original selector again. Reject a candidate path that overlaps
@@ -332,12 +333,15 @@ performance, or simplification contract. Confidence does not replace severity or
 not issue a finding when evidence is insufficient. Record the lead as rejected or `retain` with its
 reason.
 
-A compatible `simplify` candidate must contain an ID and all binding, evidence, correction,
-validation, public-interface, and rollback fields that this contract requires. It must have
-`category: simplification` and an action of `delete`, `consolidate`, `reuse`, or `simplify`. Its
-complete correction must fit the bounded repair authority in this skill. If it does not, return it
-to `simplify` for a new assessment. Do not repair it. Never consume a `retain` or
-specialized-workflow candidate through this exception.
+A compatible `simplify` candidate must have a stable uppercase ID of 3 to 64 letters, digits,
+underscores, or hyphens. Its first character must be a letter. It must contain `route: simplify`,
+`status: open`, `category: simplification`, and an `action` of `delete`, `consolidate`, `reuse`, or
+`simplify`. Its non-empty `binding` object must contain the exact report `source_digest`. Its
+`evidence`, `correction`, `validation`, and `rollback` fields must be non-empty. Its
+`public_interface` object must contain `published: false`. Thus, this handoff cannot change a
+published public interface. Its complete correction must fit the bounded repair authority in this
+skill. If it does not, return it to `simplify` for a new assessment. Do not repair it. Never consume
+a `retain` or specialized-workflow candidate through this exception.
 
 ## Repair workflow
 

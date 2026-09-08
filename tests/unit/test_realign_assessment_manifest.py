@@ -617,15 +617,142 @@ class RealignAssessmentManifestTests(unittest.TestCase):
 
         self.assertLessEqual(decode.call_count, 3)
 
-    def test_worktree_file_read_requires_bounded_readiness(self) -> None:
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO support is required")
+    def test_worktree_file_read_rejects_a_fifo_without_blocking(self) -> None:
         helper = load_helper()
-        (self.repository / "source.txt").write_text("source\n", encoding="utf-8")
+        os.mkfifo(self.repository / "source.txt")
+
+        started = time.monotonic()
+        with self.assertRaisesRegex(RuntimeError, "not a regular file"):
+            helper._worktree_snapshot_entry(self.repository, "source.txt")
+        self.assertLess(time.monotonic() - started, 1.0)
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO support is required")
+    def test_report_read_rejects_a_fifo_without_blocking(self) -> None:
+        helper = load_helper()
+        report_path = self.repository / "report.json"
+        os.mkfifo(report_path)
+
+        started = time.monotonic()
+        with self.assertRaisesRegex(RuntimeError, "not a regular file"):
+            helper._read_report(report_path, deadline=time.monotonic() + 0.5)
+        self.assertLess(time.monotonic() - started, 1.0)
+
+    def test_bounded_process_fails_closed_before_launch_on_non_posix(self) -> None:
+        helper = load_helper()
 
         with (
-            patch("select.select", return_value=([], [], [])),
-            self.assertRaisesRegex(RuntimeError, "time limit"),
+            patch.object(helper.os, "name", "nt"),
+            patch.object(helper.subprocess, "Popen") as launch,
+            self.assertRaisesRegex(RuntimeError, "contained process cleanup"),
         ):
-            helper._worktree_snapshot_entry(self.repository, "source.txt")
+            helper._run_bounded_process(
+                ["synthetic-command"],
+                environment={},
+                output_limit=1,
+                deadline=None,
+                operation="test command",
+            )
+
+        launch.assert_not_called()
+
+    def test_bounded_process_rejects_missing_output_pipes(self) -> None:
+        helper = load_helper()
+
+        class MissingPipesProcess:
+            stdout = None
+            stderr = None
+
+            def __init__(self) -> None:
+                self.killed = False
+                self.waited = False
+
+            def kill(self) -> None:
+                self.killed = True
+
+            def wait(self) -> int:
+                self.waited = True
+                return -9
+
+        process = MissingPipesProcess()
+        with (
+            patch.object(helper.subprocess, "Popen", return_value=process),
+            self.assertRaisesRegex(RuntimeError, "did not expose output"),
+        ):
+            helper._run_bounded_process(
+                ["synthetic-command"],
+                environment={},
+                output_limit=1,
+                deadline=None,
+                operation="test command",
+            )
+
+        self.assertTrue(process.killed)
+        self.assertTrue(process.waited)
+
+    def test_internal_file_worker_handles_partial_writes_and_limits(self) -> None:
+        helper = load_helper()
+        source_path = self.repository / "source.txt"
+        source_path.write_text("source\n", encoding="utf-8")
+
+        with patch.object(helper.os, "write", return_value=1) as write:
+            helper._write_all(1, b"ab")
+        self.assertEqual(2, write.call_count)
+
+        output: list[bytes] = []
+        with patch.object(
+            helper,
+            "_write_all",
+            side_effect=lambda descriptor, document: output.append(document),
+        ):
+            returncode = helper._internal_read_bound_file(
+                self.repository, "source.txt", 1024
+            )
+        self.assertEqual(0, returncode)
+        self.assertEqual(b"source\n", b"".join(output[1:]))
+
+        errors = StringIO()
+        with (
+            patch.object(helper, "_write_all"),
+            redirect_stderr(errors),
+        ):
+            returncode = helper._internal_read_bound_file(
+                self.repository, "source.txt", 1
+            )
+        self.assertEqual(23, returncode)
+        self.assertIn("file byte limit", errors.getvalue())
+
+    def test_bounded_file_worker_rejects_malformed_protocol_output(self) -> None:
+        helper = load_helper()
+
+        for document in (b"", b"invalid-mode\ncontent"):
+            with (
+                self.subTest(document=document),
+                patch.object(helper, "_run_bounded_process", return_value=document),
+                self.assertRaisesRegex(RuntimeError, "malformed output"),
+            ):
+                helper._bounded_file_snapshot(self.repository, "source.txt")
+
+    def test_internal_file_worker_cli_validates_its_private_protocol(self) -> None:
+        helper = load_helper()
+        command = helper.INTERNAL_FILE_READ_COMMAND
+        invalid_arguments = (
+            [command],
+            [command, str(self.repository), "source.txt", "not-an-integer"],
+            [command, str(self.repository), "source.txt", "-1"],
+        )
+        for arguments in invalid_arguments:
+            errors = StringIO()
+            with self.subTest(arguments=arguments), redirect_stderr(errors):
+                self.assertEqual(1, helper.main(arguments))
+            self.assertIn("error:", errors.getvalue())
+
+        with patch.object(helper, "_internal_read_bound_file", return_value=7) as read:
+            self.assertEqual(
+                7,
+                helper.main([command, str(self.repository), "source.txt", "1"]),
+            )
+        read.assert_called_once_with(self.repository, "source.txt", 1)
 
     def test_git_read_timeout_includes_process_exit_after_output_closes(self) -> None:
         helper = load_helper()
@@ -874,6 +1001,53 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         self.assertIsInstance(raised.exception.__cause__, RuntimeError)
         self.assertRegex(str(raised.exception.__cause__), "read.*failed")
 
+    def test_git_close_failure_preserves_nonzero_exit_diagnostics(self) -> None:
+        helper = load_helper()
+        limits = cast(Any, helper)
+
+        class EmptyStream:
+            def read(self, size: int) -> bytes:
+                del size
+                return b""
+
+            def close(self) -> None:
+                raise OSError("synthetic close failure")
+
+        class DiagnosticStream(EmptyStream):
+            def __init__(self) -> None:
+                self.pending = True
+
+            def read(self, size: int) -> bytes:
+                del size
+                if self.pending:
+                    self.pending = False
+                    return b"fatal: synthetic Git failure\n"
+                return b""
+
+        class FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = EmptyStream()
+                self.stderr = DiagnosticStream()
+
+            def poll(self) -> int:
+                return 1
+
+            def kill(self) -> None:
+                return None
+
+            def wait(self, timeout: float | None = None) -> int:
+                del timeout
+                return 1
+
+        with (
+            patch.object(limits.subprocess, "Popen", return_value=FakeProcess()),
+            self.assertRaisesRegex(RuntimeError, "close") as raised,
+        ):
+            limits._git_bytes(self.repository, "status", "--porcelain=v1")
+
+        self.assertIsInstance(raised.exception.__cause__, RuntimeError)
+        self.assertIn("fatal: synthetic Git failure", str(raised.exception.__cause__))
+
     def test_repair_preflight_binds_candidate_content_scope_and_dependencies(
         self,
     ) -> None:
@@ -936,6 +1110,16 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         )
         self.assertEqual("eligible", result["status"])
 
+        stale_resolved = json.loads(json.dumps(resolved))
+        stale_resolved["candidates"][1]["evidence"][0]["content_sha256"] = "0" * 64
+        with self.assertRaisesRegex(RuntimeError, "stale content evidence"):
+            helper.repair_preflight(
+                self.repository,
+                stale_resolved,
+                ["RLG-001"],
+                approved_report_digest=helper.assessment_report_digest(stale_resolved),
+            )
+
     def test_repair_preflight_requires_the_supported_report_schema(self) -> None:
         helper = load_helper()
         selected = commit_file(self.repository, "source.txt", "base\n", "base")
@@ -989,6 +1173,16 @@ class RealignAssessmentManifestTests(unittest.TestCase):
                 approved_report_digest=helper.assessment_report_digest(cyclic),
             )
 
+        resolved_cycle = json.loads(json.dumps(cyclic))
+        resolved_cycle["candidates"][1]["status"] = "resolved"
+        with self.assertRaisesRegex(RuntimeError, "cyclic"):
+            helper.repair_preflight(
+                self.repository,
+                resolved_cycle,
+                ["RLG-001"],
+                approved_report_digest=helper.assessment_report_digest(resolved_cycle),
+            )
+
         ordered = json.loads(json.dumps(report))
         prerequisite = json.loads(json.dumps(ordered["candidates"][0]))
         prerequisite["id"] = "RLG-002"
@@ -1001,6 +1195,59 @@ class RealignAssessmentManifestTests(unittest.TestCase):
             approved_report_digest=helper.assessment_report_digest(ordered),
         )
         self.assertEqual(["RLG-002", "RLG-001"], result["candidate_ids"])
+
+    def test_repair_preflight_accepts_only_compatible_simplify_candidates(
+        self,
+    ) -> None:
+        helper = load_helper()
+        selected = commit_file(self.repository, "source.txt", "base\n", "base")
+        source = helper.resolve_source_binding(self.repository, reference=selected)
+        report, _ = valid_report(helper, self.repository, source, "source.txt")
+        candidate = report["candidates"][0]
+        candidate.update(
+            {
+                "id": "SIM-001",
+                "route": "simplify",
+                "category": "simplification",
+                "action": "delete",
+                "binding": {"source_digest": source["source_digest"]},
+                "validation": {"required": ["just check"]},
+                "public_interface": {"published": False},
+                "rollback": {"strategy": "restore the deleted source"},
+            }
+        )
+
+        result = helper.repair_preflight(
+            self.repository,
+            report,
+            ["SIM-001"],
+            approved_report_digest=helper.assessment_report_digest(report),
+        )
+        self.assertEqual(["SIM-001"], result["candidate_ids"])
+
+        incompatible_values = {
+            "category": "architecture",
+            "action": "retain",
+            "binding": {"source_digest": "0" * 64},
+            "validation": {},
+            "public_interface": {"published": True},
+            "rollback": {},
+        }
+        for field, value in incompatible_values.items():
+            incompatible = json.loads(json.dumps(report))
+            incompatible["candidates"][0][field] = value
+            with (
+                self.subTest(field=field),
+                self.assertRaisesRegex(RuntimeError, "incompatible simplify"),
+            ):
+                helper.repair_preflight(
+                    self.repository,
+                    incompatible,
+                    ["SIM-001"],
+                    approved_report_digest=helper.assessment_report_digest(
+                        incompatible
+                    ),
+                )
 
     def test_repair_preflight_enforces_aggregate_candidate_bytes(self) -> None:
         helper = load_helper()
@@ -1278,6 +1525,52 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         self.assertEqual(1, returncode)
         self.assertIn("error:", errors.getvalue())
         self.assertNotIn("Traceback", errors.getvalue())
+
+    def test_cli_starts_one_deadline_before_report_acquisition(self) -> None:
+        helper = load_helper()
+        commit_file(self.repository, "source.txt", "base\n", "base")
+        original_directory = Path.cwd()
+        self.addCleanup(os.chdir, original_directory)
+        os.chdir(self.repository)
+        observed: dict[str, float | None] = {}
+
+        def read_report(path: Path, *, deadline: float | None = None) -> dict[str, Any]:
+            del path
+            observed["read"] = deadline
+            return {}
+
+        def preflight(
+            repository_root: Path,
+            report: dict[str, Any],
+            candidate_ids: list[str],
+            *,
+            approved_report_digest: str | None = None,
+            _deadline: float | None = None,
+        ) -> dict[str, Any]:
+            del repository_root, report, candidate_ids, approved_report_digest
+            observed["preflight"] = _deadline
+            return {"status": "eligible"}
+
+        output = StringIO()
+        with (
+            patch.object(helper, "_read_report", side_effect=read_report),
+            patch.object(helper, "repair_preflight", side_effect=preflight),
+            redirect_stdout(output),
+        ):
+            returncode = helper.main(
+                [
+                    "repair-preflight",
+                    "unused-report.json",
+                    "--candidate",
+                    "RLG-001",
+                    "--approved-report-digest",
+                    "0" * 64,
+                ]
+            )
+
+        self.assertEqual(0, returncode)
+        self.assertIsNotNone(observed["read"])
+        self.assertEqual(observed["read"], observed["preflight"])
 
 
 if __name__ == "__main__":

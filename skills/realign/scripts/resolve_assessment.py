@@ -3,13 +3,13 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import importlib.util
 import json
 import os
 import queue
 import re
-import select
 import signal
 import stat
 import subprocess
@@ -44,7 +44,8 @@ else:
 
 
 SELECTOR_FORBIDDEN = ("..", "^@", "^!", "@{", ":")
-CANDIDATE_ID = re.compile(r"RLG-[0-9]{3}\Z")
+CANDIDATE_ID = re.compile(r"[A-Z][A-Z0-9_-]{2,63}\Z")
+REALIGN_CANDIDATE_ID = re.compile(r"RLG-[0-9]{3}\Z")
 MAX_GIT_OUTPUT_BYTES = 64 * 1024 * 1024
 MAX_FILE_BYTES = 64 * 1024 * 1024
 MAX_TOTAL_BYTES = 512 * 1024 * 1024
@@ -52,6 +53,10 @@ MAX_PATH_COUNT = 250_000
 GIT_TIMEOUT_SECONDS = 30.0
 ASSESSMENT_TIMEOUT_SECONDS = 300.0
 ASSESSMENT_SCHEMA_VERSION = 1
+INTERNAL_FILE_READ_COMMAND = "__athena_read_bound_file"
+INTERNAL_FILE_ABSENT = "ATHENA_INTERNAL_FILE_ABSENT"
+INTERNAL_FILE_SYMLINK = "ATHENA_INTERNAL_FILE_SYMLINK"
+INTERNAL_FILE_BOUNDARY = "ATHENA_INTERNAL_FILE_BOUNDARY"
 
 
 @dataclass(frozen=True)
@@ -77,34 +82,36 @@ class SourcePathBoundaryError(RuntimeError):
     """A selected worktree path is not a regular file."""
 
 
-def _git_bytes(
-    repository_root: Path, *arguments: str, deadline: float | None = None
+def _run_bounded_process(
+    command: Sequence[str],
+    *,
+    environment: Mapping[str, str],
+    output_limit: int,
+    deadline: float | None,
+    operation: str,
 ) -> bytes:
-    """Run one sanitized read-only Git command and return raw output."""
-    command = [
-        "git",
-        "-c",
-        "core.fsmonitor=false",
-        *git_read_arguments(),
-        "-C",
-        os.fspath(repository_root),
-        *arguments,
-    ]
+    """Run one contained process with bounded output, time, and cleanup."""
+    if os.name != "posix":
+        raise RuntimeError(
+            f"The host cannot provide contained process cleanup for the {operation}."
+        )
     failure: BaseException | None = None
     try:
         process = subprocess.Popen(
-            command,
+            list(command),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env=git_read_environment(),
-            start_new_session=os.name == "posix",
+            env=dict(environment),
+            start_new_session=True,
         )
     except FileNotFoundError as error:
-        raise RuntimeError("The required command is not available: 'git'.") from error
+        raise RuntimeError(
+            f"The required command is not available: '{command[0]}'."
+        ) from error
     if process.stdout is None or process.stderr is None:
         process.kill()
         process.wait()
-        raise RuntimeError("The read-only Git command did not expose output.")
+        raise RuntimeError(f"The {operation} did not expose output.")
     chunks: queue.Queue[tuple[str, str, bytes | Exception | None]] = queue.Queue(
         maxsize=4
     )
@@ -137,13 +144,13 @@ def _git_bytes(
         threading.Thread(
             target=read_output,
             args=("stdout", process.stdout),
-            name="realign-git-stdout-reader",
+            name="realign-process-stdout-reader",
             daemon=True,
         ),
         threading.Thread(
             target=read_output,
             args=("stderr", process.stderr),
-            name="realign-git-stderr-reader",
+            name="realign-process-stderr-reader",
             daemon=True,
         ),
     ]
@@ -160,7 +167,7 @@ def _git_bytes(
     def stop_process_tree() -> None:
         """Stop the isolated process group or the direct process."""
         pid = getattr(process, "pid", None)
-        if os.name == "posix" and isinstance(pid, int):
+        if isinstance(pid, int):
             try:
                 os.killpg(pid, signal.SIGKILL)
                 return
@@ -173,39 +180,36 @@ def _git_bytes(
         while completed_readers < len(readers):
             remaining = command_deadline - time.monotonic()
             if remaining <= 0:
-                raise RuntimeError("The read-only Git command exceeded its time limit.")
+                raise RuntimeError(f"The {operation} exceeded its time limit.")
             try:
                 event = chunks.get(timeout=remaining)
             except queue.Empty as error:
                 raise RuntimeError(
-                    "The read-only Git command exceeded its time limit."
+                    f"The {operation} exceeded its time limit."
                 ) from error
             name, kind, payload = event
             if kind == "error":
                 assert isinstance(payload, Exception)
-                raise RuntimeError(
-                    f"The read-only Git {name} read failed."
-                ) from payload
+                raise RuntimeError(f"The {operation} {name} read failed.") from payload
             if kind == "done":
                 completed_readers += 1
                 continue
             assert kind == "data" and isinstance(payload, bytes)
             content = payload
             byte_count += len(content)
-            if byte_count > MAX_GIT_OUTPUT_BYTES:
-                raise RuntimeError(
-                    "The read-only Git command exceeded its output limit."
-                )
+            if byte_count > output_limit:
+                raise RuntimeError(f"The {operation} exceeded its output limit.")
             (stdout if name == "stdout" else stderr).append(content)
         remaining = command_deadline - time.monotonic()
         if remaining <= 0:
-            raise RuntimeError("The read-only Git command exceeded its time limit.")
+            raise RuntimeError(f"The {operation} exceeded its time limit.")
         try:
             returncode = process.wait(timeout=remaining)
         except subprocess.TimeoutExpired as error:
-            raise RuntimeError(
-                "The read-only Git command exceeded its time limit."
-            ) from error
+            raise RuntimeError(f"The {operation} exceeded its time limit.") from error
+        if returncode != 0:
+            message = b"".join(stderr).decode("utf-8", errors="replace").strip()
+            raise RuntimeError(message or f"The {operation} failed.")
     except BaseException as error:
         failure = error
         stop_process_tree()
@@ -213,7 +217,7 @@ def _git_bytes(
             process.wait(timeout=1.0)
         except subprocess.TimeoutExpired:
             raise RuntimeError(
-                "The failed read-only Git process could not be reaped."
+                f"The failed {operation} process could not be reaped."
             ) from error
         raise
     finally:
@@ -225,7 +229,7 @@ def _git_bytes(
             reader.join(timeout=max(0.0, cleanup_deadline - time.monotonic()))
         if any(reader.is_alive() for reader in readers):
             cleanup_error = RuntimeError(
-                "The read-only Git output readers could not be stopped."
+                f"The {operation} output readers could not be stopped."
             )
             if failure is not None:
                 raise cleanup_error from failure
@@ -238,17 +242,34 @@ def _git_bytes(
                 close_errors.append(error)
         if close_errors:
             cleanup_error = RuntimeError(
-                "The read-only Git output streams could not be closed: "
-                f"{close_errors[0]}"
+                f"The {operation} output streams could not be closed: {close_errors[0]}"
             )
             if failure is not None:
                 raise cleanup_error from failure
             raise cleanup_error from close_errors[0]
-    document = b"".join(stdout)
-    if returncode != 0:
-        message = b"".join(stderr).decode("utf-8", errors="replace").strip()
-        raise RuntimeError(message or "The read-only Git command failed.")
-    return document
+    return b"".join(stdout)
+
+
+def _git_bytes(
+    repository_root: Path, *arguments: str, deadline: float | None = None
+) -> bytes:
+    """Run one sanitized read-only Git command and return raw output."""
+    command = [
+        "git",
+        "-c",
+        "core.fsmonitor=false",
+        *git_read_arguments(),
+        "-C",
+        os.fspath(repository_root),
+        *arguments,
+    ]
+    return _run_bounded_process(
+        command,
+        environment=git_read_environment(),
+        output_limit=MAX_GIT_OUTPUT_BYTES,
+        deadline=deadline,
+        operation="read-only Git command",
+    )
 
 
 def _git_text(
@@ -448,6 +469,107 @@ def _open_parent(repository_root: Path, relative_path: str) -> tuple[int, str]:
     return descriptor, components[-1]
 
 
+def _write_all(descriptor: int, document: bytes) -> None:
+    """Write all bytes to one internal worker descriptor."""
+    offset = 0
+    while offset < len(document):
+        offset += os.write(descriptor, document[offset:])
+
+
+def _internal_read_bound_file(
+    repository_root: Path, relative_path: str, byte_limit: int
+) -> int:
+    """Read one confined regular file inside a killable worker process."""
+    try:
+        parent, filename = _open_parent(repository_root, relative_path)
+        try:
+            descriptor = os.open(
+                filename,
+                os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_NONBLOCK", 0),
+                dir_fd=parent,
+            )
+        finally:
+            os.close(parent)
+    except FileNotFoundError:
+        print(INTERNAL_FILE_ABSENT, file=sys.stderr)
+        return 20
+    except OSError as error:
+        if error.errno == errno.ELOOP:
+            print(INTERNAL_FILE_SYMLINK, file=sys.stderr)
+            return 21
+        raise
+    try:
+        opened_mode = os.fstat(descriptor).st_mode
+        if not stat.S_ISREG(opened_mode):
+            print(INTERNAL_FILE_BOUNDARY, file=sys.stderr)
+            return 22
+        _write_all(1, f"{stat.S_IMODE(opened_mode):04o}\n".encode("ascii"))
+        byte_count = 0
+        while chunk := os.read(descriptor, 1024 * 1024):
+            byte_count += len(chunk)
+            if byte_count > byte_limit:
+                print(
+                    "The source file exceeded the file byte limit.",
+                    file=sys.stderr,
+                )
+                return 23
+            _write_all(1, chunk)
+    finally:
+        os.close(descriptor)
+    return 0
+
+
+def _bounded_file_snapshot(
+    repository_root: Path,
+    relative_path: str,
+    *,
+    deadline: float | None = None,
+    byte_limit: int | None = None,
+) -> SnapshotFileEntry:
+    """Read one confined regular file through a contained worker process."""
+    limit = MAX_FILE_BYTES if byte_limit is None else byte_limit
+    command = [
+        sys.executable,
+        os.path.abspath(__file__),
+        INTERNAL_FILE_READ_COMMAND,
+        os.fspath(repository_root),
+        relative_path,
+        str(limit),
+    ]
+    try:
+        document = _run_bounded_process(
+            command,
+            environment=git_read_environment(),
+            output_limit=limit + 1024,
+            deadline=deadline,
+            operation="bounded source-file read",
+        )
+    except RuntimeError as error:
+        message = str(error)
+        if message == INTERNAL_FILE_ABSENT:
+            raise SourcePathAbsentError(
+                f"The source path does not exist: '{relative_path}'."
+            ) from error
+        if message == INTERNAL_FILE_SYMLINK:
+            raise SourcePathSymlinkError(
+                f"The source path is a symbolic link: '{relative_path}'."
+            ) from error
+        if message == INTERNAL_FILE_BOUNDARY:
+            raise SourcePathBoundaryError(
+                f"The source path is not a regular file: '{relative_path}'."
+            ) from error
+        raise
+    raw_mode, separator, content = document.partition(b"\n")
+    if separator != b"\n" or re.fullmatch(rb"[0-7]{4}", raw_mode) is None:
+        raise RuntimeError("The bounded source-file worker returned malformed output.")
+    return SnapshotFileEntry(
+        path=relative_path,
+        source_kind="worktree_overlay",
+        content=content,
+        mode=raw_mode.decode("ascii"),
+    )
+
+
 def _worktree_snapshot_entry(
     repository_root: Path,
     relative_path: str,
@@ -455,76 +577,11 @@ def _worktree_snapshot_entry(
     deadline: float | None = None,
 ) -> SnapshotFileEntry:
     """Read one regular worktree file without following symbolic links."""
-    read_deadline = time.monotonic() + GIT_TIMEOUT_SECONDS
-    if deadline is not None:
-        read_deadline = min(read_deadline, deadline)
-    parent, filename = _open_parent(repository_root, relative_path)
-    try:
-        mode = os.lstat(filename, dir_fd=parent).st_mode
-        if stat.S_ISLNK(mode):
-            raise SourcePathSymlinkError(
-                f"The source path is a symbolic link: '{relative_path}'."
-            )
-        if not stat.S_ISREG(mode):
-            raise SourcePathBoundaryError(
-                f"The source path is not a regular file: '{relative_path}'."
-            )
-        descriptor = os.open(
-            filename,
-            os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_NONBLOCK", 0),
-            dir_fd=parent,
-        )
-        try:
-            opened_mode = os.fstat(descriptor).st_mode
-            if not stat.S_ISREG(opened_mode):
-                raise SourcePathBoundaryError(
-                    f"The source path is not a regular file: '{relative_path}'."
-                )
-            chunks: list[bytes] = []
-            byte_count = 0
-            while True:
-                remaining = read_deadline - time.monotonic()
-                if remaining <= 0:
-                    raise RuntimeError(
-                        f"The source file read exceeded its time limit: "
-                        f"'{relative_path}'."
-                    )
-                try:
-                    readable, _, _ = select.select([descriptor], [], [], remaining)
-                except (OSError, ValueError) as error:
-                    raise RuntimeError(
-                        "The host cannot enforce bounded source-file reads."
-                    ) from error
-                if not readable:
-                    raise RuntimeError(
-                        f"The source file read exceeded its time limit: "
-                        f"'{relative_path}'."
-                    )
-                try:
-                    chunk = os.read(descriptor, 1024 * 1024)
-                except BlockingIOError:
-                    continue
-                if not chunk:
-                    break
-                byte_count += len(chunk)
-                if byte_count > MAX_FILE_BYTES:
-                    raise RuntimeError(
-                        f"The source file exceeded the file byte limit: '{relative_path}'."
-                    )
-                chunks.append(chunk)
-        finally:
-            os.close(descriptor)
-    except FileNotFoundError as error:
-        raise SourcePathAbsentError(
-            f"The source path does not exist: '{relative_path}'."
-        ) from error
-    finally:
-        os.close(parent)
-    return SnapshotFileEntry(
-        path=relative_path,
-        source_kind="worktree_overlay",
-        content=b"".join(chunks),
-        mode=f"{stat.S_IMODE(opened_mode):04o}",
+    return _bounded_file_snapshot(
+        repository_root,
+        relative_path,
+        deadline=deadline,
+        byte_limit=MAX_FILE_BYTES,
     )
 
 
@@ -1058,6 +1115,8 @@ def _selected_candidates(
         raise RuntimeError("The assessment exceeded its candidate limit.")
     candidates: dict[str, tuple[list[str], Mapping[str, Any]]] = {}
     candidate_path_count = 0
+    source = report.get("source")
+    source_digest = source.get("source_digest") if isinstance(source, Mapping) else None
     for raw_candidate in raw_candidates:
         if not isinstance(raw_candidate, Mapping):
             raise TypeError("The assessment report contains a malformed candidate.")
@@ -1066,6 +1125,7 @@ def _selected_candidates(
         dependencies = raw_candidate.get("dependencies")
         evidence = raw_candidate.get("evidence")
         correction = raw_candidate.get("correction")
+        route = raw_candidate.get("route")
         if (
             not isinstance(candidate_id, str)
             or CANDIDATE_ID.fullmatch(candidate_id) is None
@@ -1073,7 +1133,11 @@ def _selected_candidates(
             or not isinstance(raw_paths, list)
             or not raw_paths
             or not all(isinstance(path, str) for path in raw_paths)
-            or raw_candidate.get("route") != "realign"
+            or route not in {"realign", "simplify"}
+            or (
+                route == "realign"
+                and REALIGN_CANDIDATE_ID.fullmatch(candidate_id) is None
+            )
             or raw_candidate.get("status") not in {"open", "resolved"}
             or not isinstance(dependencies, list)
             or not all(isinstance(item, str) for item in dependencies)
@@ -1083,6 +1147,22 @@ def _selected_candidates(
             or not correction
         ):
             raise RuntimeError("The assessment report contains a malformed candidate.")
+        if route == "simplify" and (
+            raw_candidate.get("category") != "simplification"
+            or raw_candidate.get("action")
+            not in {"delete", "consolidate", "reuse", "simplify"}
+            or not isinstance(raw_candidate.get("binding"), Mapping)
+            or raw_candidate["binding"].get("source_digest") != source_digest
+            or not isinstance(raw_candidate.get("validation"), Mapping)
+            or not raw_candidate["validation"]
+            or not isinstance(raw_candidate.get("public_interface"), Mapping)
+            or raw_candidate["public_interface"].get("published") is not False
+            or not isinstance(raw_candidate.get("rollback"), Mapping)
+            or not raw_candidate["rollback"]
+        ):
+            raise RuntimeError(
+                "The assessment report contains an incompatible simplify candidate."
+            )
         candidate_path_count += len(raw_paths)
         if candidate_path_count > MAX_PATH_COUNT:
             raise RuntimeError("The assessment exceeded its candidate-path limit.")
@@ -1102,7 +1182,7 @@ def _selected_candidates(
     if unknown:
         raise RuntimeError(f"The repair candidate is unknown: '{unknown[0]}'.")
     selected_set = set(candidate_ids)
-    ordered_ids: list[str] = []
+    ordered_closure_ids: list[str] = []
     visiting: set[str] = set()
     visited: set[str] = set()
 
@@ -1114,14 +1194,24 @@ def _selected_candidates(
         visiting.add(candidate_id)
         candidate = candidates[candidate_id][1]
         for dependency in cast(list[str], candidate["dependencies"]):
-            if dependency in selected_set:
-                visit(dependency)
+            dependency_record = candidates.get(dependency)
+            if dependency_record is None or (
+                dependency not in selected_set
+                and dependency_record[1].get("status") != "resolved"
+            ):
+                raise RuntimeError("A repair candidate dependency is not satisfied.")
+            visit(dependency)
         visiting.remove(candidate_id)
         visited.add(candidate_id)
-        ordered_ids.append(candidate_id)
+        ordered_closure_ids.append(candidate_id)
 
     for candidate_id in candidate_ids:
         visit(candidate_id)
+    ordered_ids = [
+        candidate_id
+        for candidate_id in ordered_closure_ids
+        if candidate_id in selected_set
+    ]
     paths = sorted(
         {path for candidate_id in ordered_ids for path in candidates[candidate_id][0]}
     )
@@ -1130,15 +1220,8 @@ def _selected_candidates(
     selected = [candidates[candidate_id][1] for candidate_id in ordered_ids]
     if any(candidate.get("status") != "open" for candidate in selected):
         raise RuntimeError("A selected repair candidate is not open.")
-    for candidate in selected:
-        for dependency in cast(list[str], candidate["dependencies"]):
-            dependency_record = candidates.get(dependency)
-            if dependency not in selected_set and (
-                dependency_record is None
-                or dependency_record[1].get("status") != "resolved"
-            ):
-                raise RuntimeError("A repair candidate dependency is not satisfied.")
-    return ordered_ids, paths, selected
+    closure = [candidates[candidate_id][1] for candidate_id in ordered_closure_ids]
+    return ordered_ids, paths, closure
 
 
 def _path_is_in_scope(path: str, scopes: Sequence[str]) -> bool:
@@ -1245,9 +1328,14 @@ def repair_preflight(
     candidate_ids: Sequence[str],
     *,
     approved_report_digest: str | None = None,
+    _deadline: float | None = None,
 ) -> dict[str, Any]:
     """Rebind a report and reject stale evidence or overlapping user work."""
-    deadline = time.monotonic() + ASSESSMENT_TIMEOUT_SECONDS
+    deadline = (
+        time.monotonic() + ASSESSMENT_TIMEOUT_SECONDS
+        if _deadline is None
+        else _deadline
+    )
     root = _repository_root(repository_root, deadline=deadline)
     schema_version = report.get("schema_version")
     if isinstance(schema_version, bool) or schema_version != ASSESSMENT_SCHEMA_VERSION:
@@ -1286,12 +1374,19 @@ def repair_preflight(
     }
 
 
-def _read_report(path: Path) -> Mapping[str, Any]:
+def _read_report(path: Path, *, deadline: float | None = None) -> Mapping[str, Any]:
     """Read one JSON assessment report."""
-    with path.open("rb") as stream:
-        raw_document = stream.read(MAX_FILE_BYTES + 1)
-    if len(raw_document) > MAX_FILE_BYTES:
-        raise RuntimeError("The assessment report exceeded the file byte limit.")
+    absolute_path = Path(os.path.abspath(os.fspath(path)))
+    root = absolute_path.parent
+    relative_path = absolute_path.name
+    if not relative_path:
+        raise RuntimeError("The assessment report path does not name a file.")
+    raw_document = _bounded_file_snapshot(
+        root,
+        relative_path,
+        deadline=deadline,
+        byte_limit=MAX_FILE_BYTES,
+    ).content
     document = json.loads(raw_document.decode("utf-8"))
     if not isinstance(document, Mapping):
         raise TypeError("The assessment report must be a JSON object.")
@@ -1300,6 +1395,20 @@ def _read_report(path: Path) -> Mapping[str, Any]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Emit one source binding or verify one repair preflight."""
+    raw_arguments = list(sys.argv[1:] if argv is None else argv)
+    if raw_arguments[:1] == [INTERNAL_FILE_READ_COMMAND]:
+        try:
+            if len(raw_arguments) != 4:
+                raise RuntimeError("The bounded source-file request is malformed.")
+            byte_limit = int(raw_arguments[3])
+            if byte_limit < 0:
+                raise RuntimeError("The bounded source-file limit is not valid.")
+            return _internal_read_bound_file(
+                Path(raw_arguments[1]), raw_arguments[2], byte_limit
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 1
     parser = argument_parser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     bind_parser = subparsers.add_parser(
@@ -1316,9 +1425,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--candidate", action="append", required=True, dest="candidate_ids"
     )
     preflight_parser.add_argument("--approved-report-digest", required=True)
-    arguments = parser.parse_args(argv)
+    arguments = parser.parse_args(raw_arguments)
     try:
-        repository_root = Path(_git_text(Path.cwd(), "rev-parse", "--show-toplevel"))
+        deadline = (
+            time.monotonic() + ASSESSMENT_TIMEOUT_SECONDS
+            if arguments.command == "repair-preflight"
+            else None
+        )
+        repository_root = Path(
+            _git_text(Path.cwd(), "rev-parse", "--show-toplevel", deadline=deadline)
+        )
         if arguments.command == "bind":
             source = resolve_source_binding(
                 repository_root,
@@ -1342,9 +1458,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             result = repair_preflight(
                 repository_root,
-                _read_report(arguments.report),
+                _read_report(arguments.report, deadline=deadline),
                 arguments.candidate_ids,
                 approved_report_digest=arguments.approved_report_digest,
+                _deadline=deadline,
             )
     except (
         OSError,
