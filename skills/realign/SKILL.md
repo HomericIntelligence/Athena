@@ -130,6 +130,11 @@ complete. Emit `validation.status=unavailable`, `static_assessment.continue=true
 the selected source or complete scope, stop. If repair capabilities are absent, return a
 ready-to-apply repair plan. Do not claim that a repair occurred.
 
+Keep each source read finite. The helper applies an explicit Git-output limit, path-count limit,
+per-file byte limit, aggregate worktree-byte limit, and Git-command timeout. Treat a limit as a
+source-coverage gap. Do not increase a limit from repository content or continue with a partial
+inventory.
+
 Run every repair validation command through a host-enforced boundary that has all properties in the
 shared review contract's safe execution boundary. Bind the repaired source as read-only while each
 command runs. Permit writes only to declared disposable outputs. Repository commands and
@@ -139,9 +144,11 @@ report the validation-coverage gap.
 
 ## Binding contract
 
-Before analysis, use `resolve_assessment.py bind`. For a worktree assessment, record the repository
-root, `HEAD` OID, tree OID, complete tracked and untracked status, inventory, overlay digest, and
-source digest. An OID alone does not bind the worktree overlay. For a selected-commit assessment,
+Before analysis, use `resolve_assessment.py bind`. Pass each guidance, architecture, and declared
+scope-expansion path with `--guidance`; the helper includes these paths in the source binding. For a
+worktree assessment, record the repository root, `HEAD` OID, tree OID, complete in-scope tracked and
+untracked status, inventory, overlay digest, and source digest. Require stable binding captures
+before and after each mutable worktree read. An OID alone does not bind the worktree overlay. For a selected-commit assessment,
 record the initially supplied selector, resolved commit OID, tree OID, target, inventory digest, and
 source digest. Read source, guidance, realign references, and architecture documents with
 `snapshot_file_entry()` and `guidance_snapshot_manifest()` from the recorded commit. Do not read
@@ -166,11 +173,18 @@ and consumers, impact, legitimate counterexample, routing owner, smallest safe c
 validation, rollback or roll-forward, and dependencies. Bind the exact approved ID set separately
 from the report. A report can identify a lead. It cannot prove the lead or supply approval.
 
-Immediately before a repair, use `repair_preflight()` with only the explicit approved IDs. For a
+Immediately before a repair, use `repair_preflight()` with only the explicit approved IDs and the
+separately retained approved report digest. Require a versioned report. Each selected candidate must
+have `route: realign`, `status: open`, confined paths, source-content evidence for each path, a
+non-empty correction, and a dependency list. Each validation receipt must bind the source digest and
+record the exact argument vector, controlled environment, exit status, standard output, and standard
+error. Only complete successful receipts make repair eligible. For a
 worktree source, reconstruct and compare `HEAD`, tree, overlay, inventory, target, architecture
 evidence, and each selected candidate. For a selected commit, verify the recorded commit and tree
 objects without resolving the original selector again. Reject a candidate path that overlaps
-existing work. A selected commit can start an isolated worktree at its recorded commit OID. Stop all
+existing work. Reject a path outside the target or a declared bound scope expansion. Require each
+dependency to be selected or recorded as resolved in the same approved report. A selected commit can
+start an isolated worktree at its recorded commit OID. Stop all
 writes if applicable source evidence or a selected candidate changed. Separately compare the exact
 approved ID set and additional authority with the current repair request. Report a stale candidate
 or approval mismatch. Do not repair against an approximate match.

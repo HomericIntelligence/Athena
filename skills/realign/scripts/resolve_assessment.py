@@ -7,9 +7,13 @@ import hashlib
 import importlib.util
 import json
 import os
+import queue
 import re
 import stat
+import subprocess
 import sys
+import threading
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
@@ -20,7 +24,6 @@ if __package__ not in {None, ""}:
         argument_parser,
         git_read_arguments,
         git_read_environment,
-        run_command,
     )
 else:
     _cli_path = Path(__file__).resolve().parents[2] / "_cli.py"
@@ -36,11 +39,15 @@ else:
     argument_parser = _cli.argument_parser
     git_read_arguments = _cli.git_read_arguments
     git_read_environment = _cli.git_read_environment
-    run_command = _cli.run_command
 
 
 SELECTOR_FORBIDDEN = ("..", "^@", "^!", "@{", ":")
 CANDIDATE_ID = re.compile(r"RLG-[0-9]{3}\Z")
+MAX_GIT_OUTPUT_BYTES = 64 * 1024 * 1024
+MAX_FILE_BYTES = 64 * 1024 * 1024
+MAX_TOTAL_BYTES = 512 * 1024 * 1024
+MAX_PATH_COUNT = 250_000
+GIT_TIMEOUT_SECONDS = 30.0
 
 
 @dataclass(frozen=True)
@@ -54,29 +61,122 @@ class SnapshotFileEntry:
     mode: str | None = None
 
 
+class SourcePathAbsentError(RuntimeError):
+    """A selected worktree path disappeared during capture."""
+
+
+class SourcePathSymlinkError(RuntimeError):
+    """A selected worktree path is a symbolic-link boundary."""
+
+
+class SourcePathBoundaryError(RuntimeError):
+    """A selected worktree path is not a regular file."""
+
+
 def _git_bytes(repository_root: Path, *arguments: str) -> bytes:
     """Run one sanitized read-only Git command and return raw output."""
-    result = run_command(
-        [
-            "git",
-            "-c",
-            "core.fsmonitor=false",
-            *git_read_arguments(),
-            "-C",
-            os.fspath(repository_root),
-            *arguments,
-        ],
-        capture_output=True,
-        env=git_read_environment(),
-        text=False,
-        check=False,
-    )
-    stdout = cast(bytes, result.stdout)
-    stderr = cast(bytes, result.stderr)
-    if result.returncode != 0:
-        message = stderr.decode("utf-8", errors="replace").strip()
+    command = [
+        "git",
+        "-c",
+        "core.fsmonitor=false",
+        *git_read_arguments(),
+        "-C",
+        os.fspath(repository_root),
+        *arguments,
+    ]
+    try:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=git_read_environment(),
+        )
+    except FileNotFoundError as error:
+        raise RuntimeError("The required command is not available: 'git'.") from error
+    if process.stdout is None or process.stderr is None:
+        process.kill()
+        process.wait()
+        raise RuntimeError("The read-only Git command did not expose output.")
+    chunks: queue.Queue[tuple[str, bytes] | None] = queue.Queue(maxsize=4)
+    stop_readers = threading.Event()
+
+    def enqueue_output(item: tuple[str, bytes] | None) -> None:
+        """Queue output while allowing bounded failure cleanup."""
+        while not stop_readers.is_set():
+            try:
+                chunks.put(item, timeout=0.05)
+            except queue.Full:
+                continue
+            return
+
+    def read_output(name: str, stream: Any) -> None:
+        try:
+            while chunk := stream.read(64 * 1024):
+                enqueue_output((name, chunk))
+                if stop_readers.is_set():
+                    return
+        finally:
+            enqueue_output(None)
+
+    readers = [
+        threading.Thread(
+            target=read_output,
+            args=("stdout", process.stdout),
+            name="realign-git-stdout-reader",
+            daemon=True,
+        ),
+        threading.Thread(
+            target=read_output,
+            args=("stderr", process.stderr),
+            name="realign-git-stderr-reader",
+            daemon=True,
+        ),
+    ]
+    for reader in readers:
+        reader.start()
+    stdout: list[bytes] = []
+    stderr: list[bytes] = []
+    byte_count = 0
+    completed_readers = 0
+    deadline = time.monotonic() + GIT_TIMEOUT_SECONDS
+    try:
+        while completed_readers < len(readers):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError("The read-only Git command exceeded its time limit.")
+            try:
+                chunk = chunks.get(timeout=remaining)
+            except queue.Empty as error:
+                raise RuntimeError(
+                    "The read-only Git command exceeded its time limit."
+                ) from error
+            if chunk is None:
+                completed_readers += 1
+                continue
+            name, content = chunk
+            byte_count += len(content)
+            if byte_count > MAX_GIT_OUTPUT_BYTES:
+                raise RuntimeError(
+                    "The read-only Git command exceeded its output limit."
+                )
+            (stdout if name == "stdout" else stderr).append(content)
+        returncode = process.wait()
+    except BaseException:
+        if process.poll() is None:
+            process.kill()
+        process.wait()
+        raise
+    finally:
+        stop_readers.set()
+        process.stdout.close()
+        process.stderr.close()
+        for reader in readers:
+            reader.join(timeout=1.0)
+    document = b"".join(stdout)
+    if returncode != 0:
+        message = b"".join(stderr).decode("utf-8", errors="replace").strip()
         raise RuntimeError(message or "The read-only Git command failed.")
-    return stdout
+    return document
 
 
 def _git_text(repository_root: Path, *arguments: str) -> str:
@@ -199,6 +299,8 @@ def _selected_inventory_entries(
             *_pathspec(target),
         )
     )
+    if len(records) > MAX_PATH_COUNT:
+        raise RuntimeError("The assessment exceeded its path limit.")
     entries: list[dict[str, Any]] = []
     for record in records:
         kind = "file"
@@ -225,6 +327,11 @@ def _canonical_digest(value: Any) -> str:
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8", errors="surrogateescape")
     return hashlib.sha256(document).hexdigest()
+
+
+def assessment_report_digest(report: Mapping[str, Any]) -> str:
+    """Return the identity that an approval must bind separately from a report."""
+    return _canonical_digest(dict(report))
 
 
 def _open_parent(repository_root: Path, relative_path: str) -> tuple[int, str]:
@@ -258,22 +365,28 @@ def _worktree_snapshot_entry(
     try:
         mode = os.lstat(filename, dir_fd=parent).st_mode
         if stat.S_ISLNK(mode):
-            raise RuntimeError(
+            raise SourcePathSymlinkError(
                 f"The source path is a symbolic link: '{relative_path}'."
             )
         if not stat.S_ISREG(mode):
-            raise RuntimeError(
+            raise SourcePathBoundaryError(
                 f"The source path is not a regular file: '{relative_path}'."
             )
         descriptor = os.open(filename, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent)
         try:
             chunks: list[bytes] = []
+            byte_count = 0
             while chunk := os.read(descriptor, 1024 * 1024):
+                byte_count += len(chunk)
+                if byte_count > MAX_FILE_BYTES:
+                    raise RuntimeError(
+                        f"The source file exceeded the file byte limit: '{relative_path}'."
+                    )
                 chunks.append(chunk)
         finally:
             os.close(descriptor)
     except FileNotFoundError as error:
-        raise RuntimeError(
+        raise SourcePathAbsentError(
             f"The source path does not exist: '{relative_path}'."
         ) from error
     finally:
@@ -286,10 +399,14 @@ def _worktree_snapshot_entry(
     )
 
 
-def _worktree_paths(repository_root: Path, target: str) -> list[str]:
+def _worktree_paths(repository_root: Path, scopes: Sequence[str]) -> list[str]:
     """Return selected tracked and non-ignored untracked worktree paths."""
-    pathspec = _pathspec(target)
-    tracked = _git_bytes(repository_root, "ls-files", "-z", "--", *pathspec).split(
+    pathspecs = (
+        ()
+        if "." in scopes
+        else tuple(pathspec for scope in scopes for pathspec in _pathspec(scope))
+    )
+    tracked = _git_bytes(repository_root, "ls-files", "-z", "--", *pathspecs).split(
         b"\0"
     )
     untracked = _git_bytes(
@@ -299,48 +416,55 @@ def _worktree_paths(repository_root: Path, target: str) -> list[str]:
         "--exclude-standard",
         "-z",
         "--",
-        *pathspec,
+        *pathspecs,
     ).split(b"\0")
-    return sorted({os.fsdecode(path) for path in [*tracked, *untracked] if path})
+    paths = sorted({os.fsdecode(path) for path in [*tracked, *untracked] if path})
+    if len(paths) > MAX_PATH_COUNT:
+        raise RuntimeError("The assessment exceeded its path limit.")
+    return paths
 
 
 def _worktree_inventory(
-    repository_root: Path, head_oid: str, target: str
+    repository_root: Path,
+    head_oid: str,
+    target: str,
+    evidence_paths: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Return a content-bound worktree overlay inventory."""
-    paths = _worktree_paths(repository_root, target)
+    scopes = tuple(dict.fromkeys((target, *evidence_paths)))
+    paths = _worktree_paths(repository_root, scopes)
     entries: list[dict[str, Any]] = []
+    total_bytes = 0
     for path in paths:
         try:
             snapshot = _worktree_snapshot_entry(repository_root, path)
-        except RuntimeError as error:
-            message = str(error)
-            if "does not exist" in message:
-                entries.append(
-                    {
-                        "path": path,
-                        "kind": "absent",
-                        "source_kind": "worktree_overlay",
-                        "head_oid": head_oid,
-                    }
-                )
-                continue
-            if "symbolic link" in message:
-                parent, filename = _open_parent(repository_root, path)
-                try:
-                    target_value = os.readlink(filename, dir_fd=parent)
-                finally:
-                    os.close(parent)
-                entries.append(
-                    {
-                        "path": path,
-                        "kind": "symlink",
-                        "target": os.fsdecode(target_value),
-                        "source_kind": "worktree_overlay",
-                        "head_oid": head_oid,
-                    }
-                )
-                continue
+        except SourcePathAbsentError:
+            entries.append(
+                {
+                    "path": path,
+                    "kind": "absent",
+                    "source_kind": "worktree_overlay",
+                    "head_oid": head_oid,
+                }
+            )
+            continue
+        except SourcePathSymlinkError:
+            parent, filename = _open_parent(repository_root, path)
+            try:
+                target_value = os.readlink(filename, dir_fd=parent)
+            finally:
+                os.close(parent)
+            entries.append(
+                {
+                    "path": path,
+                    "kind": "symlink",
+                    "target": os.fsdecode(target_value),
+                    "source_kind": "worktree_overlay",
+                    "head_oid": head_oid,
+                }
+            )
+            continue
+        except SourcePathBoundaryError:
             entries.append(
                 {
                     "path": path,
@@ -361,6 +485,14 @@ def _worktree_inventory(
                 "head_oid": head_oid,
             }
         )
+        total_bytes += len(snapshot.content)
+        if total_bytes > MAX_TOTAL_BYTES:
+            raise RuntimeError("The assessment exceeded its aggregate byte limit.")
+    pathspecs = (
+        ()
+        if "." in scopes
+        else tuple(pathspec for scope in scopes for pathspec in _pathspec(scope))
+    )
     status = _git_bytes(
         repository_root,
         "status",
@@ -368,12 +500,13 @@ def _worktree_inventory(
         "-z",
         "--untracked-files=all",
         "--",
-        *_pathspec(target),
+        *pathspecs,
     )
     identity = {
         "entries": entries,
         "status_sha256": hashlib.sha256(status).hexdigest(),
         "target": target,
+        "evidence_paths": list(evidence_paths),
     }
     return {
         **identity,
@@ -382,12 +515,32 @@ def _worktree_inventory(
     }
 
 
+def _binding_evidence_paths(binding: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return the exact declared source-evidence paths from one binding."""
+    raw_paths = binding.get("evidence_paths")
+    if not isinstance(raw_paths, list) or not all(
+        isinstance(path, str) for path in raw_paths
+    ):
+        raise TypeError("The source evidence-path binding is malformed.")
+    paths = tuple(normalize_repo_tree_path(path) for path in raw_paths)
+    if len(paths) != len(set(paths)) or list(paths) != raw_paths:
+        raise RuntimeError("The source evidence-path binding is stale.")
+    return paths
+
+
 def resolve_source_binding(
-    repository_root: Path, *, reference: str | None = None, target: str | None = "."
+    repository_root: Path,
+    *,
+    reference: str | None = None,
+    target: str | None = ".",
+    evidence_paths: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Bind one selected commit tree or the current worktree overlay."""
     root = _repository_root(repository_root)
     normalized_target = _target_path(target)
+    normalized_evidence_paths = tuple(
+        dict.fromkeys(normalize_repo_tree_path(path) for path in evidence_paths)
+    )
     if reference is not None:
         commit_oid = _selected_commit(root, reference)
         tree_oid = _commit_tree(root, commit_oid)
@@ -400,19 +553,23 @@ def resolve_source_binding(
             "commit_oid": commit_oid,
             "tree_oid": tree_oid,
             "target": normalized_target,
+            "evidence_paths": list(normalized_evidence_paths),
             "inventory_digest": inventory_digest,
         }
         return {**binding, "source_digest": _canonical_digest(binding)}
 
     head_oid = _selected_commit(root, "HEAD")
     tree_oid = _commit_tree(root, head_oid)
-    inventory = _worktree_inventory(root, head_oid, normalized_target)
+    inventory = _worktree_inventory(
+        root, head_oid, normalized_target, normalized_evidence_paths
+    )
     binding = {
         "repository_root": os.fspath(root),
         "source_kind": "worktree_overlay",
         "head_oid": head_oid,
         "tree_oid": tree_oid,
         "target": normalized_target,
+        "evidence_paths": list(normalized_evidence_paths),
         "inventory_digest": inventory["inventory_digest"],
         "overlay_digest": inventory["overlay_digest"],
         "overlay_paths": [entry["path"] for entry in inventory["entries"]],
@@ -451,6 +608,7 @@ def _verify_selected_binding(
     if bound_root != os.fspath(repository_root):
         raise RuntimeError("The selected source repository binding is stale.")
     target = _target_path(cast(str | None, binding.get("target")))
+    evidence_paths = _binding_evidence_paths(binding)
     expected_binding = {
         "repository_root": bound_root,
         "source_kind": "selected_commit_tree",
@@ -458,6 +616,7 @@ def _verify_selected_binding(
         "commit_oid": commit_oid,
         "tree_oid": tree_oid,
         "target": target,
+        "evidence_paths": list(evidence_paths),
         "inventory_digest": inventory_digest,
     }
     if source_digest != _canonical_digest(expected_binding):
@@ -470,6 +629,20 @@ def _verify_selected_binding(
     if _canonical_digest(entries) != inventory_digest:
         raise RuntimeError("The selected source inventory is stale.")
     return commit_oid, tree_oid
+
+
+def _verify_worktree_binding(
+    repository_root: Path, binding: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Require the current worktree to match one complete recorded binding."""
+    target = _target_path(cast(str | None, binding.get("target")))
+    evidence_paths = _binding_evidence_paths(binding)
+    current = resolve_source_binding(
+        repository_root, target=target, evidence_paths=evidence_paths
+    )
+    if dict(binding) != current:
+        raise RuntimeError("The worktree assessment source is stale.")
+    return current
 
 
 def snapshot_file_entry(
@@ -502,7 +675,12 @@ def snapshot_file_entry(
         raise RuntimeError(f"The selected source path is a submodule: '{path}'.")
     if record["object_type"] != "blob":
         raise RuntimeError(f"The selected source path is not a blob: '{path}'.")
+    byte_length = int(_git_text(root, "cat-file", "-s", record["object_id"]))
+    if byte_length > MAX_FILE_BYTES:
+        raise RuntimeError(f"The source file exceeded the file byte limit: '{path}'.")
     content = _git_bytes(root, "cat-file", "blob", record["object_id"])
+    if len(content) != byte_length:
+        raise RuntimeError(f"The selected source file changed size: '{path}'.")
     return SnapshotFileEntry(
         path=path,
         source_kind="selected_commit_tree",
@@ -530,14 +708,19 @@ def inventory_manifest(
             "inventory_digest": digest,
         }
     if source_kind == "worktree_overlay":
-        head_oid = binding.get("head_oid")
-        if not isinstance(head_oid, str):
-            raise RuntimeError("The worktree source binding is malformed.")
-        return {
+        current = _verify_worktree_binding(root, binding)
+        evidence_paths = _binding_evidence_paths(binding)
+        inventory = {
             "source_kind": source_kind,
             "target": target,
-            **_worktree_inventory(root, head_oid, target),
+            **_worktree_inventory(
+                root, cast(str, current["head_oid"]), target, evidence_paths
+            ),
         }
+        _verify_worktree_binding(root, binding)
+        if inventory["overlay_digest"] != binding.get("overlay_digest"):
+            raise RuntimeError("The worktree assessment source is stale.")
+        return inventory
     raise RuntimeError("The assessment source kind is not valid.")
 
 
@@ -549,9 +732,20 @@ def guidance_snapshot_manifest(
     """Read guidance and architecture files from only the bound source."""
     root = _repository_root(repository_root)
     source_kind = binding.get("source_kind")
+    normalized_paths = tuple(normalize_repo_tree_path(path) for path in paths)
+    if len(normalized_paths) > MAX_PATH_COUNT:
+        raise RuntimeError("The assessment exceeded its path limit.")
+    if source_kind == "worktree_overlay":
+        scopes = (
+            _target_path(cast(str | None, binding.get("target"))),
+            *_binding_evidence_paths(binding),
+        )
+        if any(not _path_is_in_scope(path, scopes) for path in normalized_paths):
+            raise RuntimeError("A guidance path is outside the bound source evidence.")
+        _verify_worktree_binding(root, binding)
     manifest: list[dict[str, Any]] = []
-    for raw_path in paths:
-        path = normalize_repo_tree_path(raw_path)
+    total_bytes = 0
+    for path in normalized_paths:
         if source_kind == "selected_commit_tree":
             entry = snapshot_file_entry(root, binding, path)
             identity = {
@@ -575,12 +769,18 @@ def guidance_snapshot_manifest(
                 "content_sha256": hashlib.sha256(entry.content).hexdigest(),
             }
         )
+        total_bytes += len(entry.content)
+        if total_bytes > MAX_TOTAL_BYTES:
+            raise RuntimeError("The assessment exceeded its aggregate byte limit.")
+    if source_kind == "worktree_overlay":
+        _verify_worktree_binding(root, binding)
     return manifest
 
 
 def validation_manifest(
     *,
     available: bool,
+    source_digest: str | None = None,
     reason: str | None = None,
     receipts: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
@@ -591,16 +791,52 @@ def validation_manifest(
             raise RuntimeError("Unavailable validation requires a reason.")
         return {
             "status": "unavailable",
+            "source_digest": source_digest,
             "reason": reason,
             "receipts": [],
             "static_assessment": {"continue": True},
             "repair_eligibility": False,
         }
+    if not isinstance(source_digest, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", source_digest
+    ):
+        raise RuntimeError("Available validation requires one source digest.")
+    required_fields = {
+        "source_digest",
+        "argv",
+        "environment",
+        "exit_status",
+        "stdout",
+        "stderr",
+    }
+    for receipt in copied_receipts:
+        argv = receipt.get("argv")
+        environment = receipt.get("environment")
+        exit_status = receipt.get("exit_status")
+        if (
+            not required_fields.issubset(receipt)
+            or receipt.get("source_digest") != source_digest
+            or not isinstance(argv, list)
+            or not argv
+            or not all(isinstance(argument, str) and argument for argument in argv)
+            or not isinstance(environment, Mapping)
+            or not environment
+            or not all(
+                isinstance(key, str) and isinstance(value, str)
+                for key, value in environment.items()
+            )
+            or isinstance(exit_status, bool)
+            or not isinstance(exit_status, int)
+            or not isinstance(receipt.get("stdout"), str)
+            or not isinstance(receipt.get("stderr"), str)
+        ):
+            raise RuntimeError("A validation receipt is incomplete or mismatched.")
     successful = bool(copied_receipts) and all(
-        receipt.get("status") == "success" for receipt in copied_receipts
+        receipt["exit_status"] == 0 for receipt in copied_receipts
     )
     return {
         "status": "available",
+        "source_digest": source_digest,
         "reason": None,
         "receipts": copied_receipts,
         "static_assessment": {"continue": True},
@@ -610,7 +846,7 @@ def validation_manifest(
 
 def _selected_candidates(
     report: Mapping[str, Any], candidate_ids: Sequence[str]
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[str], list[Mapping[str, Any]]]:
     """Validate explicit candidate IDs and return their confined paths."""
     if not candidate_ids or len(set(candidate_ids)) != len(candidate_ids):
         raise RuntimeError("Repair candidate IDs must be explicit and unique.")
@@ -621,12 +857,15 @@ def _selected_candidates(
     raw_candidates = report.get("candidates")
     if not isinstance(raw_candidates, list):
         raise TypeError("The assessment report does not contain candidates.")
-    candidates: dict[str, list[str]] = {}
+    candidates: dict[str, tuple[list[str], Mapping[str, Any]]] = {}
     for raw_candidate in raw_candidates:
         if not isinstance(raw_candidate, Mapping):
             raise TypeError("The assessment report contains a malformed candidate.")
         candidate_id = raw_candidate.get("id")
         raw_paths = raw_candidate.get("paths")
+        dependencies = raw_candidate.get("dependencies")
+        evidence = raw_candidate.get("evidence")
+        correction = raw_candidate.get("correction")
         if (
             not isinstance(candidate_id, str)
             or CANDIDATE_ID.fullmatch(candidate_id) is None
@@ -634,20 +873,110 @@ def _selected_candidates(
             or not isinstance(raw_paths, list)
             or not raw_paths
             or not all(isinstance(path, str) for path in raw_paths)
+            or raw_candidate.get("route") != "realign"
+            or raw_candidate.get("status") not in {"open", "resolved"}
+            or not isinstance(dependencies, list)
+            or not all(isinstance(item, str) for item in dependencies)
+            or not isinstance(evidence, list)
+            or not evidence
+            or not isinstance(correction, Mapping)
+            or not correction
         ):
             raise RuntimeError("The assessment report contains a malformed candidate.")
-        candidates[candidate_id] = [
-            normalize_repo_tree_path(path) for path in raw_paths
-        ]
+        candidates[candidate_id] = (
+            [normalize_repo_tree_path(path) for path in raw_paths],
+            raw_candidate,
+        )
     unknown = [
         candidate_id for candidate_id in candidate_ids if candidate_id not in candidates
     ]
     if unknown:
         raise RuntimeError(f"The repair candidate is unknown: '{unknown[0]}'.")
     paths = sorted(
-        {path for candidate_id in candidate_ids for path in candidates[candidate_id]}
+        {path for candidate_id in candidate_ids for path in candidates[candidate_id][0]}
     )
-    return list(candidate_ids), paths
+    if len(paths) > MAX_PATH_COUNT:
+        raise RuntimeError("The assessment exceeded its path limit.")
+    selected = [candidates[candidate_id][1] for candidate_id in candidate_ids]
+    if any(candidate.get("status") != "open" for candidate in selected):
+        raise RuntimeError("A selected repair candidate is not open.")
+    for candidate in selected:
+        for dependency in cast(list[str], candidate["dependencies"]):
+            dependency_record = candidates.get(dependency)
+            if dependency not in candidate_ids and (
+                dependency_record is None
+                or dependency_record[1].get("status") != "resolved"
+            ):
+                raise RuntimeError("A repair candidate dependency is not satisfied.")
+    return list(candidate_ids), paths, selected
+
+
+def _path_is_in_scope(path: str, scopes: Sequence[str]) -> bool:
+    """Return whether a path is inside one declared repository-tree scope."""
+    return "." in scopes or any(
+        path == scope or path.startswith(f"{scope}/") for scope in scopes
+    )
+
+
+def _verify_candidate_evidence(
+    repository_root: Path,
+    source: Mapping[str, Any],
+    candidates: Sequence[Mapping[str, Any]],
+) -> None:
+    """Re-read exact candidate files and verify their recorded content evidence."""
+    target = _target_path(cast(str | None, source.get("target")))
+    scopes = (target, *_binding_evidence_paths(source))
+    source_kind = source.get("source_kind")
+    if source_kind == "worktree_overlay":
+        _verify_worktree_binding(repository_root, source)
+    for candidate in candidates:
+        paths = [normalize_repo_tree_path(path) for path in candidate["paths"]]
+        if any(not _path_is_in_scope(path, scopes) for path in paths):
+            raise RuntimeError("A repair candidate path is outside the assessed scope.")
+        raw_evidence = candidate["evidence"]
+        if not isinstance(raw_evidence, list):
+            raise TypeError("A repair candidate has malformed evidence.")
+        evidence: dict[str, str] = {}
+        for item in raw_evidence:
+            if (
+                not isinstance(item, Mapping)
+                or not isinstance(item.get("path"), str)
+                or not isinstance(item.get("content_sha256"), str)
+            ):
+                raise TypeError("A repair candidate has malformed evidence.")
+            path = normalize_repo_tree_path(cast(str, item["path"]))
+            digest = cast(str, item["content_sha256"])
+            if path in evidence or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+                raise RuntimeError("A repair candidate has malformed evidence.")
+            evidence[path] = digest
+        if set(evidence) != set(paths):
+            raise RuntimeError("A repair candidate does not bind each affected path.")
+        for path in paths:
+            if source_kind == "selected_commit_tree":
+                content = snapshot_file_entry(repository_root, source, path).content
+            else:
+                content = _worktree_snapshot_entry(repository_root, path).content
+            if hashlib.sha256(content).hexdigest() != evidence[path]:
+                raise RuntimeError("A repair candidate has stale content evidence.")
+    if source_kind == "worktree_overlay":
+        _verify_worktree_binding(repository_root, source)
+
+
+def _verify_validation_manifest(validation: Any, source_digest: str) -> None:
+    """Require complete successful receipts for the exact assessment source."""
+    if not isinstance(validation, Mapping):
+        raise TypeError("The assessment report is not repair-eligible.")
+    receipts = validation.get("receipts")
+    if not isinstance(receipts, list):
+        raise TypeError("The assessment report is not repair-eligible.")
+    rebuilt = validation_manifest(
+        available=validation.get("status") == "available",
+        source_digest=source_digest,
+        reason=cast(str | None, validation.get("reason")),
+        receipts=receipts,
+    )
+    if dict(validation) != rebuilt or not rebuilt["repair_eligibility"]:
+        raise RuntimeError("The assessment report is not repair-eligible.")
 
 
 def _candidate_overlap(repository_root: Path, paths: Sequence[str]) -> bool:
@@ -668,33 +997,34 @@ def repair_preflight(
     repository_root: Path,
     report: Mapping[str, Any],
     candidate_ids: Sequence[str],
+    *,
+    approved_report_digest: str | None = None,
 ) -> dict[str, Any]:
     """Rebind a report and reject stale evidence or overlapping user work."""
     root = _repository_root(repository_root)
     source = report.get("source")
     if not isinstance(source, Mapping):
         raise TypeError("The assessment report source binding is malformed.")
-    selected_ids, paths = _selected_candidates(report, candidate_ids)
+    if not isinstance(
+        approved_report_digest, str
+    ) or approved_report_digest != assessment_report_digest(report):
+        raise RuntimeError(
+            "The approved assessment report binding is missing or stale."
+        )
+    selected_ids, paths, candidates = _selected_candidates(report, candidate_ids)
+    source_digest = source.get("source_digest")
+    if not isinstance(source_digest, str):
+        raise TypeError("The assessment source digest is malformed.")
+    _verify_validation_manifest(report.get("validation"), source_digest)
     source_kind = source.get("source_kind")
     isolated_start: str | None = None
     if source_kind == "selected_commit_tree":
         isolated_start, _ = _verify_selected_binding(root, source)
     elif source_kind == "worktree_overlay":
-        current = resolve_source_binding(
-            root, target=cast(str | None, source.get("target"))
-        )
-        for field in (
-            "head_oid",
-            "tree_oid",
-            "target",
-            "inventory_digest",
-            "overlay_digest",
-            "source_digest",
-        ):
-            if current.get(field) != source.get(field):
-                raise RuntimeError("The worktree assessment source is stale.")
+        _verify_worktree_binding(root, source)
     else:
         raise RuntimeError("The assessment report source kind is not valid.")
+    _verify_candidate_evidence(root, source, candidates)
     if _candidate_overlap(root, paths):
         raise RuntimeError("A repair candidate path overlaps existing work.")
     return {
@@ -708,7 +1038,11 @@ def repair_preflight(
 
 def _read_report(path: Path) -> Mapping[str, Any]:
     """Read one JSON assessment report."""
-    document = json.loads(path.read_text(encoding="utf-8"))
+    with path.open("rb") as stream:
+        raw_document = stream.read(MAX_FILE_BYTES + 1)
+    if len(raw_document) > MAX_FILE_BYTES:
+        raise RuntimeError("The assessment report exceeded the file byte limit.")
+    document = json.loads(raw_document.decode("utf-8"))
     if not isinstance(document, Mapping):
         raise TypeError("The assessment report must be a JSON object.")
     return document
@@ -731,6 +1065,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     preflight_parser.add_argument(
         "--candidate", action="append", required=True, dest="candidate_ids"
     )
+    preflight_parser.add_argument("--approved-report-digest", required=True)
     arguments = parser.parse_args(argv)
     try:
         repository_root = Path(_git_text(Path.cwd(), "rev-parse", "--show-toplevel"))
@@ -739,6 +1074,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 repository_root,
                 reference=arguments.reference,
                 target=arguments.target,
+                evidence_paths=arguments.guidance,
             )
             result = {
                 "schema_version": 1,
@@ -749,6 +1085,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ),
                 "validation": validation_manifest(
                     available=False,
+                    source_digest=source["source_digest"],
                     reason="Validation execution was not requested by this binding command.",
                 ),
             }
@@ -757,6 +1094,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 repository_root,
                 _read_report(arguments.report),
                 arguments.candidate_ids,
+                approved_report_digest=arguments.approved_report_digest,
             )
     except (
         OSError,

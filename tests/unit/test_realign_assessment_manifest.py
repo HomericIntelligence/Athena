@@ -15,6 +15,7 @@ from functools import lru_cache
 from io import StringIO
 from pathlib import Path
 from types import ModuleType
+from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[2]
 HELPER = ROOT / "skills/realign/scripts/resolve_assessment.py"
@@ -54,6 +55,50 @@ def load_helper() -> ModuleType:
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def valid_report(
+    helper: ModuleType, repository: Path, source: dict[str, Any], path: str
+) -> tuple[dict[str, Any], str]:
+    """Build one complete source-bound repair report and approval digest."""
+    if source["source_kind"] == "selected_commit_tree":
+        content = helper.snapshot_file_entry(repository, source, path).content
+    else:
+        content = (repository / path).read_bytes()
+    receipt = {
+        "source_digest": source["source_digest"],
+        "argv": ["just", "test"],
+        "environment": {"boundary": "host-enforced"},
+        "exit_status": 0,
+        "stdout": "passed\n",
+        "stderr": "",
+    }
+    report = {
+        "schema_version": 1,
+        "source": source,
+        "validation": helper.validation_manifest(
+            available=True,
+            source_digest=source["source_digest"],
+            receipts=[receipt],
+        ),
+        "candidates": [
+            {
+                "id": "RLG-001",
+                "paths": [path],
+                "route": "realign",
+                "status": "open",
+                "dependencies": [],
+                "evidence": [
+                    {
+                        "path": path,
+                        "content_sha256": hashlib.sha256(content).hexdigest(),
+                    }
+                ],
+                "correction": {"summary": "Apply the approved correction."},
+            }
+        ],
+    }
+    return report, helper.assessment_report_digest(report)
 
 
 class RealignAssessmentManifestTests(unittest.TestCase):
@@ -143,6 +188,32 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         self.assertNotEqual(first["overlay_digest"], second["overlay_digest"])
         self.assertIn("untracked.txt", first["overlay_paths"])
 
+    def test_worktree_guidance_read_rejects_drift_and_binds_out_of_target_path(
+        self,
+    ) -> None:
+        helper = load_helper()
+        commit_file(self.repository, "source.txt", "base\n", "base")
+        (self.repository / "AGENTS.md").write_text("guidance one\n", encoding="utf-8")
+        binding = helper.resolve_source_binding(
+            self.repository,
+            target="source.txt",
+            evidence_paths=["AGENTS.md"],
+        )
+        self.assertIn("AGENTS.md", binding["overlay_paths"])
+
+        (self.repository / "AGENTS.md").write_text("guidance two\n", encoding="utf-8")
+        with self.assertRaisesRegex(RuntimeError, "stale"):
+            helper.guidance_snapshot_manifest(self.repository, binding, ["AGENTS.md"])
+
+    def test_worktree_inventory_rejects_head_movement_after_binding(self) -> None:
+        helper = load_helper()
+        commit_file(self.repository, "source.txt", "base\n", "base")
+        binding = helper.resolve_source_binding(self.repository)
+        commit_file(self.repository, "second.txt", "second\n", "second")
+
+        with self.assertRaisesRegex(RuntimeError, "stale"):
+            helper.inventory_manifest(self.repository, binding)
+
     def test_unavailable_validation_keeps_static_assessment_and_blocks_repair_eligibility(
         self,
     ) -> None:
@@ -199,7 +270,9 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         selected_binding = helper.resolve_source_binding(
             self.repository, reference=selected
         )
-        worktree_binding = helper.resolve_source_binding(self.repository)
+        worktree_binding = helper.resolve_source_binding(
+            self.repository, evidence_paths=["AGENTS.md"]
+        )
         selected_entry = helper.guidance_snapshot_manifest(
             self.repository, selected_binding, ["AGENTS.md"]
         )[0]
@@ -220,28 +293,39 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         selected_binding = helper.resolve_source_binding(
             self.repository, reference=selected
         )
-        selected_report = {
-            "source": selected_binding,
-            "candidates": [{"id": "RLG-001", "paths": ["source.txt"]}],
-        }
+        selected_report, selected_digest = valid_report(
+            helper, self.repository, selected_binding, "source.txt"
+        )
         (self.repository / "source.txt").write_text("overlap\n", encoding="utf-8")
         with self.assertRaisesRegex(RuntimeError, "overlap"):
-            helper.repair_preflight(self.repository, selected_report, ["RLG-001"])
+            helper.repair_preflight(
+                self.repository,
+                selected_report,
+                ["RLG-001"],
+                approved_report_digest=selected_digest,
+            )
 
         (self.repository / "source.txt").write_text("base\n", encoding="utf-8")
         preflight = helper.repair_preflight(
-            self.repository, selected_report, ["RLG-001"]
+            self.repository,
+            selected_report,
+            ["RLG-001"],
+            approved_report_digest=selected_digest,
         )
         self.assertEqual(selected, preflight["isolated_worktree_start_oid"])
 
         worktree_binding = helper.resolve_source_binding(self.repository)
-        worktree_report = {
-            "source": worktree_binding,
-            "candidates": [{"id": "RLG-001", "paths": ["source.txt"]}],
-        }
+        worktree_report, worktree_digest = valid_report(
+            helper, self.repository, worktree_binding, "source.txt"
+        )
         (self.repository / "source.txt").write_text("stale\n", encoding="utf-8")
         with self.assertRaisesRegex(RuntimeError, "stale"):
-            helper.repair_preflight(self.repository, worktree_report, ["RLG-001"])
+            helper.repair_preflight(
+                self.repository,
+                worktree_report,
+                ["RLG-001"],
+                approved_report_digest=worktree_digest,
+            )
 
     def test_untrusted_paths_are_confined_before_tree_or_repair_access(self) -> None:
         helper = load_helper()
@@ -322,17 +406,171 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "requires a reason"):
             helper.validation_manifest(available=False)
 
+        with self.assertRaisesRegex(RuntimeError, "receipt"):
+            helper.validation_manifest(
+                available=True,
+                source_digest="a" * 64,
+                receipts=[{"status": "success", "command": "test"}],
+            )
+
+        receipt = {
+            "source_digest": "a" * 64,
+            "argv": ["just", "test"],
+            "environment": {"boundary": "host-enforced"},
+            "exit_status": 0,
+            "stdout": "passed\n",
+            "stderr": "",
+        }
+        for field in tuple(receipt):
+            incomplete_receipt = dict(receipt)
+            del incomplete_receipt[field]
+            with (
+                self.subTest(missing_receipt_field=field),
+                self.assertRaisesRegex(RuntimeError, "receipt|source digest"),
+            ):
+                helper.validation_manifest(
+                    available=True,
+                    source_digest="a" * 64,
+                    receipts=[incomplete_receipt],
+                )
         successful = helper.validation_manifest(
-            available=True, receipts=[{"status": "success", "command": "test"}]
+            available=True, source_digest="a" * 64, receipts=[receipt]
         )
         failed = helper.validation_manifest(
-            available=True, receipts=[{"status": "failed", "command": "test"}]
+            available=True,
+            source_digest="a" * 64,
+            receipts=[{**receipt, "exit_status": 1, "stderr": "failed\n"}],
         )
-        empty = helper.validation_manifest(available=True)
+        empty = helper.validation_manifest(available=True, source_digest="a" * 64)
 
         self.assertTrue(successful["repair_eligibility"])
         self.assertFalse(failed["repair_eligibility"])
         self.assertFalse(empty["repair_eligibility"])
+
+    def test_repair_preflight_rejects_ineligible_or_incomplete_report(self) -> None:
+        helper = load_helper()
+        selected = commit_file(self.repository, "source.txt", "base\n", "base")
+        source = helper.resolve_source_binding(self.repository, reference=selected)
+        incomplete = {
+            "source": source,
+            "validation": helper.validation_manifest(
+                available=False, reason="No safe execution boundary."
+            ),
+            "candidates": [{"id": "RLG-001", "paths": ["source.txt"]}],
+        }
+
+        with self.assertRaisesRegex(RuntimeError, "repair-eligible|candidate"):
+            helper.repair_preflight(
+                self.repository,
+                incomplete,
+                ["RLG-001"],
+                approved_report_digest=helper.assessment_report_digest(incomplete),
+            )
+
+    def test_inventory_enforces_path_count_and_file_byte_limits(self) -> None:
+        helper = load_helper()
+        limits = cast(Any, helper)
+        commit_file(self.repository, "one.txt", "1\n", "one")
+        (self.repository / "two.txt").write_text("22\n", encoding="utf-8")
+        original_path_limit = limits.MAX_PATH_COUNT
+        original_file_limit = limits.MAX_FILE_BYTES
+        original_total_limit = limits.MAX_TOTAL_BYTES
+        original_git_limit = limits.MAX_GIT_OUTPUT_BYTES
+        self.addCleanup(setattr, helper, "MAX_PATH_COUNT", original_path_limit)
+        self.addCleanup(setattr, helper, "MAX_FILE_BYTES", original_file_limit)
+        self.addCleanup(setattr, helper, "MAX_TOTAL_BYTES", original_total_limit)
+        self.addCleanup(setattr, helper, "MAX_GIT_OUTPUT_BYTES", original_git_limit)
+
+        limits.MAX_PATH_COUNT = 2
+        helper.resolve_source_binding(self.repository)
+        limits.MAX_PATH_COUNT = 1
+        with self.assertRaisesRegex(RuntimeError, "path limit"):
+            helper.resolve_source_binding(self.repository)
+
+        limits.MAX_PATH_COUNT = original_path_limit
+        limits.MAX_FILE_BYTES = 2
+        with self.assertRaisesRegex(RuntimeError, "file byte limit"):
+            helper.resolve_source_binding(self.repository)
+
+        limits.MAX_FILE_BYTES = original_file_limit
+        limits.MAX_TOTAL_BYTES = 5
+        helper.resolve_source_binding(self.repository)
+        limits.MAX_TOTAL_BYTES = 4
+        with self.assertRaisesRegex(RuntimeError, "aggregate byte limit"):
+            helper.resolve_source_binding(self.repository)
+
+        limits.MAX_TOTAL_BYTES = original_total_limit
+        root_output = limits._git_bytes(self.repository, "rev-parse", "--show-toplevel")
+        limits.MAX_GIT_OUTPUT_BYTES = len(root_output)
+        self.assertEqual(
+            root_output,
+            limits._git_bytes(self.repository, "rev-parse", "--show-toplevel"),
+        )
+        limits.MAX_GIT_OUTPUT_BYTES = len(root_output) - 1
+        with self.assertRaisesRegex(RuntimeError, "output limit"):
+            limits._git_bytes(self.repository, "rev-parse", "--show-toplevel")
+
+    def test_repair_preflight_binds_candidate_content_scope_and_dependencies(
+        self,
+    ) -> None:
+        helper = load_helper()
+        commit_file(self.repository, "source.txt", "base\n", "base")
+        (self.repository / "outside.txt").write_text("outside\n", encoding="utf-8")
+        source = helper.resolve_source_binding(self.repository, target="source.txt")
+        report, report_digest = valid_report(
+            helper, self.repository, source, "source.txt"
+        )
+
+        changed = json.loads(json.dumps(report))
+        changed["candidates"][0]["correction"]["summary"] = "Different correction."
+        with self.assertRaisesRegex(RuntimeError, "approved assessment report"):
+            helper.repair_preflight(
+                self.repository,
+                changed,
+                ["RLG-001"],
+                approved_report_digest=report_digest,
+            )
+
+        outside = json.loads(json.dumps(report))
+        outside_candidate = outside["candidates"][0]
+        outside_candidate["paths"] = ["outside.txt"]
+        outside_candidate["evidence"] = [
+            {
+                "path": "outside.txt",
+                "content_sha256": hashlib.sha256(b"outside\n").hexdigest(),
+            }
+        ]
+        with self.assertRaisesRegex(RuntimeError, "outside the assessed scope"):
+            helper.repair_preflight(
+                self.repository,
+                outside,
+                ["RLG-001"],
+                approved_report_digest=helper.assessment_report_digest(outside),
+            )
+
+        dependent = json.loads(json.dumps(report))
+        dependent["candidates"][0]["dependencies"] = ["RLG-002"]
+        with self.assertRaisesRegex(RuntimeError, "dependency"):
+            helper.repair_preflight(
+                self.repository,
+                dependent,
+                ["RLG-001"],
+                approved_report_digest=helper.assessment_report_digest(dependent),
+            )
+
+        resolved = json.loads(json.dumps(report))
+        prerequisite = json.loads(json.dumps(resolved["candidates"][0]))
+        prerequisite["id"] = "RLG-002"
+        prerequisite["status"] = "resolved"
+        resolved["candidates"][0]["dependencies"] = ["RLG-002"]
+        resolved["candidates"].append(prerequisite)
+        result = helper.repair_preflight(
+            self.repository,
+            resolved,
+            ["RLG-001"],
+            approved_report_digest=helper.assessment_report_digest(resolved),
+        )
+        self.assertEqual("eligible", result["status"])
 
     def test_repair_preflight_rejects_invalid_candidate_and_source_contracts(
         self,
@@ -340,16 +578,20 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         helper = load_helper()
         selected = commit_file(self.repository, "source.txt", "base\n", "base")
         source = helper.resolve_source_binding(self.repository, reference=selected)
-        report = {
-            "source": source,
-            "candidates": [{"id": "RLG-001", "paths": ["source.txt"]}],
-        }
+        report, report_digest = valid_report(
+            helper, self.repository, source, "source.txt"
+        )
         for candidate_ids in ([], ["RLG-001", "RLG-001"], ["all"], ["RLG-999"]):
             with (
                 self.subTest(candidate_ids=candidate_ids),
                 self.assertRaises(RuntimeError),
             ):
-                helper.repair_preflight(self.repository, report, candidate_ids)
+                helper.repair_preflight(
+                    self.repository,
+                    report,
+                    candidate_ids,
+                    approved_report_digest=report_digest,
+                )
 
         malformed_reports: tuple[dict[str, object], ...] = (
             {},
@@ -372,15 +614,23 @@ class RealignAssessmentManifestTests(unittest.TestCase):
                 self.subTest(report=malformed),
                 self.assertRaises((RuntimeError, TypeError)),
             ):
-                helper.repair_preflight(self.repository, malformed, ["RLG-001"])
+                helper.repair_preflight(
+                    self.repository,
+                    malformed,
+                    ["RLG-001"],
+                    approved_report_digest=helper.assessment_report_digest(malformed),
+                )
 
         stale_source = dict(source)
         stale_source["tree_oid"] = "0" * 40
         with self.assertRaisesRegex(RuntimeError, "stale"):
             helper.repair_preflight(
                 self.repository,
-                {"source": stale_source, "candidates": report["candidates"]},
+                {**report, "source": stale_source},
                 ["RLG-001"],
+                approved_report_digest=helper.assessment_report_digest(
+                    {**report, "source": stale_source}
+                ),
             )
         with self.assertRaisesRegex(RuntimeError, "source kind"):
             helper.inventory_manifest(
@@ -404,7 +654,7 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         helper = load_helper()
         selected = commit_file(self.repository, "source.txt", "base\n", "base")
         source = helper.resolve_source_binding(self.repository, reference=selected)
-        candidate = [{"id": "RLG-001", "paths": ["source.txt"]}]
+        report, _ = valid_report(helper, self.repository, source, "source.txt")
 
         for field, value in (
             ("source_digest", "0" * 64),
@@ -417,10 +667,14 @@ class RealignAssessmentManifestTests(unittest.TestCase):
                 self.subTest(field=field),
                 self.assertRaises((RuntimeError, TypeError)),
             ):
+                changed_report = {**report, "source": changed_source}
                 helper.repair_preflight(
                     self.repository,
-                    {"source": changed_source, "candidates": candidate},
+                    changed_report,
                     ["RLG-001"],
+                    approved_report_digest=helper.assessment_report_digest(
+                        changed_report
+                    ),
                 )
 
     def test_repository_root_input_must_name_the_repository_root(self) -> None:
@@ -484,16 +738,11 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         helper = load_helper()
         selected = commit_file(self.repository, "source.txt", "base\n", "base")
         source = helper.resolve_source_binding(self.repository, reference=selected)
-        report_path = self.repository / "report.json"
-        report_path.write_text(
-            json.dumps(
-                {
-                    "source": source,
-                    "candidates": [{"id": "RLG-001", "paths": ["source.txt"]}],
-                }
-            ),
-            encoding="utf-8",
+        report, report_digest = valid_report(
+            helper, self.repository, source, "source.txt"
         )
+        report_path = self.repository / "report.json"
+        report_path.write_text(json.dumps(report), encoding="utf-8")
         original_directory = Path.cwd()
         self.addCleanup(os.chdir, original_directory)
         os.chdir(self.repository)
@@ -501,7 +750,14 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         output = StringIO()
         with redirect_stdout(output):
             returncode = helper.main(
-                ["repair-preflight", str(report_path), "--candidate", "RLG-001"]
+                [
+                    "repair-preflight",
+                    str(report_path),
+                    "--candidate",
+                    "RLG-001",
+                    "--approved-report-digest",
+                    report_digest,
+                ]
             )
         self.assertEqual(0, returncode)
         self.assertEqual("eligible", json.loads(output.getvalue())["status"])
@@ -510,7 +766,14 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         errors = StringIO()
         with redirect_stderr(errors):
             returncode = helper.main(
-                ["repair-preflight", str(report_path), "--candidate", "RLG-001"]
+                [
+                    "repair-preflight",
+                    str(report_path),
+                    "--candidate",
+                    "RLG-001",
+                    "--approved-report-digest",
+                    report_digest,
+                ]
             )
         self.assertEqual(1, returncode)
         self.assertIn("error:", errors.getvalue())
