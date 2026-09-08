@@ -16,9 +16,12 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+import pytest
+
 from skills._cli import argument_parser, git_read_arguments, git_read_environment
 
 ROOT = Path(__file__).resolve().parents[2]
+pytestmark = pytest.mark.nightly
 
 
 def executable_scripts() -> list[Path]:

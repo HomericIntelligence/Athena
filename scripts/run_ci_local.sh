@@ -9,6 +9,7 @@
 #   ./scripts/run_ci_local.sh              # Run all supported local CI checks.
 #   ./scripts/run_ci_local.sh validate     # Validate the plugin distribution.
 #   ./scripts/run_ci_local.sh test         # Run contract tests with the minimum coverage requirement.
+#   ./scripts/run_ci_local.sh test-fast    # Run the fast contract tests.
 #   ./scripts/run_ci_local.sh static       # Run lint, format, and type checks.
 #   ./scripts/run_ci_local.sh markdownlint # Lint the documentation.
 #   ./scripts/run_ci_local.sh workflow     # Validate workflow syntax and schemas.
@@ -149,6 +150,11 @@ run_test() {
         uv run coverage report --show-missing'
 }
 
+run_test_fast() {
+    log_step "Run the fast contract tests."
+    run_in_container uv run pytest -q -m "not nightly"
+}
+
 run_static() {
     log_step "Run Ruff, the format check, and the mypy type check."
     run_in_container uv run ruff check scripts tests skills &&
@@ -200,6 +206,9 @@ case "${SUBSET}" in
     test)
         run_step "test" run_test
         ;;
+    test-fast)
+        run_step "test-fast" run_test_fast
+        ;;
     static)
         run_step "static" run_static
         ;;
@@ -223,7 +232,7 @@ case "${SUBSET}" in
     *)
         log_error "The subset is not valid: '${SUBSET}'."
         log_error "Use one of these values:"
-        log_error "all, validate, test, static, markdownlint, workflow, uv-pins"
+        log_error "all, validate, test, test-fast, static, markdownlint, workflow, uv-pins"
         exit 1
         ;;
 esac

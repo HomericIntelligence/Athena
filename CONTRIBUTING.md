@@ -34,6 +34,10 @@ just all
 
 It does not build Python distribution artifacts.
 
+Pre-commit and pull-request continuous integration (CI) use `just test-fast`. This command excludes
+tests that have the `nightly` marker. Use `just test` to run all tests and the coverage policy. The
+daily nightly workflow and each release run use `just test`.
+
 ## Add or change a skill
 
 1. File or identify a tracking issue with example invocations and an output contract.

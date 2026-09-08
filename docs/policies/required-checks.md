@@ -17,9 +17,11 @@ timeout.
 - `validate` does these checks:
 
   - It validates each skill and host manifest.
-  - It runs unit tests for executable scripts.
-  - It requires at least 80% branch coverage for each repository script and skill-local executable
-    script.
+  - It runs the fast unit-test tier for pull requests, pushes, merge groups, scheduled runs, and
+    manual runs.
+  - For a release, it runs all unit tests for executable scripts.
+  - For a release, it requires at least 80% branch coverage for each repository script and
+    skill-local executable script.
   - It enforces Ruff, formatting, and strict mypy on repository scripts and skill-local scripts.
 
 - `markdownlint` validates public documents and the shipped `skills/**/*.md` product corpus. It does
@@ -68,6 +70,30 @@ timeout.
 Add each new gating job to `required-checks-gate`. Never represent an advisory job as required. The
 tracked `main` ruleset and the live `main` ruleset require `required-checks-gate` to pass against the
 current `main` base before merge.
+
+## Test tiers
+
+The `nightly` pytest marker identifies integration-heavy tests. These tests use Git repositories,
+installed package trees, or many subprocesses. The fast tier uses `not nightly`. New tests are in
+the fast tier unless an author adds the `nightly` marker.
+
+Pre-commit and pull-request continuous integration (CI) run the same fast test tier. The full test
+suite runs each day at 09:17 Coordinated Universal Time (UTC). The nightly workflow also supports a
+manual run. It does not join `required-checks-gate`.
+
+A release calls the required workflow with `full-tests: true`. Thus, a release runs the full test
+suite and the coverage policy for the exact release revision.
+
+The initial tier selection uses these runtime classification criteria:
+
+- Evaluate a pre-commit hook or pull-request job only when its representative runtime is at least
+  one minute.
+- Keep approximately 10% of the current test runtime in the fast tier.
+- Put approximately 90% of the current test runtime in the nightly tier.
+
+These percentages are selection guidance. They are not execution time limits. The repository does
+not fail a test tier because its runtime ratio changes. Sub-minute validation, static-analysis,
+documentation, workflow, policy, package, and security jobs stay unchanged.
 
 Athena calls `.github/workflows/_agent-contract.yml` from its required and release workflows. The
 workflow checks out the caller revision. The called Athena revision supplies the validator and

@@ -15,8 +15,11 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import patch
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 RESOLVER = ROOT / "skills/change-review/scripts/resolve_scope.py"
+pytestmark = pytest.mark.nightly
 
 
 def git(cwd: Path, *arguments: str) -> str:
