@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -20,6 +21,9 @@ def coverage_failures(report: object, minimum: float) -> list[str]:
     """Return deterministic per-file coverage failures from coverage.py JSON."""
     if not isinstance(report, dict) or not isinstance(report.get("files"), dict):
         raise TypeError("The coverage report does not contain a file map.")
+    meta = report.get("meta")
+    if not isinstance(meta, dict) or meta.get("branch_coverage") is not True:
+        raise TypeError("The coverage report must contain branch measurements.")
     failures: list[str] = []
     for path, item in sorted(report["files"].items()):
         if not isinstance(path, str) or not isinstance(item, dict):
@@ -27,10 +31,28 @@ def coverage_failures(report: object, minimum: float) -> list[str]:
                 "The coverage report contains a file record that is not valid."
             )
         summary = item.get("summary")
-        percent = summary.get("percent_covered") if isinstance(summary, dict) else None
-        if not isinstance(percent, int | float):
+        if not isinstance(summary, dict):
+            raise TypeError(f"The coverage summary is missing for '{path}'.")
+        percent = summary.get("percent_covered")
+        if not isinstance(percent, int | float) or isinstance(percent, bool):
             raise TypeError(
                 f"The coverage report does not contain a percentage for '{path}'."
+            )
+        if not math.isfinite(percent) or not 0 <= percent <= 100:
+            raise ValueError(f"The coverage percentage is not valid for '{path}'.")
+        counts: list[int] = []
+        for key in ("num_branches", "covered_branches", "missing_branches"):
+            count = summary.get(key)
+            if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+                raise TypeError(f"The branch counts are not valid for '{path}'.")
+            counts.append(count)
+        total, covered, missing = counts
+        if covered + missing != total:
+            raise ValueError(f"The branch counts are inconsistent for '{path}'.")
+        if total and 100 * covered / total < minimum:
+            failures.append(
+                f"{path}: Branch coverage is {100 * covered / total:.2f} percent. "
+                f"The minimum is {minimum:.2f} percent."
             )
         if float(percent) < minimum:
             failures.append(
@@ -91,7 +113,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     print(
         "Every executable script meets the "
-        f"{arguments.minimum:.2f} percent coverage requirement."
+        f"{arguments.minimum:.2f} percent combined and branch coverage requirements."
     )
     return 0
 
