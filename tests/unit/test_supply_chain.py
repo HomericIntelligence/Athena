@@ -80,9 +80,15 @@ RAW_SPDX = {
 WORKFLOW_CLASSIFICATIONS = {
     "_agent-contract.yml": "provider-only",
     "_required.yml": "protected-events",
+    "nightly-tests.yml": "scheduled",
     "release.yml": "publishing",
 }
-WORKFLOW_CLASSIFICATION_VALUES = {"provider-only", "protected-events", "publishing"}
+WORKFLOW_CLASSIFICATION_VALUES = {
+    "provider-only",
+    "protected-events",
+    "publishing",
+    "scheduled",
+}
 AGENT_CONTRACT_WORKFLOW = "$/.github/workflows/_agent-contract.yml"
 
 
@@ -1495,6 +1501,67 @@ jobs:
         self.assertEqual({"branches": ["main"]}, workflow["on"]["push"])
         self.assertEqual({"types": ["checks_requested"]}, workflow["on"]["merge_group"])
         self.assertEqual([{"cron": "17 9 * * 2"}], workflow["on"]["schedule"])
+
+    def test_test_tiers_match_event_and_release_contracts(self) -> None:
+        """Use fast tests for changes and complete tests for releases."""
+        root = Path(__file__).resolve().parents[2]
+        required = yaml.safe_load(
+            (root / ".github" / "workflows" / "_required.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        release = yaml.safe_load(
+            (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        )
+        workflow_call = required["on"]["workflow_call"]
+        full_tests = workflow_call["inputs"]["full-tests"]
+        self.assertEqual({"type": "boolean", "default": False}, full_tests)
+
+        validate_steps = required["jobs"]["validate"]["steps"]
+        test_steps = [
+            step
+            for step in validate_steps
+            if step.get("run") in {"just ci-test", "just ci-test-fast"}
+        ]
+        self.assertEqual(
+            [
+                ("${{ !inputs['full-tests'] }}", "just ci-test-fast"),
+                ("${{ inputs['full-tests'] }}", "just ci-test"),
+            ],
+            [(step["if"], step["run"]) for step in test_steps],
+        )
+        self.assertEqual(True, release["jobs"]["required"]["with"]["full-tests"])
+
+    def test_nightly_workflow_runs_complete_tests_outside_required_gate(self) -> None:
+        """Run complete tests each day without adding a pull-request gate."""
+        root = Path(__file__).resolve().parents[2]
+        nightly = yaml.safe_load(
+            (root / ".github" / "workflows" / "nightly-tests.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            {"workflow_dispatch": {}, "schedule": [{"cron": "17 9 * * *"}]},
+            nightly["on"],
+        )
+        self.assertEqual(
+            AGENT_CONTRACT_WORKFLOW,
+            nightly["jobs"]["agent-contract"]["uses"],
+        )
+        test_job = nightly["jobs"]["nightly-tests"]
+        self.assertEqual("agent-contract", test_job["needs"])
+        self.assertEqual(30, test_job["timeout-minutes"])
+        self.assertTrue(
+            any(step.get("run") == "just ci-test" for step in test_job["steps"])
+        )
+        required = yaml.safe_load(
+            (root / ".github" / "workflows" / "_required.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertNotIn(
+            "nightly-tests", required["jobs"]["required-checks-gate"]["needs"]
+        )
 
     def test_required_and_release_workflows_consume_gated_sboms(self) -> None:
         root = Path(__file__).resolve().parents[2]

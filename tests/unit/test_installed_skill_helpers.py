@@ -12,10 +12,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import pytest
+
 from scripts.package_opencode import stage_package
 from scripts.package_plugin import build_package
 
 ROOT = Path(__file__).resolve().parents[2]
+pytestmark = pytest.mark.nightly
 
 
 @unittest.skipUnless(shutil.which("node"), "Installation requires Node.js")

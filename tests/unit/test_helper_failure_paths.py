@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import json
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -124,6 +127,124 @@ class HelperFailurePathTests(unittest.TestCase):
             ):
                 module.expected_identity(argparse.ArgumentParser(), base, head)
             self.assertEqual(2, error.exception.code)
+
+    def test_collector_rejects_checks_for_a_different_head(self) -> None:
+        collector = load_helper("pr-review", "collect_evidence")
+        head_oid = "b" * 40
+        cases = {
+            "stale": ["a" * 40],
+            "mixed": [head_oid, "a" * 40],
+        }
+        for name, check_heads in cases.items():
+            response = json.dumps(
+                {
+                    "total_count": len(check_heads),
+                    "check_runs": [
+                        {
+                            "conclusion": "success",
+                            "head_sha": check_head,
+                            "id": index,
+                            "name": f"check-{index}",
+                            "status": "completed",
+                        }
+                        for index, check_head in enumerate(check_heads, start=1)
+                    ],
+                }
+            ).encode()
+            with (
+                self.subTest(name=name),
+                patch.object(collector, "bounded_gh_output", return_value=response),
+                self.assertRaises(collector.CheckEvidenceCoverageGap),
+            ):
+                collector.head_bound_check_runs("owner/repository", head_oid)
+
+    def test_collector_binds_both_immutable_path_lenses(self) -> None:
+        collector = load_helper("pr-review", "collect_evidence")
+        base_oid = "a" * 40
+        head_oid = "b" * 40
+        merge_base = "c" * 40
+        with (
+            patch.object(collector, "require_complete_git_history"),
+            patch.object(collector, "git_bytes", return_value=b""),
+            patch.object(
+                collector,
+                "require_unambiguous_git_merge_base",
+                return_value=merge_base,
+            ),
+            patch.object(
+                collector,
+                "immutable_range_paths",
+                side_effect=[
+                    [b"author-intent.txt"],
+                    [b"current-target.txt"],
+                ],
+            ) as range_paths,
+        ):
+            manifest = collector.immutable_changed_paths(base_oid, head_oid)
+
+        self.assertEqual(("author-intent.txt", "current-target.txt"), manifest.paths)
+        self.assertEqual(
+            sha256(b"author-intent.txt\0current-target.txt\0").hexdigest(),
+            manifest.sha256,
+        )
+        self.assertEqual(
+            [
+                call(merge_base, head_oid, cwd=None),
+                call(base_oid, head_oid, cwd=None),
+            ],
+            range_paths.call_args_list,
+        )
+
+    def test_scope_git_reads_disable_local_execution_and_replacements(self) -> None:
+        resolver = load_helper("change-review", "resolve_scope")
+        command = resolver.git_command(("status", "--short"), ROOT)
+        environment = resolver.git_read_environment()
+
+        self.assertEqual("git", command[0])
+        self.assertIn("core.fsmonitor=false", command)
+        self.assertIn("--no-replace-objects", command)
+        self.assertEqual("0", environment["GIT_TERMINAL_PROMPT"])
+        self.assertEqual("1", environment["GIT_NO_LAZY_FETCH"])
+        self.assertEqual(os.devnull, environment["GIT_CONFIG_GLOBAL"])
+
+    def test_scope_rejects_capture_or_head_races(self) -> None:
+        resolver = load_helper("change-review", "resolve_scope")
+        head_oid = "a" * 40
+        with (
+            patch.object(resolver, "git_text", return_value=str(ROOT)),
+            patch.object(resolver, "verified_commit", return_value=head_oid),
+            patch.object(resolver, "capture_scope", side_effect=[object(), object()]),
+            self.assertRaisesRegex(RuntimeError, "scope changed"),
+        ):
+            resolver.resolve_scope("worktree", None, ())
+
+        capture = object()
+        with (
+            patch.object(resolver, "git_text", return_value=str(ROOT)),
+            patch.object(
+                resolver,
+                "verified_commit",
+                side_effect=[head_oid, "b" * 40],
+            ),
+            patch.object(resolver, "capture_scope", return_value=capture),
+            self.assertRaisesRegex(RuntimeError, "HEAD changed"),
+        ):
+            resolver.resolve_scope("worktree", None, ())
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO support is required")
+    def test_scope_bounds_candidates_and_rejects_special_files(self) -> None:
+        resolver = load_helper("change-review", "resolve_scope")
+        candidates: set[str] = set()
+        with patch.object(resolver, "MAX_WORKTREE_CANDIDATES", 1):
+            resolver.add_worktree_candidate(candidates, "first.txt")
+            with self.assertRaisesRegex(RuntimeError, "candidate limit"):
+                resolver.add_worktree_candidate(candidates, "second.txt")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            os.mkfifo(root / "special")
+            with self.assertRaisesRegex(RuntimeError, "changed during scope"):
+                resolver.untracked_content(root, "special")
 
     def test_resolver_rejects_invalid_target_before_provider_queries(self) -> None:
         import argparse

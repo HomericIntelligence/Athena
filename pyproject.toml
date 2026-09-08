@@ -25,3 +25,6 @@ default-groups = ["dev"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+markers = [
+    "nightly: integration-heavy tests that do not run in the fast change gate",
+]

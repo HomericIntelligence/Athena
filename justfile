@@ -13,6 +13,9 @@ validate:
 agent-contract:
     uv run python scripts/validate_agent_contract.py
 
+test-fast:
+    PYTHONDONTWRITEBYTECODE=1 uv run pytest -q -m "not nightly"
+
 test:
     uv run coverage erase
     PYTHONDONTWRITEBYTECODE=1 ATHENA_COVERAGE=1 uv run coverage run --branch --parallel-mode --source=scripts,skills -m pytest -q
@@ -94,6 +97,10 @@ ci-validate:
 # Run CI contract tests in the container.
 ci-test:
     ./scripts/run_ci_local.sh test
+
+# Run the fast CI contract tests in the container.
+ci-test-fast:
+    ./scripts/run_ci_local.sh test-fast
 
 # Run Ruff, the format check, and the mypy type check in the container.
 ci-static:

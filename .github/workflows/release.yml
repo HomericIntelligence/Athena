@@ -45,6 +45,8 @@ jobs:
       issues: read
       pull-requests: read
     uses: ./.github/workflows/_required.yml
+    with:
+      full-tests: true
 
   release:
     name: release

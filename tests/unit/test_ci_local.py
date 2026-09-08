@@ -204,6 +204,10 @@ class LocalCiOrchestratorTests(unittest.TestCase):
                 ),
             ),
             (
+                ("test-fast",),
+                ("uv run pytest -q -m not nightly",),
+            ),
+            (
                 ("static",),
                 (
                     "uv run ruff check scripts tests skills",
@@ -276,28 +280,36 @@ class LocalCiOrchestratorTests(unittest.TestCase):
                 log_text,
             )
 
-    def test_reports_failed_container_command_for_static_subset(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            temporary = Path(temporary_directory)
-            bin_directory = self._create_temp_bin(temporary)
-            log_path = temporary / "engine.log"
-            self._install_fake_engine(
-                bin_directory,
-                "podman",
-                failing_fragment="uv run ruff check scripts tests skills",
-            )
-            environment = os.environ.copy()
-            environment["PATH"] = str(bin_directory)
-            environment["FAKE_LOG"] = str(log_path)
+    def test_reports_failed_container_command_for_selected_subset(self) -> None:
+        cases = (
+            ("static", "uv run ruff check scripts tests skills"),
+            ("test-fast", "uv run pytest -q -m not nightly"),
+        )
+        for subset, failing_fragment in cases:
+            with (
+                self.subTest(subset=subset),
+                tempfile.TemporaryDirectory() as temporary_directory,
+            ):
+                temporary = Path(temporary_directory)
+                bin_directory = self._create_temp_bin(temporary)
+                log_path = temporary / "engine.log"
+                self._install_fake_engine(
+                    bin_directory,
+                    "podman",
+                    failing_fragment=failing_fragment,
+                )
+                environment = os.environ.copy()
+                environment["PATH"] = str(bin_directory)
+                environment["FAKE_LOG"] = str(log_path)
 
-            result = self._run_local_ci(environment, "static")
-            log_text = log_path.read_text(encoding="utf-8")
+                result = self._run_local_ci(environment, subset)
+                log_text = log_path.read_text(encoding="utf-8")
 
-        self.assertEqual(1, result.returncode)
-        self.assertIn("The 'static' check failed.", result.stderr)
-        self.assertIn("These checks failed: 'static'.", result.stderr)
-        self.assertIn("uv run ruff check scripts tests skills", log_text)
-        self.assertNotIn("All selected local CI checks passed.", result.stdout)
+            self.assertEqual(1, result.returncode)
+            self.assertIn(f"The '{subset}' check failed.", result.stderr)
+            self.assertIn(f"These checks failed: '{subset}'.", result.stderr)
+            self.assertIn(failing_fragment, log_text)
+            self.assertNotIn("All selected local CI checks passed.", result.stdout)
 
     def test_rejects_unknown_subset(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -314,7 +326,7 @@ class LocalCiOrchestratorTests(unittest.TestCase):
         self.assertEqual(1, result.returncode)
         self.assertIn("The subset is not valid: 'bogus'.", result.stderr)
         self.assertIn(
-            "all, validate, test, static, markdownlint, workflow, uv-pins",
+            "all, validate, test, test-fast, static, markdownlint, workflow, uv-pins",
             result.stderr,
         )
 

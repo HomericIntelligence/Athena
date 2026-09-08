@@ -69,3 +69,19 @@ def test_precommit_hooks_repo_uses_a_full_commit_pin() -> None:
     )
 
     assert re.fullmatch(r"[0-9a-f]{40}", precommit_repository["rev"])
+
+
+def test_precommit_and_pull_request_ci_use_the_fast_test_tier() -> None:
+    """Use one fast test tier at the local and pull-request boundaries."""
+    hooks = local_hooks(load_precommit_config())
+    test_hook = next(hook for hook in hooks if hook["id"] == "athena-validator-tests")
+    workflow = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "_required.yml").read_text(encoding="utf-8")
+    )
+    validate_steps = workflow["jobs"]["validate"]["steps"]
+    fast_step = next(
+        step for step in validate_steps if step.get("run") == "just ci-test-fast"
+    )
+
+    assert test_hook["entry"] == "just test-fast"
+    assert fast_step["if"] == "${{ !inputs['full-tests'] }}"

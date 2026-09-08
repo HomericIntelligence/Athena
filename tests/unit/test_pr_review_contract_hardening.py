@@ -19,7 +19,10 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
+pytestmark = pytest.mark.nightly
 SCRIPT = ROOT / "skills" / "pr-review" / "scripts" / "collect_evidence.py"
 SNAPSHOT_SCRIPT = ROOT / "skills" / "pr-review" / "scripts" / "materialize_snapshot.py"
 DIFF_CONTEXT_SCRIPT = ROOT / "skills" / "pr-review" / "scripts" / "diff_context.py"

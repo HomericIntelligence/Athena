@@ -15,6 +15,7 @@ import pytest
 from skills.advise.scripts import resolve_knowledge_checkout as resolver
 
 ROOT = Path(__file__).resolve().parents[2]
+pytestmark = pytest.mark.nightly
 SCRIPT = ROOT / "skills/advise/scripts/resolve_knowledge_checkout.py"
 FAKE_GH = ROOT / "tests/fixtures/fake_gh.py"
 GIT = shutil.which("git")

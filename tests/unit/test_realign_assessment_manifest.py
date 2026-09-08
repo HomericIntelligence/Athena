@@ -21,7 +21,10 @@ from types import ModuleType
 from typing import Any, cast
 from unittest.mock import patch
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
+pytestmark = pytest.mark.nightly
 HELPER = ROOT / "skills/realign/scripts/resolve_assessment.py"
 
 

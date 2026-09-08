@@ -2,6 +2,10 @@ name: Required Checks
 
 "on":
   workflow_call:
+    inputs:
+      full-tests:
+        type: boolean
+        default: false
   workflow_dispatch: {}
   pull_request:
     branches: [main]
@@ -63,7 +67,11 @@ jobs:
         run: podman build -f ci/Containerfile -t athena-ci:local .
       - name: Validate plugin distribution in the container
         run: just ci-validate
-      - name: Run contract tests with the coverage threshold in the container
+      - name: Run the fast contract tests in the container
+        if: ${{ !inputs['full-tests'] }}
+        run: just ci-test-fast
+      - name: Run all contract tests with the coverage threshold in the container
+        if: ${{ inputs['full-tests'] }}
         run: just ci-test
       - name: Run lint, format, and type checks in the container
         run: just ci-static

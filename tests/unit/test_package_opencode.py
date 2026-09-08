@@ -13,9 +13,12 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
+import pytest
+
 from . import package_markdown_helpers as md
 
 ROOT = Path(__file__).resolve().parents[2]
+pytestmark = pytest.mark.nightly
 MODULE_PATH = ROOT / "scripts" / "package_opencode.py"
 SPEC = importlib.util.spec_from_file_location("athena_package_opencode", MODULE_PATH)
 assert SPEC is not None and SPEC.loader is not None
