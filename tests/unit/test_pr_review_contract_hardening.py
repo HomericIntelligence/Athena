@@ -2540,6 +2540,7 @@ class ImmutableEvidenceTests(unittest.TestCase):
         head_bound_check_pages: list[object] | None = None,
         expected_target: bool = True,
         hostile_target_environment: bool = False,
+        requirement_issues: Sequence[str] = (),
     ) -> tuple[subprocess.CompletedProcess[str], int, str, str]:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -2608,6 +2609,8 @@ class ImmutableEvidenceTests(unittest.TestCase):
                         "https://github.com/owner/repository/pull/9",
                     )
                 )
+            for requirement_issue in requirement_issues:
+                expected_arguments.extend(("--requirement-issue", requirement_issue))
             command = [
                 sys.executable,
                 str(SCRIPT),
@@ -3028,6 +3031,188 @@ class ImmutableEvidenceTests(unittest.TestCase):
 
         self.assertEqual(1, result.returncode)
         self.assertEqual(1, call_count)
+
+    def test_binds_an_explicit_requirement_without_a_closing_reference(self) -> None:
+        _, requirement = linked_requirement_fixture()
+        comments = [{"id": 1, "body": "Canonical plan"}]
+        result, calls, _, _ = self.run_collector(
+            [pull_request(), pull_request()],
+            requirement_issues=[str(requirement["url"])],
+            linked_issue_sequence=[requirement, requirement],
+            linked_comment_sequence=[comments, comments],
+            hostile_target_environment=True,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(2, calls)
+        evidence = json.loads(result.stdout)
+        self.assertEqual([], evidence["pull_request"]["closingIssuesReferences"])
+        self.assertEqual(
+            "owner/repository", evidence["reviewed_identity"]["repository"]
+        )
+        binding = evidence["reviewed_linked_requirements"]
+        self.assertEqual(1, binding["count"])
+        content = {key: requirement[key] for key in ("body", "state", "title")}
+        content["comments"] = comments
+        digest = sha256(
+            json.dumps(content, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        self.assertEqual(digest, binding["items"][0]["content_sha256"])
+        self.assertEqual("I_1", binding["items"][0]["id"])
+        self.assertEqual(requirement["url"], binding["items"][0]["url"])
+
+    def test_explicit_requirements_preserve_closing_issues_and_deduplicate(
+        self,
+    ) -> None:
+        reference, first = linked_requirement_fixture()
+        _, second = linked_requirement_fixture(11, "I_2")
+        bindings = []
+        for urls in (
+            [str(second["url"]), str(first["url"]), str(second["url"])],
+            [str(first["url"]), str(second["url"])],
+        ):
+            result, _, _, _ = self.run_collector(
+                [pull_request(closing_issues=[reference])] * 2,
+                requirement_issues=urls,
+                linked_issue_sequence=[first, second, first, second],
+                linked_comment_sequence=[[]] * 4,
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            evidence = json.loads(result.stdout)
+            self.assertEqual(
+                [reference], evidence["pull_request"]["closingIssuesReferences"]
+            )
+            bindings.append(evidence["reviewed_linked_requirements"])
+        self.assertEqual(bindings[0], bindings[1])
+        self.assertEqual(2, bindings[0]["count"])
+        self.assertEqual([10, 11], [item["number"] for item in bindings[0]["items"]])
+
+    def test_explicit_requirement_changes_block_evidence(self) -> None:
+        _, requirement = linked_requirement_fixture()
+        for field, value in (
+            ("id", "I_changed"),
+            ("body", "Changed requirement"),
+            ("title", "Changed title"),
+            ("state", "CLOSED"),
+        ):
+            with self.subTest(field=field):
+                result, calls, _, _ = self.run_collector(
+                    [pull_request()] * 2,
+                    requirement_issues=[str(requirement["url"])],
+                    linked_issue_sequence=[requirement, requirement | {field: value}],
+                    linked_comment_sequence=[[], []],
+                )
+                self.assertEqual(1, result.returncode)
+                self.assertEqual(2, calls)
+                self.assertEqual("", result.stdout)
+
+    def test_explicit_requirement_comment_changes_block_evidence(self) -> None:
+        _, requirement = linked_requirement_fixture()
+        result, calls, _, _ = self.run_collector(
+            [pull_request()] * 2,
+            requirement_issues=[str(requirement["url"])],
+            linked_issue_sequence=[requirement] * 2,
+            linked_comment_sequence=[[], [{"id": 1, "body": "Changed plan"}]],
+        )
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(2, calls)
+        self.assertEqual("", result.stdout)
+
+    def test_explicit_requirement_rejects_noncanonical_urls(self) -> None:
+        for url in (
+            "10",
+            "owner/requirements#10",
+            "https://example.com/owner/requirements/issues/10",
+            "https://github.com/owner/requirements/pull/10",
+            "https://github.com/owner/requirements/issues/010",
+            "https://github.com/owner/requirements/issues/10?x=1",
+            "https://github.com/owner/requirements/issues/10#issuecomment-1",
+            "https://github.com/owner/requirements/issues/10/",
+            "https://github.com/owner name/requirements/issues/10",
+        ):
+            with self.subTest(url=url):
+                result, calls, _, _ = self.run_collector(
+                    [pull_request()],
+                    requirement_issues=[url],
+                )
+                self.assertEqual(1, result.returncode)
+                self.assertEqual(1, calls)
+                self.assertEqual("", result.stdout)
+
+    def test_explicit_requirement_rejects_incomplete_provider_identity(self) -> None:
+        _, requirement = linked_requirement_fixture()
+        for field, value in (
+            ("id", ""),
+            ("id", None),
+            ("number", True),
+            ("number", 12),
+            ("url", "https://github.com/other/requirements/issues/10"),
+        ):
+            with self.subTest(field=field, value=value):
+                result, calls, _, _ = self.run_collector(
+                    [pull_request()],
+                    requirement_issues=[str(requirement["url"])],
+                    linked_issue_sequence=[requirement | {field: value}],
+                )
+                self.assertEqual(1, result.returncode)
+                self.assertEqual(1, calls)
+                self.assertEqual("", result.stdout)
+
+    def test_explicit_requirement_provider_failure_blocks_evidence(self) -> None:
+        result, calls, _, _ = self.run_collector(
+            [pull_request()],
+            requirement_issues=["https://github.com/owner/requirements/issues/10"],
+            linked_issue_sequence=[],
+        )
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(1, calls)
+        self.assertEqual("", result.stdout)
+
+    def test_explicit_requirement_comment_failure_blocks_evidence(self) -> None:
+        _, requirement = linked_requirement_fixture()
+        for page in ({"message": "Unavailable"}, [None]):
+            with self.subTest(page=page):
+                result, calls, _, _ = self.run_collector(
+                    [pull_request()],
+                    requirement_issues=[str(requirement["url"])],
+                    linked_issue_sequence=[requirement],
+                    linked_comment_sequence=[page],
+                )
+                self.assertEqual(1, result.returncode)
+                self.assertEqual(1, calls)
+                self.assertEqual("", result.stdout)
+
+    def test_explicit_requirement_preserves_comment_page_limit(self) -> None:
+        _, requirement = linked_requirement_fixture()
+        result, calls, _, _ = self.run_collector(
+            [pull_request()],
+            requirement_issues=[str(requirement["url"])],
+            linked_issue_sequence=[requirement],
+            linked_comment_sequence=[[{"id": i, "body": "Plan"} for i in range(100)]]
+            * 11,
+        )
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(1, calls)
+        self.assertEqual(
+            "linked issue requirements coverage gap", json.loads(result.stdout)["error"]
+        )
+
+    def test_explicit_requirements_share_final_collection_budget(self) -> None:
+        fixtures = [linked_requirement_fixture(n, f"I_{n}") for n in range(10, 23)]
+        first_reference = fixtures[0][0]
+        requirements = [requirement for _, requirement in fixtures]
+        result, calls, _, _ = self.run_collector(
+            [pull_request(closing_issues=[first_reference])] * 2,
+            requirement_issues=[
+                str(requirement["url"]) for requirement in requirements[1:]
+            ],
+            linked_issue_sequence=requirements * 2,
+            linked_comment_sequence=[[]] * 26,
+        )
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(2, calls)
+        self.assertEqual(
+            "linked issue requirements coverage gap", json.loads(result.stdout)["error"]
+        )
 
     def test_emits_a_stable_linked_requirements_binding(self) -> None:
         reference = {

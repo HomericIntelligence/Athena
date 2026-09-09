@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import threading
@@ -942,7 +943,9 @@ def linked_issue_metadata(
 
 
 def linked_requirements(
-    metadata: dict[str, Any], budget: LinkedRequirementBudget | None = None
+    metadata: dict[str, Any],
+    budget: LinkedRequirementBudget | None = None,
+    requirement_issues: Sequence[str] = (),
 ) -> LinkedRequirements:
     """Bind every linked issue's requirement content and complete comment history."""
     references = metadata.get("closingIssuesReferences")
@@ -951,14 +954,36 @@ def linked_requirements(
     identities = sorted(linked_issue_reference(issue) for issue in references)
     if len(identities) != len(set(identities)):
         raise RuntimeError("GitHub returned duplicate linked issue references.")
+    selected: dict[str, tuple[str | None, str, int, str]] = {
+        identity[3]: identity for identity in identities
+    }
+    if len(selected) != len(identities):
+        raise RuntimeError(
+            "GitHub returned different identities for the same linked issue URL."
+        )
+    for url in requirement_issues:
+        match = re.fullmatch(
+            r"https://github\.com/([^/]+)/([^/]+)/issues/([1-9][0-9]{0,19})", url
+        )
+        if match is None:
+            raise RuntimeError("Use a canonical GitHub issue URL for each requirement.")
+        repository = require_github_repository(
+            f"{match[1]}/{match[2]}", "requirement issue repository"
+        )
+        selected.setdefault(url, (None, repository, int(match[3]), url))
     collection_budget = budget if budget is not None else LinkedRequirementBudget()
     items: list[LinkedRequirement] = []
-    for expected_id, repository, number, expected_url in identities:
+    for expected_id, repository, number, expected_url in sorted(
+        selected.values(), key=lambda identity: identity[3]
+    ):
         issue_data = linked_issue_metadata(repository, number, collection_budget)
         issue_id = issue_data.get("id")
         body = issue_data.get("body")
         if (
-            issue_id != expected_id
+            not isinstance(issue_id, str)
+            or not issue_id
+            or (expected_id is not None and issue_id != expected_id)
+            or isinstance(issue_data.get("number"), bool)
             or issue_data.get("number") != number
             or issue_data.get("url") != expected_url
             or not isinstance(issue_data.get("title"), str)
@@ -980,7 +1005,7 @@ def linked_requirements(
         }
         items.append(
             LinkedRequirement(
-                id=expected_id,
+                id=issue_id,
                 repository=repository,
                 number=number,
                 url=expected_url,
@@ -989,6 +1014,7 @@ def linked_requirements(
                 ).hexdigest(),
             )
         )
+    items.sort(key=lambda item: (item.id, item.repository, item.number, item.url))
     document = canonical_json(
         [item.as_json() for item in items], "linked issue requirements"
     )
@@ -1394,6 +1420,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Use the canonical pull-request URL from 'resolve_pr.py'.",
     )
     parser.add_argument("pull_request", metavar="PR_NUMBER_OR_URL")
+    parser.add_argument(
+        "--requirement-issue",
+        action="append",
+        default=[],
+        metavar="ISSUE_URL",
+        help="Bind another GitHub issue. Use this option for each non-closing requirement.",
+    )
     arguments = parser.parse_args(argv)
     pull_request = arguments.pull_request
     expected = expected_identity(
@@ -1408,6 +1441,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         arguments.expected_pr_url,
     )
     require_immutable_identity = expected is not None
+    if arguments.requirement_issue and not require_immutable_identity:
+        parser.error("All strict identity arguments are necessary for this option.")
     try:
         validate_pr_identifier(pull_request)
         requested = pull_request_number(pull_request)
@@ -1465,7 +1500,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             LinkedRequirementBudget() if expected is not None else None
         )
         reviewed_linked_requirements = (
-            linked_requirements(metadata, linked_requirement_budget)
+            linked_requirements(
+                metadata, linked_requirement_budget, arguments.requirement_issue
+            )
             if expected is not None
             else None
         )
@@ -1539,7 +1576,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if final_scope != reviewed_scope:
             raise RuntimeError("The review scope changed during evidence collection.")
         final_linked_requirements = (
-            linked_requirements(final_metadata, linked_requirement_budget)
+            linked_requirements(
+                final_metadata, linked_requirement_budget, arguments.requirement_issue
+            )
             if expected is not None
             else None
         )
