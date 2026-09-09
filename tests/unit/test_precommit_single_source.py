@@ -71,10 +71,19 @@ def test_precommit_hooks_repo_uses_a_full_commit_pin() -> None:
     assert re.fullmatch(r"[0-9a-f]{40}", precommit_repository["rev"])
 
 
-def test_precommit_and_pull_request_ci_use_the_fast_test_tier() -> None:
-    """Use one fast test tier at the local and pull-request boundaries."""
+def test_precommit_excludes_pytest_and_ci_owns_test_tiers() -> None:
+    """Keep pytest out of pre-commit and keep each test tier in CI."""
     hooks = local_hooks(load_precommit_config())
-    test_hook = next(hook for hook in hooks if hook["id"] == "athena-validator-tests")
+    expected_local_hooks = [
+        ("athena-validate-skills", "just validate"),
+        ("athena-markdownlint", "just markdownlint"),
+        ("athena-python-lint", "just lint"),
+        ("athena-python-format", "just format-check"),
+        ("athena-python-types", "just typecheck"),
+    ]
+    configured_local_hooks = [(hook["id"], hook["entry"]) for hook in hooks]
+    assert configured_local_hooks == expected_local_hooks
+
     workflow = yaml.safe_load(
         (ROOT / ".github" / "workflows" / "_required.yml").read_text(encoding="utf-8")
     )
@@ -82,6 +91,17 @@ def test_precommit_and_pull_request_ci_use_the_fast_test_tier() -> None:
     fast_step = next(
         step for step in validate_steps if step.get("run") == "just ci-test-fast"
     )
+    full_step = next(
+        step for step in validate_steps if step.get("run") == "just ci-test"
+    )
 
-    assert test_hook["entry"] == "just test-fast"
     assert fast_step["if"] == "${{ !inputs['full-tests'] }}"
+    assert full_step["if"] == "${{ inputs['full-tests'] }}"
+
+    nightly_workflow = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "nightly-tests.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    nightly_steps = nightly_workflow["jobs"]["nightly-tests"]["steps"]
+    assert any(step.get("run") == "just ci-test" for step in nightly_steps)

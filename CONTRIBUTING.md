@@ -34,9 +34,9 @@ just all
 
 It does not build Python distribution artifacts.
 
-Pre-commit and pull-request continuous integration (CI) use `just test-fast`. This command excludes
-tests that have the `nightly` marker. Use `just test` to run all tests and the coverage policy. The
-daily nightly workflow and each release run use `just test`.
+Pre-commit does not run pytest. Pull-request continuous integration (CI) uses `just test-fast`. This
+command excludes tests that have the `nightly` marker. Use `just test` to run all tests and the
+coverage policy. The daily nightly workflow and each release run use `just test`.
 
 ## Add or change a skill
 
@@ -50,11 +50,14 @@ daily nightly workflow and each release run use `just test`.
    [`engineering principles catalog`](docs/principles/README.md).
 8. Apply the [ASD-STE100 technical-English policy](skills/TECHNICAL_ENGLISH.md) to all English
    technical prose.
-9. Run `just all`.
-10. Commit with a signed Conventional Commit that includes a Developer Certificate of Origin (DCO)
+9. Before you open a pull request, run each new or changed test with a focused command. Confirm that
+   the command selects the test and that the test passes.
+10. Run the applicable local validation other than the complete pytest suite.
+11. Commit with a signed Conventional Commit that includes a Developer Certificate of Origin (DCO)
    attestation.
-11. Open a pull request.
-12. If a tracking issue exists, include `Closes #N` on its own line.
+12. Open a pull request. Required CI runs the fast pytest tier. Nightly and release workflows run
+    the complete suite and coverage policy.
+13. If a tracking issue exists, include `Closes #N` on its own line.
 
 Do not enable auto-merge or merge without explicit maintainer authority.
 
@@ -117,7 +120,8 @@ update and deletion rejection, and publish the GitHub Release record.
 
 A change is done when:
 
-- `just all` passes locally.
+- Before the pull request was opened, each new or changed test passed in a focused local run that
+  selected that test.
 - Each completion claim has runnable evidence that follows the
   [evidence integrity policy](docs/policies/evidence-integrity.md).
 - Documentation and skill frontmatter follow `AGENTS.md` and the
@@ -125,6 +129,11 @@ A change is done when:
 - Commits are signed Conventional Commits with a Developer Certificate of Origin (DCO)
   attestation.
 - The pull request passes the current-head [required checks](docs/policies/required-checks.md).
+
+Pre-commit does not run pytest. Continuous integration and continuous delivery (CI/CD) workflows
+own the automatic fast and complete pytest runs. A contributor can run `just test` or `just all`
+locally, but a complete local suite is not a condition for opening a pull request. Focused local
+validation of each new or changed test does not replace CI/CD validation.
 
 ## Rejection criteria
 

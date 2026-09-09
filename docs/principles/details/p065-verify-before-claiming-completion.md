@@ -93,9 +93,11 @@ The report identifies one unavailable platform test and does not claim that all 
 **Misuse:** A developer changes code after a test passes. The developer cites that stale result
 as proof for the new revision.
 
-**Athena/agent workflow:** Before completion, an agent runs `just all` and reports the command
-result.
-If the full gate cannot complete, the agent identifies each narrower check.
+**Athena/agent workflow:** Before an agent creates a pull request, the agent runs each new or changed
+test with a focused command. The agent also runs the applicable non-pytest local checks and reports
+each command result. Pull-request continuous integration runs the automatic fast pytest tier.
+Nightly and release workflows run the complete pytest suite. Before the agent claims completion, it
+verifies the required continuous integration checks for the current pull-request head.
 
 ## Related principles
 

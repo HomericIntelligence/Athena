@@ -258,12 +258,10 @@ Follow the durable-artifact and behavior-test rules in
 text-string tests. Do not create changelogs, generated documents, registries, inventories, or
 unrelated files without a demonstrated product consumer.
 
-After editing, delegate this check to an executor. When the host cannot delegate, run it
-sequentially:
-
-```bash
-just all
-```
+After editing, delegate the applicable local non-pytest checks to an executor. Before you create a
+pull request, delegate a focused run of each new or changed test. Confirm that the command selects
+that test and that the test passes. When the host cannot delegate, run these checks sequentially.
+Continuous integration and continuous delivery (CI/CD), not pre-commit, own automatic pytest runs.
 
 ## Escalation
 
