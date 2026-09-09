@@ -75,7 +75,7 @@ def valid_report(
     receipt = {
         "source_digest": source["source_digest"],
         "argv": ["just", "test"],
-        "environment": {"boundary": "host-enforced"},
+        "environment": {"execution": "native"},
         "exit_status": 0,
         "stdout": "passed\n",
         "stderr": "",
@@ -84,7 +84,7 @@ def valid_report(
         "schema_version": 1,
         "source": source,
         "validation": helper.validation_manifest(
-            available=True,
+            status="available",
             source_digest=source["source_digest"],
             receipts=[receipt],
         ),
@@ -252,19 +252,23 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         ):
             helper.resolve_source_binding(self.repository)
 
-    def test_unavailable_validation_keeps_static_assessment_and_blocks_repair_eligibility(
+    def test_validation_without_execution_keeps_static_assessment_and_blocks_repair(
         self,
     ) -> None:
         helper = load_helper()
 
-        manifest = helper.validation_manifest(
-            available=False, reason="The execution boundary is unavailable."
-        )
+        for status, reason in (
+            ("not_run", "Validation was not requested."),
+            ("unavailable", "The required executable is absent."),
+        ):
+            with self.subTest(status=status):
+                manifest = helper.validation_manifest(status=status, reason=reason)
 
-        self.assertEqual("unavailable", manifest["status"])
-        self.assertTrue(manifest["static_assessment"]["continue"])
-        self.assertFalse(manifest["repair_eligibility"])
-        self.assertEqual([], manifest["receipts"])
+                self.assertEqual(status, manifest["status"])
+                self.assertEqual(reason, manifest["reason"])
+                self.assertTrue(manifest["static_assessment"]["continue"])
+                self.assertFalse(manifest["repair_eligibility"])
+                self.assertEqual([], manifest["receipts"])
 
     def test_selected_commit_guidance_and_architecture_reads_use_selected_tree(
         self,
@@ -499,12 +503,16 @@ class RealignAssessmentManifestTests(unittest.TestCase):
 
     def test_validation_status_requires_honest_receipts(self) -> None:
         helper = load_helper()
-        with self.assertRaisesRegex(RuntimeError, "requires a reason"):
-            helper.validation_manifest(available=False)
+        for status in ("not_run", "unavailable"):
+            with (
+                self.subTest(status=status),
+                self.assertRaisesRegex(RuntimeError, "requires a reason"),
+            ):
+                helper.validation_manifest(status=status)
 
         with self.assertRaisesRegex(RuntimeError, "receipt"):
             helper.validation_manifest(
-                available=True,
+                status="available",
                 source_digest="a" * 64,
                 receipts=[{"status": "success", "command": "test"}],
             )
@@ -512,7 +520,7 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         receipt = {
             "source_digest": "a" * 64,
             "argv": ["just", "test"],
-            "environment": {"boundary": "host-enforced"},
+            "environment": {"execution": "native"},
             "exit_status": 0,
             "stdout": "passed\n",
             "stderr": "",
@@ -525,23 +533,86 @@ class RealignAssessmentManifestTests(unittest.TestCase):
                 self.assertRaisesRegex(RuntimeError, "receipt|source digest"),
             ):
                 helper.validation_manifest(
-                    available=True,
+                    status="available",
                     source_digest="a" * 64,
                     receipts=[incomplete_receipt],
                 )
         successful = helper.validation_manifest(
-            available=True, source_digest="a" * 64, receipts=[receipt]
+            status="available", source_digest="a" * 64, receipts=[receipt]
         )
         failed = helper.validation_manifest(
-            available=True,
+            status="available",
             source_digest="a" * 64,
             receipts=[{**receipt, "exit_status": 1, "stderr": "failed\n"}],
         )
-        empty = helper.validation_manifest(available=True, source_digest="a" * 64)
+        empty = helper.validation_manifest(status="available", source_digest="a" * 64)
 
+        self.assertEqual("available", successful["status"])
+        self.assertEqual([receipt], successful["receipts"])
         self.assertTrue(successful["repair_eligibility"])
         self.assertFalse(failed["repair_eligibility"])
         self.assertFalse(empty["repair_eligibility"])
+
+        for status in ("not_run", "unavailable"):
+            with (
+                self.subTest(conflicting_status=status),
+                self.assertRaisesRegex(RuntimeError, "receipt"),
+            ):
+                helper.validation_manifest(
+                    status=status,
+                    reason="Execution was restricted.",
+                    source_digest="a" * 64,
+                    receipts=failed["receipts"],
+                )
+
+        with self.assertRaisesRegex(RuntimeError, "mismatched"):
+            helper.validation_manifest(
+                status="available", source_digest="b" * 64, receipts=[receipt]
+            )
+
+    def test_validation_rejects_unknown_status(self) -> None:
+        helper = load_helper()
+        invalid_statuses: tuple[object, ...] = ("", "success", None, [], {})
+        for status in invalid_statuses:
+            with (
+                self.subTest(status=status),
+                self.assertRaisesRegex(RuntimeError, "status"),
+            ):
+                helper.validation_manifest(status=status)
+
+    def test_repair_preflight_rejects_validation_without_successful_execution(
+        self,
+    ) -> None:
+        helper = load_helper()
+        selected = commit_file(self.repository, "source.txt", "base\n", "base")
+        source = helper.resolve_source_binding(self.repository, reference=selected)
+        report, _ = valid_report(helper, self.repository, source, "source.txt")
+        receipt = report["validation"]["receipts"][0]
+        cases: tuple[tuple[str, str | None, list[dict[str, Any]]], ...] = (
+            ("not_run", "Validation was not requested.", []),
+            ("unavailable", "The required executable is absent.", []),
+            ("unknown", "Unknown validation status.", []),
+            ("available", None, []),
+            ("available", None, [{**receipt, "exit_status": 1}]),
+            ("available", None, [{**receipt, "source_digest": "f" * 64}]),
+        )
+        for status, reason, receipts in cases:
+            with self.subTest(status=status, receipts=receipts):
+                report["validation"] = {
+                    "status": status,
+                    "source_digest": source["source_digest"],
+                    "reason": reason,
+                    "receipts": receipts,
+                    "static_assessment": {"continue": True},
+                    "repair_eligibility": True,
+                }
+                with self.assertRaises(RuntimeError):
+                    helper.repair_preflight(
+                        self.repository,
+                        report,
+                        ["RLG-001"],
+                        approved_report_digest=helper.assessment_report_digest(report),
+                    )
 
     def test_repair_preflight_rejects_ineligible_or_incomplete_report(self) -> None:
         helper = load_helper()
@@ -551,7 +622,7 @@ class RealignAssessmentManifestTests(unittest.TestCase):
             "schema_version": 1,
             "source": source,
             "validation": helper.validation_manifest(
-                available=False, reason="No safe execution boundary."
+                status="unavailable", reason="The required executable is absent."
             ),
             "candidates": [{"id": "RLG-001", "paths": ["source.txt"]}],
         }
@@ -1555,8 +1626,10 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         document = json.loads(result.stdout)
         self.assertEqual("selected_commit_tree", document["source"]["source_kind"])
-        self.assertEqual("unavailable", document["validation"]["status"])
+        self.assertEqual("not_run", document["validation"]["status"])
         self.assertTrue(document["validation"]["static_assessment"]["continue"])
+        self.assertFalse(document["validation"]["repair_eligibility"])
+        self.assertEqual([], document["validation"]["receipts"])
 
     def test_cli_verifies_repair_preflight_and_reports_invalid_json(self) -> None:
         helper = load_helper()
