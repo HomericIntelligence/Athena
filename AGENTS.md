@@ -141,12 +141,13 @@ The marked block is a generated mirror of the canonical
   branded model tiers.
 - Use the host default model when tier selection is unavailable.
 - Run independent work sequentially when the host cannot delegate.
-- When the host supports delegation, a coordinator must select each applicable validation check or
-  test and delegate it to one bounded executor. Otherwise, it must run the check sequentially.
-- The executor must run only the specified checks. It must not edit product files unless the user
+- When the host supports delegation, a coordinator must select the applicable validation checks and
+  tests and delegate them to one or more bounded executors. One executor can run multiple explicitly
+  selected checks or tests. Otherwise, the coordinator must run the checks sequentially.
+- Each executor must run only the specified checks. It must not edit product files unless the user
   separately directs it to do so.
-- When the host can select executor capabilities, select one with the minimum capabilities for the
-  specified check. Otherwise, use the host-default executor.
+- When the host can select executor capabilities, select each executor with the minimum capabilities
+  for its specified checks. Otherwise, use the host-default executor.
 - When a check passes, the executor must report the exact command and a pass. When a check fails,
   it must report the exact command, the failed check or test, concise relevant output, and an
   evidence-based classification: product defect, environment failure, or flaky or unknown.
