@@ -1072,18 +1072,24 @@ def guidance_snapshot_manifest(
 
 def validation_manifest(
     *,
-    available: bool,
+    status: str,
     source_digest: str | None = None,
     reason: str | None = None,
     receipts: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """Separate static-assessment continuation from repair validation eligibility."""
+    if status not in ("not_run", "available", "unavailable"):
+        raise RuntimeError("The validation status is not supported.")
     copied_receipts = [dict(receipt) for receipt in receipts]
-    if not available:
+    if status != "available":
+        if copied_receipts:
+            raise RuntimeError(
+                "Execution receipts require available validation status."
+            )
         if not isinstance(reason, str) or not reason.strip():
-            raise RuntimeError("Unavailable validation requires a reason.")
+            raise RuntimeError("Validation without execution requires a reason.")
         return {
-            "status": "unavailable",
+            "status": status,
             "source_digest": source_digest,
             "reason": reason,
             "receipts": [],
@@ -1332,7 +1338,7 @@ def _verify_validation_manifest(validation: Any, source_digest: str) -> None:
     if not isinstance(receipts, list):
         raise TypeError("The assessment report is not repair-eligible.")
     rebuilt = validation_manifest(
-        available=validation.get("status") == "available",
+        status=cast(str, validation.get("status")),
         source_digest=source_digest,
         reason=cast(str | None, validation.get("reason")),
         receipts=receipts,
@@ -1489,7 +1495,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     repository_root, source, arguments.guidance
                 ),
                 "validation": validation_manifest(
-                    available=False,
+                    status="not_run",
                     source_digest=source["source_digest"],
                     reason="Validation execution was not requested by this binding command.",
                 ),

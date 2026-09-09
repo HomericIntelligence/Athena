@@ -26,12 +26,12 @@ Apply [P012 Evidence Before Modification](../../../docs/principles/README.md#p01
 5. Record the source, absolute path, package identity when applicable, and reported version.
 
 Do not use `npx`, `npm exec`, or another command that can download a missing package. A repository
-declaration is discovery evidence. It is not permission to install or execute outside the shared
-review contract's host-enforced read-only boundary.
+declaration is discovery evidence. It does not grant permission to install or execute a package.
+Use the [realign validation execution policy](../SKILL.md#validation-execution-policy).
 
 ## Probe the interface
 
-Run each probe inside the same read-only execution boundary that will run the scan. Set
+Run each probe under the same validation execution policy as the scan. Set
 `AISLOP_NO_TELEMETRY=1`, `AISLOP_NO_HISTORY=1`, and `AISLOP_NO_UPDATE_NOTIFIER=1` for every probe and
 scan.
 
@@ -67,10 +67,9 @@ AISLOP_NO_TELEMETRY=1 AISLOP_NO_HISTORY=1 AISLOP_NO_UPDATE_NOTIFIER=1 <AISLOP> s
 ```
 
 The host must supply the environment and exact argument vector. Do not use a shell to evaluate a
-target string. The boundary must make source read-only, deny the network and credentials, use a
-scrubbed environment, and permit writes only to declared disposable outputs. It must also satisfy all
-other properties in the [shared review contract](../../../docs/review/common.md#evidence-and-validation).
-If one property is absent, do not run AISlop. Report the missing property.
+target string. Use the realign validation execution policy for native commands and disposable
+outputs. A container is optional. If host permissions or task authorization prevent the scan, report
+the specific limitation.
 
 Do not let AISlop follow a symbolic link or submodule, or traverse a path outside the bound
 repository. If the scanner scope contains one of these boundaries, or the host cannot enforce this
@@ -88,7 +87,7 @@ Do not use these AISlop capabilities in this workflow:
 
 `realign` reviews one bound assessment source: the current `HEAD` and worktree overlay, or one
 selected commit tree. A comparison revision is not part of this scanner interface. Run AISlop only
-when the safe execution boundary can give it the same source and target as the assessment. Otherwise,
+when it can inspect the same bound source and target as the assessment. Otherwise,
 continue static assessment and report the scanner-coverage gap. AISlop repair and installation
 capabilities have write, dependency, network, agent, or forge effects that this assessment does not
 authorize.
@@ -176,7 +175,7 @@ Treat each of these conditions as a scanner coverage gap:
 - an engine, dependency audit, project, file chunk, or external tool is skipped or fails;
 - a configuration, ignore file, suppression, or default exclusion removes applicable scope;
 - JSON is malformed, incomplete, or has an unknown schema; or
-- the host cannot provide the required read-only execution boundary.
+- host permissions or task authorization prevent the scan.
 
 Continue the semantic assessment when possible. Name the exact missed surface and the checks that
 remain available. Do not give unsupported credit. Do not state that a clean AISlop result means that
@@ -203,7 +202,7 @@ specific incompatibility or language gap. Do not run the installation command.
 - Do not fix all diagnostics or optimize for the score.
 - Do not trust a registered package name, a version string, or repository configuration by itself.
 - Do not enable a scanner engine that evaluates repository-controlled build files outside the
-  read-only execution boundary.
+  realign validation execution policy.
 - Do not hide missing tools, suppressed rules, unsupported languages, skipped files, or failed
   engines.
 - Do not use AISlop as a substitute for architecture inspection, behavior tests, repository-native
