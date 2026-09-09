@@ -61,8 +61,9 @@ test. For CMake, also verify that a real build target includes the test source. 
 command that runs no relevant test as a coverage failure.
 
 Before a contributor creates a pull request, each new or changed test must pass in a focused local
-run that selects that test. Pre-commit does not run pytest. CI/CD workflows run the automatic fast
-and complete pytest tiers. The focused local result does not replace CI/CD validation.
+run that selects that test. Pre-commit does not run pytest. Continuous integration and continuous
+delivery (CI/CD) workflows run the automatic fast and complete pytest tiers. The focused local
+result does not replace CI/CD validation.
 
 ## Planning and review rules
 

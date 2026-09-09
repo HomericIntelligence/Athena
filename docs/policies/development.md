@@ -27,8 +27,8 @@ or failure requirement to make text shorter.
 - Keep the scope aligned with one issue or one coherent maintenance objective.
 - Before you create a pull request, run each new or changed test with a focused local command.
   Confirm that the command selects that test and that the test passes.
-- CI/CD workflows, not pre-commit, run the automatic pytest tiers. Focused local validation does
-  not replace CI/CD validation.
+- Continuous integration and continuous delivery (CI/CD) workflows, not pre-commit, run the
+  automatic pytest tiers. Focused local validation does not replace CI/CD validation.
 - If an issue tracks the work, put `Closes #N` on its own line in the body.
 - Run required checks against the current head revision. The checks must be successful, current, and
   not incorrectly skipped.

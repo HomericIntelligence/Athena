@@ -130,10 +130,10 @@ A change is done when:
   attestation.
 - The pull request passes the current-head [required checks](docs/policies/required-checks.md).
 
-Pre-commit does not run pytest. CI/CD workflows own the automatic fast and complete pytest runs. A
-contributor can run `just test` or `just all` locally, but a complete local suite is not a condition
-for opening a pull request. Focused local validation of each new or changed test does not replace
-CI/CD validation.
+Pre-commit does not run pytest. Continuous integration and continuous delivery (CI/CD) workflows
+own the automatic fast and complete pytest runs. A contributor can run `just test` or `just all`
+locally, but a complete local suite is not a condition for opening a pull request. Focused local
+validation of each new or changed test does not replace CI/CD validation.
 
 ## Rejection criteria
 

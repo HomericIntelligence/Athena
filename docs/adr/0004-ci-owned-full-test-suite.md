@@ -1,4 +1,4 @@
-# ADR 0004: CI/CD-owned pytest execution
+# ADR 0004: Automated pytest execution ownership
 
 **Status:** Proposed
 
@@ -17,7 +17,8 @@ changed test is selected and passes. It does not prove that the complete reposit
 - Keep the remaining pre-commit validation hooks.
 - Keep the fast pytest tier in required pull-request CI.
 - Keep the complete pytest suite and coverage policy in nightly and release workflows.
-- Make CI/CD workflows the only automatic executors of pytest tiers.
+- Make continuous integration and continuous delivery (CI/CD) workflows the only automatic
+  executors of pytest tiers.
 - Before a contributor creates a pull request, require a focused local run of each new or changed
   test. The contributor must confirm that the command selects that test and that the test passes.
 - Keep `just test` and `just all` available for optional local use.

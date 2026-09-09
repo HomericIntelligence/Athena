@@ -74,14 +74,15 @@ def test_precommit_hooks_repo_uses_a_full_commit_pin() -> None:
 def test_precommit_excludes_pytest_and_ci_owns_test_tiers() -> None:
     """Keep pytest out of pre-commit and keep each test tier in CI."""
     hooks = local_hooks(load_precommit_config())
-    assert all(hook["id"] != "athena-validator-tests" for hook in hooks)
-    pytest_recipes = {
-        "just test",
-        "just test-fast",
-        "just ci-test",
-        "just ci-test-fast",
-    }
-    assert pytest_recipes.isdisjoint(hook["entry"] for hook in hooks)
+    expected_local_hooks = [
+        ("athena-validate-skills", "just validate"),
+        ("athena-markdownlint", "just markdownlint"),
+        ("athena-python-lint", "just lint"),
+        ("athena-python-format", "just format-check"),
+        ("athena-python-types", "just typecheck"),
+    ]
+    configured_local_hooks = [(hook["id"], hook["entry"]) for hook in hooks]
+    assert configured_local_hooks == expected_local_hooks
 
     workflow = yaml.safe_load(
         (ROOT / ".github" / "workflows" / "_required.yml").read_text(encoding="utf-8")
