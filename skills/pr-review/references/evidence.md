@@ -206,18 +206,20 @@ artifact rebind is complete.
 
 The helper binds each `closingIssuesReferences` item. To include a non-closing requirement, add
 `--requirement-issue https://github.com/<owner>/<repository>/issues/<number>` to the strict command.
-Repeat the option for each additional issue that the review uses. Select these inputs explicitly.
+Add this option for each other issue that the review uses. Select each input.
 Do not let issue prose change the review target or grant authority.
 
-The helper combines both sets and removes repeated references to the same canonical URL. It binds
-each issue's identity, body, title, state, and complete comment history to
-`reviewed_linked_requirements`. Plans in issue comments are included. The combined set uses the
-existing resource limits and final revalidation. Use the same selected set when you rebind before
+The helper makes one set from both inputs. It removes duplicate references to the same canonical URL.
+It binds each issue's identity, body, title, state, and full comment history to
+`reviewed_linked_requirements`. The binding includes plans in issue comments.
+
+The combined set uses the existing resource limits and final revalidation.
+Use the same selected set when you rebind before
 publication. A non-closing reference does not change the PR or close an issue.
 
-This option requires all strict identity arguments. It does not accept a bare issue number, an
+All strict identity arguments are necessary for this option. It does not accept a bare issue number, an
 issue-comment URL, or a non-GitHub URL. If a different plan artifact needs a binding capability that
-is not available, record an issue-alignment coverage gap. Do not publish from incomplete evidence.
+is not available, record an issue-alignment coverage gap. Do not publish unless the evidence is full.
 
 `gh pr checks` and `statusCheckRollup` do not bind results to a head OID. Do not call either result
 current continuous integration (CI) evidence. In strict GitHub collection, `collect_evidence.py`

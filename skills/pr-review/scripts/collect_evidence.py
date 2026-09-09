@@ -958,7 +958,9 @@ def linked_requirements(
         identity[3]: identity for identity in identities
     }
     if len(selected) != len(identities):
-        raise RuntimeError("GitHub returned conflicting linked issue identities.")
+        raise RuntimeError(
+            "GitHub returned different identities for the same linked issue URL."
+        )
     for url in requirement_issues:
         match = re.fullmatch(
             r"https://github\.com/([^/]+)/([^/]+)/issues/([1-9][0-9]{0,19})", url
@@ -1423,7 +1425,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="append",
         default=[],
         metavar="ISSUE_URL",
-        help="Bind an additional GitHub issue. Repeat for each non-closing requirement.",
+        help="Bind another GitHub issue. Use this option for each non-closing requirement.",
     )
     arguments = parser.parse_args(argv)
     pull_request = arguments.pull_request
@@ -1440,7 +1442,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     require_immutable_identity = expected is not None
     if arguments.requirement_issue and not require_immutable_identity:
-        parser.error("Additional requirements need all strict identity arguments.")
+        parser.error("All strict identity arguments are necessary for this option.")
     try:
         validate_pr_identifier(pull_request)
         requested = pull_request_number(pull_request)
