@@ -34,6 +34,17 @@ def require_explicit_repository(arguments: list[str]) -> int | None:
     return None
 
 
+def require_explicit_repo_view_repository(arguments: list[str]) -> int | None:
+    """Reject repo-view calls that do not use its positional repository."""
+    expected = os.environ.get("FAKE_GH_REQUIRE_REPOSITORY")
+    if expected is None:
+        return None
+    if len(arguments) < 3 or arguments[2] != expected or "--repo" in arguments:
+        print("expected an explicit positional GitHub repository", file=sys.stderr)
+        return 9
+    return None
+
+
 def check_run_response(arguments: list[str]) -> object | None:
     """Return configured check runs for an exact commit-scoped request."""
     expected_head = os.environ.get("FAKE_GH_EXPECTED_CHECK_HEAD")
@@ -125,7 +136,7 @@ def main() -> int:
         if os.environ.get("FAKE_GH_FORBID_REPO_VIEW") == "1":
             print("ambient repository lookup is forbidden", file=sys.stderr)
             return 10
-        target_error = require_explicit_repository(arguments)
+        target_error = require_explicit_repo_view_repository(arguments)
         if target_error is not None:
             return target_error
         if "FAKE_GH_REPO_VIEW_RAW" in os.environ:

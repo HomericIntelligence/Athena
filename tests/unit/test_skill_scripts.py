@@ -490,8 +490,7 @@ class FakeGitHubCliFixtureTests(unittest.TestCase):
                 (
                     "repo",
                     "view",
-                    "--repo",
-                    "github.com/owner/repository",
+                    "owner/repository",
                     "--json",
                     "nameWithOwner,defaultBranchRef",
                 ),
@@ -510,8 +509,7 @@ class FakeGitHubCliFixtureTests(unittest.TestCase):
                 (
                     "repo",
                     "view",
-                    "--repo",
-                    "github.com/owner/repository",
+                    "owner/repository",
                     "--json",
                     "nameWithOwner,defaultBranchRef",
                 ),

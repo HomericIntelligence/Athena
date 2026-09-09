@@ -827,6 +827,7 @@ def test_write_mode_requires_refresh_and_uses_the_updated_revision(
     assert payload["revision"] == updated_revision
     assert payload["local_revision"] == revision
     assert payload["refresh_state"] == "updated"
+    assert git(knowledge_root, "rev-parse", "HEAD") == updated_revision
 
 
 def test_local_filesystem_origin_fails(tmp_path: Path) -> None:

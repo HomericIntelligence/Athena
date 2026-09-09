@@ -365,8 +365,7 @@ def refresh_local_checkout(
         repo_result = gh_command(
             "repo",
             "view",
-            "--repo",
-            f"github.com/{expected}",
+            expected,
             "--json",
             "nameWithOwner,defaultBranchRef",
         )
