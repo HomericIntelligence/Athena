@@ -2522,6 +2522,164 @@ class BoundedChangedPathReaderTests(unittest.TestCase):
         )
 
 
+class LiveRequirementsBindingTests(unittest.TestCase):
+    """Verify the reusable live requirements binding without repository writes."""
+
+    def setUp(self) -> None:
+        self.module_name = f"test_collect_live_requirements_{id(self)}"
+        self.collector = load_collector(self.module_name)
+        self.target = self.collector.ExpectedReviewTarget(
+            host="github.com",
+            repository="owner/repository",
+            number=9,
+            url="https://github.com/owner/repository/pull/9",
+        )
+
+    def tearDown(self) -> None:
+        sys.modules.pop(self.module_name, None)
+
+    def collect(
+        self,
+        metadata_sequence: Sequence[dict[str, object]],
+        linked_sequence: Sequence[Any],
+        requirement_issues: Sequence[str] = (),
+    ) -> Any:
+        with (
+            patch.object(self.collector, "pr_metadata", side_effect=metadata_sequence),
+            patch.object(
+                self.collector,
+                "linked_requirements",
+                side_effect=linked_sequence,
+            ),
+        ):
+            return self.collector.collect_requirements_binding(
+                "9",
+                self.target,
+                (BASE_OID, HEAD_OID),
+                requirement_issues,
+            )
+
+    def empty_linked(self, digest: str = "1" * 64) -> Any:
+        return self.collector.LinkedRequirements(items=(), sha256=digest)
+
+    def test_collects_one_stably_revalidated_requirements_binding(self) -> None:
+        linked = self.empty_linked()
+
+        binding = self.collect(
+            (pull_request(), pull_request()),
+            (linked, linked),
+        )
+
+        self.assertRegex(binding.reviewed_scope_sha256, r"^[0-9a-f]{64}$")
+        self.assertEqual("1" * 64, binding.requirements_sha256)
+        self.assertEqual((), binding.requirement_issue_urls)
+
+    def test_returns_the_selected_requirement_urls_as_one_canonical_set(self) -> None:
+        items = (
+            self.collector.LinkedRequirement(
+                id="I_2",
+                repository="owner/requirements",
+                number=2,
+                url="https://github.com/owner/requirements/issues/2",
+                content_sha256="2" * 64,
+            ),
+            self.collector.LinkedRequirement(
+                id="I_1",
+                repository="owner/requirements",
+                number=1,
+                url="https://github.com/owner/requirements/issues/1",
+                content_sha256="1" * 64,
+            ),
+        )
+        linked = self.collector.LinkedRequirements(
+            items=items,
+            sha256="3" * 64,
+        )
+
+        binding = self.collect(
+            (pull_request(), pull_request()),
+            (linked, linked),
+        )
+
+        self.assertEqual(
+            (
+                "https://github.com/owner/requirements/issues/1",
+                "https://github.com/owner/requirements/issues/2",
+            ),
+            binding.requirement_issue_urls,
+        )
+
+    def test_rejects_scope_linked_content_and_selected_url_drift(self) -> None:
+        stable = pull_request()
+        requirement_url = "https://github.com/owner/requirements/issues/10"
+        first_item = self.collector.LinkedRequirement(
+            id="I_1",
+            repository="owner/requirements",
+            number=10,
+            url=requirement_url,
+            content_sha256="2" * 64,
+        )
+        second_item = self.collector.LinkedRequirement(
+            id="I_2",
+            repository="owner/requirements",
+            number=11,
+            url="https://github.com/owner/requirements/issues/11",
+            content_sha256="2" * 64,
+        )
+        first_linked = self.collector.LinkedRequirements(
+            items=(first_item,), sha256="3" * 64
+        )
+        cases = (
+            (
+                (stable, pull_request(body="Changed body.")),
+                (self.empty_linked(), self.empty_linked()),
+                (),
+            ),
+            (
+                (
+                    stable,
+                    pull_request(closing_issues=[linked_requirement_fixture()[0]]),
+                ),
+                (self.empty_linked(), self.empty_linked()),
+                (),
+            ),
+            (
+                (stable, stable),
+                (self.empty_linked("4" * 64), self.empty_linked("5" * 64)),
+                (),
+            ),
+            (
+                (stable, stable),
+                (
+                    first_linked,
+                    self.collector.LinkedRequirements(
+                        items=(second_item,), sha256="3" * 64
+                    ),
+                ),
+                (requirement_url,),
+            ),
+        )
+        for metadata, linked, selected_urls in cases:
+            with (
+                self.subTest(metadata=metadata, linked=linked),
+                self.assertRaises(RuntimeError),
+            ):
+                self.collect(metadata, linked, selected_urls)
+
+    def test_propagates_live_requirements_collection_failures(self) -> None:
+        with (
+            patch.object(
+                self.collector,
+                "pr_metadata",
+                side_effect=RuntimeError("provider unavailable"),
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            self.collector.collect_requirements_binding(
+                "9", self.target, (BASE_OID, HEAD_OID), ()
+            )
+
+
 class ImmutableEvidenceTests(unittest.TestCase):
     def run_collector(
         self,

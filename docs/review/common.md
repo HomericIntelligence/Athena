@@ -339,6 +339,17 @@ Include these items in each finding:
 - the impact and applicable architecture, language, or policy evidence; and
 - proportionate remediation.
 
+When the bounded review exchange applies, also include these items:
+
+- for each new required finding, a stable identifier from `F-001` through `F-100`;
+- for an adopted open legacy pull-request thread, its immutable `native:<root-comment-id>`
+  identifier; and
+- for each required finding, an observable closure condition.
+
+One-pass `change-review`, `repo-review`, `realign`, `simplify`, and prevalidated reviews do not use
+the exchange identity, native-identity, or closure-condition requirements. A scope-specific skill
+can define its own report identifiers. Those identifiers do not establish an exchange.
+
 These items make the finding traceable and evidence-bound under
 [P063](../principles/README.md#p063) and [P072](../principles/README.md#p072). If the risk requires an
 independent review, apply [P069](../principles/README.md#p069).
@@ -364,6 +375,241 @@ change. Do not report a real problem as a suggestion.
 | `nit` | Localized non-blocking polish. It requests no acceptance decision. |
 | `FYI` | Informational context or mentoring. It requests no action. |
 
+For a bounded review exchange, the finding identifier does not change during the exchange. Do not
+reuse or renumber an identifier. Keep the current closure condition unless a valid `counter` revises
+it or an authoritative human selects a different condition. Record each revision in the accepted
+event chain. Do not manually edit an earlier carrier. A canonical prepared update can replace the
+carrier in the same retained artifact. The closure condition specifies an observable result. It does
+not prescribe an implementation. Remediation is advice unless the closure condition or repository
+policy requires it.
+
+## Bounded review exchange
+
+Use this protocol when a pull request, merge request, or issue-plan review starts or continues an
+author-and-reviewer exchange. Do not use it for `change-review`, `repo-review`, `realign`,
+`simplify`, or a prevalidated review. A report-only invocation can prepare a
+result. It cannot publish or establish durable exchange state. `finalize-plan` verifies a terminal
+issue-plan result. It does not make a review round.
+
+The author and reviewer are logical roles. The same authenticated forge actor can perform both
+roles. Event order separates the roles. The reducer does not authenticate either role. Each review
+surface must revalidate the ownership of its retained artifact. An actor or login change does not
+transfer ownership and does not reset the round count or finding identities. If the surface cannot
+prove ownership after a change, it must withhold the transition. A forge login does not by itself
+prove authority for a human decision. Bind each authority receipt to the target, exchange, finding,
+decision, authoritative actor or repository policy, and exact forge-record digest.
+
+This protocol is adapted and modified from the two-sided code-review protocol in `liza-mas/liza`.
+Athena keeps its own severities, dispositions, architecture gate, exact-source bindings, and
+delivery boundaries. The [third-party license record](../../skills/THIRD_PARTY_LICENSES.md#liza-masliza)
+identifies the pinned sources and the Apache License 2.0 terms.
+
+### Findings and responses
+
+Round 1 is a complete review of the current artifact. Each required finding must have its stable
+identifier, impact, evidence, exact carrier location, and closure condition. A later reviewer round
+must reconcile every prior identifier before it adds a finding.
+
+An author response must cover every required finding that needs an answer in the current
+transition. It must bind the prior state and the new artifact binding. Use exactly one of these
+response types for each finding:
+
+- `fix`;
+- `fix_with_tradeoff`;
+- `contest`; or
+- `risk_acceptance`.
+
+For a pull request, the author can publish a new response when the head changes before the next
+reviewer assessment. This refresh is valid in these states:
+
+- `awaiting_reviewer`;
+- `awaiting_evidence`; or
+- `complete` with `verdict=CONDITIONAL GO` before round 5.
+
+The refresh must bind a new head revision. A different artifact digest at the same head is not
+sufficient. On both review surfaces, each author response that changes the artifact revision or
+digest must cover all active required findings and all required findings in `resolved`, `withdrawn`,
+or `accepted_risk` state. It must use the same finding identifiers. This rule also applies to a
+normal correction from `awaiting_author`. It does not apply to a nonblocking finding.
+
+For a terminal required finding, the changed-artifact response replaces the prior author answer and
+clears the prior reviewer response. The finding returns to `answered_fix`, `answered_tradeoff`, or
+`contested`, according to the new answer. A prior `accepted_risk` receipt does not authorize the new
+artifact. The response clears that receipt. A new `risk_acceptance` answer requires a new
+authoritative human decision before GO. The next complete reviewer assessment must explicitly keep
+or reopen each revalidated finding with a legal reviewer response, unless an authoritative
+decision accepts a new risk request first.
+
+A refresh has an empty response list only when it has no active or terminal required finding. A
+refresh in `awaiting_reviewer` stays in `awaiting_reviewer`. A refresh in `awaiting_evidence` or a
+conditional complete state moves to `awaiting_reviewer` when it revalidates a terminal required
+finding. Otherwise, it moves to `awaiting_evidence`. Each refresh invalidates review coverage. It
+does not change the reviewer round, reviewer progress, GO eligibility, or finding identifiers.
+
+If a correction reopens a revalidated terminal finding and the total active required finding count
+does not decrease, stop with `replacement_blocker`. A clean revalidation can complete. A
+revalidation with a net decrease in active required findings can continue.
+
+A contest must identify concrete harm or conflicting evidence. The reviewer answers one contest
+exactly once with `accept`, `counter`, `refute`, or `escalate`. A counter supplies a revised closure
+condition and evidence. A refutation supplies new evidence. A repeated assertion without new
+evidence is not a valid answer.
+
+Use one of these finding states:
+
+- `open`;
+- `answered_fix`;
+- `answered_tradeoff`;
+- `contested`;
+- `partial`;
+- `still_present`;
+- `countered`;
+- `resolved`;
+- `withdrawn`;
+- `accepted_risk`;
+- `escalated`; or
+- `nonblocking`.
+
+Acknowledgment, an outdated diff marker, thread resolution, a successful unrelated check, or old
+prose is not evidence of closure. Risk acceptance requires a verified human or
+repository-authoritative authority receipt.
+
+After round 1, add a required finding only when one of these conditions is true:
+
+- The correction introduced the defect.
+- Newly available evidence supports the defect.
+- The earlier review missed a critical, major, security, correctness, or material architecture
+  defect.
+
+Record each later low-risk observation as a non-blocking follow-up. A suggestion, nit, FYI, or
+low-risk question does not start another reviewer round.
+
+### Rounds and convergence
+
+The initial reviewer assessment is round 1. Each later reviewer assessment increases the round count
+by one. An author response does not increase it. The exchange permits five reviewer assessments in
+total: the initial assessment and no more than four corrective assessments. A retry, restart,
+reviewer change, or migration does not reset this limit.
+
+An artifact refresh does not add reviewer progress. The accepted-event limit bounds repeated
+author refreshes.
+
+Each reviewer assessment and reframe records `go_eligible`. Set it to `true` only when the review
+profile can deliver `GO`. A CI-free pull-request review sets it to `false`. An author response or
+human decision keeps the value from the prior state. The issue adapter always sets it to `true`.
+
+When no active required finding remains and coverage is complete, `go_eligible=true` produces
+`phase=complete`, `verdict=GO`, and `next_action=finalize`. Before round 5, the same state with
+`go_eligible=false` produces `phase=complete`, `verdict=CONDITIONAL GO`, and `next_action=none`.
+Deliver the exclusive implementation `NO-GO` label for this conditional state. One later explicit
+reviewer assessment with `go_eligible=true` can continue it. A repeated ineligible assessment cannot
+continue it. At round 5, an ineligible assessment produces `phase=decision_required`,
+`verdict=NO-GO`, and `next_action=human_decision`.
+
+For each corrective round, record the previous and current count of active required findings and the
+declared scope set. Compare declared targets, not artifact byte count, to detect scope growth. A
+target is a repository path or a named module, interface, workflow, dependency, command, or migration
+boundary.
+
+Stop early with `NO-GO` and `next_action=human_decision` when one of these conditions is true:
+
+- closure conditions conflict;
+- one correction produces the next blocker without net progress;
+- one or more active required findings do not decrease while scope grows;
+- the parties have no consensus; or
+- the work needs a requirements reframe.
+
+Round 5 can produce `GO` only when `go_eligible=true`. If the assessment is not GO-eligible, or if
+an active finding or coverage gap remains, set the exchange phase to `decision_required`. Do not
+make a sixth automated reviewer assessment.
+At round 5, an authoritative human can accept a previously requested risk, stop the exchange, or
+require a reframe. The decision cannot select a closure condition that needs a sixth assessment.
+
+Before round 5, an authoritative human decision can accept a risk or select one closure condition
+without increasing the round count. A requirements reframe starts a new exchange with a new
+requirements identity. Every reframe requires an exact verified authority receipt. The new state
+stores that receipt as `supersession_authority_receipt`. It must cite and supersede the old state.
+Revalidate the receipt from its forge record whenever you inspect, publish, or finalize the new
+exchange. A reframe can supersede any retained v1 phase, including `complete`. A conditional
+complete pull-request state can accept an eligible reviewer assessment for the same artifact. It can
+also accept an author refresh for a new head. Other normal events cannot continue a complete
+exchange. Thus, a reframe cannot discard an escalation or restart the round limit without authority.
+
+Each reframe event has `superseded_exchange_ids`. This list gives all earlier exchange identifiers
+from the oldest exchange to the direct predecessor. The list must equal the predecessor's list plus
+the predecessor's exchange identifier. Values must be unique. The new exchange identifier must not
+be in the list. The new state stores the list in the reframe genesis event in `accepted_events`.
+Thus, the event digest and state digest bind the complete exchange ancestry. A reframe cannot reuse
+an exchange identifier from that ancestry.
+
+For pull-request thread closure, finding identity is the pair of exchange identifier and finding
+identifier. A later exchange can use the same `F-NNN` value. A terminal GO can withdraw an open
+Athena-owned finding from a selected superseded state only when the closure binds that exact state,
+its direct reframe child, and the child's current authority receipt. It must also bind the exact
+origin review, reviewed head, root location, and complete conversation. Do not infer an author
+answer for the withdrawn historical finding. Leave resolved history unchanged. A foreign,
+unrelated, or ambiguous open thread withholds GO.
+
+### Executable state and carriers
+
+Use the [`review-exchange`](../../skills/review-exchange/SKILL.md) helper for all state changes. This
+document owns the policy. The helper owns the versioned JSON schema, validation, digest calculation,
+transition mechanism, and carrier rendering. Do not edit a carrier manually or calculate its state
+by hand. Use a canonical prepared operation to replace a carrier in its retained artifact.
+
+`review_exchange.py reduce|verify|extract|render` parses, reduces, validates, and renders the common
+state machine. `issue_exchange.py inspect|prepare-plan|prepare-review|verify-publication|verify-finalize`
+normalizes issue snapshots and prepares or verifies the exact permitted issue operation. Both
+helpers accept one input file or standard input. The `extract` command accepts one UTF-8 Markdown
+carrier. All other commands accept JSON. They write only the canonical result to standard output.
+Exit code `0` identifies a valid result. Exit code `1` identifies a protocol rejection. Exit code
+`2` identifies an operational failure. The helpers do not use a network, write to a forge, or write
+repository state.
+
+The versioned envelope has exactly these fields:
+
+```json
+{"schema_id":"<schema>","schema_version":1,"state":{},"state_sha256":"<sha256>"}
+```
+
+The state records the exchange identifier, review surface, target, requirements digest, round and
+round limit, phase, exact artifact binding, canonical scope set, prior-state digest, current
+accepted-event digest, complete nonempty accepted-event ledger for the current exchange,
+superseded-state digest and authority receipt, coverage state, GO eligibility, progress records,
+findings, verdict, and next action. The ledger contains no more than 509 events. Verification replays
+the ordered ledger from its initial assessment or reframe. It compares the complete result with the
+stored state. A fresh exchange has neither supersession value. A reframe has both. Canonical JSON
+uses UTF-8, sorted keys, compact encoding, and SHA-256. Reject unknown version-1 fields, duplicate
+keys or finding identifiers, invalid transitions, more than 100 findings, input larger than 1 MiB,
+and output larger than the target provider's body limit.
+
+Store one envelope in a final carrier section:
+
+````text
+<!-- HomericIntelligence:review-exchange:v1 kind=<state|author-event> sha256=<hex> -->
+```json
+<one canonical JSON object>
+```
+````
+
+The envelope binds all visible content before the carrier with `visible_content_sha256`. Reject a
+missing, repeated, malformed, stale, non-final, or mismatched carrier. The carrier does not authorize
+an extra comment, review, label, check, or repository file. Store state only in the forge artifact
+that the applicable delivery rule already permits.
+
+### Compatibility and fallback
+
+Preserve a valid finalized legacy issue epoch and an unchanged, fully delivered legacy pull-request
+GO. Re-review an active unversioned issue review as version 1 round 1 in its existing actor-owned
+comment. Adopt an open legacy pull-request thread as a required finding with an immutable native
+identifier. Keep resolved history unchanged. Do not infer an answer, finding closure, or favorable
+result from legacy prose. If history is incomplete or ambiguous, fail closed.
+
+GitLab uses the same reducer and normalized carriers through its native discussion and note
+mechanisms. If the host or forge cannot prove complete state or safe delivery, return the prepared
+artifact and a coverage gap. Do not approximate the transition manually, restart the exchange, or
+claim a favorable delivered result.
+
 ## Delivery boundaries
 
 Review prose is evidence. It does not authorize a merge, label, check, or workflow change. Proceed
@@ -381,7 +627,7 @@ Apply [P033](../principles/README.md#p033), [P044](../principles/README.md#p044)
 | Change review | Do not write repository or forge state. Use local read-only annotations when the host supports them. Otherwise, use console `path:line` output. Do not insert review notes into source. |
 | Issue planning and issue review | Use only the documented issue-comment action for delivery. Treat `--draft` and `--report-only` as read-only. |
 | Issue-plan finalization | Treat `--draft` as read-only. A verified finalized planning epoch can replace the resolved issue body once. After exact readback, `finalize-plan` can delete only its sealed actor-owned plan and review comments. Do not change other forge state. Do not retry an uncertain deletion. |
-| Pull request review | If findings remain, publish one logical comment-only review batch. For GitHub, publish exactly one atomic `COMMENT` review. Put each anchorable finding in its `comments` array. For GitLab, use a supported atomic draft or batch. If this capability is not available, use a revalidated ordered discussion sequence. Do not split GitHub findings into separate reviews or posts. Do not retry an indeterminate post. Do not post a clean review. Enable auto-merge only after an explicit `--enable-auto-merge-on-go` action and an exact strict `GO`. Before you enable it, revalidate the artifact, head, required checks, merge policy, and provider. Do not enable it for `CONDITIONAL GO`, `NO-GO`, `--report-only`, continuous-integration-free (CI-free), or prevalidated review. The prevalidated profile does not post or run commands. |
+| Pull request review | For each applicable bounded-exchange round, publish one logical comment-only review batch. An explicit author-response action can publish one author-event carrier between reviewer rounds. For GitHub, publish exactly one atomic `COMMENT` review for the selected action. Put the complete state carrier and each new anchorable finding in the reviewer-round batch. Put the author-event carrier in a separate author-response review with an empty `comments` array. For GitLab, publish the finding discussions and state note in one supported atomic draft or batch. If this capability is not available, return the prepared batch and withhold publication. A state or author-event note that has no accompanying new finding discussion can be one immutable note. Do not split GitHub findings into separate reviews or posts. Do not retry an indeterminate post. Do not post a generic clean review. A verified terminal exchange carrier is the only clean-result exception. Enable auto-merge only after an explicit `--enable-auto-merge-on-go` action and an exact delivered `GO`. Before you enable it, revalidate the artifact, head, terminal ledger, required checks, merge policy, and provider. Do not enable it for `CONDITIONAL GO`, `NO-GO`, `--report-only`, continuous-integration-free (CI-free), or prevalidated review. The prevalidated profile does not post or run commands. |
 | Repository review | If findings remain, create a tracking hierarchy and work items without duplicates. On GitHub, use a writable configured Project and existing unambiguous fields when they are available. Treat `--report-only` as read-only. |
 | Realignment assessment handoff | Keep the assessment local and read-only. Stop after the assessment report. Repair can write repository state only through a separate `realign --apply` request for candidate identifiers that the user explicitly approves. Before repair, rebind the selected commit and tree OIDs, or the worktree `HEAD` and overlay identity. Rebind the target and candidate evidence from that source. Approval does not authorize forge writes, dependency installation, public API changes or migrations, or unrelated cleanup. |
 

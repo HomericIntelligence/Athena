@@ -16,6 +16,7 @@ prose that it produces.
 
 Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 [review contract](../../docs/review/common.md),
+[review-exchange mechanism](../review-exchange/SKILL.md),
 [design-document structure](../../docs/review/design-docs.md),
 [language routing](../../docs/review/language-routing.md), and
 [behavior-first testing](../../docs/review/behavior-first-testing.md).
@@ -80,28 +81,31 @@ or review comments for this purpose.
 
 ## Finalized planning epoch
 
+Call only `issue_exchange.py verify-finalize`. Do not call `inspect`, `prepare-plan`,
+`prepare-review`, or `verify-publication`. Do not perform another review. Do not parse carrier prose
+or calculate `R/P/V/F` in this skill. The helper is the only parser and calculator for these values.
+
 A planning epoch is one set of these sealed source identities:
 
 - `R` is the canonical digest of the original issue requirements. It contains the exact issue ID,
   title, body, and acceptance criteria before finalization.
-- `P` identifies one actor-owned `<!-- HomericIntelligence:plan-issue -->` comment ID and its canonical plan-content
-  digest.
-- `V` identifies one actor-owned `<!-- HomericIntelligence:issue-review -->` comment ID and its review-content
-  digest.
+- `P` is the plan-source token over one actor-owned
+  `<!-- HomericIntelligence:plan-issue -->` comment ID and its complete-body digest.
+- `V` is the review-source token over one actor-owned
+  `<!-- HomericIntelligence:issue-review -->` comment ID and its complete-body digest.
 
 `P` and `V` must identify different comment IDs. Do not use one comment as both plan and review.
 
 The review must contain the same issue, `R`, plan-comment ID, and `P`. These values must match
-exactly. The review must have the exact `GO` disposition. It must not have an unresolved `critical`,
+exactly. The review must have the exact `GO` verdict. It must not have an unresolved `critical`,
 `major`, or other `required` finding. Do not write if an artifact is conditional, partial,
 malformed, stale, foreign, duplicated, absent, or not verifiable.
 
-Record exactly one marker in the rendered body:
-`<!-- HomericIntelligence:finalize-plan R=<R> P=<P> V=<V> F=<F> -->`. Before you calculate `F`, use the literal
-`<F>` placeholder as the marker's `F` value. Calculate `F` from the final body. Do not calculate a
-digest from a marker that contains its own digest. The marker identifies the sealed source
-identities separately from the generated body. It also permits later readback verification without
-recursion.
+The helper records exactly one marker in the rendered body:
+`<!-- HomericIntelligence:finalize-plan R=<R> P=<P> V=<V> F=<F> -->`. It calculates `F` from the
+canonical final body with the literal `<F>` placeholder. Do not add, edit, or move the returned
+marker. The marker identifies the sealed source identities separately from the generated body. It
+also permits later readback verification without recursion.
 
 For migration only, resolve the exact actor-owned legacy aliases in the shared issue-planning contract.
 Resolve an existing exact `<!-- athena:finalize-plan R=<R> P=<P> V=<V> F=<F> -->` body marker only as
@@ -110,26 +114,21 @@ both marker versions.
 
 ## Finalize
 
-1. Resolve one exact issue with its node or URL, title, body, state, and authenticated actor.
-2. Before you interpret a marker, enumerate each current comment.
-3. Resolve exactly one actor-owned plan marker.
-4. Resolve exactly one actor-owned review marker.
-5. Calculate `R/P/V`.
-6. Verify the review bindings and the clean `GO` result.
-7. If ownership, multiplicity, binding, disposition, or required-finding verification fails, do not
-   write.
-8. Build a compact and lossless final body.
-9. Apply [P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001) only to the
-   sealed content.
-10. Make the presentation simple.
-11. Do not remove a requirement.
-12. Do not change the meaning of the approved architecture.
-13. Start the final body with **Why**.
-14. Preserve the original problem, outcome, and requirements that cannot change.
-15. If a system diagram makes at least three relationships, boundaries, or state transitions
+1. Exhaust bounded provider pagination. Resolve one exact issue snapshot with its node or URL,
+   title, body, state, actor, all comments, and `comments_complete` set to `true`.
+2. Build compact and lossless candidate content without a finalization marker.
+3. Do not parse a plan marker, review marker, carrier, ledger, or source digest in this skill.
+4. Apply [P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001) only to the
+   candidate content.
+5. Make the presentation simple.
+6. Do not remove a requirement.
+7. Do not change the meaning of the approved architecture.
+8. Start the candidate content with **Why**.
+9. Preserve the original problem, outcome, and requirements that cannot change.
+10. If a system diagram makes at least three relationships, boundaries, or state transitions
     clearer, include it.
-16. Include the architecture description, implementation plan, operations, and provenance.
-17. Preserve all items in this list:
+11. Include the architecture description, implementation plan, operations, and provenance.
+12. Preserve all items in this list:
 
    - acceptance criteria;
    - implementation boundaries;
@@ -140,45 +139,40 @@ both marker versions.
    - residual risks; and
    - out-of-scope decisions.
 
-18. Unless the reviewed canonical plan adopted a review suggestion, record the suggestion as optional
+13. Unless the reviewed canonical plan adopted a review suggestion, record the suggestion as optional
     residual context.
-19. Do not invent files, commands, requirements, architecture, implementation results, or validation
+14. Do not invent files, commands, requirements, architecture, implementation results, or validation
     evidence.
-20. If a smaller lossless result is sufficient, do not copy historical revision transcripts.
-21. If a smaller lossless result is sufficient, do not duplicate the plan and review verbatim.
-22. Add the finalized marker.
-23. Calculate `F` from its canonical representation that does not contain its own value.
-24. If the user selects `--draft`, return the complete body, `R`, `P`, `V`, `F`, and source links.
-25. For `--draft`, return all reasons for withheld writes.
-26. For `--draft`, do not make a forge write.
-27. Immediately before publication, apply
+15. If a smaller lossless result is sufficient, do not copy historical revision transcripts.
+16. If a smaller lossless result is sufficient, do not duplicate the plan and review verbatim.
+17. Call `issue_exchange.py verify-finalize` with the snapshot and candidate content.
+18. Accept only a `ready` result. It must include exact `GO`, current matching `R/P/V`, a terminal
+    ledger, no coverage gap, and authority receipts for accepted risks.
+19. Use the returned body, marker, source values, operation, and deletion allowlist without
+    modification.
+20. If the user selects `--draft`, return the complete prepared result and do not make a forge write.
+21. Immediately before publication, apply
     [P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061).
-28. For this check, resolve the issue, actor, each comment and marker, `R`, `P`, `V`, review
-    disposition, and target body again.
-29. If an input changed, return the ready-to-publish body with the `stale` status.
-30. After an input changes, do not write.
-31. Under [P044 Atomicity Where Possible](../../docs/principles/README.md#p044), publish exactly one
+22. Get a fresh snapshot and call the same preflight form again. Require the same state,
+    precondition, and operation.
+23. If an input changed, return the ready-to-publish body with the `stale` status. Do not write.
+24. Under [P044 Atomicity Where Possible](../../docs/principles/README.md#p044), publish exactly one
     issue-body replacement.
-32. Immediately read the issue again.
-33. Under [P065 Verify Before Claiming Completion](../../docs/principles/README.md#p065), verify the
-    exact body, marker, `R`, `P`, `V`, and `F`.
-34. If a timeout, indeterminate response, or readback mismatch occurs, report `unknown-outcome`.
-35. After a timeout, indeterminate response, or readback mismatch, do not retry.
-36. After a timeout, indeterminate response, or readback mismatch, do not make another mutation.
-37. Only after a successful body readback, use
+25. Immediately read the issue again. Call the readback form of `verify-finalize` with the snapshot
+    and prepared result.
+26. Continue only when the helper returns `verified`. Use only its deletion allowlist.
+27. If a timeout, indeterminate response, or readback mismatch occurs, report `unknown_outcome`.
+    Do not retry or make another mutation.
+28. Only after verified body readback, use
     [P083 Irreversible Actions Last](../../docs/principles/README.md#p083) to read each sealed comment
     again.
-38. Verify the exact ID, actor, marker, and digest of each sealed comment.
-39. Delete the plan comment only after its exact verification.
-40. Delete the review comment only after its exact verification.
-41. Do not delete a foreign, replacement, or changed comment.
-42. If deletion fails, times out, or has an indeterminate result, report `partial-cleanup`.
-43. State that an indeterminate deletion result is unknown.
-44. After a deletion failure, timeout, or indeterminate result, do not retry.
-45. After a deletion failure, timeout, or indeterminate result, do not compensate.
-46. After a deletion failure, timeout, or indeterminate result, do not remove the finalized body.
-47. After a deletion failure, timeout, or indeterminate result, report the identities of the comments
-    that remain.
+29. Verify the exact ID, actor, marker, and digest of each listed comment.
+30. Delete a listed comment only after its exact verification. Do not delete a foreign,
+    replacement, changed, or unlisted comment.
+31. If deletion fails, times out, or has an indeterminate result, report `partial_cleanup` and the
+    identities of the comments that remain.
+32. After a deletion failure, timeout, or indeterminate result, do not retry, compensate, or remove
+    the finalized body.
 
 If the final material contains architecture, test, error, or security decisions, preserve the
 reviewed use of these principles:
@@ -193,12 +187,13 @@ Finalization does not reopen these decisions. Do not make new decisions.
 ## Finalize again or restart
 
 If the live body verifies its finalized marker exactly and both sealed comments are absent, a second
-run returns a documented `no-change` result. If a sealed comment remains, report
-`partial-cleanup`. Its presence does not authorize another deletion attempt. If the marker is absent,
-malformed, foreign, or has a canonical `F` mismatch, do not use the epoch as evidence. A later
-substantive edit by a person creates a new requirements state. Before another finalization, this new
-state must pass a new `plan-issue` and `issue-review` cycle. Do not treat generated plan text or
-provenance fields as new requirements from a person.
+run returns a documented `no_change` result. If a sealed comment remains, report
+`partial_cleanup`. Its presence does not authorize another deletion attempt. If the marker is
+absent, malformed, foreign, or has a canonical `F` mismatch, do not use the epoch as evidence. A
+later edit that keeps a stale finalization marker does not authorize a new exchange. After the
+sealed comments are removed, an authoritative person can replace the sealed body with clean new
+requirements and remove the obsolete marker. The next inspection then starts a new round-1 epoch.
+Do not treat generated plan text or provenance fields as new requirements from a person.
 
 ## Behavior-first verification
 
@@ -224,8 +219,8 @@ headings, paragraph counts, or an example issue body.
   a person.
 - Do not replace behavior-first verification with wording checks. Do not invent files, commands, or
   validation evidence during synthesis.
-- After a timeout or readback mismatch, do not retry. Report `unknown-outcome`.
-- After an indeterminate deletion, do not retry. Report `partial-cleanup`. State that the deletion
+- After a timeout or readback mismatch, do not retry. Report `unknown_outcome`.
+- After an indeterminate deletion, do not retry. Report `partial_cleanup`. State that the deletion
   result is unknown.
 
 ## Result
@@ -236,7 +231,7 @@ Return these items:
 - `R/P/V/F`;
 - the `GO` decision and finding summary;
 - the requirement-preservation map;
-- the exact `draft`, `no-change`, `published`, `stale`, `partial-cleanup`, or `unknown-outcome`
+- the exact `draft`, `no_change`, `published`, `stale`, `partial_cleanup`, or `unknown_outcome`
   status;
 - the body-update receipt;
 - readback evidence;

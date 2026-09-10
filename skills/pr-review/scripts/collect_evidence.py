@@ -281,6 +281,23 @@ class LinkedRequirement:
         }
 
 
+@dataclass(frozen=True)
+class ReviewRequirementsBinding:
+    """This record binds live pull-request scope and linked requirements."""
+
+    reviewed_scope_sha256: str
+    requirements_sha256: str
+    requirement_issue_urls: tuple[str, ...]
+
+    def as_json(self) -> dict[str, object]:
+        """Return the canonical live requirements binding."""
+        return {
+            "reviewed_scope_sha256": self.reviewed_scope_sha256,
+            "requirements_sha256": self.requirements_sha256,
+            "requirement_issue_urls": list(self.requirement_issue_urls),
+        }
+
+
 def metadata_error(metadata: object, *, require_immutable_identity: bool) -> str | None:
     """Return a diagnostic when GitHub returns partial pull-request metadata."""
     if not isinstance(metadata, dict):
@@ -942,6 +959,27 @@ def linked_issue_metadata(
     return issue_data
 
 
+def _explicit_requirement_identity(url: str) -> tuple[str, int, str]:
+    match = re.fullmatch(
+        r"https://github\.com/([^/]+)/([^/]+)/issues/([1-9][0-9]{0,19})", url
+    )
+    if match is None:
+        raise RuntimeError("Use a canonical GitHub issue URL for each requirement.")
+    repository = require_github_repository(
+        f"{match[1]}/{match[2]}", "requirement issue repository"
+    )
+    return repository, int(match[3]), url
+
+
+def canonical_requirement_issue_urls(
+    requirement_issues: Sequence[str],
+) -> tuple[str, ...]:
+    """Validate and return one sorted set of explicit requirement URLs."""
+    return tuple(
+        sorted({_explicit_requirement_identity(url)[2] for url in requirement_issues})
+    )
+
+
 def linked_requirements(
     metadata: dict[str, Any],
     budget: LinkedRequirementBudget | None = None,
@@ -961,16 +999,9 @@ def linked_requirements(
         raise RuntimeError(
             "GitHub returned different identities for the same linked issue URL."
         )
-    for url in requirement_issues:
-        match = re.fullmatch(
-            r"https://github\.com/([^/]+)/([^/]+)/issues/([1-9][0-9]{0,19})", url
-        )
-        if match is None:
-            raise RuntimeError("Use a canonical GitHub issue URL for each requirement.")
-        repository = require_github_repository(
-            f"{match[1]}/{match[2]}", "requirement issue repository"
-        )
-        selected.setdefault(url, (None, repository, int(match[3]), url))
+    for url in canonical_requirement_issue_urls(requirement_issues):
+        repository, number, canonical_url = _explicit_requirement_identity(url)
+        selected.setdefault(canonical_url, (None, repository, number, canonical_url))
     collection_budget = budget if budget is not None else LinkedRequirementBudget()
     items: list[LinkedRequirement] = []
     for expected_id, repository, number, expected_url in sorted(
@@ -1365,6 +1396,44 @@ def pr_metadata(
     if not isinstance(metadata, dict):
         raise TypeError("GitHub returned a pull-request object that is not valid.")
     return metadata
+
+
+def collect_requirements_binding(
+    pull_request: str,
+    target: ExpectedReviewTarget,
+    expected: tuple[str, str],
+    requirement_issues: Sequence[str] = (),
+) -> ReviewRequirementsBinding:
+    """Collect and double-read one live pull-request requirements binding."""
+    selected_urls = canonical_requirement_issue_urls(requirement_issues)
+    budget = LinkedRequirementBudget()
+    observed: list[ReviewRequirementsBinding] = []
+    for _ in range(2):
+        metadata = pr_metadata(pull_request, target)
+        problem = metadata_error(metadata, require_immutable_identity=True)
+        if problem is not None:
+            raise RuntimeError(problem)
+        identity = immutable_identity(
+            metadata, target.repository, require_immutable_identity=True
+        )
+        ensure_expected_identity(identity, expected)
+        ensure_expected_target(identity, target)
+        scope = review_scope(metadata)
+        requirements = linked_requirements(metadata, budget, selected_urls)
+        observed.append(
+            ReviewRequirementsBinding(
+                reviewed_scope_sha256=scope.sha256,
+                requirements_sha256=requirements.sha256,
+                requirement_issue_urls=tuple(
+                    sorted(item.url for item in requirements.items)
+                ),
+            )
+        )
+    if observed[0] != observed[1]:
+        raise RuntimeError(
+            "The pull-request requirements changed during live binding collection."
+        )
+    return observed[0]
 
 
 def merge_readiness(metadata: dict[str, Any]) -> dict[str, str]:

@@ -49,8 +49,16 @@ class InstalledSkillHelperTests(unittest.TestCase):
             for key, value in os.environ.items()
             if not key.startswith("PYTHON")
         }
-        self.environment["PYTHONDONTWRITEBYTECODE"] = "1"
         self.environment["XDG_CONFIG_HOME"] = str(self.root / "config")
+
+    def corpus_snapshot(self, corpus: Path) -> dict[str, bytes | None]:
+        """Return the installed path inventory and exact file content."""
+        return {
+            path.relative_to(corpus).as_posix(): None
+            if path.is_dir()
+            else path.read_bytes()
+            for path in sorted(corpus.rglob("*"))
+        }
 
     def install(self) -> Path:
         staged = stage_package(self.source, self.root / "staged")
@@ -71,17 +79,108 @@ class InstalledSkillHelperTests(unittest.TestCase):
         return Path(result.stdout)
 
     def run_helper(
-        self, corpus: Path, relative: str, *arguments: str
+        self,
+        corpus: Path,
+        relative: str,
+        *arguments: str,
+        input_text: str | None = None,
     ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [sys.executable, str(corpus / relative), *arguments],
             cwd=self.cwd,
             env=self.environment,
+            input=input_text,
             capture_output=True,
             text=True,
             check=False,
             timeout=30,
         )
+
+    def assert_review_exchange_runtime(self, corpus: Path) -> None:
+        reduction_request = {
+            "previous": None,
+            "event": {
+                "event_type": "reviewer_assessment",
+                "exchange_id": "installed-exchange",
+                "prior_state_sha256": None,
+                "round": 1,
+                "surface": "pull_request",
+                "target": {
+                    "provider": "github",
+                    "repository": "example/project",
+                    "number": 7,
+                    "url": "https://github.com/example/project/pull/7",
+                },
+                "requirements_sha256": "a" * 64,
+                "supersedes_state_sha256": None,
+                "artifact_binding": {
+                    "revision": "head-7",
+                    "sha256": "b" * 64,
+                    "visible_content_sha256": "c" * 64,
+                },
+                "scope": ["path:src/example.py"],
+                "coverage_complete": True,
+                "go_eligible": True,
+                "responses": [],
+                "new_findings": [],
+                "stop_reason": None,
+            },
+        }
+        reduced = self.run_helper(
+            corpus,
+            "review-exchange/scripts/review_exchange.py",
+            "reduce",
+            "-",
+            input_text=json.dumps(reduction_request),
+        )
+        self.assertEqual(0, reduced.returncode, reduced.stderr)
+        reduction_result = json.loads(reduced.stdout)
+        self.assertEqual("accepted", reduction_result["status"])
+        envelope = reduction_result["envelope"]
+        self.assertEqual("GO", envelope["state"]["verdict"])
+
+        verified = self.run_helper(
+            corpus,
+            "review-exchange/scripts/review_exchange.py",
+            "verify",
+            "-",
+            input_text=json.dumps(envelope),
+        )
+        self.assertEqual(0, verified.returncode, verified.stderr)
+        self.assertEqual(envelope, json.loads(verified.stdout))
+
+        issue_snapshot = {
+            "schema_id": "athena.issue-exchange.snapshot",
+            "schema_version": 1,
+            "target": {
+                "provider": "github",
+                "host": "github.com",
+                "repository": "example/project",
+                "issue_id": "I_7",
+                "number": 7,
+                "url": "https://github.com/example/project/issues/7",
+            },
+            "actor": {"id": "actor-7", "login": "reviewer"},
+            "issue": {
+                "state": "open",
+                "title": "Bound the review exchange",
+                "body": "Implement the bounded exchange.",
+                "acceptance_criteria": [],
+            },
+            "comments": [],
+            "comments_complete": True,
+        }
+        inspected = self.run_helper(
+            corpus,
+            "review-exchange/scripts/issue_exchange.py",
+            "inspect",
+            "-",
+            input_text=json.dumps(issue_snapshot),
+        )
+        self.assertEqual(0, inspected.returncode, inspected.stderr)
+        inspection_result = json.loads(inspected.stdout)
+        self.assertEqual("ready", inspection_result["status"])
+        self.assertEqual("prepare_plan", inspection_result["next_action"])
 
     def test_installed_selector_help_without_repository_imports(self) -> None:
         corpus = self.install()
@@ -90,6 +189,16 @@ class InstalledSkillHelperTests(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("knowledge_root", result.stdout)
+
+    def test_review_exchange_runtime_does_not_modify_the_installed_corpus(
+        self,
+    ) -> None:
+        corpus = self.install()
+        before = self.corpus_snapshot(corpus)
+
+        self.assert_review_exchange_runtime(corpus)
+
+        self.assertEqual(before, self.corpus_snapshot(corpus))
 
     def test_installed_resolver_reports_its_artifact_version(self) -> None:
         corpus = self.install()
@@ -112,6 +221,8 @@ class InstalledSkillHelperTests(unittest.TestCase):
         self.assertIn("advise/scripts/resolve_knowledge_checkout.py", helpers)
         self.assertIn("pr-review/scripts/collect_evidence.py", helpers)
         self.assertIn("realign/scripts/resolve_assessment.py", helpers)
+        self.assertIn("review-exchange/scripts/issue_exchange.py", helpers)
+        self.assertIn("review-exchange/scripts/review_exchange.py", helpers)
         versions = ("1.2.3-rc.1+build.42", "2.0.0+second")
         installations: list[tuple[Path, str]] = []
         for index, version in enumerate(versions):
@@ -152,6 +263,8 @@ class InstalledSkillHelperTests(unittest.TestCase):
                             self.assertEqual(
                                 f"{Path(helper).name} {version}\n", result.stdout
                             )
+            with self.subTest(corpus=corpus, operation="review-exchange-runtime"):
+                self.assert_review_exchange_runtime(corpus)
         knowledge = self.root / "knowledge/skills"
         knowledge.mkdir(parents=True)
         for name in ("z.md", "a.md", "a.notes.md", "a.history.md"):
@@ -216,6 +329,15 @@ class InstalledSkillHelperTests(unittest.TestCase):
         with tarfile.open(archive) as bundle:
             bundle.extractall(extracted, filter="data")
         self.source.rename(self.root / "unavailable-source")
+        sentinel = self.cwd / "skills"
+        sentinel.mkdir()
+        (sentinel / "__init__.py").write_text(
+            "raise RuntimeError('Unrelated skills package')\n"
+        )
+        (self.cwd / "_cli.py").write_text(
+            "raise RuntimeError('Unrelated CLI module')\n"
+        )
+        self.environment["PYTHONPATH"] = str(self.cwd)
         corpus = extracted / "skills"
         version = json.loads((extracted / ".codex-plugin/plugin.json").read_text())[
             "version"
@@ -231,3 +353,4 @@ class InstalledSkillHelperTests(unittest.TestCase):
                     self.assertEqual(0, result.returncode, result.stderr)
                     if argument == "--version":
                         self.assertEqual(f"{helper.name} {version}\n", result.stdout)
+        self.assert_review_exchange_runtime(corpus)

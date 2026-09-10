@@ -39,8 +39,8 @@ technical-English, and governance contracts. Do not copy these contracts for eac
 
 - [`review/README.md`](review/README.md): why the review system exists, its high-level flow, and
   the right contract to read for each review scope.
-- [`review/common.md`](review/common.md): architecture-first shared contract, findings, and
-  delivery boundaries.
+- [`review/common.md`](review/common.md): architecture-first shared contract, bounded exchange,
+  findings, and delivery boundaries.
 - [`review/language-routing.md`](review/language-routing.md): language and toolchain profiles.
 - [`review/behavior-first-testing.md`](review/behavior-first-testing.md): functional-test quality
   and false-confidence rules.

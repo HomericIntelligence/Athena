@@ -38,6 +38,7 @@ flowchart LR
 | --- | --- | --- |
 | [ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.md) | Method for technical prose and literal-text boundary. | Before you write or change technical prose or review output. |
 | [Shared contract](common.md) | Architecture gate, evidence, simplification coverage, canonical-principle application profiles, findings, and delivery boundaries. | Every review. |
+| [Review-exchange mechanism](../../skills/review-exchange/SKILL.md) | Versioned review state validation, reduction, carriers, and rendering. | A pull request, merge request, or issue-plan review uses the bounded exchange. |
 | [Simplify workflow](../../skills/simplify/SKILL.md) | Read-only subtraction-first review for safe deletion, reuse, consolidation, and retention. | The task may shrink or retire behavior. |
 | [Realign workflow](../../skills/realign/SKILL.md) | Architecture assessment and repair of explicitly approved candidates. | Code can have unexplained architecture drift or evidence-backed structural defects. |
 | [Language routing](language-routing.md) | Applicable language and toolchain profile. | The changed or inventoried surface contains code or build tooling. |
@@ -50,12 +51,13 @@ flowchart LR
 
 1. Read the ASD-STE100 technical-English policy.
 2. Read the shared contract and repository guidance.
-3. Confirm that the artifact aligns with the architecture.
-4. Classify the surface.
-5. Read only the applicable language and test guidance.
-6. If the scope includes issue planning, read the issue-planning contract.
-7. If the scope includes a repository review, read the repository scorecard.
-8. Follow the invoking skill for scope resolution and its authorized delivery channel.
+3. If the bounded exchange applies, read the review-exchange skill.
+4. Confirm that the artifact aligns with the architecture.
+5. Classify the surface.
+6. Read only the applicable language and test guidance.
+7. If the scope includes issue planning, read the issue-planning contract.
+8. If the scope includes a repository review, read the repository scorecard.
+9. Follow the invoking skill for scope resolution and its authorized delivery channel.
 
 The diagram appears only here. Component documents use tables or prose when those communicate their
 own decision more clearly.
