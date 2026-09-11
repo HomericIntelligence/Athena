@@ -98,7 +98,10 @@ finding. The authority record digest must equal `authority_receipt.sha256`.
 For new GitHub adoptions, use the GraphQL root comment ID. The GitHub delivery adapter can resolve
 an existing canonical positive decimal `fullDatabaseId` through the same root object in a complete
 snapshot. This read-only compatibility alias does not change the carrier or the generic grammar.
-An ambiguous alias is invalid. The adapter retains all origin, ownership, and conversation checks.
+An ambiguous alias is invalid. The adapter retains all origin, carrier-ownership, and conversation
+checks. Adoption can name another actor's root; it does not grant thread-resolution authority.
+For GitHub native locations and delivery recovery, follow the
+[delivery contract](../../pr-review/references/delivery.md#verified-go-delivery).
 
 A finding input has these fields:
 

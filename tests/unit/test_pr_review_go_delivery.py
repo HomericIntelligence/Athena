@@ -1110,6 +1110,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self,
         *,
         finding_id: str = "F-001",
+        location: str = "src/no_go.py:1",
         finding_evidence: tuple[str, ...] = ("The test fails.",),
     ) -> tuple[Any, Any]:
         exchange = self.delivery.review_exchange
@@ -1147,7 +1148,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                             "severity": "major",
                             "disposition": "required",
                             "material_architecture": False,
-                            "location": "src/no_go.py:1",
+                            "location": location,
                             "impact": "The result is incorrect.",
                             "evidence": list(finding_evidence),
                             "closure_condition": "The test passes.",
@@ -3640,6 +3641,186 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self.assertEqual("delivered", result.status)
         self.assertEqual(body_before, forge.reviews[0].body)
         self.assertEqual({"state:implementation-no-go"}, forge.labels)
+
+    def native_no_go_fixture(self, location: str = "src/no_go.py:1") -> tuple[Any, Any]:
+        """Adopt an exact foreign root through the real exchange reducer."""
+        proof, record = self.no_go_proof(
+            finding_id="native:PRRC_verified_root", location=location
+        )
+        root = self.delivery.ReviewComment(
+            id="PRRC_verified_root",
+            full_database_id="3991324281",
+            body="Legacy required finding.",
+            author="github-advanced-security",
+            viewer_did_author=False,
+            review_head_oid="b" * 40,
+            review_id="bot-review",
+            path="src/no_go.py",
+            side="RIGHT",
+            line=1,
+            original_line=1,
+        )
+        thread = self.delivery.ReviewThread(
+            id="legacy-thread",
+            is_resolved=False,
+            comments=(root,),
+            viewer_can_reply=False,
+            viewer_can_resolve=False,
+        )
+        forge = FakeForge(self.delivery, threads=(thread,))
+        forge.labels = {"state:implementation-go"}
+        forge.reviews.append(record)
+        return proof, forge
+
+    def test_native_adoption_no_go_does_not_require_thread_ownership(self) -> None:
+        for author in ("github-advanced-security", "another-reviewer"):
+            with self.subTest(author=author):
+                proof, forge = self.native_no_go_fixture()
+                thread = forge.threads["legacy-thread"]
+                forge.threads[thread.id] = replace(
+                    thread, comments=(replace(thread.comments[0], author=author),)
+                )
+                initial_threads = dict(forge.threads)
+                initial_records = list(forge.reviews)
+
+                result = self.delivery.deliver_no_go(forge, self.binding(), proof)
+                repeated = self.delivery.deliver_no_go(forge, self.binding(), proof)
+
+                self.assertEqual("delivered", result.status)
+                self.assertEqual("already_delivered", repeated.status)
+                self.assertEqual(initial_threads, forge.threads)
+                self.assertEqual(initial_records, forge.reviews)
+                self.assertEqual({"state:implementation-no-go"}, forge.labels)
+                self.assertEqual(1, forge.events.count("labels:no-go"))
+                self.assertFalse(
+                    any(event.startswith("reply:") for event in forge.events)
+                )
+                self.assertFalse(
+                    any(event.startswith("resolve:") for event in forge.events)
+                )
+
+    def test_native_adoption_recovers_exact_discussion_url_without_carrier_edit(
+        self,
+    ) -> None:
+        location = f"{self.binding().url}#discussion_r3991324281"
+        proof, forge = self.native_no_go_fixture(location)
+        carrier = forge.reviews[0].body
+        envelope = self.delivery.review_exchange.canonical_json(proof.state_envelope)
+
+        result = self.delivery.deliver_no_go(forge, self.binding(), proof)
+
+        self.assertEqual("delivered", result.status)
+        self.assertEqual(carrier, forge.reviews[0].body)
+        self.assertEqual(
+            envelope,
+            self.delivery.review_exchange.canonical_json(proof.state_envelope),
+        )
+        self.assertFalse(forge.threads["legacy-thread"].is_resolved)
+
+    def test_native_adoption_rejects_unbound_locations_before_label_write(self) -> None:
+        url = self.binding().url
+        for location in (
+            f"{url}#discussion_r3991324282",
+            f"{url}#discussion_r03991324281",
+            f"{url}#discussion_rPRRC_verified_root",
+            f"{url}?view=1#discussion_r3991324281",
+            f"{url}/#discussion_r3991324281",
+            "https://github.com/owner/repository/pull/8#discussion_r3991324281",
+            "https://github.com/other/repository/pull/7#discussion_r3991324281",
+            "https://example.com/owner/repository/pull/7#discussion_r3991324281",
+            "src/other.py:1",
+            "src/no_go.py:2",
+        ):
+            with self.subTest(location=location):
+                proof, forge = self.native_no_go_fixture(location)
+                with self.assertRaises(self.delivery.DeliveryError):
+                    self.delivery.deliver_no_go(forge, self.binding(), proof)
+                self.assertEqual(["read"], forge.events)
+
+    def test_native_adoption_retains_origin_and_carrier_guards(self) -> None:
+        mutations: dict[str, dict[str, Any]] = {
+            "missing-root": {"id": "PRRC_other"},
+            "missing-head": {"review_head_oid": None},
+            "missing-side": {"side": None},
+            "wrong-path": {"path": "src/other.py"},
+            "wrong-line": {"original_line": 2},
+            "marked-root": {
+                "body": "<!-- HomericIntelligence:review-finding:v1 exchange=other id=F-001 -->"
+            },
+        }
+        for case, changes in mutations.items():
+            with self.subTest(case=case):
+                proof, forge = self.native_no_go_fixture()
+                thread = forge.threads["legacy-thread"]
+                forge.threads[thread.id] = replace(
+                    thread, comments=(replace(thread.comments[0], **changes),)
+                )
+                with self.assertRaises(self.delivery.DeliveryError):
+                    self.delivery.deliver_no_go(forge, self.binding(), proof)
+                self.assertEqual(["read"], forge.events)
+        for changes in (
+            {"viewer_did_author": False},
+            {"head_oid": "c" * 40},
+            {"last_edited_at": "2026-01-01T00:03:00Z"},
+        ):
+            with self.subTest(carrier=changes):
+                proof, forge = self.native_no_go_fixture()
+                forge.reviews[0] = replace(forge.reviews[0], **changes)
+                with self.assertRaises(self.delivery.DeliveryError):
+                    self.delivery.deliver_no_go(forge, self.binding(), proof)
+                self.assertEqual(["read"], forge.events)
+
+    def test_native_url_adoption_requires_complete_root_metadata(self) -> None:
+        for changes in (
+            {"path": None},
+            {"path": "../outside.py"},
+            {"original_line": None},
+            {"original_line": 0},
+            {"full_database_id": None},
+            {"full_database_id": "3991324282"},
+        ):
+            with self.subTest(root=changes):
+                proof, forge = self.native_no_go_fixture(
+                    f"{self.binding().url}#discussion_r3991324281"
+                )
+                thread = forge.threads["legacy-thread"]
+                forge.threads[thread.id] = replace(
+                    thread, comments=(replace(thread.comments[0], **changes),)
+                )
+                with self.assertRaises(self.delivery.DeliveryError):
+                    self.delivery.deliver_no_go(forge, self.binding(), proof)
+                self.assertEqual(["read"], forge.events)
+
+    def test_native_adoption_go_requires_external_foreign_thread_resolution(
+        self,
+    ) -> None:
+        root = self.delivery.ReviewComment(
+            id="PRRC_verified_root",
+            body="Legacy required finding.",
+            author="github-advanced-security",
+            viewer_did_author=False,
+            review_head_oid="a" * 40,
+            path="src/example.py",
+            side="RIGHT",
+            line=7,
+            original_line=7,
+        )
+        thread = self.delivery.ReviewThread(
+            id="legacy-thread", is_resolved=False, comments=(root,)
+        )
+        manifest = self.v1_manifest(thread, include_entry=False)
+        forge = FakeForge(self.delivery, threads=(thread,))
+        self.add_history(forge, manifest)
+        with self.assertRaisesRegex(self.delivery.DeliveryError, "foreign open"):
+            self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+        self.assertEqual(["read"], forge.events)
+
+        forge.threads[thread.id] = replace(thread, is_resolved=True)
+        result = self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+        self.assertEqual("delivered", result.status)
+        self.assertEqual((), result.resolved_thread_ids)
+        self.assertFalse(any(event.startswith("resolve:") for event in forge.events))
+        self.assertFalse(any(event.startswith("reply:") for event in forge.events))
 
     def test_persisted_decimal_alias_rejects_no_go_ancestry_before_label_write(
         self,
