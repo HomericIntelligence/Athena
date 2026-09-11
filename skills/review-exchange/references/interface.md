@@ -400,6 +400,9 @@ envelope. The document must contain exactly one final carrier section. It must h
 The marker digest, envelope digest, carrier kind, visible-content digest, and provider body limit
 must agree. The marker and its JSON fence must be a top-level final section. The visible content
 cannot leave a top-level fenced code block open at the carrier boundary.
+The final JSON fence must end with a line feed or at the end of input.
+No text, spaces, or extra blank lines can follow that fence. The reader preserves
+all input bytes for digest and size checks. The renderer continues to emit a final line feed.
 
 ### `render`
 
