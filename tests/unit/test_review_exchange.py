@@ -2704,6 +2704,54 @@ class ReviewExchangeTests(unittest.TestCase):
             ):
                 self.exchange.extract_carrier(document)
 
+    def test_carrier_accepts_both_closing_fence_endings_and_rejects_trailing_content(
+        self,
+    ) -> None:
+        state_visible = "## Review\n\nThe correction is complete."
+        state_event = self.initial_event(findings=[])
+        state_event["artifact_binding"]["visible_content_sha256"] = (
+            self.exchange.sha256_text(state_visible)
+        )
+        state_envelope = self.reduce(state_event)["envelope"]
+
+        author_visible = "Author response."
+        author_state = self.initial_state()
+        author_event = self.author_event(author_state, "fix")
+        author_event["artifact_binding"]["visible_content_sha256"] = (
+            self.exchange.sha256_text(author_visible)
+        )
+        author_envelope = cast(
+            dict[str, Any], self.reduce(author_event, author_state)["author_event"]
+        )
+
+        cases = (
+            ("state", state_visible, state_envelope),
+            ("author-event", author_visible, author_envelope),
+        )
+        for kind, visible, envelope in cases:
+            with self.subTest(kind=kind):
+                rendered = self.exchange.render_carrier(visible, envelope, kind)
+                self.assertTrue(rendered.endswith("```\n"))
+                without_final_newline = rendered[:-1]
+                self.assertEqual(rendered, without_final_newline + "\n")
+                self.assertEqual(envelope, self.exchange.extract_carrier(rendered))
+                self.assertEqual(
+                    envelope,
+                    self.exchange.extract_carrier(without_final_newline),
+                )
+                for candidate in (
+                    rendered + "trailing text",
+                    without_final_newline + "trailing text",
+                    rendered + "\n",
+                    rendered + " ",
+                    without_final_newline + " ",
+                ):
+                    with (
+                        self.subTest(candidate=candidate[-32:]),
+                        self.assertRaises(self.exchange.ProtocolError),
+                    ):
+                        self.exchange.extract_carrier(candidate)
+
     def test_carrier_marker_cannot_be_inside_an_unclosed_fence(self) -> None:
         visible = "## Review\n\n```text\nThe review fence is not closed."
         event = self.initial_event(findings=[])

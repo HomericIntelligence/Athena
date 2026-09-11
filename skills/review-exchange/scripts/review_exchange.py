@@ -3352,7 +3352,8 @@ def extract_carrier(document: str) -> dict[str, Any]:
         raise ProtocolError("The document contains a malformed or repeated carrier.")
     top_level_markdown_lines(visible, require_closed=True)
     suffix = document[match.end() :]
-    if not suffix.startswith("\n```json\n") or not suffix.endswith("\n```\n"):
+    closing_fence = "\n```\n" if suffix.endswith("\n```\n") else "\n```"
+    if not suffix.startswith("\n```json\n") or not suffix.endswith(closing_fence):
         raise ProtocolError("The review-exchange JSON fence is malformed or not final.")
     if (
         match.start(),
@@ -3360,7 +3361,7 @@ def extract_carrier(document: str) -> dict[str, Any]:
         match.group(0),
     ) not in top_level_markdown_lines(document, require_closed=True):
         raise ProtocolError("The review-exchange marker is not a top-level line.")
-    encoded = suffix[len("\n```json\n") : -len("\n```\n")]
+    encoded = suffix[len("\n```json\n") : -len(closing_fence)]
     if "\n" in encoded:
         raise ProtocolError("The carrier JSON must use canonical one-line encoding.")
     envelope = verify_envelope(parse_json_bytes(encoded.encode("utf-8")))
