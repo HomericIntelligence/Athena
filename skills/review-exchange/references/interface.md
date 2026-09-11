@@ -95,6 +95,11 @@ finding. The authority record digest must equal `authority_receipt.sha256`.
 
 ### Finding input
 
+For new GitHub adoptions, use the GraphQL root comment ID. The GitHub delivery adapter can resolve
+an existing canonical positive decimal `fullDatabaseId` through the same root object in a complete
+snapshot. This read-only compatibility alias does not change the carrier or the generic grammar.
+An ambiguous alias is invalid. The adapter retains all origin, ownership, and conversation checks.
+
 A finding input has these fields:
 
 | Field | Type and value |

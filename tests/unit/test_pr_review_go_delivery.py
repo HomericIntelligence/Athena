@@ -353,6 +353,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                                                     "authorAssociation": "MEMBER",
                                                     "body": "finding",
                                                     "id": "comment-1",
+                                                    "fullDatabaseId": "3991324281",
                                                     "lastEditedAt": None,
                                                     "publishedAt": "2026-01-01T00:00:01Z",
                                                     "pullRequestReview": {
@@ -993,7 +994,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         )
         return forge, binding, manifest
 
-    def no_go_proof(self) -> tuple[Any, Any]:
+    def no_go_proof(self, *, finding_id: str = "F-001") -> tuple[Any, Any]:
         exchange = self.delivery.review_exchange
         visible = "Round 1 has one required finding."
         envelope = exchange.reduce_request(
@@ -1024,7 +1025,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     "responses": [],
                     "new_findings": [
                         {
-                            "id": "F-001",
+                            "id": finding_id,
                             "category": None,
                             "severity": "major",
                             "disposition": "required",
@@ -3106,6 +3107,217 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self.assertEqual("native:legacy/comment:7", state_finding["id"])
         self.assertEqual("required", state_finding["disposition"])
         self.assertEqual("delivered", result.status)
+
+    def test_native_database_id_alias_delivers_without_carrier_changes(self) -> None:
+        root = self.delivery.ReviewComment(
+            id="PRRC_verified_root",
+            body="Legacy required finding.",
+            author="reviewer",
+            viewer_did_author=True,
+            review_head_oid="a" * 40,
+            path="src/example.py",
+            side="RIGHT",
+            line=7,
+            original_line=7,
+            full_database_id="3991324281",
+        )
+        thread = self.delivery.ReviewThread(
+            id="legacy-thread", is_resolved=False, comments=(root,)
+        )
+        closure = replace(self.closure(thread), finding_id="native:3991324281")
+        manifest = self.v1_manifest(thread, closure)
+        envelope_before = json.dumps(manifest.state_envelope, sort_keys=True)
+        forge = FakeForge(self.delivery, threads=(thread,))
+        self.add_history(forge, manifest)
+
+        result = self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+
+        self.assertEqual("delivered", result.status)
+        self.assertEqual(
+            envelope_before, json.dumps(manifest.state_envelope, sort_keys=True)
+        )
+        self.assertEqual("native:3991324281", manifest.entries[0].finding_id)
+        self.assertEqual("PRRC_verified_root", manifest.entries[0].origin_comment_id)
+
+    def test_native_database_id_alias_preserves_no_go_carrier(self) -> None:
+        proof, record = self.no_go_proof(finding_id="native:3991324281")
+        root = self.delivery.ReviewComment(
+            id="PRRC_verified_root",
+            full_database_id="3991324281",
+            body="Legacy required finding.",
+            author="reviewer",
+            review_head_oid="b" * 40,
+            path="src/no_go.py",
+            side="RIGHT",
+            line=1,
+            original_line=1,
+        )
+        thread = self.delivery.ReviewThread(
+            id="legacy-thread", is_resolved=False, comments=(root,)
+        )
+        forge = FakeForge(self.delivery, threads=(thread,))
+        forge.labels = {"state:implementation-go"}
+        forge.reviews.append(record)
+        body_before = record.body
+        result = self.delivery.deliver_no_go(forge, self.binding(), proof)
+        self.assertEqual("delivered", result.status)
+        self.assertEqual(body_before, forge.reviews[0].body)
+        self.assertEqual({"state:implementation-no-go"}, forge.labels)
+
+    def test_native_alias_rejects_ambiguous_or_unverified_roots_before_writes(
+        self,
+    ) -> None:
+        for case in (
+            "missing",
+            "duplicate-database",
+            "duplicate-graphql",
+            "cross-form",
+            "foreign",
+            "head",
+            "path",
+            "side",
+            "marker",
+            "origin",
+            "conversation",
+        ):
+            with self.subTest(case=case):
+                root = self.delivery.ReviewComment(
+                    id="PRRC_verified_root",
+                    full_database_id="3991324281",
+                    body="Legacy required finding.",
+                    author="reviewer",
+                    review_head_oid="a" * 40,
+                    path="src/example.py",
+                    side="RIGHT",
+                    line=7,
+                    original_line=7,
+                )
+                thread = self.delivery.ReviewThread(
+                    id="legacy-thread", is_resolved=False, comments=(root,)
+                )
+                closure = replace(self.closure(thread), finding_id="native:3991324281")
+                manifest = self.v1_manifest(thread, closure)
+                threads = (thread,)
+                if case == "missing":
+                    threads = (
+                        replace(
+                            thread, comments=(replace(root, full_database_id=None),)
+                        ),
+                    )
+                elif case.startswith("duplicate") or case == "cross-form":
+                    other = replace(
+                        root, id="PRRC_other", full_database_id="3991324282"
+                    )
+                    if case == "duplicate-database":
+                        other = replace(other, full_database_id=root.full_database_id)
+                    elif case == "duplicate-graphql":
+                        other = replace(other, id=root.id)
+                    else:
+                        other = replace(other, id="3991324281")
+                    threads += (replace(thread, id="other-thread", comments=(other,)),)
+                elif case == "origin":
+                    manifest = replace(
+                        manifest,
+                        entries=(
+                            replace(
+                                manifest.entries[0], origin_comment_id="wrong-origin"
+                            ),
+                        ),
+                    )
+                elif case == "conversation":
+                    threads = (
+                        replace(
+                            thread, comments=(replace(root, body="Changed finding."),)
+                        ),
+                    )
+                else:
+                    updates = {
+                        "foreign": {"viewer_did_author": False},
+                        "head": {"review_head_oid": "c" * 40},
+                        "path": {"path": "src/other.py"},
+                        "side": {"side": None},
+                        "marker": {
+                            "body": "<!-- HomericIntelligence:review-finding:v1 exchange=other id=F-001 -->"
+                        },
+                    }
+                    threads = (
+                        replace(thread, comments=(replace(root, **updates[case]),)),
+                    )
+                forge = FakeForge(self.delivery, threads=threads)
+                self.add_history(forge, manifest)
+                with self.assertRaises(self.delivery.DeliveryError):
+                    self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+                self.assertEqual(["read"], forge.events)
+
+    def test_new_native_manifest_keeps_graphql_identity_with_database_alias(
+        self,
+    ) -> None:
+        root = self.delivery.ReviewComment(
+            id="PRRC_verified_root",
+            full_database_id="3991324281",
+            body="Legacy finding.",
+            author="reviewer",
+            review_head_oid="a" * 40,
+        )
+        thread = self.delivery.ReviewThread(
+            id="legacy-thread", is_resolved=False, comments=(root,)
+        )
+        forge = FakeForge(self.delivery, threads=(thread,))
+        manifest = self.delivery.prepare_response_manifest(forge, self.binding())
+        self.assertEqual(
+            "native:PRRC_verified_root", manifest["entries"][0]["finding_id"]
+        )
+
+    def test_native_numeric_graphql_identity_remains_opaque(self) -> None:
+        root = self.delivery.ReviewComment(
+            id="01",
+            full_database_id="3991324281",
+            body="Legacy required finding.",
+            author="reviewer",
+            review_head_oid="a" * 40,
+            path="src/example.py",
+            side="RIGHT",
+            line=7,
+            original_line=7,
+        )
+        thread = self.delivery.ReviewThread(
+            id="legacy-thread", is_resolved=False, comments=(root,)
+        )
+        manifest = self.v1_manifest(thread)
+        forge = FakeForge(self.delivery, threads=(thread,))
+        self.add_history(forge, manifest)
+        result = self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+        self.assertEqual("delivered", result.status)
+        self.assertEqual("native:01", manifest.entries[0].finding_id)
+
+    def test_snapshot_retains_verified_database_id(self) -> None:
+        calls: list[tuple[str, ...]] = []
+
+        def fake_gh(*arguments: str) -> str:
+            calls.append(arguments)
+            return self.github_snapshot_json()
+
+        with patch.object(self.delivery, "_gh", side_effect=fake_gh):
+            snapshot = self.delivery.GitHubForge(self.binding()).snapshot()
+        self.assertEqual(
+            "3991324281",
+            getattr(snapshot.threads[0].comments[0], "full_database_id", None),
+        )
+        self.assertIn("fullDatabaseId", " ".join(calls[0]))
+
+    def test_snapshot_rejects_invalid_database_id(self) -> None:
+        for value in (None, "", "0", "01", "-1", "+1", "1.0", " 1", 1, True):
+            with self.subTest(value=value):
+                data = json.loads(self.github_snapshot_json())
+                comment = data["data"]["repository"]["pullRequest"]["reviewThreads"][
+                    "nodes"
+                ][0]["comments"]["nodes"][0]
+                comment["fullDatabaseId"] = value
+                with (
+                    patch.object(self.delivery, "_gh", return_value=json.dumps(data)),
+                    self.assertRaises(self.delivery.DeliveryError),
+                ):
+                    self.delivery.GitHubForge(self.binding()).snapshot()
 
     def test_native_finding_requires_one_matching_root(self) -> None:
         root = self.delivery.ReviewComment(
