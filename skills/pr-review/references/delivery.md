@@ -359,8 +359,11 @@ terminal record, or missing authority receipt withholds GO.
 New GitHub adoptions use the GraphQL root comment ID in `native:<root-comment-id>`.
 For an existing carrier, the delivery adapter also accepts a canonical positive decimal
 `fullDatabaseId` as a read-only compatibility alias. It resolves both forms through the same root
-object in one complete GitHub snapshot. Missing, malformed, or ambiguous aliases stop delivery.
-The adapter preserves carrier bytes and all origin, ownership, head, and conversation checks.
+object in one complete GitHub snapshot. A decimal alias with a changed source line requires the
+exact discussion permalink, an unchanged viewer-owned root, its submitted root review, and a
+successful ancestry check from the root review head to the carrier review head. Missing,
+malformed, or ambiguous aliases stop delivery. The adapter preserves carrier bytes and all origin,
+ownership, head, and conversation checks.
 
 An open legacy thread without a marker is adopted as a required finding with the immutable
 `native:<root-comment-id>` identity. It still requires explicit answer, disposition, and closure
