@@ -41,6 +41,65 @@ def source(tmp_path: Path) -> tuple[Path, str, str]:
     return tmp_path, base, git(tmp_path, "rev-parse", "HEAD")
 
 
+def test_left_anchor_rejects_target_insertions_that_change_its_coordinates(
+    source: tuple[Path, str, str],
+) -> None:
+    root, merge, head = source
+    git(root, "checkout", "-qb", "target", merge)
+    lines = (root / "justfile").read_text().splitlines(keepends=True)
+    lines[69:69] = [f"target insertion {n}\n" for n in range(20)]
+    (root / "justfile").write_text("".join(lines))
+    git(root, "commit", "-qam", "target-only insertions")
+    base = git(root, "rev-parse", "HEAD")
+    anchors = load_module().anchor_proofs
+
+    # Merge-base line80 is untouched, but current-base line80 is an inserted line.
+    assert git(root, "show", f"{merge}:justfile").splitlines()[79] == "line 80"
+    assert (
+        git(root, "show", f"{base}:justfile")
+        .splitlines()[79]
+        .startswith("target insertion")
+    )
+    with pytest.raises(ValueError, match="LEFT.*base.*content"):
+        anchors.prepare_manifest(
+            root,
+            base,
+            head,
+            [{"id": "F-001", "location": "justfile:80", "side": "LEFT"}],
+        )
+
+
+@pytest.mark.parametrize("target_diverges", [False, True])
+def test_left_anchor_uses_one_coordinate_when_base_path_content_is_identical(
+    source: tuple[Path, str, str], target_diverges: bool
+) -> None:
+    root, merge, head = source
+    base = merge
+    if target_diverges:
+        git(root, "checkout", "-qb", "target", merge)
+        (root / "unrelated.txt").write_text("target-only file\n")
+        git(root, "add", "unrelated.txt")
+        git(root, "commit", "-qm", "target advances outside reviewed path")
+        base = git(root, "rev-parse", "HEAD")
+        assert base != merge
+    anchors = load_module().anchor_proofs
+    manifest = anchors.prepare_manifest(
+        root,
+        base,
+        head,
+        [
+            {"id": "F-001", "location": "justfile:10", "side": "LEFT"},
+            {"id": "F-002", "location": "justfile:80", "side": "LEFT"},
+        ],
+    )
+    assert manifest["merge_base_oid"] == merge
+    assert [entry["publication"] for entry in manifest["findings"]] == [
+        "inline",
+        "summary",
+    ]
+    assert all(entry["side"] == "LEFT" for entry in manifest["findings"])
+
+
 def legacy_case(source: tuple[Path, str, str]) -> tuple[Any, Any, Any, Any]:
     """Keep an original carrier immutable while supplying explicit source proof."""
     root, base, head = source

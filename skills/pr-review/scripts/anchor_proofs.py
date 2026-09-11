@@ -173,7 +173,7 @@ class GitSource:
     def classify(
         self, base: str, head: str, merge: str, path: str, side: str, line: int
     ) -> bool:
-        """Return whether the exact source line belongs to either complete hunk set."""
+        """Classify a head RIGHT or unambiguous merge-base LEFT coordinate."""
         if side not in {"LEFT", "RIGHT"}:
             raise ValueError("Invalid publication anchor side.")
         revision = head if side == "RIGHT" else merge
@@ -182,6 +182,10 @@ class GitSource:
         physical_lines = blob.count(b"\n") + bool(blob and not blob.endswith(b"\n"))
         if b"\x00" in blob or line > physical_lines:
             raise ValueError("The factual source location is unavailable.")
+        if side == "LEFT" and self.git("cat-file", "blob", f"{base}:{path}") != blob:
+            raise ValueError(
+                "LEFT anchors require identical merge-base and base file content."
+            )
         eligible = False
         for old in (merge, base):
             patch = self.git(*DIFF_ARGS, old, head, "--", path)

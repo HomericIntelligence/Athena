@@ -21,6 +21,14 @@ The input is a JSON list of the new ordinary findings. Each item supplies `id`, 
 for a source location, an optional `side` (`RIGHT` by default, or `LEFT`). Use only the findings that
 this reviewer event introduces. Native findings retain their existing native-root contract.
 
+`RIGHT` uses the path and line in the head commit. `LEFT` uses the path and line in the
+merge-base commit. For `LEFT`, the file content at the current base must be identical to its
+merge-base content. If the content differs or either file is unavailable, the helper rejects the
+finding before publication. It does not map line numbers between different base files. This
+conservative limit also applies when a base edit is after the finding's line. A target change in
+another file does not prevent a `LEFT` anchor. Do not change a factual coordinate to bypass this
+limit; retain the unavailable classification until a supported source coordinate can be proved.
+
 The helper reads Git objects. It does not execute repository code or contact the forge. It requires
 the repository root, complete history, both exact commits, and one merge base. It reads both author-intent and
 current-target ranges. Each query has a byte limit; each source operation has a 30-second deadline.
