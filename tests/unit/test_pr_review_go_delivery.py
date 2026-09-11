@@ -3197,7 +3197,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                 )
                 closure = replace(self.closure(thread), finding_id="native:3991324281")
                 manifest = self.v1_manifest(thread, closure)
-                threads = (thread,)
+                threads: tuple[Any, ...] = (thread,)
                 if case == "missing":
                     threads = (
                         replace(
@@ -3231,7 +3231,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                         ),
                     )
                 else:
-                    updates = {
+                    updates: dict[str, dict[str, object]] = {
                         "foreign": {"viewer_did_author": False},
                         "head": {"review_head_oid": "c" * 40},
                         "path": {"path": "src/other.py"},
