@@ -12,8 +12,9 @@ and used separately under their own licenses; they are not copied into Athena's 
 Third-party skill attribution
 -----------------------------
 
-Several skills are adapted from obra/superpowers under the MIT License. The mapping, copyright,
-source, and full license text are preserved in skills/THIRD_PARTY_LICENSES.md.
+Some skills are adapted from obra/superpowers under the MIT License. The bounded review exchange
+contains material adapted from liza-mas/liza under Apache License 2.0. Source mappings, modification
+notices, copyright information, and full license texts are preserved in skills/THIRD_PARTY_LICENSES.md.
 
 Trademarks
 ----------

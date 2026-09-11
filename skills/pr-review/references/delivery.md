@@ -2,98 +2,242 @@
 
 ## Why
 
-A review verdict is evidence. It does not expand the forge scope. Immediately before one scoped
-publication, bind the exact artifact again. This check prevents the review from adding a comment or
-automation to a later artifact. It also prevents approval of a later artifact.
+A review verdict is evidence. It does not expand the forge scope. Bind the exact artifact before a
+scoped publication. This check prevents publication to a later artifact and prevents a favorable
+result from stale review state.
 
 Use the [ASD-STE100 technical-English policy](../../TECHNICAL_ENGLISH.md) for all technical prose
-and review output.
+and review output. Use the canonical
+[bounded review exchange](../../../docs/review/common.md#bounded-review-exchange) for state and round
+policy.
 
 ```text
-[complete review] -> [verdict] -> [rebind exact artifact]
-                                        |
-                 [finding batch or verified GO finalization]
-                                        |
-                [optional separate auto-merge opt-in after GO]
+[complete review] -> [state carrier] -> [exact readback]
+                              |                |
+                              |                +-> [nonterminal: exclusive NO-GO]
+                              +-> [terminal GO: carrier -> thread closure -> exclusive GO]
+                                                                   |
+                                            [optional guarded auto-merge]
 ```
 
 ## Engineering principle routes
 
 - [P037 Idempotency Before Retry](../../../docs/principles/README.md#p037) and
   [P044 Atomicity Where Possible](../../../docs/principles/README.md#p044) require one bound atomic
-  comment batch when the forge supports it. They prohibit a blind retry after a failed or indeterminate
-  write.
+  review per reviewer round. They prohibit a blind retry after an uncertain write.
 - [P050 Least Privilege](../../../docs/principles/README.md#p050),
   [P051 Complete Mediation](../../../docs/principles/README.md#p051),
   [P052 Separation of Duties](../../../docs/principles/README.md#p052), and
-  [P058 Bounded Agent Authority](../../../docs/principles/README.md#p058) keep the review, publication,
-  approval, and merge capabilities separate. They limit these capabilities to the selected profile and
-  requested task.
+  [P058 Bounded Agent Authority](../../../docs/principles/README.md#p058) keep review, publication,
+  thread closure, labels, approval, and merge as separate capabilities.
 - [P061 Separate Decision from High-Impact Execution](../../../docs/principles/README.md#p061),
   [P062 Human Approval for Irreversible or High-Risk Actions](../../../docs/principles/README.md#p062),
-  and [P083 Irreversible Actions Last](../../../docs/principles/README.md#p083) require a new authority
-  and identity check immediately before a requested write or guarded auto-merge opt-in. If the user
-  already gave specific authorization, do not request the same approval again.
+  and [P083 Irreversible Actions Last](../../../docs/principles/README.md#p083) require an authority
+  and identity check immediately before a write.
 - [P065 Verify Before Claiming Completion](../../../docs/principles/README.md#p065) and
-  [P068 No Validation Bypass](../../../docs/principles/README.md#p068) prohibit a favorable verdict,
-  successful-publication claim, or automation state from stale, incomplete, bypassed, or unverified
-  evidence.
+  [P068 No Validation Bypass](../../../docs/principles/README.md#p068) prohibit a favorable delivered
+  result from stale, incomplete, bypassed, or unverified evidence.
 
 ## Decision
 
-For a default or continuous-integration-free (CI-free) normal report, calculate the findings. Then,
-calculate the score. Emit exactly one terminal verdict. For the prevalidated profile, emit only its structured
-audit. Do not emit a verdict, scorecard, or publication. The prevalidated profile has no auto-merge
-workflow. GitLab can report a verdict. This skill must not enable GitLab auto-merge.
+For a default or continuous-integration-free (CI-free) normal report, calculate findings and the
+score. Then, reduce the reviewer event and emit one verdict. For the prevalidated profile, emit only
+its structured audit. Do not emit a verdict, scorecard, carrier, or publication. GitLab can report a
+verdict. This skill must not enable GitLab auto-merge.
 
 | Verdict | Required conditions |
 | --- | --- |
-| **GO** | Use only for the default profile. Require grade A (93–100). Require aligned architecture or an evidenced intentional change. Require zero `required` findings. Require complete applicable source, scope, requirements, language, and validation coverage. Require all host-selected local checks to pass on the reviewed head. A delivered GO also requires the verified GO-delivery postconditions. |
-| **CONDITIONAL GO** | Require architecture to pass. Require no open `required` source finding. Require a score of at least B. Use when a remediable review condition remains. Examples include incomplete source, scope, requirement, language, or validation coverage; a local validation gap; or deliberately limited CI-free evidence. State each condition. Use NO-GO for a required finding, a material architecture violation, failed required validation, or an invalid or stale exact-head binding. |
-| **NO-GO** | Use for a score below B or a `required` finding. Also use it for a material or unexplained architecture violation, failed required validation, or an invalid, stale, or drifted identity, scope, requirement, path, or current-head binding. |
+| **GO** | Use only for the default profile. Require grade A (93–100), architecture alignment or an evidenced intentional change, zero active findings with critical or major severity, zero active required findings, complete applicable coverage, and passing host-selected checks on the reviewed head. The exchange state must also have `phase=complete`, `verdict=GO`, `next_action=finalize`, an exact current-head artifact binding, and only terminal finding states. Keep each `accepted_risk` finding in the report with its verified authority receipt. A delivered GO also requires the verified delivery postconditions below. |
+| **CONDITIONAL GO** | Use only for a clean CI-free assessment before round 5. Require architecture to pass, no active required source finding, complete applicable CI-free coverage, and a score of at least B. The state is `phase=complete`, `next_action=none`, and `go_eligible=false`. For direct normal GitHub delivery, make the NO-GO label exclusive. A coverage or evidence gap produces `NO-GO`. |
+| **NO-GO** | Use it for a score below B, an active required finding, a material architecture violation, failed required validation, or an invalid or stale binding. For direct normal GitHub delivery, make the NO-GO label exclusive after verified carrier publication. |
 
 ### Merge readiness
 
-Report forge approval and required-gate state as a separate **Merge readiness** fact when default-profile
-evidence is available. For example: `Blocked — one independent approval required by repository policy`.
-Use GitHub `reviewDecision` and GitLab merge-request approval state as repository-policy evidence. This
-state does not lower the review score or verdict. GO is a review verdict, not an approval, merge
-authorization, or claim that every branch-protection rule is satisfied.
+Report forge approval and required-gate state as a separate **Merge readiness** fact when
+default-profile evidence is available. GO is a review verdict. It is not an approval, merge
+authorization, or claim that each branch-protection rule passed.
 
-`--report-only` can report that the review evidence is GO-eligible. It must record
-`delivery: withheld (read-only)` and `auto_merge: withheld (read-only)`. It must not report a
-delivered GO. Without `--enable-auto-merge-on-go`, a delivered GO records
-`auto_merge: withheld (not requested)`. For
-`CONDITIONAL GO`, `NO-GO`, CI-free, prevalidated, and GitLab, record `auto_merge: not-eligible` with
-the blocker.
+`--report-only` can report that evidence is GO-eligible. It must record
+`delivery: withheld (read-only)` and `auto_merge: withheld (read-only)`. Without
+`--enable-auto-merge-on-go`, a delivered GO records `auto_merge: withheld (not requested)`. For
+CONDITIONAL GO, NO-GO, CI-free, prevalidated, and GitLab, record `auto_merge: not-eligible` with the
+blocker.
+
+## Reviewer-round carrier
+
+Default and CI-free direct delivery publish one exact-head state carrier for each reviewer round.
+A normal `--report-only` review calls the exchange helper and returns the prepared carrier and
+logical batch. It does not publish, resolve a thread, or change a label. `--prevalidated` does not
+call an exchange or delivery helper.
+
+For GitHub, send exactly one atomic request to the retained target:
+
+```text
+POST /repos/{owner}/{repo}/pulls/{number}/reviews
+commit_id = reviewed head OID
+event     = COMMENT
+body      = visible review followed by the final canonical state carrier
+comments  = one entry for each new anchorable finding
+```
+
+Put only one verified changed `path`, `side`, causal `line`, and finding body in each comment entry.
+Append this marker to each new inline finding:
+
+```text
+<!-- HomericIntelligence:review-finding:v1 exchange=<exchange-id> id=F-NNN -->
+```
+
+Carry reconciled earlier findings in the state ledger. Do not publish them as new inline comments.
+A terminal GO round must publish its carrier even when the `comments` array is empty. Do not post a
+different generic clean review.
+
+Verify the returned review and fetched comments against the target, `COMMENT` or `COMMENTED` state,
+reviewed commit, complete body carrier, and each expected path, side, line, finding ID, and body. If
+verification fails or is uncertain, make no additional write. Do not retry. Do not substitute a
+prose-only comment or `gh pr review --comment`.
+
+If a bound value changes, withhold the complete set. When only the pull-request head changes, use a
+separate author-response invocation to bind the new artifact before the current exchange continues.
+That head refresh does not increase the reviewer-round count. A material requirements change uses
+the reframe rule. It does not silently reset the exchange.
+
+Before a human decision or requirements reframe, the pull-request surface adapter must resolve one
+exact current logical state. Start with the latest accepted state carrier. Reduce each later
+contiguous author-event carrier in verified provider order. Reject a stale event, fork, gap, or
+ambiguous chain. Then, resolve one exact live authority record. Verify its body digest, repository
+authority, target, exchange, applicable findings, and decision before you give the normalized
+receipt to the reducer. The reducer validates the receipt shape and state binding. It does not
+authenticate the forge record. A reframe stores the receipt in
+`supersession_authority_receipt`. Before a state-dependent label or terminal delivery, resolve and
+verify that receipt again. For GitHub delivery, use `review:<review-id>` or
+`comment:<thread-comment-id>` as the reference. Require the exact record to have `OWNER`, `MEMBER`,
+or `COLLABORATOR` author association. Also require its author to have current `ADMIN` or `MAINTAIN`
+repository permission. If the adapter cannot prove both conditions, withhold the state-dependent
+operation.
+
+## Authority-transition state carrier
+
+An invocation with an explicit `human_decision` or `reframe` event is the only owner of that
+authority transition. Require the explicit event and receipt before reduction. Do not infer either
+item from the retained state or the authority record. Resolve the current logical state through all
+verified pending author events before you apply the transition. A human decision binds the retained
+exchange, logical state, artifact revision, and artifact digest. Its state carrier has a new
+visible-content digest, and its reviewer-round count does not change. A reframe binds the exact
+superseded logical state, starts a new exchange at round 1, binds the new requirements and current
+artifact, and stores the verified supersession receipt. Its `superseded_exchange_ids` value is the
+unique, oldest-first prior genesis ancestry followed by the immediate prior exchange ID. It must not
+contain the new exchange ID.
+
+For GitHub, a human decision uses one exact-head `COMMENT` review with an empty inline-comments
+array. A reframe uses the normal ordered inline finding batch for its new round-1 findings. Its batch
+is empty only when it has no new anchorable finding. For a nonterminal result, publish and verify the
+review before exclusive NO-GO delivery. For a terminal GO, give the same prepared body and
+action-specific batch to the terminal helper. The helper is the one `COMMENT` publisher. Do not
+publish the terminal carrier through the general publisher first. For GitLab, put the state note and
+each new finding discussion in one atomic draft or batch. When there is no new finding discussion,
+create one immutable state note through the applicable normal delivery path.
+
+Require exact readback of the target, actor, head, body bytes, carrier digest, accepted-event digest,
+authority receipt, and provider order after the exact logical predecessor. Then, apply the normal
+nonterminal or terminal delivery conditions without a new reviewer assessment. On an uncertain
+write or readback, stop without a retry or a second delivery path.
+
+## Author-event carrier
+
+The `pr-review --author-response` invocation is the only direct author-event preparation and
+publication owner. A reviewer-round invocation verifies the result. It must not synthesize or
+publish an author event. Before a corrective reviewer round or authority transition, reduce every
+pending author-event carrier after the latest state carrier in verified provider order. Each event
+must bind the logical state that its exact predecessor derives. When this chain is nonempty, its
+final event must bind the current head, the complete active required-finding set, and the author's
+answers. For GitHub,
+publish each author event through one exact-head `COMMENT` review with an empty inline-comments
+array. For GitLab, use one immutable author-event note in
+[GitLab discussion delivery](#gitlab-discussion-delivery). The carrier is the response ledger.
+Thread prose can give context, but it is not the author answer and cannot replace the carrier.
+
+A normal response starts from `phase=awaiting_author`. A pull-request head refresh can also start
+from `phase=awaiting_reviewer`, `phase=awaiting_evidence`, or a pre-round-5 complete
+`CONDITIONAL GO`, but the revision must change. Each changed-head response covers every active
+required finding. It also covers each required finding in `resolved`, `withdrawn`, or
+`accepted_risk` state. It uses the same identifiers, replaces the prior answers, and clears the
+prior reviewer replies. It also clears a prior accepted-risk authority receipt. A new risk request
+needs a new authoritative decision for the changed head. Nonblocking findings keep their state.
+
+The response list is empty only when there is no active or terminal required finding. A refresh
+invalidates coverage and does not change the round, progress history, GO eligibility, or finding
+IDs. From `awaiting_reviewer`, it stays `awaiting_reviewer`. From `awaiting_evidence` or a conditional
+state, it moves to `awaiting_reviewer` when it revalidates a terminal required finding. Otherwise,
+it moves to `phase=awaiting_evidence`. Each refresh has `verdict=NO-GO` and
+`next_action=review_assessment`.
+
+Verify the returned record identity, actor, current head, final author-event carrier, body digest,
+and prior-state digest. For GitHub, also require `COMMENT` or `COMMENTED` state. Reject an absent,
+stale, foreign, repeated, or ambiguous author event. Do not infer an answer from a commit message,
+acknowledgment, thread resolution, or old prose. A normal report-only author response can prepare
+this exact review; it cannot publish it.
+
+Immediately before author-event publication, revalidate the exact target, base, current head,
+reviewed scope, requirements, complete scope set, latest state review, complete pending
+author-event chain, logical state, provider order, and publisher actor. For GitHub, publish one
+atomic review with the current head as `commit_id`,
+`COMMENT` as `event`, the exact rendered author-event carrier as `body`, and an empty `comments`
+array. Read the review and target again. Require the exact body bytes, actor, target, current head,
+carrier digest, prior-state digest, and publication order after the exact predecessor carrier. Also
+require `COMMENT` or `COMMENTED` state for GitHub. If publication or readback fails or is uncertain,
+stop without a retry or a second write. After verified readback, report the derived phase and stop.
+Do not assess the implementation or increase the reviewer round in the same invocation.
+
+## Exclusive NO-GO delivery
+
+After exact readback of a nonterminal, CONDITIONAL GO, or NO-GO round, use the installed helper with
+the retained target, immutable identities, and verified version-1 state-carrier proof:
+
+```bash
+<installed-skill>/scripts/deliver_go.py \
+  --target-host github.com \
+  --target-repository <owner/repository> \
+  --expected-pr-url <canonical-pr-url> \
+  --expected-base-oid <base-oid> \
+  --expected-head-oid <head-oid> \
+  --state-carrier-file <verified-non-go-carrier.json> \
+  --deliver-no-go \
+  <number>
+```
+
+The proof has only these fields:
+
+- `schema_id`, with the value `athena.pr-review.no-go-proof`;
+- `schema_version`, with the value `1`;
+- `binding`, with the exact repository, pull-request number and URL, base object identifier, and
+  head object identifier;
+- `review_id`, with the published `COMMENT` review identity;
+- `state`, with the complete version-1 state envelope; and
+- `visible_content`, with the exact text before the state carrier; and
+- `requirements_binding`, with the reviewed-scope digest, linked-requirements digest, and canonical
+  sorted set of selected requirement-issue URLs.
+
+The helper extracts the state carrier from the exact review body. It compares the extracted carrier
+with `state` and `visible_content`. It must verify either the nonterminal `phase!=complete`,
+`verdict=NO-GO`, and `next_action!=finalize` tuple or the terminal `phase=complete`,
+`verdict=CONDITIONAL GO`, `next_action=none`, and `go_eligible=false` tuple. It also verifies the
+review identity, body digest, carrier digest, reviewed head, and live requirements binding before a
+label write. The state
+`artifact_binding.sha256` and `requirements_sha256` values must equal their respective retained
+binding digests. Require `state:implementation-no-go` to be
+present and `state:implementation-go` to be absent.
+`already_delivered` is an idempotent success only for that exact label state on the unchanged head.
+A write or readback failure is partial. Do not claim delivery or make a blind retry.
 
 ## Verified GO delivery
 
 A direct default-profile GitHub review owns this narrow finalization unless an enclosing coordinator
-declares itself as the single delivery owner. Complete the finalization before you emit terminal GO.
-The finalization can make only these changes:
+is the declared single delivery owner. This helper is the only terminal state-review publisher. Do
+not publish the terminal round through the general reviewer-round path first. Complete finalization
+before you expose a delivered GO. CI-free, prevalidated, report-only, and GitLab invocations do not
+run this GitHub finalizer.
 
-- add one verified reviewer response to each open review thread;
-- resolve each thread after its response is visible;
-- add `state:implementation-go`; and
-- remove `state:implementation-no-go`.
-
-Do not create a missing label. Do not change another label. Treat the two implementation-state labels
-as mutually exclusive.
-
-Read the complete conversation for every open thread. A response must state the disposition and the
-exact reviewed-head evidence that makes resolution correct. If a finding is not addressed, keep its
-thread open and change the verdict to NO-GO. Do not use a general PR comment as a thread response. Do
-not alter already-resolved history.
-
-For direct GitHub delivery, invoke the installed `deliver_go.py` helper. Give it every retained target
-and immutable identity value. Give it a response manifest that binds each initially open thread to its
-complete conversation digest and non-empty reviewer response. The helper must do these actions:
-
-First, use the read-only preparation mode with the same target arguments and `--prepare-manifest`.
-This mode returns each open thread, its complete conversation, and its digest. Add the verified
-response body to each entry. Preserve all binding, thread, and digest values. Save that JSON as the
-response manifest. Then, run the delivery command:
+First, run the read-only version-1 preparation with the same target arguments:
 
 ```bash
 <installed-skill>/scripts/deliver_go.py \
@@ -103,8 +247,76 @@ response manifest. Then, run the delivery command:
   --expected-base-oid <base-oid> \
   --expected-head-oid <head-oid> \
   --prepare-manifest \
+  [--requirement-issue <canonical-issue-url> ...] \
+  --schema-version 1 \
   <number>
 ```
+
+The returned `athena.pr-review.closure-manifest` has only `schema_id`, `schema_version`, `binding`,
+`state`, `terminal_visible_content`, `entries`, `requirements_binding`, `comments`, and
+`summary_finding_ids`. The `state` field contains the complete terminal state envelope. The helper
+adds one entry for each open thread. Complete these entry fields without adding a field:
+
+- `thread_id`, `finding_id`, `finding_exchange_id`, and `finding_state_sha256`;
+- `superseding_state_sha256`, `origin_comment_id`, and `origin_review_head_oid`;
+- `conversation_sha256`, `finding_disposition`, and `author_event_review_id`;
+- `author_answer` and `author_artifact_revision`;
+- `reviewer_disposition` and `closure_evidence`; and
+- `authority_receipt`.
+
+Use `comments` for the ordered inline-comment batch in the terminal `COMMENT` review. Each entry has
+only `path`, `side`, `line`, and `body`. The body ends with the exact exchange and finding marker.
+The state location for an anchorable terminal-round finding has the form
+`<relative-path>:<positive-line>`. Its path and line must equal the inline entry. Put each such
+finding in `comments`. Put each other terminal-round finding identity in the ordered
+`summary_finding_ids` list. The two lists must not overlap. Their union must equal all findings that
+the terminal reviewer event introduced. Empty lists are valid when that event introduced no
+finding. The manifest is canonical JSON and must not exceed the common input limit.
+
+Do not edit `requirements_binding`. Its `reviewed_scope_sha256` is the digest of the current PR
+title, body, closing references, state, draft state, and base and head names. Its
+`requirements_sha256` is the aggregate `reviewed_linked_requirements` digest. Its
+`requirement_issue_urls` value is the canonical sorted set of all linked requirement URLs that the
+collector selected. The terminal state `artifact_binding.sha256` must equal
+`reviewed_scope_sha256`. The state `requirements_sha256` must equal the retained requirements
+digest.
+
+After publication, require the fetched inline root to belong to the selected terminal review and
+the exact reviewed head. Its path, side, line, body, exchange marker, and finding marker must equal
+the prepared entry. The helper derives the new thread identity and closure entry from this readback;
+the caller does not predict a thread identity.
+
+Use only `resolved`, `withdrawn`, `accepted_risk`, or `nonblocking` as terminal reviewer
+dispositions. An accepted risk requires the `risk_acceptance` answer and a verified authority
+receipt. A corrected finding requires its author answer and corrective head. A contest requires its
+bound author-event review and one valid terminal reviewer answer. The helper extracts that
+author-event carrier, replays it from the exact prior state carrier, and derives the author answer
+and artifact revision. The helper generates the response body. It does not accept arbitrary
+version-1 response prose.
+
+After a head change, a `resolved` or `withdrawn` closure must use the revalidated author answer and
+the reviewer response from the current-head assessment. An `accepted_risk` closure must use a new
+author risk request and an authority decision that binds the changed-head state. A prior-head
+terminal disposition or risk receipt cannot authorize delivery.
+
+For a current finding, set `finding_state_sha256` to the terminal state digest and set
+`superseding_state_sha256` to `null`. For an open finding from the selected supersession ancestry,
+bind `finding_state_sha256` to the exact source state and `superseding_state_sha256` to its direct
+reframe child. Use the source exchange in `finding_exchange_id`, even when a later exchange reuses
+the same `F-NNN` value. Such a historical closure uses `withdrawn`, the child's exact verified
+supersession receipt, and the canonical source-state reframe evidence. Preserve source-state author
+fields; when the source has no answer, keep them `null`. Do not infer an answer from prose. Omit
+historical threads that were resolved before terminal publication. After terminal publication, a
+resolved manifest entry is valid only as exact recovery evidence for its generated response. An
+unrelated, foreign, or ambiguous open thread withholds GO.
+
+Each generated response names the finding as `<exchange-id>/<finding-id>`. A historical response
+states `withdrawn`, identifies an authoritative requirements reframe, and shows both state digests
+and the authority receipt. Its final marker binds `exchange`, `id`, `source`, `superseding`,
+`terminal`, and the response digest. Thus, two exchanges that both use `F-001` have distinct
+closure markers.
+
+Save the completed canonical JSON and invoke delivery:
 
 ```bash
 <installed-skill>/scripts/deliver_go.py \
@@ -113,220 +325,152 @@ response manifest. Then, run the delivery command:
   --expected-pr-url <canonical-pr-url> \
   --expected-base-oid <base-oid> \
   --expected-head-oid <head-oid> \
-  --responses-file <response-manifest.json> \
+  --response-manifest <closure-manifest.json> \
   <number>
 ```
 
-Use this response-manifest shape:
+The helper uses this order:
 
-```json
-{
-  "binding": {
-    "repository": "owner/repository",
-    "number": 123,
-    "url": "https://github.com/owner/repository/pull/123",
-    "base_oid": "<40-lowercase-hex>",
-    "head_oid": "<40-lowercase-hex>"
-  },
-  "responses": [
-    {
-      "thread_id": "<review-thread-node-id>",
-      "conversation_sha256": "<complete-conversation-digest>",
-      "body": "Verified response with disposition and exact-head evidence."
-    }
-  ]
-}
-```
+1. Bind the canonical open, non-draft pull request and exact base and head.
+2. Read all threads, complete conversations, review records, and implementation-state labels.
+3. Before a mutation, validate the complete terminal state and its selected supersession ancestry,
+   manifest, ownership, capabilities, composite finding identities, origin heads, answers,
+   dispositions, evidence, authority receipts, and live requirements binding.
+4. Publish the exact-head terminal `COMMENT` body and `comments` in one request. Verify the exact
+   review and inline-comment readback. Derive closure entries for its new finding threads.
+5. For each still-open Athena-owned ledger entry, publish the generated closure response and verify
+   it on the unchanged head.
+6. Resolve that thread only after the exact response is visible. Verify the resolution.
+7. Require zero open threads. A foreign open thread withholds GO.
+8. Add `state:implementation-go` and remove `state:implementation-no-go` in one target-scoped
+   operation.
+9. Read the pull request again. Require the unchanged head, one matching terminal ledger, zero open
+   threads, the unchanged live requirements binding, and the exclusive GO label.
 
-Use an empty `responses` list only when there are no open threads. The helper adds its own
-deterministic delivery marker. Do not put a marker in `body`.
+Recompute the retained requirements binding at preflight, immediately before each write, and after
+the final readback. A scope change, closing-reference change, selected-URL change, linked-issue
+content or comment change, incomplete evidence, or provider failure withholds delivery.
 
-1. Bind the canonical open, non-draft PR and exact base and head again.
-2. Enumerate all open threads and their complete conversations.
-3. Reject a response manifest that has a missing, extra, duplicate, stale, or empty entry.
-4. Before each response, verify the exact PR head and bound conversation.
-5. Post one deterministic response and verify its receipt and visibility.
-6. Resolve that thread only after the verified response is visible on the unchanged head.
-7. Verify the resolution before it continues.
-8. Before the label change, bind the exact open head again and require zero open threads.
-9. In one target-scoped command, add `state:implementation-go` and remove
-   `state:implementation-no-go`.
-10. Read the PR and all threads again. Require the unchanged head, zero open threads, and exactly one
-    implementation-state label: `state:implementation-go`.
+Resolve only Athena-owned findings whose validated closure-manifest reviewer disposition is
+`resolved`, `withdrawn`, `accepted_risk`, or `nonblocking`. An unanswered contest, partial or
+still-present finding, stale head, foreign open thread, missing capability, duplicate or conflicting
+terminal record, or missing authority receipt withholds GO.
 
-If a read, response, resolution, label change, or readback fails or is indeterminate, stop. Do not
-retry blindly. Do not unresolve a thread. Do not make a compensating label change. Report the known
-partial state and withhold terminal GO. A later review can recognize an exact deterministic response,
-but it must repeat all current-head and final-state checks.
+An open legacy thread without a marker is adopted as a required finding with the immutable
+`native:<root-comment-id>` identity. It still requires explicit answer, disposition, and closure
+evidence for a current exchange. An exact historical reframe withdrawal can keep its source author
+fields `null`; it requires the exact reframe edge, authority receipt, and closure evidence. Do not
+infer closure from old prose. Leave resolved legacy history unchanged. To verify an unchanged,
+fully delivered legacy GO, use the explicit read-only
+`--verify-legacy-go <proof.json>` operation. Its historical three-field responses are proof-only.
+They cannot authorize a new response, resolution, review, or label mutation. A version-1 workflow
+must not select legacy input as a fallback.
 
-GitHub does not provide a head-conditional thread-resolution or label mutation. Therefore, the helper
-guarantees the immediate pre-write and post-write bindings. If the post-write binding detects a race,
-report the external state as partial. Never report a delivered GO for that run.
+Treat an independent older-head version-1 exchange as completed history only when its terminal
+state has `phase=complete`, `verdict=GO`, `next_action=finalize`, and `go_eligible=true`. It must
+bind the retained requirements, and its terminal carrier must precede each carrier or authority
+record in the current exchange. Its exchange identifier must not occur in the selected current or
+supersession ancestry. A conditional or later-published old-head carrier cannot reset the exchange.
 
-If an enclosing coordinator is the declared single delivery owner, do not invoke the helper or make a
-second write. Return the bound structured GO result to that coordinator. The coordinator must perform
-and verify the same sequence. It must not expose terminal GO until the final postconditions pass.
+Treat the exact same-head terminal record, zero open threads, and exclusive GO label as
+`already_delivered`. A label without the matching current-head terminal ledger is not proof. If the
+terminal carrier exists after an interrupted run, validate the same manifest and resume only the
+remaining generated responses, resolutions, or label operation. Do not publish the terminal carrier
+again.
 
-`--report-only`, `--ci-free`, and `--prevalidated` never run this finalization. A GitLab review can use
-an authenticated capability that proves equivalent exact-head, discussion-response, resolution, and
-exclusive-label postconditions. If that capability is absent, report the eligible assessment and the
-delivery blocker. Do not claim a delivered GO.
+If a read, publication, response, resolution, label change, or readback fails or is uncertain, stop.
+Do not retry blindly, unresolve a thread, or make a compensating label change. Report the known
+partial state and withhold terminal GO.
+
+If an enclosing coordinator is the single delivery owner, return the bound structured result to it.
+Do not make a second write. A GitLab review can use an authenticated capability that proves
+equivalent exact-head carrier, discussion-response, resolution, and exclusive-label postconditions.
+If it cannot prove these conditions, return the prepared artifact and withhold favorable delivery.
 
 ## Guarded GitHub auto-merge
 
-Enable auto-merge only when the user directly requests `--enable-auto-merge-on-go`. Apply this option
-only after an exact delivered default-profile GitHub `GO`. Before you apply it, verify each requested
-comment batch and the verified GO-delivery postconditions. This option does not permit a direct merge,
-retry, approval, additional label change, bypass, or policy change.
+Enable auto-merge only when the user directly requests `--enable-auto-merge-on-go`. Apply this
+option only after an exact delivered default-profile GitHub GO. Before the operation, verify the
+matching current-head terminal carrier, zero open threads, exclusive GO label, and every required
+repository-policy gate. This option does not permit a direct merge, retry, approval, additional label
+change, bypass, or policy change.
 
-1. Resolve these values again:
-   - canonical host;
-   - repository;
-   - pull request (PR) number and node ID;
-   - `OPEN` and non-draft state;
-   - target;
-   - base and head object identifiers (OIDs);
-   - both lenses;
-   - scope digest;
-   - linked-requirements digest;
-   - path manifest;
-   - all effective pre-admission gates, including required approvals; and
-   - required queue route.
-2. If a value changed or a binding is missing, withhold auto-merge.
-3. If a gate failed or is pending, withhold auto-merge.
-4. If the author or reviewer changed, withhold auto-merge.
-5. If a required thread is unresolved, withhold auto-merge.
-6. If comment publication failed or is indeterminate, withhold auto-merge.
-7. Require an authenticated capability that binds the canonical target and can enable normal
-   auto-merge without administrator bypass.
-8. Use the one repository-supported method that the capability returns.
-9. Do not select the method.
-10. Do not guess the method.
-11. Do not change the method.
-12. If the repository requires a merge queue, require a separate exact-head queue-admission capability.
-13. Do not use normal auto-merge as a queue-admission proxy.
-14. Invoke exactly one bound operation:
-
-    - Enable auto-merge with the retained PR node ID and `expectedHeadOid`; or
-    - Use queue admission with the same target and head.
-
-15. Do not use ambient repository state, ambient branch state, or generic command-line interface
-    (CLI) defaults.
-16. Do not use a direct merge command or fallback mutation.
-17. Do not retry after a failed or indeterminate result.
-18. Fetch the exact PR again.
-19. Report `enabled` only if auto-merge uses the same node ID, head, and supported method.
-20. Report `queue-enqueued` only if its entry binds the same PR, target, and reviewed head.
-21. Do not report the PR as merged.
+1. Resolve the canonical host, repository, pull-request number and node ID, open non-draft state,
+   base and head object identifiers, both diff lenses, scope digest, requirements digest, path
+   manifest, effective pre-admission gates, required approvals, and queue route again.
+2. If a value changed, a binding is absent, or a gate failed or is pending, withhold auto-merge.
+3. If the author or reviewer changed, a required thread is open, carrier publication is unverified,
+   or terminal evidence conflicts, withhold auto-merge.
+4. Require an authenticated capability that binds the target and can enable normal auto-merge
+   without an administrator bypass.
+5. Use the one repository-supported method that the capability returns. Do not select, guess, or
+   change the method.
+6. If the repository requires a merge queue, require a separate exact-head queue-admission
+   capability. Do not use normal auto-merge as a queue-admission proxy.
+7. Invoke exactly one bound enable-auto-merge or queue-admission operation.
+8. Do not use an ambient target, generic command-line default, direct merge, or fallback mutation.
+9. Do not retry after a failed or uncertain result.
+10. Fetch the pull request again. Report `enabled` or `queue-enqueued` only when the result binds the
+    same target and reviewed head. Do not report the pull request as merged.
 
 ## Normal report
 
-Return, in order:
+Return these items in order:
 
-1. Report the artifact identity, forge, base and head, immutable scope, and path bindings.
-2. Report the behind count, files reviewed, linked issue, and acceptance criteria.
-3. Report each unbound check as a coverage gap.
-4. Report the architecture decision, language routes, surface routes, and not-applicable (N/A) reasons.
-5. Report findings from `CRITICAL` through `FYI`.
-6. For each finding, report these items:
-   - independent `required`, `suggestion`, `nit`, or `FYI` disposition;
-   - exact location;
-   - observed gap;
-   - impact and governing evidence; and
-   - proportionate fix.
-7. Report the six-dimension scorecard, weighted grade, and terminal verdict.
-8. Report commands and their pass or fail state.
-9. Report coverage gaps.
-10. Report merge readiness or repository-policy state.
-11. Report delivery state and auto-merge state.
-12. After the findings, report brief strengths.
+1. Artifact identity, forge, base, head, immutable scope, and path bindings.
+2. Behind count, files reviewed, linked issue, and acceptance criteria.
+3. Each unbound check as a coverage gap.
+4. Architecture decision, language routes, surface routes, and not-applicable reasons.
+5. Findings from `critical` through `FYI`, with disposition, identity, location, impact, evidence,
+   closure condition, and proportionate remediation. Keep each accepted risk and its verified
+   authority receipt in this list.
+6. Exchange ID, round, required-finding progress, state digest, carrier URL, and readback evidence.
+7. Six-dimension scorecard, weighted grade, and verdict.
+8. Commands and their pass or fail state.
+9. Coverage gaps and merge readiness.
+10. Exact `delivered`, `already_delivered`, `withheld`, or `partial` state; terminal review identity;
+    closure thread identities; exclusive implementation-state label; and auto-merge state.
+11. Brief strengths.
 
-## Finding publication
+## GitLab discussion delivery
 
-The requested review delivery boundary permits normal finding publication. Publish findings as
-comments only. This section does not prohibit the separate verified GO finalization. During finding
-publication, do not do any of these actions:
+Use the same reducer and carrier. Create one immutable authenticated actor-owned top-level
+merge-request note for each reviewer-round or authority-transition state. Its body is the visible
+review followed by the final `kind=state` carrier. Do not update or replace a carrier-bearing note.
+The latest state note in the single complete, replay-valid ancestry is the canonical retained-state
+note. Reduce its later author-event notes to derive the current logical state. Always publish a
+terminal state, including when there is no new inline finding.
 
-- approve;
-- request changes;
-- change labels;
-- edit an issue;
-- resolve a thread;
-- rebase;
-- push;
-- close;
-- merge; or
-- create a follow-up work item.
+Create one separate immutable authenticated actor-owned top-level note for each
+`kind=author-event` carrier. Do not update or replace it. Do not use a discussion reply as the
+complete author event. It can contain only supporting context.
 
-If any of these conditions applies, return the complete ready-to-publish batch without a write:
+Before a create, enumerate all top-level notes. Reconstruct one complete state and author-event
+chain in provider order. Reject a foreign or malformed carrier, a repeated event, a missing
+predecessor, a fork, both carrier kinds in one note, or a retained note whose actor, ID, or body
+digest changed. Revalidate the merge-request identity and exact head before each write. After the
+write, read the note and merge request again. Accept the result only when the actor, note ID, exact
+body, carrier digest, predecessor digest, provider order, and head all match. Retain all prior notes
+so that a superseded logical state and its direct reframe child can be verified for terminal
+discussion closure.
 
-- The invocation is indirect.
-- The invocation uses `--report-only`.
-- A forge capability is absent.
-- A bound value changed.
+Create one actionable changed-line discussion for each new anchorable finding. Put the exact
+`base_sha`, `start_sha`, `head_sha`, `old_path`, `new_path`, and `position_type=text` values in its
+position. Use `new_line` for an addition, `old_line` for a deletion, and both for an unchanged line.
+The discussion contains the compact finding marker. It does not contain the complete state carrier.
 
-If there are no findings, do not post a clean review. Continue to verified GO delivery only when all
-GO conditions apply.
+When a reviewer action has one or more new finding discussions, publish all discussions and the new
+state note through one supported atomic draft or batch. If the host or forge cannot provide this
+capability, return the prepared batch and withhold publication. Do not start a sequential fallback.
+When the action has no new finding discussion, publish one immutable state or author-event note.
+Stop if a bound value changes or a write or readback result is uncertain. Report the known result.
+Do not retry it.
 
-Before each requested write, fetch the exact open artifact again. Derive the fully qualified write
-target only from the retained identity. Revalidate these values:
-
-| Forge/profile | Required rebind |
-| --- | --- |
-| Default GitHub | Exact repository/PR/base/head plus fresh strict evidence binding and matching scope, linked-requirements, and path-manifest digests. |
-| CI-free GitHub | Exact repository/PR/base/head plus the final non-CI source-scope binding. Never call `collect_evidence.py` or a CI endpoint. |
-| GitLab | Exact identity, scope, linked requirements, changed paths, and complete base/start/head position tuple. |
-
-If a value changes, withhold the complete set. Start a new review. Use a general summary only for
-architecture, scope, coverage, or another cross-cutting point that has no changed-line anchor. Do not
-repeat an inline finding in the summary. Publish each independently actionable changed-line finding
-exactly once. Put it in one inline comment or discussion on its causal changed line. Do not combine
-separate fixes. Do not use a line range instead of the causal line. Do not duplicate the finding at
-multiple locations.
-
-### GitHub batch
-
-Send exactly one atomic request to the retained target:
-
-```text
-POST /repos/{owner}/{repo}/pulls/{number}/reviews
-commit_id = reviewed head OID
-event     = COMMENT
-body      = non-empty (neutral transport body is valid)
-comments  = one entry per anchorable independent finding
-```
-
-Put only one verified changed `path`, `side`, causal `line`, and finding body in each comment entry.
-Put `commit_id` at the top level. Do not put it in an individual comment. Verify that the returned
-review and fetched comments identify these values:
-
-- the target;
-- the `COMMENT` or `COMMENTED` event or state;
-- the reviewed commit; and
-- each expected path, side, line, and body anchor.
-
-If verification fails or is indeterminate, make no additional write. Do not retry. Do not substitute
-`gh pr review --comment`.
-
-### GitLab discussions
-
-Create one actionable changed-line discussion for each anchorable independent finding. Put these
-exact values in each text position:
-
-- `base_sha`;
-- `start_sha`;
-- `head_sha`;
-- `old_path`;
-- `new_path`; and
-- `position_type=text`.
-
-For an added or right-side finding, use only `new_line`. For a deletion or left-side finding, use only
-`old_line`. For an unchanged line, use both fields. Use an atomic draft or batch when it is available.
-If it is not available, bind the artifact again before each ordered discussion. If a value changes,
-stop. Retain the created uniform resource locators (URLs). Return the remaining batch. Verify each
-returned target, tuple, path, and line field exactly. If the workflow requires an atomic batch and the
-forge does not support it, withhold the complete set.
+After verified non-GO state-note readback, make the NO-GO label exclusive through one authenticated,
+target-scoped capability. For terminal GO, the terminal delivery owner creates the state note once,
+answers and resolves only ledger-authorized discussions, and then makes the GO label exclusive. If
+the host cannot prove an equivalent exact-head operation and readback, return the prepared artifact
+and withhold a favorable delivered result.
 
 Report review or discussion URLs, publication failures, residual risks, and unverified assumptions
-accurately. The forge and its approval policy control labels, acceptance, and merge. Review prose does
-not control them.
+accurately. Forge policy controls approval and merge. Review prose does not.

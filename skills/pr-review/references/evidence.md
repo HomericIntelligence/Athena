@@ -46,7 +46,17 @@ Do the same verification before publication. If evidence is missing, malformed, 
 mismatched, report a coverage failure. Do not infer a substitute. Do not inspect mutable bytes. Do not
 publish from that evidence.
 
+When a pull-request head changes without a requirements change, continue the same exchange through
+a separate `--author-response` head refresh. Bind the event to the exact current logical state and
+new revision. Derive that logical state by reducing each verified pending author-event carrier in
+provider order after the latest state carrier. The refresh invalidates prior coverage and does not
+increase the reviewer-round count. The next reviewer assessment must inspect and bind the refreshed
+immutable source. A material requirements change requires an authoritative reframe instead.
+
 ## Default profile
+
+Set `go_eligible=true` on each default-profile reviewer assessment and reframe. An author response
+or human decision inherits the value from the current logical state.
 
 ### Resolve the artifact
 
@@ -217,6 +227,12 @@ The combined set uses the existing resource limits and final revalidation.
 Use the same selected set when you rebind before
 publication. A non-closing reference does not change the PR or close an issue.
 
+The delivery helper reuses the collector's live requirements-binding operation. That operation
+double-reads the retained PR identity and scope. It also double-reads the complete selected linked
+requirements with the existing bounded collector. It returns `reviewed_scope.sha256`,
+`reviewed_linked_requirements.sha256`, and the canonical sorted set of all selected item URLs. Do not
+duplicate the provider parser in a delivery adapter.
+
 All strict identity arguments are necessary for this option. It does not accept a bare issue number, an
 issue-comment URL, or a non-GitHub URL. If a different plan artifact needs a binding capability that
 is not available, record an issue-alignment coverage gap. Do not publish unless the evidence is full.
@@ -295,7 +311,8 @@ record from review verdict inputs, `reviewed_scope`, `reviewed_linked_requiremen
 approval-state change on the same head does not require a new technical review. If the approval state
 is missing or malformed, use `UNAVAILABLE`. If its head is missing or does not match the reviewed
 head, report a merge-readiness coverage gap. Do not make a merge-ready claim from that record. A
-source-head change invalidates the complete review binding.
+source-head change invalidates the complete review binding and requires the separate head-refresh
+event before the exchange continues.
 
 Before a configured GitLab capability supplies default-profile evidence, test these cases:
 
@@ -423,6 +440,23 @@ commands that host policy selects. Their definitions must not query CI/CD.
 Separate local evidence from deliberately excluded CI/CD evidence. Record source-history facts. Do not
 call the result merge-ready. Report a behind count. Do not require a rebase or new CI evidence for this
 source-review assessment.
+
+Set `go_eligible=false` on each CI-free reviewer assessment and reframe. An author response or human
+decision inherits the value from the current logical state. A human decision does not select a review
+profile.
+
+When coverage is complete and no active required finding remains before round 5, the CI-free state
+has `phase=complete`, `verdict=CONDITIONAL GO`, and `next_action=none`. At round 5, it has
+`phase=decision_required`, `verdict=NO-GO`, and `next_action=human_decision`. Publish either result
+through the general atomic `COMMENT` path. After exact readback, use exclusive NO-GO delivery. Do
+not start another reviewer round automatically. Do not GO-finalize the state, close its threads, or
+report merge readiness.
+
+Before round 5, a later explicit default-profile reviewer assessment can increase the round and set
+`go_eligible=true`. A repeated CI-free assessment cannot continue the complete conditional state.
+If the head changed after the conditional state, publish and verify a separate author-response head
+refresh before that default-profile assessment. An eligibility upgrade at round 5 is invalid. A
+requirements reframe can start a new exchange under the default or CI-free profile.
 
 If the host cannot provide the non-CI binding, immutable source boundary, or safe local validation
 boundary, record the coverage failure. Do not publish from weaker evidence. If the requested decision

@@ -36,6 +36,10 @@ LEGAL_FILES: Final[tuple[PurePosixPath, ...]] = (
 SKILLS_ROOT: Final[PurePosixPath] = PurePosixPath("skills")
 REQUIRED_SKILL_FILES: Final[tuple[PurePosixPath, ...]] = (
     SKILLS_ROOT / "TECHNICAL_ENGLISH.md",
+    SKILLS_ROOT / "review-exchange" / "SKILL.md",
+    SKILLS_ROOT / "review-exchange" / "references" / "interface.md",
+    SKILLS_ROOT / "review-exchange" / "scripts" / "issue_exchange.py",
+    SKILLS_ROOT / "review-exchange" / "scripts" / "review_exchange.py",
 )
 STAGED_SUPPORT_ROOT: Final[PurePosixPath] = SKILLS_ROOT / "_support"
 SUPPORT_ROOTS: Final[tuple[PurePosixPath, ...]] = (
@@ -162,6 +166,8 @@ def _copy_staged_file(
     """Copy one package file and rebase its local Markdown links."""
     if source_path.suffix.casefold() != ".md":
         shutil.copyfile(source_path, target)
+        if source_path.stat().st_mode & 0o111:
+            target.chmod(target.stat().st_mode | 0o111)
         return
     markdown = source_path.read_text(encoding="utf-8")
     rewritten = _rewrite_local_markdown_links(
