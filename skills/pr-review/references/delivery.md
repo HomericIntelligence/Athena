@@ -369,6 +369,11 @@ The location can be the root's exact `path:originalLine` or its canonical pull-r
 do not follow a supplied URL or rewrite a published carrier. A different target, identifier, or
 invalid root location stops delivery.
 
+A retained decimal alias with a changed source line has a separate compatibility path. It requires
+the exact discussion permalink, an unchanged viewer-owned root, its submitted root review, and a
+successful ancestry check from the root review head to the carrier review head. This path retains
+its ownership, provenance, and ancestry checks; exact foreign-root adoption does not waive them.
+
 The helper can deliver NO-GO while the adopted foreign thread remains open. GO still requires that
 thread to be resolved. After a separately authorized actor resolves the exact thread, prepare a
 fresh manifest that omits the already-resolved history. Revalidate the complete exchange, author

@@ -292,6 +292,9 @@ class Forge(Protocol):
     def verify_requirements_binding(self, expected: RequirementsBinding) -> None:
         """Fail unless the live requirements binding equals the retained binding."""
 
+    def is_ancestor(self, older_oid: str, newer_oid: str) -> bool:
+        """Read whether one bound repository commit precedes another."""
+
     def reply(self, thread_id: str, body: str) -> None:
         """Post one deterministic reply to one retained review thread."""
 
@@ -1059,8 +1062,97 @@ def _native_location_matches(
     )
 
 
-def _verify_carrier_review_roots(
+def _verify_decimal_native_alias(
+    forge: Forge,
+    binding: ReviewBinding,
+    finding: Mapping[str, Any],
+    root: ReviewComment,
+    carrier_review: ReviewRecord | None,
     snapshot: PullRequestSnapshot,
+) -> None:
+    """Verify the retained decimal alias proof for one moved review root."""
+    finding_id = finding["id"]
+    token = finding_id.removeprefix("native:")
+    if root.full_database_id is None:
+        raise DeliveryError(
+            "An adopted native finding with an unequal root line lacks a database alias."
+        )
+    database_id = _database_comment_id(root.full_database_id)
+    if token != database_id or finding_id == f"native:{root.id}":
+        raise DeliveryError("An adopted native finding has an invalid decimal alias.")
+
+    anchor = _finding_anchor(finding["location"])
+    if (
+        anchor is None
+        or root.path != anchor[0]
+        or type(root.original_line) is not int
+        or root.original_line < 1
+        or root.side not in {"LEFT", "RIGHT"}
+    ):
+        raise DeliveryError("An adopted native finding has invalid root provenance.")
+    permalink = f"{binding.url}#discussion_r{database_id}"
+    evidence = finding.get("evidence")
+    if (
+        not isinstance(evidence, list)
+        or sum(item == permalink for item in evidence) != 1
+    ):
+        raise DeliveryError(
+            "An adopted native finding lacks its exact root discussion permalink."
+        )
+    if (
+        not root.viewer_did_author
+        or not root.author
+        or not root.body.strip()
+        or root.last_edited_at is not None
+        or root.review_id is None
+    ):
+        raise DeliveryError("An adopted native finding has invalid root ownership.")
+    try:
+        root_review_head = require_commit_oid(
+            root.review_head_oid, "native root review head"
+        )
+        carrier_review_head = require_commit_oid(
+            carrier_review.head_oid if carrier_review is not None else None,
+            "native carrier review head",
+        )
+    except RuntimeError as error:
+        raise DeliveryError(str(error)) from error
+    root_reviews = [
+        review for review in snapshot.reviews if review.id == root.review_id
+    ]
+    if (
+        len(root_reviews) != 1
+        or carrier_review is None
+        or root_reviews[0].state != "COMMENTED"
+        or not root_reviews[0].viewer_did_author
+        or root_reviews[0].includes_created_edit
+        or root_reviews[0].last_edited_at is not None
+        or root_reviews[0].author != root.author
+        or root_reviews[0].head_oid != root_review_head
+    ):
+        raise DeliveryError("An adopted native finding has invalid root review proof.")
+    if _review_submission_time(root_reviews[0]) >= _review_submission_time(
+        carrier_review
+    ):
+        raise DeliveryError(
+            "An adopted native finding has an invalid root review publication order."
+        )
+    try:
+        ancestor = forge.is_ancestor(root_review_head, carrier_review_head)
+    except DeliveryError:
+        raise
+    except Exception as error:
+        raise DeliveryError("The native root ancestry comparison failed.") from error
+    if type(ancestor) is not bool or not ancestor:
+        raise DeliveryError(
+            "The retained native root review head is not an ancestor of its carrier."
+        )
+
+
+def _verify_carrier_review_roots(
+    forge: Forge,
+    snapshot: PullRequestSnapshot,
+    binding: ReviewBinding,
     states: Mapping[str, tuple[ReviewRecord, dict[str, Any]]],
     verified_envelopes: Mapping[str, dict[str, Any]],
     verified_state_sha256s: set[str],
@@ -1089,13 +1181,19 @@ def _verify_carrier_review_roots(
             ] or not finding_id.startswith("native:"):
                 continue
             root = _resolve_native_root(snapshot, finding_id)
-            if (
-                not _native_location_matches(snapshot, root, finding["location"])
-                or root.review_head_oid is None
-                or root.side not in {"LEFT", "RIGHT"}
-            ):
+            if root.review_head_oid is None or root.side not in {"LEFT", "RIGHT"}:
                 raise DeliveryError(
                     "An adopted native finding has no unique matching review root."
+                )
+            if not _native_location_matches(snapshot, root, finding["location"]):
+                state_record = states.get(digest)
+                _verify_decimal_native_alias(
+                    forge,
+                    binding,
+                    finding,
+                    root,
+                    None if state_record is None else state_record[0],
+                    snapshot,
                 )
         state_record = states.get(digest)
         if state_record is None:
@@ -1573,6 +1671,7 @@ def _verify_carrier_publication_order(
 
 
 def _verify_state_chain(
+    forge: Forge,
     terminal: Mapping[str, Any],
     snapshot: PullRequestSnapshot,
     binding: ReviewBinding,
@@ -1873,7 +1972,9 @@ def _verify_state_chain(
         archived_terminal_sha256s,
     )
     _verify_carrier_review_roots(
+        forge,
         snapshot,
+        binding,
         states,
         {digest: logical_envelopes[digest] for digest in verified_states},
         verified_states,
@@ -1998,13 +2099,14 @@ def _reframe_closure_evidence(superseded_state_sha256: str) -> tuple[str, ...]:
 
 
 def validate_closure_manifest(
+    forge: Forge,
     binding: ReviewBinding,
     manifest: ClosureManifest,
     snapshot: PullRequestSnapshot,
 ) -> dict[str, ThreadClosure]:
     """Validate one complete v1 closure ledger before any forge mutation."""
     _terminal_state(binding, manifest)
-    chain = _verify_state_chain(manifest.state_envelope, snapshot, binding)
+    chain = _verify_state_chain(forge, manifest.state_envelope, snapshot, binding)
     terminal_digest = cast(str, manifest.state_envelope["state_sha256"])
     terminal_exchange_id = cast(str, manifest.state_envelope["state"]["exchange_id"])
     dynamic_terminal_identities = {
@@ -2500,12 +2602,13 @@ def _validate_terminal_inline_comments(
 
 
 def _verify_go_state_history(
+    forge: Forge,
     snapshot: PullRequestSnapshot,
     binding: ReviewBinding,
     manifest: ClosureManifest,
     body: str,
 ) -> set[str]:
-    chain = _verify_state_chain(manifest.state_envelope, snapshot, binding)
+    chain = _verify_state_chain(forge, manifest.state_envelope, snapshot, binding)
     _validate_terminal_inline_comments(
         binding, manifest, set(chain.terminal_new_finding_ids)
     )
@@ -2688,14 +2791,14 @@ def deliver_go_v1(
     last_snapshot = initial
     body = terminal_review_body(manifest)
     matching = _matching_terminal_reviews(initial, body, binding.head_oid)
-    _verify_go_state_history(initial, binding, manifest, body)
+    _verify_go_state_history(forge, initial, binding, manifest, body)
     if len(matching) > 1:
         raise DeliveryError("The current-head terminal COMMENT evidence is ambiguous.")
     if matching:
         manifest = _manifest_with_terminal_threads(
             initial, binding, manifest, matching[0].id
         )
-    by_thread = validate_closure_manifest(binding, manifest, initial)
+    by_thread = validate_closure_manifest(forge, binding, manifest, initial)
     _verify_live_requirements(forge, manifest.requirements_binding)
     open_threads = [thread for thread in initial.threads if not thread.is_resolved]
     terminal_review_id = matching[0].id if matching else None
@@ -2764,7 +2867,7 @@ def deliver_go_v1(
                     return result("already_delivered")
                 write("implementation label", forge.set_implementation_go)
                 recovered = read()
-                _verify_go_state_history(recovered, binding, manifest, body)
+                _verify_go_state_history(forge, recovered, binding, manifest, body)
                 if (
                     GO_LABEL not in recovered.labels
                     or NO_GO_LABEL in recovered.labels
@@ -2798,7 +2901,7 @@ def deliver_go_v1(
             terminal_matches = _matching_terminal_reviews(
                 after_terminal, body, binding.head_oid
             )
-            _verify_go_state_history(after_terminal, binding, manifest, body)
+            _verify_go_state_history(forge, after_terminal, binding, manifest, body)
             if len(terminal_matches) != 1:
                 raise DeliveryError(
                     "The exact current-head terminal COMMENT was not verified."
@@ -2807,7 +2910,9 @@ def deliver_go_v1(
             manifest = _manifest_with_terminal_threads(
                 after_terminal, binding, manifest, terminal_review_id
             )
-            by_thread = validate_closure_manifest(binding, manifest, after_terminal)
+            by_thread = validate_closure_manifest(
+                forge, binding, manifest, after_terminal
+            )
             responded = [
                 thread_id
                 for thread_id, entry in by_thread.items()
@@ -2890,7 +2995,7 @@ def deliver_go_v1(
                 "An unresolved review thread remains before terminal delivery."
             )
         _require_closed_manifest_threads(current, binding, manifest, by_thread)
-        _verify_go_state_history(current, binding, manifest, body)
+        _verify_go_state_history(forge, current, binding, manifest, body)
         if len(_matching_terminal_reviews(current, body, binding.head_oid)) != 1:
             raise DeliveryError(
                 "The terminal COMMENT changed before GO label delivery."
@@ -2899,7 +3004,7 @@ def deliver_go_v1(
         final = read()
         if GO_LABEL not in final.labels or NO_GO_LABEL in final.labels:
             raise DeliveryError("The implementation state labels are not exclusive.")
-        _verify_go_state_history(final, binding, manifest, body)
+        _verify_go_state_history(forge, final, binding, manifest, body)
         if len(_matching_terminal_reviews(final, body, binding.head_oid)) != 1:
             raise DeliveryError("The terminal COMMENT changed after GO label delivery.")
         if any(not thread.is_resolved for thread in final.threads):
@@ -2915,6 +3020,7 @@ def deliver_go_v1(
 
 
 def _verify_no_go_snapshot(
+    forge: Forge,
     snapshot: PullRequestSnapshot,
     binding: ReviewBinding,
     proof: NoGoProof,
@@ -2967,7 +3073,7 @@ def _verify_no_go_snapshot(
     if len(matching) != 1:
         raise DeliveryError("The exact current-head NO-GO carrier was not verified.")
     verified_state_sha256s = set(
-        _verify_state_chain(envelope, snapshot, binding).verified_state_sha256s
+        _verify_state_chain(forge, envelope, snapshot, binding).verified_state_sha256s
     )
     for review in snapshot.reviews:
         if (
@@ -2999,7 +3105,7 @@ def deliver_no_go(
     initial = _snapshot(forge, binding)
     if proof is None:
         raise DeliveryError("A verified current-head NO-GO state carrier is required.")
-    _verify_no_go_snapshot(initial, binding, proof)
+    _verify_no_go_snapshot(forge, initial, binding, proof)
     _verify_live_requirements(forge, proof.requirements_binding)
     if NO_GO_LABEL in initial.labels and GO_LABEL not in initial.labels:
         return DeliveryResult(
@@ -3015,7 +3121,7 @@ def deliver_no_go(
         _call_write("implementation NO-GO label", forge.set_implementation_no_go)
         final = _snapshot(forge, binding)
         last_snapshot = final
-        _verify_no_go_snapshot(final, binding, proof)
+        _verify_no_go_snapshot(forge, final, binding, proof)
         _verify_live_requirements(forge, proof.requirements_binding)
         if NO_GO_LABEL not in final.labels or GO_LABEL in final.labels:
             raise DeliveryError(
@@ -3126,6 +3232,58 @@ class GitHubForge:
         if not isinstance(permission, str):
             raise DeliveryError("GitHub returned invalid repository permission data.")
         return permission.upper()
+
+    def is_ancestor(self, older_oid: str, newer_oid: str) -> bool:
+        """Read one complete commit comparison from the bound repository."""
+        try:
+            older = require_commit_oid(older_oid, "older commit")
+            newer = require_commit_oid(newer_oid, "newer commit")
+        except RuntimeError as error:
+            raise DeliveryError(str(error)) from error
+        try:
+            output = _gh(
+                "api",
+                "--hostname",
+                self.host,
+                f"repos/{self.owner}/{self.name}/compare/{older}...{newer}",
+            )
+        except DeliveryError:
+            raise
+        except Exception as error:
+            raise DeliveryError("The commit comparison read failed.") from error
+        data = _json_object(output, "commit comparison response")
+        status = data.get("status")
+        if not isinstance(status, str) or status not in {"ahead", "identical"}:
+            raise DeliveryError("GitHub returned a non-ancestor commit comparison.")
+        ahead_by = data.get("ahead_by")
+        behind_by = data.get("behind_by")
+        if (
+            type(ahead_by) is not int
+            or ahead_by < 0
+            or type(behind_by) is not int
+            or behind_by < 0
+        ):
+            raise DeliveryError("GitHub returned invalid commit comparison counts.")
+        if (
+            behind_by != 0
+            or (status == "identical" and ahead_by != 0)
+            or (status == "ahead" and ahead_by == 0)
+        ):
+            raise DeliveryError("GitHub returned an inconsistent commit comparison.")
+        merge_base = data.get("merge_base_commit")
+        if not isinstance(merge_base, dict):
+            raise DeliveryError("GitHub returned no commit comparison merge base.")
+        try:
+            merge_base_sha = require_commit_oid(
+                merge_base.get("sha"), "merge-base commit"
+            )
+        except RuntimeError as error:
+            raise DeliveryError(str(error)) from error
+        if merge_base_sha != older:
+            raise DeliveryError(
+                "GitHub returned the wrong commit comparison merge base."
+            )
+        return True
 
     def collect_requirements_binding(
         self, requirement_issue_urls: tuple[str, ...]

@@ -13,6 +13,7 @@ import unittest
 from argparse import Namespace
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from dataclasses import replace
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -63,6 +64,7 @@ class FakeForge:
         self.terminal_thread_mutation: str | None = None
         self.published_terminal_comments: tuple[Any, ...] = ()
         self.requirements_failure: str | None = None
+        self.ancestor_results: dict[tuple[str, str], Any] = {}
 
     def snapshot(self) -> Any:
         self.events.append("read")
@@ -78,6 +80,19 @@ class FakeForge:
             threads=tuple(self.threads.values()),
             reviews=tuple(self.reviews),
         )
+
+    def is_ancestor(self, older_oid: str, newer_oid: str) -> bool:
+        """Return one configured ancestry result and record the read."""
+        self.events.append(f"ancestry:{older_oid}...{newer_oid}")
+        pair = (older_oid, newer_oid)
+        if pair not in self.ancestor_results:
+            raise self.module.DeliveryError("Ancestry result is unavailable.")
+        result = self.ancestor_results[pair]
+        if isinstance(result, BaseException):
+            raise self.module.DeliveryError("Ancestry comparison failed.") from result
+        if type(result) is not bool:
+            raise self.module.DeliveryError("Ancestry result is malformed.")
+        return result
 
     def collect_requirements_binding(
         self, requirement_issue_urls: tuple[str, ...]
@@ -646,6 +661,9 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         state_author_kind: str | None = None,
         state_author_revision: str | None = None,
         state_reviewer_evidence: str | None = None,
+        state_finding_location: str = "src/example.py:7",
+        state_finding_evidence: tuple[str, ...] = ("The failing case returns 0.",),
+        state_artifact_revision: str | None = None,
     ) -> Any:
         closure = closure or self.closure(thread)
         author_kind = state_author_kind or closure.author_answer
@@ -659,6 +677,8 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         entries = (closure,) if include_entry else ()
         visible = self.delivery.terminal_visible_content(self.binding(), entries)
         exchange = self.delivery.review_exchange
+        state_path, _, _ = state_finding_location.rpartition(":")
+        state_revision = state_artifact_revision or thread.comments[0].review_head_oid
         initial_visible = "Round 1 review."
         initial = exchange.reduce_request(
             {
@@ -678,11 +698,11 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     "requirements_sha256": "c" * 64,
                     "supersedes_state_sha256": None,
                     "artifact_binding": {
-                        "revision": thread.comments[0].review_head_oid,
+                        "revision": state_revision,
                         "sha256": "1" * 64,
                         "visible_content_sha256": exchange.sha256_text(initial_visible),
                     },
-                    "scope": ["path:src/example.py"],
+                    "scope": [f"path:{state_path}"],
                     "coverage_complete": True,
                     "go_eligible": True,
                     "responses": [],
@@ -693,9 +713,9 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                             "severity": "major",
                             "disposition": "required",
                             "material_architecture": False,
-                            "location": "src/example.py:7",
+                            "location": state_finding_location,
                             "impact": "The result can be incorrect.",
-                            "evidence": ["The failing case returns 0."],
+                            "evidence": list(state_finding_evidence),
                             "closure_condition": "The failing case returns 1.",
                             "introduction": "initial",
                         }
@@ -717,7 +737,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                         "sha256": author_sha256,
                         "visible_content_sha256": exchange.sha256_text(author_visible),
                     },
-                    "scope": ["path:src/example.py"],
+                    "scope": [f"path:{state_path}"],
                     "scope_change_reason": None,
                     "responses": [
                         {
@@ -782,7 +802,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                             **author["state"]["artifact_binding"],
                             "visible_content_sha256": exchange.sha256_text(visible),
                         },
-                        "scope": ["path:src/example.py"],
+                        "scope": [f"path:{state_path}"],
                         "coverage_complete": True,
                         "go_eligible": True,
                         "responses": [
@@ -818,6 +838,98 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             ),
         )
         return manifest
+
+    def persisted_decimal_alias_fixture(
+        self,
+        *,
+        database_id: str = "3991324291",
+        finding_id_override: str | None = None,
+        root_graphql_id: str = "PRRC_kwDOTfsgBs7t5saD",
+        root_path: str = "src/comet/supervisor.py",
+        finding_line: int = 1334,
+        root_original_line: int = 1329,
+        ancestry_result: Any = True,
+        evidence: tuple[str, ...] | None = None,
+        root_updates: dict[str, Any] | None = None,
+        root_review_updates: dict[str, Any] | None = None,
+        include_root_review: bool = True,
+        duplicate_root_review: bool = False,
+    ) -> tuple[FakeForge, Any, Any, str, str, str]:
+        binding = self.binding()
+        root_review_head = "c148d86eb7720848d412073728396736b3148bf4"
+        carrier_review_head = "306aaffe9e6b776e78c6e431d9865b87351d9305"
+        finding_id = finding_id_override or f"native:{database_id}"
+        discussion = f"{binding.url}#discussion_r{database_id}"
+        root = self.delivery.ReviewComment(
+            id=root_graphql_id,
+            body="The rollback diagnostic requires review.",
+            author="reviewer",
+            viewer_did_author=True,
+            review_head_oid=root_review_head,
+            review_id="root-review",
+            path=root_path,
+            side="RIGHT",
+            line=finding_line,
+            original_line=root_original_line,
+            published_at="2025-12-31T23:59:00Z",
+            full_database_id=database_id,
+        )
+        if root_updates is not None:
+            root = replace(root, **root_updates)
+        thread = self.delivery.ReviewThread(
+            id="legacy-thread",
+            is_resolved=False,
+            comments=(root,),
+            viewer_can_reply=True,
+            viewer_can_resolve=True,
+        )
+        closure = replace(self.closure(thread), finding_id=finding_id)
+        manifest = self.v1_manifest(
+            thread,
+            closure,
+            state_finding_location=f"{root_path}:{finding_line}",
+            state_finding_evidence=(
+                evidence
+                if evidence is not None
+                else (
+                    discussion,
+                    (
+                        f"{root_path}:{finding_line - 10}-{finding_line + 4} at "
+                        "306aaffe9e6b776e78c6e431d9865b87351d9305"
+                    ),
+                )
+            ),
+            state_artifact_revision=carrier_review_head,
+        )
+        forge = FakeForge(self.delivery, threads=(thread,))
+        self.add_history(forge, manifest)
+        if include_root_review:
+            root_review = self.delivery.ReviewRecord(
+                id="root-review",
+                body="The retained root review.",
+                head_oid=root_review_head,
+                author="reviewer",
+                viewer_did_author=True,
+                includes_created_edit=False,
+                state="COMMENTED",
+                submitted_at="2025-12-31T23:58:00Z",
+            )
+            if root_review_updates is not None:
+                root_review = replace(root_review, **root_review_updates)
+            forge.reviews.insert(0, root_review)
+            if duplicate_root_review:
+                forge.reviews.insert(1, root_review)
+        forge.ancestor_results[(root_review_head, carrier_review_head)] = (
+            ancestry_result
+        )
+        return (
+            forge,
+            binding,
+            manifest,
+            finding_id,
+            root.id,
+            carrier_review_head,
+        )
 
     def terminal_inline_manifest(self) -> tuple[Any, Any]:
         exchange = self.delivery.review_exchange
@@ -995,7 +1107,11 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         return forge, binding, manifest
 
     def no_go_proof(
-        self, *, finding_id: str = "F-001", location: str = "src/no_go.py:1"
+        self,
+        *,
+        finding_id: str = "F-001",
+        location: str = "src/no_go.py:1",
+        finding_evidence: tuple[str, ...] = ("The test fails.",),
     ) -> tuple[Any, Any]:
         exchange = self.delivery.review_exchange
         visible = "Round 1 has one required finding."
@@ -1034,7 +1150,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                             "material_architecture": False,
                             "location": location,
                             "impact": "The result is incorrect.",
-                            "evidence": ["The test fails."],
+                            "evidence": list(finding_evidence),
                             "closure_condition": "The test passes.",
                             "introduction": "initial",
                         }
@@ -1937,6 +2053,124 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self.assertIn("owner=owner", calls[0])
         self.assertIn("name=repository", calls[0])
         self.assertIn("number=7", calls[0])
+
+    def test_github_adapter_reads_a_bound_commit_ancestry(self) -> None:
+        older = "a" * 40
+        newer = "b" * 40
+        response = {
+            "status": "ahead",
+            "ahead_by": 1,
+            "behind_by": 0,
+            "merge_base_commit": {"sha": older},
+        }
+        calls: list[tuple[str, ...]] = []
+
+        def fake_gh(*arguments: str) -> str:
+            calls.append(arguments)
+            return json.dumps(response)
+
+        with patch.object(self.delivery, "_gh", side_effect=fake_gh):
+            self.assertTrue(
+                self.delivery.GitHubForge(self.binding()).is_ancestor(older, newer)
+            )
+
+        self.assertEqual(
+            (
+                "api",
+                "--hostname",
+                "github.com",
+                f"repos/owner/repository/compare/{older}...{newer}",
+            ),
+            calls[0],
+        )
+
+        identical = {
+            "status": "identical",
+            "ahead_by": 0,
+            "behind_by": 0,
+            "merge_base_commit": {"sha": older},
+        }
+        with patch.object(self.delivery, "_gh", return_value=json.dumps(identical)):
+            self.assertTrue(
+                self.delivery.GitHubForge(self.binding()).is_ancestor(older, older)
+            )
+
+    def test_github_adapter_rejects_invalid_commit_ancestry_responses(self) -> None:
+        older = "a" * 40
+        newer = "b" * 40
+        valid = {
+            "status": "ahead",
+            "ahead_by": 1,
+            "behind_by": 0,
+            "merge_base_commit": {"sha": older},
+        }
+        cases: dict[str, dict[str, Any]] = {
+            "behind": {**valid, "status": "behind"},
+            "unknown status": {**valid, "status": "diverged"},
+            "malformed status": {**valid, "status": []},
+            "ahead with zero count": {**valid, "ahead_by": 0},
+            "identical with positive count": {
+                **valid,
+                "status": "identical",
+                "ahead_by": 1,
+            },
+            "missing ahead count": {
+                key: value for key, value in valid.items() if key != "ahead_by"
+            },
+            "boolean ahead count": {**valid, "ahead_by": True},
+            "negative ahead count": {**valid, "ahead_by": -1},
+            "missing behind count": {
+                key: value for key, value in valid.items() if key != "behind_by"
+            },
+            "boolean behind count": {**valid, "behind_by": False},
+            "negative behind count": {**valid, "behind_by": -1},
+            "nonzero behind count": {**valid, "behind_by": 1},
+            "missing merge base": {
+                key: value for key, value in valid.items() if key != "merge_base_commit"
+            },
+            "malformed merge base": {**valid, "merge_base_commit": []},
+            "malformed merge base sha": {
+                **valid,
+                "merge_base_commit": {"sha": "not-an-oid"},
+            },
+            "wrong merge base": {
+                **valid,
+                "merge_base_commit": {"sha": newer},
+            },
+        }
+        for case, response in cases.items():
+            with (
+                self.subTest(case=case),
+                patch.object(self.delivery, "_gh", return_value=json.dumps(response)),
+                self.assertRaises(self.delivery.DeliveryError),
+            ):
+                self.delivery.GitHubForge(self.binding()).is_ancestor(older, newer)
+
+        for case, older_value, newer_value in (
+            ("invalid older", "z" * 40, newer),
+            ("invalid newer", older, "z" * 40),
+            ("short older", "a", newer),
+            ("boolean newer", older, True),
+        ):
+            with (
+                self.subTest(case=case),
+                patch.object(self.delivery, "_gh") as query,
+                self.assertRaises(self.delivery.DeliveryError),
+            ):
+                self.delivery.GitHubForge(self.binding()).is_ancestor(
+                    older_value, newer_value
+                )
+            query.assert_not_called()
+
+        with (
+            patch.object(
+                self.delivery,
+                "_gh",
+                side_effect=RuntimeError("compare unavailable"),
+            ),
+            self.assertRaises(self.delivery.DeliveryError),
+        ):
+            self.delivery.GitHubForge(self.binding()).is_ancestor(older, newer)
 
     def test_github_snapshot_records_current_authority_permission(self) -> None:
         authority_body = self.authority_body(
@@ -3141,6 +3375,248 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self.assertEqual("native:3991324281", manifest.entries[0].finding_id)
         self.assertEqual("PRRC_verified_root", manifest.entries[0].origin_comment_id)
 
+    def test_persisted_decimal_alias_closes_with_an_unequal_root_line(self) -> None:
+        (
+            forge,
+            binding,
+            manifest,
+            finding_id,
+            origin_comment_id,
+            _carrier_review_head,
+        ) = self.persisted_decimal_alias_fixture()
+        state_before = json.dumps(manifest.state_envelope, sort_keys=True)
+        carrier_bodies_before = {review.id: review.body for review in forge.reviews}
+
+        result = self.delivery.deliver_go_v1(forge, binding, manifest)
+
+        self.assertEqual("delivered", result.status)
+        self.assertEqual(
+            state_before, json.dumps(manifest.state_envelope, sort_keys=True)
+        )
+        self.assertEqual(finding_id, manifest.entries[0].finding_id)
+        self.assertEqual(origin_comment_id, manifest.entries[0].origin_comment_id)
+        self.assertIn(
+            "ancestry:c148d86eb7720848d412073728396736b3148bf4..."
+            "306aaffe9e6b776e78c6e431d9865b87351d9305",
+            forge.events,
+        )
+        self.assertEqual(
+            carrier_bodies_before,
+            {
+                review.id: review.body
+                for review in forge.reviews
+                if review.id in carrier_bodies_before
+            },
+        )
+
+    def test_persisted_decimal_alias_rejects_ancestry_failures_before_writes(
+        self,
+    ) -> None:
+        cases = {
+            "absent": None,
+            "false": False,
+            "malformed": "true",
+            "unavailable": RuntimeError("compare unavailable"),
+        }
+        for case, ancestry_result in cases.items():
+            with self.subTest(case=case):
+                (
+                    forge,
+                    binding,
+                    manifest,
+                    _finding_id,
+                    _origin_comment_id,
+                    _carrier_review_head,
+                ) = self.persisted_decimal_alias_fixture(
+                    ancestry_result=ancestry_result
+                )
+                if case == "absent":
+                    del forge.ancestor_results[next(iter(forge.ancestor_results))]
+
+                with self.assertRaises(self.delivery.DeliveryError):
+                    self.delivery.deliver_go_v1(forge, binding, manifest)
+
+                self.assertTrue(
+                    any(event.startswith("ancestry:") for event in forge.events)
+                )
+                self.assertFalse(
+                    any(
+                        event == "terminal"
+                        or event == "labels"
+                        or event.startswith(("labels:", "reply:", "resolve:"))
+                        for event in forge.events
+                    )
+                )
+
+    def test_persisted_decimal_alias_supports_the_second_review_line_pair(
+        self,
+    ) -> None:
+        (
+            forge,
+            binding,
+            manifest,
+            finding_id,
+            origin_comment_id,
+            _carrier_review_head,
+        ) = self.persisted_decimal_alias_fixture(
+            database_id="3991324297",
+            root_graphql_id="PRRC_kwDOTfsgBs7t5saJ",
+            finding_line=2363,
+            root_original_line=2365,
+        )
+        state_before = json.dumps(manifest.state_envelope, sort_keys=True)
+        carrier_bodies_before = {review.id: review.body for review in forge.reviews}
+
+        result = self.delivery.deliver_go_v1(forge, binding, manifest)
+
+        self.assertEqual("delivered", result.status)
+        self.assertEqual(
+            state_before, json.dumps(manifest.state_envelope, sort_keys=True)
+        )
+        self.assertEqual(finding_id, manifest.entries[0].finding_id)
+        self.assertEqual(origin_comment_id, manifest.entries[0].origin_comment_id)
+        self.assertIn(
+            "ancestry:c148d86eb7720848d412073728396736b3148bf4..."
+            "306aaffe9e6b776e78c6e431d9865b87351d9305",
+            forge.events,
+        )
+        self.assertEqual(
+            carrier_bodies_before,
+            {
+                review.id: review.body
+                for review in forge.reviews
+                if review.id in carrier_bodies_before
+            },
+        )
+
+    def test_persisted_decimal_alias_rejects_invalid_root_proof_before_writes(
+        self,
+    ) -> None:
+        binding = self.binding()
+        discussion = f"{binding.url}#discussion_r3991324291"
+        evidence_cases = {
+            "missing permalink": ("src/comet/supervisor.py:1324-1338",),
+            "query permalink": (f"{discussion}?plain=1",),
+            "suffix permalink": (f"{discussion}/reply",),
+            "different pull request": (
+                "https://github.com/owner/repository/pull/8#discussion_r3991324291",
+            ),
+            "permalink substring": (f"prefix {discussion}",),
+        }
+        root_cases: dict[str, dict[str, Any]] = {
+            "missing database alias": {"full_database_id": None},
+            "wrong database alias": {"full_database_id": "3991324292"},
+            "numeric graphql alias": {"id": "3991324291"},
+            "wrong path": {"path": "src/comet/other.py"},
+            "wrong side": {"side": "UNKNOWN"},
+            "nonpositive original line": {"original_line": 0},
+            "edited root": {"last_edited_at": "2026-01-01T00:00:00Z"},
+            "empty root": {"body": "   "},
+            "marked root": {
+                "body": (
+                    "Finding.\n\n"
+                    "<!-- HomericIntelligence:review-finding:v1 "
+                    "exchange=exchange-7 id=F-001 -->"
+                )
+            },
+            "missing root review link": {"review_id": "missing-review"},
+        }
+        review_cases: dict[str, dict[str, Any]] = {
+            "edited root review": {"last_edited_at": "2026-01-01T00:00:00Z"},
+            "root review has edit": {"includes_created_edit": True},
+            "unowned root review": {"viewer_did_author": False},
+            "wrong root review state": {"state": "APPROVED"},
+            "wrong root review author": {"author": "other-reviewer"},
+            "wrong root review head": {"head_oid": "d" * 40},
+            "missing root review time": {"submitted_at": None},
+        }
+        cases: list[tuple[str, dict[str, Any]]] = [
+            *(
+                (name, {"evidence": evidence})
+                for name, evidence in evidence_cases.items()
+            ),
+            *(
+                (name, {"root_updates": updates})
+                for name, updates in root_cases.items()
+            ),
+            ("missing root review", {"include_root_review": False}),
+            ("duplicate root review", {"duplicate_root_review": True}),
+            *(
+                (name, {"root_review_updates": updates})
+                for name, updates in review_cases.items()
+            ),
+            (
+                "decimal alias uses graphql root id",
+                {"finding_id_override": "native:PRRC_kwDOTfsgBs7t5saD"},
+            ),
+            (
+                "decimal alias has a noncanonical suffix",
+                {"finding_id_override": "native:3991324291.0"},
+            ),
+        ]
+        for case, submitted_at_offset in (("equal", 0), ("later", 1)):
+            forge, case_binding, manifest, *_ = self.persisted_decimal_alias_fixture()
+            carrier_time = next(
+                review.submitted_at
+                for review in forge.reviews
+                if review.id == "initial-review-1"
+            )
+            assert carrier_time is not None
+            if submitted_at_offset:
+                normalized = (
+                    f"{carrier_time[:-1]}+00:00"
+                    if carrier_time.endswith("Z")
+                    else carrier_time
+                )
+                carrier_time = (
+                    (datetime.fromisoformat(normalized) + timedelta(seconds=1))
+                    .isoformat()
+                    .replace("+00:00", "Z")
+                )
+            root_index = next(
+                index
+                for index, review in enumerate(forge.reviews)
+                if review.id == "root-review"
+            )
+            forge.reviews[root_index] = replace(
+                forge.reviews[root_index], submitted_at=carrier_time
+            )
+            with self.subTest(case=f"{case} root review time"):
+                with self.assertRaises(self.delivery.DeliveryError):
+                    self.delivery.deliver_go_v1(forge, case_binding, manifest)
+                self.assertFalse(
+                    any(
+                        event == "terminal"
+                        or event == "labels"
+                        or event.startswith(("labels:", "reply:", "resolve:"))
+                        for event in forge.events
+                    )
+                )
+        for case, options in cases:
+            with self.subTest(case=case):
+                forge, case_binding, manifest, *_ = (
+                    self.persisted_decimal_alias_fixture(**options)
+                )
+                with self.assertRaises(self.delivery.DeliveryError):
+                    self.delivery.deliver_go_v1(forge, case_binding, manifest)
+                self.assertFalse(
+                    any(
+                        event == "terminal"
+                        or event == "labels"
+                        or event.startswith(("labels:", "reply:", "resolve:"))
+                        for event in forge.events
+                    )
+                )
+
+    def test_persisted_decimal_alias_rejects_duplicate_permalink_at_reducer(
+        self,
+    ) -> None:
+        binding = self.binding()
+        discussion = f"{binding.url}#discussion_r3991324291"
+
+        with self.assertRaises(self.delivery.review_exchange.ProtocolError):
+            self.persisted_decimal_alias_fixture(evidence=(discussion, discussion))
+
     def test_native_database_id_alias_preserves_no_go_carrier(self) -> None:
         proof, record = self.no_go_proof(finding_id="native:3991324281")
         root = self.delivery.ReviewComment(
@@ -3345,6 +3821,88 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self.assertEqual((), result.resolved_thread_ids)
         self.assertFalse(any(event.startswith("resolve:") for event in forge.events))
         self.assertFalse(any(event.startswith("reply:") for event in forge.events))
+
+    def test_persisted_decimal_alias_rejects_no_go_ancestry_before_label_write(
+        self,
+    ) -> None:
+        def make_fixture() -> tuple[Any, Any, Any, tuple[str, str]]:
+            proof, carrier = self.no_go_proof(
+                finding_id="native:3991324291",
+                finding_evidence=(
+                    (
+                        "https://github.com/owner/repository/pull/7"
+                        "#discussion_r3991324291"
+                    ),
+                ),
+            )
+            root = self.delivery.ReviewComment(
+                id="PRRC_no_go_root",
+                body="The retained NO-GO root.",
+                author="reviewer",
+                viewer_did_author=True,
+                review_head_oid="a" * 40,
+                review_id="no-go-root-review",
+                path="src/no_go.py",
+                side="RIGHT",
+                line=1,
+                original_line=2,
+                full_database_id="3991324291",
+            )
+            thread = self.delivery.ReviewThread(
+                id="legacy-no-go-thread",
+                is_resolved=False,
+                comments=(root,),
+            )
+            root_review = self.delivery.ReviewRecord(
+                id="no-go-root-review",
+                body="The retained NO-GO root review.",
+                head_oid="a" * 40,
+                author="reviewer",
+                viewer_did_author=True,
+                includes_created_edit=False,
+                state="COMMENTED",
+                submitted_at="2025-12-31T23:58:00Z",
+            )
+            forge = FakeForge(self.delivery, threads=(thread,))
+            forge.labels = {"state:implementation-go"}
+            forge.reviews.extend((root_review, carrier))
+            pair = ("a" * 40, "b" * 40)
+            forge.ancestor_results[pair] = True
+            return forge, self.binding(), proof, pair
+
+        control_forge, control_binding, control_proof, _ = make_fixture()
+        control_result = self.delivery.deliver_no_go(
+            control_forge, control_binding, control_proof
+        )
+        self.assertEqual("delivered", control_result.status)
+        self.assertEqual({"state:implementation-no-go"}, control_forge.labels)
+        self.assertIn("labels:no-go", control_forge.events)
+        self.assertTrue(
+            any(event.startswith("ancestry:") for event in control_forge.events)
+        )
+
+        for case, ancestry_result in (
+            ("false", False),
+            ("unavailable", RuntimeError("compare unavailable")),
+        ):
+            with self.subTest(case=case):
+                forge, binding, proof, pair = make_fixture()
+                forge.ancestor_results[pair] = ancestry_result
+                labels_before = set(forge.labels)
+
+                with self.assertRaises(self.delivery.DeliveryError):
+                    self.delivery.deliver_no_go(forge, binding, proof)
+
+                self.assertTrue(
+                    any(event.startswith("ancestry:") for event in forge.events)
+                )
+                self.assertEqual(labels_before, forge.labels)
+                self.assertFalse(
+                    any(
+                        event == "labels" or event.startswith("labels:")
+                        for event in forge.events
+                    )
+                )
 
     def test_native_alias_rejects_ambiguous_or_unverified_roots_before_writes(
         self,
@@ -4359,8 +4917,10 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                 "reviewer_disposition": "partial",
             }
         )
+        invalid_forge = FakeForge(self.delivery, threads=(thread,))
         with self.assertRaises(self.delivery.DeliveryError):
             self.delivery.validate_closure_manifest(
+                invalid_forge,
                 self.binding(),
                 self.delivery.ClosureManifest(
                     state_envelope=self.v1_manifest(thread).state_envelope,
@@ -4370,7 +4930,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     entries=(invalid,),
                     requirements_binding=self.v1_manifest(thread).requirements_binding,
                 ),
-                FakeForge(self.delivery, threads=(thread,)).snapshot(),
+                invalid_forge.snapshot(),
             )
 
     def test_v1_rejects_stale_terminal_state_before_writes(self) -> None:
