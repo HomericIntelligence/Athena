@@ -2923,6 +2923,29 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self.assertTrue(forge.threads["thread-1"].comments[-1].viewer_did_author)
         self.assertEqual({"state:implementation-go", "enhancement"}, forge.labels)
 
+    def test_v1_delivery_replays_author_event_without_final_newline(self) -> None:
+        thread = self.owned_thread()
+        forge = FakeForge(self.delivery, threads=(thread,))
+        manifest = self.v1_manifest(thread)
+        self.add_history(forge, manifest)
+
+        author_record = forge.reviews[1]
+        self.assertEqual("author-event-1", author_record.id)
+        self.assertTrue(author_record.body.endswith("```\n"))
+        shortened_author_record = replace(
+            author_record,
+            body=author_record.body[:-1],
+        )
+        self.assertEqual(author_record.body, shortened_author_record.body + "\n")
+        forge.reviews[1] = shortened_author_record
+
+        result = self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+
+        self.assertEqual("delivered", result.status)
+        self.assertTrue(forge.threads["thread-1"].is_resolved)
+        self.assertEqual(1, forge.events.count("terminal"))
+        self.assertEqual(1, forge.events.count("labels"))
+
     def test_v1_delivery_replays_chained_author_artifact_refreshes(self) -> None:
         forge, binding, manifest = self.chained_author_manifest()
 
