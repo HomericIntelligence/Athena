@@ -109,6 +109,7 @@ class ReviewComment:
     original_line: int | None = None
     published_at: str | None = None
     last_edited_at: str | None = None
+    full_database_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1003,6 +1004,44 @@ def _same_envelope(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
     return left_json == right_json
 
 
+def _database_comment_id(value: object) -> str:
+    """Require one canonical positive decimal GitHub comment identifier."""
+    if not isinstance(value, str) or re.fullmatch(r"[1-9][0-9]*", value) is None:
+        raise DeliveryError(
+            "GitHub returned an invalid review-comment database identifier."
+        )
+    return value
+
+
+def _resolve_native_root(
+    snapshot: PullRequestSnapshot, finding_id: str
+) -> ReviewComment:
+    """Resolve either verified provider identifier to one unmarked review root."""
+    roots: dict[str, ReviewComment] = {}
+    for thread in snapshot.threads:
+        if not thread.comments:
+            continue
+        root = thread.comments[0]
+        if _finding_marker(root) is not None:
+            continue
+        identifiers = {root.id}
+        if root.full_database_id is not None:
+            identifiers.add(_database_comment_id(root.full_database_id))
+        for identifier in identifiers:
+            if identifier in roots:
+                raise DeliveryError("Native review-root identifiers are ambiguous.")
+            roots[identifier] = root
+    if not finding_id.startswith("native:"):
+        raise DeliveryError("The finding does not have a native review-root identity.")
+    token = finding_id.removeprefix("native:")
+    matched_root = roots.get(token)
+    if matched_root is None:
+        raise DeliveryError(
+            "An adopted native finding has no unique matching review root."
+        )
+    return matched_root
+
+
 def _verify_carrier_review_roots(
     snapshot: PullRequestSnapshot,
     states: Mapping[str, tuple[ReviewRecord, dict[str, Any]]],
@@ -1013,13 +1052,10 @@ def _verify_carrier_review_roots(
 ) -> None:
     """Bind each selected carrier review to its complete atomic inline batch."""
     roots_by_review: dict[str, list[ReviewComment]] = {}
-    native_roots: dict[str, list[ReviewComment]] = {}
     for thread in snapshot.threads:
         if not thread.comments:
             continue
         root = thread.comments[0]
-        if _finding_marker(root) is None:
-            native_roots.setdefault(root.id, []).append(root)
         if root.review_id is not None:
             roots_by_review.setdefault(root.review_id, []).append(root)
     if any(roots_by_review.get(review_id) for review_id in selected_author_ids):
@@ -1035,16 +1071,15 @@ def _verify_carrier_review_roots(
                 digest
             ] or not finding_id.startswith("native:"):
                 continue
-            roots = native_roots.get(finding_id.removeprefix("native:"), [])
+            root = _resolve_native_root(snapshot, finding_id)
             anchor = _finding_anchor(finding["location"])
             if (
-                len(roots) != 1
-                or anchor is None
-                or not roots[0].viewer_did_author
-                or roots[0].review_head_oid is None
-                or roots[0].path != anchor[0]
-                or roots[0].original_line != anchor[1]
-                or roots[0].side not in {"LEFT", "RIGHT"}
+                anchor is None
+                or not root.viewer_did_author
+                or root.review_head_oid is None
+                or root.path != anchor[0]
+                or root.original_line != anchor[1]
+                or root.side not in {"LEFT", "RIGHT"}
             ):
                 raise DeliveryError(
                     "An adopted native finding has no unique matching review root."
@@ -2100,7 +2135,7 @@ def validate_closure_manifest(
             )
         marker = _finding_marker(root)
         if marker is None:
-            if entry.finding_id != f"native:{root.id}":
+            if _resolve_native_root(snapshot, entry.finding_id) is not root:
                 raise DeliveryError(
                     "An open legacy thread must retain its native identity."
                 )
@@ -3116,6 +3151,7 @@ class GitHubForge:
             reviewThreads(first:100) { pageInfo { hasNextPage } nodes {
               id isResolved viewerCanReply viewerCanResolve path line originalLine diffSide
               comments(first:100) { pageInfo { hasNextPage } nodes {
+                fullDatabaseId
                 id body publishedAt lastEditedAt author { login } authorAssociation viewerDidAuthor
                 pullRequestReview { id commit { oid } }
               } }
@@ -3239,6 +3275,9 @@ class GitHubForge:
                         original_line=thread_original_line,
                         published_at=published_at,
                         last_edited_at=last_edited_at,
+                        full_database_id=_database_comment_id(
+                            raw_comment.get("fullDatabaseId")
+                        ),
                     )
                 )
             thread_id = raw_thread.get("id")
