@@ -327,6 +327,10 @@ workflow in the same invocation.
 14. Give the classifier reason for each excluded route.
 15. Review issue intent, behavior, tests, safety, source history, and applicable validation evidence.
 16. Use both immutable diff lenses.
+    For new reviewer carriers, prepare the [publication-anchor proof](references/anchor-proofs.md).
+    It binds inline and factual summary locations to the original immutable source. Historical
+    recovery requires an explicit original-source witness; do not rewrite the carrier or infer
+    a human decision.
 17. Before you calculate the score, complete each failed or sampled dimension.
 18. Calculate the score from earned evidence.
 19. Extract and verify the latest prior state carrier, if present. Reduce every later contiguous
