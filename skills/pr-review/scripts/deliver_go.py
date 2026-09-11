@@ -1042,6 +1042,23 @@ def _resolve_native_root(
     return matched_root
 
 
+def _native_location_matches(
+    snapshot: PullRequestSnapshot, root: ReviewComment, location: str
+) -> bool:
+    """Bind an adopted location to the exact root without changing its carrier."""
+    if root.path is None or root.original_line is None:
+        return False
+    root_anchor = _finding_anchor(f"{root.path}:{root.original_line}")
+    if root_anchor is None:
+        return False
+    if _finding_anchor(location) == root_anchor:
+        return True
+    return (
+        root.full_database_id is not None
+        and location == f"{snapshot.url}#discussion_r{root.full_database_id}"
+    )
+
+
 def _verify_carrier_review_roots(
     snapshot: PullRequestSnapshot,
     states: Mapping[str, tuple[ReviewRecord, dict[str, Any]]],
@@ -1072,13 +1089,9 @@ def _verify_carrier_review_roots(
             ] or not finding_id.startswith("native:"):
                 continue
             root = _resolve_native_root(snapshot, finding_id)
-            anchor = _finding_anchor(finding["location"])
             if (
-                anchor is None
-                or not root.viewer_did_author
+                not _native_location_matches(snapshot, root, finding["location"])
                 or root.review_head_oid is None
-                or root.path != anchor[0]
-                or root.original_line != anchor[1]
                 or root.side not in {"LEFT", "RIGHT"}
             ):
                 raise DeliveryError(

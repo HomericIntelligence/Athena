@@ -360,7 +360,21 @@ New GitHub adoptions use the GraphQL root comment ID in `native:<root-comment-id
 For an existing carrier, the delivery adapter also accepts a canonical positive decimal
 `fullDatabaseId` as a read-only compatibility alias. It resolves both forms through the same root
 object in one complete GitHub snapshot. Missing, malformed, or ambiguous aliases stop delivery.
-The adapter preserves carrier bytes and all origin, ownership, head, and conversation checks.
+The adapter preserves carrier bytes and all origin, carrier-ownership, head, and conversation checks.
+
+A verified reviewer carrier can adopt a native root created by another actor, including a bot.
+Adoption records a required concern. It does not grant authority to reply to or resolve that thread.
+The location can be the root's exact `path:originalLine` or its canonical pull-request URL with
+`#discussion_r<fullDatabaseId>`. Resolve that URL through the same complete snapshot and exact root;
+do not follow a supplied URL or rewrite a published carrier. A different target, identifier, or
+invalid root location stops delivery.
+
+The helper can deliver NO-GO while the adopted foreign thread remains open. GO still requires that
+thread to be resolved. After a separately authorized actor resolves the exact thread, prepare a
+fresh manifest that omits the already-resolved history. Revalidate the complete exchange, author
+answer, reviewer disposition, current head, requirements, and live threads. A source fix or an
+obsolete finding alone is not proof of thread resolution. The helper does not resolve a foreign
+thread during this recovery.
 
 An open legacy thread without a marker is adopted as a required finding with the immutable
 `native:<root-comment-id>` identity. It still requires explicit answer, disposition, and closure
