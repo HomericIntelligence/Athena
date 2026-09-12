@@ -365,6 +365,60 @@ def test_future_prose_summary_uses_manifest_without_synthetic_source_or_thread(
     assert proof.state_envelope["state"]["findings"][1]["state"] == "open"
 
 
+@pytest.mark.parametrize("suffix", ["\n", "\n\n", " \t\r\n"])
+def test_annex_accepts_authenticated_trailing_whitespace(
+    source: tuple[Path, str, str], suffix: str
+) -> None:
+    delivery, forge, binding, proof, manifest = future_case(source)
+    proof = with_annex(delivery, forge, proof, manifest)
+    proof = rebind_visible(delivery, forge, proof, proof.visible_content + suffix)
+    original_body = forge.reviews[0].body
+    original_envelope = json.dumps(proof.state_envelope, sort_keys=True)
+
+    result = delivery.deliver_no_go(forge, binding, proof)
+
+    assert result.status == "delivered"
+    assert forge.reviews[0].body == original_body
+    assert json.dumps(proof.state_envelope, sort_keys=True) == original_envelope
+    assert len(forge.threads) == 1
+    assert not next(iter(forge.threads.values())).is_resolved
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    ["\nextra text", "\n<!-- extra section -->", "\n```json\n{}\n```", "\n\u00a0"],
+)
+def test_annex_rejects_authenticated_trailing_content(
+    source: tuple[Path, str, str], suffix: str
+) -> None:
+    delivery, forge, binding, proof, manifest = future_case(source)
+    proof = with_annex(delivery, forge, proof, manifest)
+    proof = rebind_visible(delivery, forge, proof, proof.visible_content + suffix)
+
+    with pytest.raises(delivery.DeliveryError):
+        delivery.deliver_no_go(forge, binding, proof)
+
+    assert_no_write(forge)
+
+
+def test_annex_whitespace_does_not_bypass_the_visible_content_digest(
+    source: tuple[Path, str, str],
+) -> None:
+    delivery, forge, binding, proof, manifest = future_case(source)
+    proof = with_annex(delivery, forge, proof, manifest)
+    original_body = forge.reviews[0].body
+    forge.reviews[0] = replace(
+        forge.reviews[0],
+        body=forge.reviews[0].body.replace("\n```\n\n<!--", "\n```\n\n\n<!--", 1),
+    )
+    assert forge.reviews[0].body != original_body
+
+    with pytest.raises(delivery.DeliveryError):
+        delivery.deliver_no_go(forge, binding, proof)
+
+    assert_no_write(forge)
+
+
 @pytest.mark.parametrize(
     "field",
     [

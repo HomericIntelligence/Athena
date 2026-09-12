@@ -268,6 +268,7 @@ def visible_manifest(visible: str) -> dict[str, Any] | None:
     prefix, tail = visible.split(MARKER)
     if prefix and not prefix.endswith("\n\n"):
         raise ValueError("The publication anchor annex is not a separate section.")
+    tail = tail.rstrip(" \t\r\n")
     if not tail.startswith("\n```json\n") or not tail.endswith("\n```"):
         raise ValueError(
             "The publication anchor annex is not the final visible section."
