@@ -388,20 +388,33 @@ def expected_anchors(
         raise ValueError(
             "The historical source proof does not bind its original carrier."
         )
-    # This narrow legacy grammar is an existing published assertion, not new authority.
+    # These narrow grammars are existing published assertions, not new authority.
     base, head = proof["base_oid"], proof["head_oid"]
     require_commit_oid(base, "historical base")
     require_commit_oid(head, "historical head")
-    witness = (
+    legacy_witness = (
         f"Reviewed {target['repository'].rsplit('/', 1)[-1]} #{target['number']} "
         f"at `{head}`, against base/merge-base `{base}` (zero commits behind)."
     )
+    corrective_witness = (
+        f"Default Athena round {state['round']} reviews "
+        f"{target['repository'].rsplit('/', 1)[-1]} #{target['number']} "
+        f"at `{head}`, against base and merge base `{base}`."
+    )
+    witness = proof["witness"]
+    opening = visible
+    if witness == corrective_witness:
+        opening = visible.removeprefix("## Bound corrective review\n\n")
     if (
-        proof["witness"] != witness
+        witness not in (legacy_witness, corrective_witness)
         or not (
-            visible == witness or visible.startswith((witness + "\n", witness + " "))
+            opening == witness or opening.startswith((witness + "\n", witness + " "))
         )
-        or visible.count("against base/merge-base") != 1
+        or (
+            visible.count("against base/merge-base")
+            + visible.count("against base and merge base")
+            != 1
+        )
         or proof["merge_base_oid"] != base
     ):
         raise ValueError(

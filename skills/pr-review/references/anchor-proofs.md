@@ -84,12 +84,20 @@ these fields:
 | `finding_ids` | Ordered IDs of all factual findings outside both original ranges |
 | `witness` | Exact original published source-binding sentence |
 
-The initial compatibility grammar supports this existing source assertion at the start of the
-original visible review:
+The compatibility grammar supports these existing source assertions at the start of the original
+visible review:
 
 ```text
 Reviewed <repository-name> #<number> at `<head>`, against base/merge-base `<base>` (zero commits behind).
 ```
+
+```text
+Default Athena round <round> reviews <repository-name> #<number> at `<head>`, against base and merge base `<base>`.
+```
+
+The second form can follow the exact heading `## Bound corrective review` and one blank line.
+Either sentence can start a longer paragraph. The round must match the original carrier state.
+Repeated assertions, including a mixture of these two forms, are invalid.
 
 All values must match the bound target and proof. The base must actually equal the only merge base.
 The original statement must be unambiguous. A different historical format remains unavailable
