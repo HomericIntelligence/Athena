@@ -541,10 +541,6 @@ def _new_findings(
                     f"Finding identifiers must be consecutive; expected '{expected}'."
                 )
             next_number += 1
-        elif round_number != 1:
-            raise ProtocolError(
-                "A legacy native finding can be adopted only in round 1."
-            )
         _validate_introduction_policy(finding, round_number)
     return findings
 
@@ -887,13 +883,9 @@ def _validate_state(value: object) -> dict[str, Any]:
                     "State finding identifiers are not stable and consecutive."
                 )
             next_number += 1
-        elif (
-            surface != "pull_request"
-            or finding["introduced_round"] != 1
-            or finding["introduction"] != "initial"
-        ):
+        elif surface != "pull_request":
             raise ProtocolError(
-                "A legacy native finding must be an initial pull-request finding."
+                "A legacy native finding is valid only for a pull request."
             )
     progress_value = state["progress"]
     if not isinstance(progress_value, list):
@@ -2060,6 +2052,13 @@ def _validate_late_findings(
     }
     correction_precedes = _artifact_has_correction(previous)
     for finding in new_findings:
+        if (
+            NATIVE_FINDING_ID.fullmatch(finding["id"]) is not None
+            and previous["surface"] != "pull_request"
+        ):
+            raise ProtocolError(
+                "A legacy native finding is valid only for a pull request."
+            )
         evidence = set(finding["evidence"])
         identity = (finding["location"], finding["impact"])
         if identity in known_identities:

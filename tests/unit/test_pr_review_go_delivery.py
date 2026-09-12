@@ -3665,6 +3665,124 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self.assertEqual(body_before, forge.reviews[0].body)
         self.assertEqual({"state:implementation-no-go"}, forge.labels)
 
+    def test_late_native_adoption_no_go_replays_carrier_chain_without_thread_mutation(
+        self,
+    ) -> None:
+        exchange = self.delivery.review_exchange
+        marked_thread = replace(self.owned_thread(), is_resolved=True)
+        seed = self.v1_manifest(marked_thread)
+        initial_record, author_record = self.carrier_history[
+            seed.state_envelope["state_sha256"]
+        ]
+        initial = exchange.extract_carrier(initial_record.body)
+        author_event = exchange.extract_carrier(author_record.body)
+        answered = exchange.reduce_request(
+            {
+                "previous": initial,
+                "event": self.delivery._author_event_input(author_event),
+            }
+        )["envelope"]
+        native_finding = {
+            "id": "native:PRRC_verified_root",
+            "category": None,
+            "severity": "major",
+            "disposition": "required",
+            "material_architecture": False,
+            "location": "src/no_go.py:1",
+            "impact": "The retained root identifies an incorrect result.",
+            "evidence": ["The retained root identifies the incorrect result."],
+            "closure_condition": "The result is correct.",
+            "introduction": "missed_correctness",
+        }
+        corrective_visible = "Round 2 retains one required native finding."
+        corrective = exchange.reduce_request(
+            {
+                "previous": answered,
+                "event": {
+                    "event_type": "reviewer_assessment",
+                    "exchange_id": "exchange-7",
+                    "prior_state_sha256": answered["state_sha256"],
+                    "round": 2,
+                    "artifact_binding": {
+                        **answered["state"]["artifact_binding"],
+                        "visible_content_sha256": exchange.sha256_text(
+                            corrective_visible
+                        ),
+                    },
+                    "scope": answered["state"]["scope"],
+                    "coverage_complete": True,
+                    "go_eligible": True,
+                    "responses": [
+                        {
+                            "finding_id": "F-001",
+                            "kind": "resolve",
+                            "evidence": ["The initial finding is resolved."],
+                            "closure_condition": None,
+                        }
+                    ],
+                    "new_findings": [native_finding],
+                    "stop_reason": None,
+                },
+            }
+        )["envelope"]
+        self.assertEqual("NO-GO", corrective["state"]["verdict"])
+        self.assertEqual("awaiting_author", corrective["state"]["phase"])
+        self.assertEqual(
+            2,
+            next(
+                finding["introduced_round"]
+                for finding in corrective["state"]["findings"]
+                if finding["id"] == native_finding["id"]
+            ),
+        )
+
+        native_root = self.delivery.ReviewComment(
+            id="PRRC_verified_root",
+            full_database_id="3991324281",
+            body="Legacy required finding.",
+            author="github-advanced-security",
+            viewer_did_author=False,
+            review_head_oid="b" * 40,
+            review_id="bot-review",
+            path="src/no_go.py",
+            side="RIGHT",
+            line=1,
+            original_line=1,
+        )
+        native_thread = self.delivery.ReviewThread(
+            id="legacy-thread",
+            is_resolved=False,
+            comments=(native_root,),
+            viewer_can_reply=False,
+            viewer_can_resolve=False,
+        )
+        corrective_record = self.carrier_record(
+            "corrective-review-2", corrective, corrective_visible
+        )
+        forge = FakeForge(
+            self.delivery,
+            threads=(marked_thread, native_thread),
+        )
+        forge.labels = {"state:implementation-go"}
+        forge.reviews.extend((initial_record, author_record, corrective_record))
+        proof = self.delivery.NoGoProof(
+            state_envelope=corrective,
+            visible_content=corrective_visible,
+            review_id=corrective_record.id,
+            requirements_binding=self.requirements_binding(corrective),
+        )
+        threads_before = dict(forge.threads)
+        records_before = list(forge.reviews)
+
+        result = self.delivery.deliver_no_go(forge, self.binding(), proof)
+
+        self.assertEqual("delivered", result.status)
+        self.assertEqual({"state:implementation-no-go"}, forge.labels)
+        self.assertEqual(threads_before, forge.threads)
+        self.assertEqual(records_before, forge.reviews)
+        self.assertFalse(any(event.startswith("reply:") for event in forge.events))
+        self.assertFalse(any(event.startswith("resolve:") for event in forge.events))
+
     def native_no_go_fixture(self, location: str = "src/no_go.py:1") -> tuple[Any, Any]:
         """Adopt an exact foreign root through the real exchange reducer."""
         proof, record = self.no_go_proof(

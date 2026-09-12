@@ -2368,9 +2368,7 @@ class ReviewExchangeTests(unittest.TestCase):
 
         issue_event = self.initial_event(findings=[native])
         issue_event["surface"] = "issue"
-        later_native = self.finding(
-            "native:late-comment", introduction="introduced_by_correction"
-        )
+        later_native = self.finding("native:late-comment", introduction="initial")
         later_event = self.review_event(answered, "resolve", findings=[later_native])
         later_event["responses"][0]["finding_id"] = native["id"]
         for label, event, previous in (
@@ -2382,6 +2380,95 @@ class ReviewExchangeTests(unittest.TestCase):
                 self.assertRaises(self.exchange.ProtocolError),
             ):
                 self.reduce(event, previous)
+
+    def test_later_native_adoption_preserves_the_exchange_and_requires_answers(
+        self,
+    ) -> None:
+        for severity, basis in (
+            ("major", "missed_security"),
+            ("major", "missed_correctness"),
+            ("minor", "missed_correctness"),
+        ):
+            with self.subTest(severity=severity, basis=basis):
+                answered = self.answered_state()
+                native = self.finding(
+                    "native:legacy-root", severity=severity, introduction=basis
+                )
+                native["location"] = "src/legacy.py:9"
+                adopted = self.reduce(
+                    self.review_event(answered, "resolve", findings=[native]), answered
+                )["envelope"]
+                self.assertEqual("exchange-7", adopted["state"]["exchange_id"])
+                self.assertEqual("awaiting_author", adopted["state"]["phase"])
+                self.assertEqual("NO-GO", adopted["state"]["verdict"])
+                self.assertEqual("resolved", adopted["state"]["findings"][0]["state"])
+                self.assertEqual(2, adopted["state"]["findings"][1]["introduced_round"])
+                self.assertEqual(adopted, self.exchange.verify_envelope(adopted))
+                response = self.author_event(adopted, "fix")
+                response["responses"].append(
+                    {**response["responses"][0], "finding_id": native["id"]}
+                )
+                native_answered = self.reduce(response, adopted)["envelope"]
+                final = self.review_event(native_answered, "resolve", round_number=3)
+                final["responses"].append(
+                    {**final["responses"][0], "finding_id": native["id"]}
+                )
+                completed = self.reduce(final, native_answered)["envelope"]
+                self.assertEqual("GO", completed["state"]["verdict"])
+                self.assertEqual(completed, self.exchange.verify_envelope(completed))
+                self.assertEqual(5, len(completed["state"]["accepted_events"]))
+
+    def test_later_native_adoption_retains_introduction_and_identity_guards(
+        self,
+    ) -> None:
+        answered = self.answered_state()
+        for label, findings in (
+            ("initial basis", [self.finding("native:root")]),
+            (
+                "minor missed high risk",
+                [
+                    self.finding(
+                        "native:root",
+                        severity="minor",
+                        introduction="missed_high_risk",
+                    )
+                ],
+            ),
+            (
+                "duplicate root",
+                [self.finding("native:root", introduction="missed_correctness")] * 2,
+            ),
+            (
+                "nonblocking native",
+                [
+                    self.finding(
+                        "native:root",
+                        severity="minor",
+                        disposition="suggestion",
+                        introduction="nonblocking_follow_up",
+                    )
+                ],
+            ),
+        ):
+            with (
+                self.subTest(label=label),
+                self.assertRaises(self.exchange.ProtocolError),
+            ):
+                self.reduce(
+                    self.review_event(answered, "resolve", findings=findings), answered
+                )
+
+        initial = self.initial_event()
+        initial["surface"] = "issue"
+        issue = self.reduce(initial)["envelope"]
+        answered_issue = self.reduce(self.author_event(issue, "fix"), issue)["envelope"]
+        native = self.finding("native:issue-root", introduction="missed_correctness")
+        native["location"] = "src/legacy.py:9"
+        with self.assertRaises(self.exchange.ProtocolError):
+            self.reduce(
+                self.review_event(answered_issue, "resolve", findings=[native]),
+                answered_issue,
+            )
 
     def test_verify_rejects_impossible_stored_finding_transitions(self) -> None:
         original = self.initial_state()
