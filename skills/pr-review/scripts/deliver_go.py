@@ -18,6 +18,7 @@ from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import anchor_proofs
 from pr_identity import (
     pull_request_number,
     repository_from_pr_url,
@@ -226,6 +227,8 @@ class ClosureManifest:
     requirements_binding: RequirementsBinding
     comments: tuple[TerminalInlineComment, ...] = ()
     summary_finding_ids: tuple[str, ...] = ()
+    anchor_source: Path | None = None
+    historical_anchor_proofs: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -259,6 +262,8 @@ class NoGoProof:
     visible_content: str
     review_id: str
     requirements_binding: RequirementsBinding
+    anchor_source: Path | None = None
+    historical_anchor_proofs: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -902,6 +907,42 @@ def _finding_anchor(location: str) -> tuple[str, int] | None:
     return path, int(line_text)
 
 
+def _carrier_visible(body: str) -> str:
+    """Extract bytes already authenticated by the canonical carrier parser."""
+    marker = body.index("<!-- HomericIntelligence:review-exchange:v1 ")
+    return body[: marker - 2] if marker else ""
+
+
+def _publication_anchors(
+    binding: ReviewBinding,
+    envelope: Mapping[str, Any],
+    visible: str,
+    findings: Sequence[Mapping[str, Any]],
+    source: Path | None,
+    historical: Sequence[Mapping[str, Any]],
+    review_id: str | None,
+) -> dict[str, tuple[str, str | None, int]]:
+    """Source evidence controls publication geometry, never finding disposition."""
+    try:
+        if anchor_proofs.MARKER in visible:
+            lines = review_exchange.top_level_markdown_lines(
+                visible, require_closed=True
+            )
+            if sum(line == anchor_proofs.MARKER for _, _, line in lines) != 1:
+                raise ValueError("The publication anchor annex is not top-level.")
+        return anchor_proofs.expected_anchors(
+            source=source,
+            target=_expected_target(binding),
+            envelope=envelope,
+            visible=visible,
+            findings=findings,
+            review_id=review_id,
+            legacy_proofs=historical,
+        )
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError) as error:
+        raise DeliveryError(f"Publication anchor proof failed: {error}") from error
+
+
 def _expected_target(binding: ReviewBinding) -> dict[str, object]:
     return {
         "provider": "github",
@@ -1158,6 +1199,8 @@ def _verify_carrier_review_roots(
     verified_state_sha256s: set[str],
     selected_author_ids: set[str],
     new_finding_ids_by_state: Mapping[str, frozenset[str]],
+    anchor_source: Path | None = None,
+    historical_anchor_proofs: tuple[dict[str, Any], ...] = (),
 ) -> None:
     """Bind each selected carrier review to its complete atomic inline batch."""
     roots_by_review: dict[str, list[ReviewComment]] = {}
@@ -1200,16 +1243,20 @@ def _verify_carrier_review_roots(
             continue
         review, envelope = state_record
         state = envelope["state"]
-        expected: dict[str, tuple[str, int]] = {}
-        for finding in state["findings"]:
-            finding_id = finding["id"]
-            if finding_id not in new_finding_ids_by_state[
-                digest
-            ] or finding_id.startswith("native:"):
-                continue
-            anchor = _finding_anchor(finding["location"])
-            if anchor is not None:
-                expected[finding_id] = anchor
+        introduced = [
+            finding
+            for finding in state["findings"]
+            if finding["id"] in new_finding_ids_by_state[digest]
+        ]
+        expected = _publication_anchors(
+            binding,
+            envelope,
+            _carrier_visible(review.body),
+            introduced,
+            anchor_source,
+            historical_anchor_proofs,
+            review.id,
+        )
         actual: set[str] = set()
         for root in roots_by_review.get(review.id, []):
             marker = _finding_marker(root)
@@ -1227,7 +1274,8 @@ def _verify_carrier_review_roots(
                 or root.review_head_oid != review.head_oid
                 or root.last_edited_at is not None
                 or root.path != anchor[0]
-                or root.original_line != anchor[1]
+                or root.original_line != anchor[2]
+                or (anchor[1] is not None and root.side != anchor[1])
                 or root.side not in {"LEFT", "RIGHT"}
             ):
                 raise DeliveryError(
@@ -1675,6 +1723,8 @@ def _verify_state_chain(
     terminal: Mapping[str, Any],
     snapshot: PullRequestSnapshot,
     binding: ReviewBinding,
+    anchor_source: Path | None = None,
+    historical_anchor_proofs: tuple[dict[str, Any], ...] = (),
 ) -> VerifiedStateChain:
     """Replay every persisted event that leads to one terminal reviewer state."""
     states, author_records = _review_carriers(snapshot, binding)
@@ -1980,7 +2030,16 @@ def _verify_state_chain(
         verified_states,
         used_author_ids,
         new_finding_ids_by_state,
+        anchor_source,
+        historical_anchor_proofs,
     )
+    if any(
+        proof.get("state_sha256") not in verified_states
+        for proof in historical_anchor_proofs
+    ):
+        raise DeliveryError(
+            "A historical anchor proof is outside the selected state chain."
+        )
     return VerifiedStateChain(
         envelopes=selected_envelopes,
         selected_state_sha256s=selected_state_sha256s,
@@ -2106,7 +2165,14 @@ def validate_closure_manifest(
 ) -> dict[str, ThreadClosure]:
     """Validate one complete v1 closure ledger before any forge mutation."""
     _terminal_state(binding, manifest)
-    chain = _verify_state_chain(forge, manifest.state_envelope, snapshot, binding)
+    chain = _verify_state_chain(
+        forge,
+        manifest.state_envelope,
+        snapshot,
+        binding,
+        manifest.anchor_source,
+        manifest.historical_anchor_proofs,
+    )
     terminal_digest = cast(str, manifest.state_envelope["state_sha256"])
     terminal_exchange_id = cast(str, manifest.state_envelope["state"]["exchange_id"])
     dynamic_terminal_identities = {
@@ -2122,9 +2188,17 @@ def validate_closure_manifest(
             in dynamic_terminal_identities
         )
     )
-    if manifest.terminal_visible_content != terminal_visible_content(
-        binding, static_entries
-    ):
+    ledger = terminal_visible_content(binding, static_entries)
+    visible = manifest.terminal_visible_content
+    try:
+        annex = anchor_proofs.visible_manifest(visible)
+    except (ValueError, TypeError) as error:
+        raise DeliveryError(f"Publication anchor proof failed: {error}") from error
+    if annex is not None:
+        # The annex is separately source-verified before publication. It cannot
+        # alter the deterministic closure ledger or its authority requirements.
+        visible = visible.split("\n\n" + anchor_proofs.MARKER, 1)[0]
+    if visible != ledger:
         raise DeliveryError(
             "The terminal visible closure ledger does not match its manifest entries."
         )
@@ -2526,12 +2600,18 @@ def _validate_terminal_inline_comments(
         raise DeliveryError("The terminal review contains too many inline findings.")
     state = manifest.state_envelope["state"]
     findings = {finding["id"]: finding for finding in state["findings"]}
-    finding_anchors: dict[str, tuple[str, int]] = {}
-    for finding_id in new_finding_ids:
-        location = cast(str, findings[finding_id]["location"])
-        anchor = _finding_anchor(location)
-        if anchor is not None:
-            finding_anchors[finding_id] = anchor
+    finding_anchors = _publication_anchors(
+        binding,
+        manifest.state_envelope,
+        manifest.terminal_visible_content,
+        [findings[finding_id] for finding_id in sorted(new_finding_ids)],
+        manifest.anchor_source,
+        (),
+        None,
+    )
+    annex = anchor_proofs.visible_manifest(manifest.terminal_visible_content)
+    if annex is not None and annex["base_oid"] != binding.base_oid:
+        raise DeliveryError("The pending publication anchors have a different base.")
     comment_finding_ids: list[str] = []
     for comment in comments:
         marker = _finding_marker(
@@ -2545,10 +2625,15 @@ def _validate_terminal_inline_comments(
         finding = findings.get(finding_id)
         if finding is None or finding_anchors.get(finding_id) != (
             comment.path,
+            finding_anchors.get(finding_id, (None, None, None))[1],
             comment.line,
         ):
             raise DeliveryError(
                 "A terminal inline comment does not bind its exact finding location."
+            )
+        if finding_anchors[finding_id][1] not in {None, comment.side}:
+            raise DeliveryError(
+                "The terminal inline comment has a different source side."
             )
         pending_entry = ThreadClosure(
             thread_id="pending",
@@ -2608,7 +2693,14 @@ def _verify_go_state_history(
     manifest: ClosureManifest,
     body: str,
 ) -> set[str]:
-    chain = _verify_state_chain(forge, manifest.state_envelope, snapshot, binding)
+    chain = _verify_state_chain(
+        forge,
+        manifest.state_envelope,
+        snapshot,
+        binding,
+        manifest.anchor_source,
+        manifest.historical_anchor_proofs,
+    )
     _validate_terminal_inline_comments(
         binding, manifest, set(chain.terminal_new_finding_ids)
     )
@@ -3073,7 +3165,14 @@ def _verify_no_go_snapshot(
     if len(matching) != 1:
         raise DeliveryError("The exact current-head NO-GO carrier was not verified.")
     verified_state_sha256s = set(
-        _verify_state_chain(forge, envelope, snapshot, binding).verified_state_sha256s
+        _verify_state_chain(
+            forge,
+            envelope,
+            snapshot,
+            binding,
+            proof.anchor_source,
+            proof.historical_anchor_proofs,
+        ).verified_state_sha256s
     )
     for review in snapshot.reviews:
         if (
@@ -3940,6 +4039,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     delivery_input.add_argument("--verify-legacy-go", type=Path)
     delivery_input.add_argument("--deliver-no-go", action="store_true")
     parser.add_argument("--state-carrier-file", type=Path)
+    parser.add_argument("--anchor-source", type=Path)
+    parser.add_argument("--historical-anchor-proofs", type=Path)
     parser.add_argument(
         "--requirement-issue",
         action="append",
@@ -3951,6 +4052,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         binding = _binding_from_args(args)
         forge = GitHubForge(binding, args.target_host)
+        historical: tuple[dict[str, Any], ...] = ()
+        if args.historical_anchor_proofs is not None:
+            if args.anchor_source is None:
+                raise DeliveryError("Historical anchor proofs require --anchor-source.")
+            document = _read_json_document(
+                args.historical_anchor_proofs,
+                "historical anchor proofs",
+                canonical=True,
+            )
+            if (
+                not isinstance(document, list)
+                or len(document) > review_exchange.MAX_FINDINGS
+                or any(not isinstance(item, dict) for item in document)
+            ):
+                raise DeliveryError(
+                    "Historical anchor proofs must be a bounded object list."
+                )
+            historical = tuple(document)
+        if (args.anchor_source is not None or historical) and (
+            args.prepare_manifest or args.verify_legacy_go is not None
+        ):
+            raise DeliveryError("Anchor source inputs require version-1 delivery.")
         if args.prepare_manifest:
             if args.state_carrier_file is not None:
                 raise DeliveryError(
@@ -3974,9 +4097,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             if args.state_carrier_file is None:
                 raise DeliveryError("NO-GO delivery requires --state-carrier-file.")
-            result = deliver_no_go(
-                forge, binding, load_no_go_proof(args.state_carrier_file, binding)
-            )
+            proof = load_no_go_proof(args.state_carrier_file, binding)
+            if args.anchor_source is not None:
+                proof = replace(
+                    proof,
+                    anchor_source=args.anchor_source,
+                    historical_anchor_proofs=historical,
+                )
+            result = deliver_no_go(forge, binding, proof)
         elif args.verify_legacy_go is not None:
             if args.requirement_issue:
                 raise DeliveryError(
@@ -4003,6 +4131,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.response_manifest is None:
                 raise DeliveryError("The response manifest path is missing.")
             manifest = load_response_manifest(args.response_manifest, binding)
+            if args.anchor_source is not None:
+                manifest = replace(
+                    manifest,
+                    anchor_source=args.anchor_source,
+                    historical_anchor_proofs=historical,
+                )
             result = deliver_go_v1(forge, binding, manifest)
     except (DeliveryError, RuntimeError, TypeError, ValueError) as error:
         if isinstance(error, DeliveryError) and error.report is not None:

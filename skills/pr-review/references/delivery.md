@@ -80,6 +80,10 @@ body      = visible review followed by the final canonical state carrier
 comments  = one entry for each new anchorable finding
 ```
 
+For new reviewer carriers, prepare the [immutable publication-anchor annex](anchor-proofs.md)
+before rendering the carrier. Keep a factual source location outside both original diff ranges in
+the summary. Syntax alone does not establish inline eligibility.
+
 Put only one verified changed `path`, `side`, causal `line`, and finding body in each comment entry.
 Append this marker to each new inline finding:
 
@@ -268,7 +272,10 @@ Use `comments` for the ordered inline-comment batch in the terminal `COMMENT` re
 only `path`, `side`, `line`, and `body`. The body ends with the exact exchange and finding marker.
 The state location for an anchorable terminal-round finding has the form
 `<relative-path>:<positive-line>`. Its path and line must equal the inline entry. Put each such
-finding in `comments`. Put each other terminal-round finding identity in the ordered
+finding in `comments` when the verified original source makes it anchorable. A factual source
+location outside both original diff ranges remains in the summary. Use the
+[publication-anchor proof](anchor-proofs.md) to verify this distinction. Put each other
+terminal-round finding identity in the ordered
 `summary_finding_ids` list. The two lists must not overlap. Their union must equal all findings that
 the terminal reviewer event introduced. Empty lists are valid when that event introduced no
 finding. The manifest is canonical JSON and must not exceed the common input limit.
