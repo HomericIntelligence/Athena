@@ -390,7 +390,11 @@ thread during this recovery.
 
 An open legacy thread without a marker is adopted as a required finding with the immutable
 `native:<root-comment-id>` identity. It still requires explicit answer, disposition, and closure
-evidence for a current exchange. An exact historical reframe withdrawal can keep its source author
+evidence for a current exchange. A corrective round can import a previously omitted native root
+when its evidence satisfies the existing later-finding policy. Preserve the exchange and its
+accepted events. Do not use a requirements reframe when the requirements are unchanged.
+The import grants no thread reply or resolution authority.
+An exact historical reframe withdrawal can keep its source author
 fields `null`; it requires the exact reframe edge, authority receipt, and closure evidence. Do not
 infer closure from old prose. Leave resolved legacy history unchanged. To verify an unchanged,
 fully delivered legacy GO, use the explicit read-only

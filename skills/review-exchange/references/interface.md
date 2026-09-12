@@ -107,7 +107,7 @@ A finding input has these fields:
 
 | Field | Type and value |
 | --- | --- |
-| `id` | Consecutive `F-001` through `F-100` identity. An initial pull-request import can use `native:<root-comment-id>`. The native token contains 1 through 256 characters from `[A-Za-z0-9._~:/+=-]`. |
+| `id` | Consecutive `F-001` through `F-100` identity. A pull-request import can use `native:<root-comment-id>`. The native token contains 1 through 256 characters from `[A-Za-z0-9._~:/+=-]`. |
 | `severity` | `critical`, `major`, `minor`, `nit`, or `FYI` |
 | `disposition` | `required`, `suggestion`, `nit`, or `FYI` |
 | `category` | `simplification` or `null` |
@@ -120,8 +120,10 @@ A finding input has these fields:
 
 A `critical` finding, `major` finding, or material architecture finding has the `required`
 disposition. A `minor` finding has the `required` or `suggestion` disposition. A `nit` or `FYI`
-severity has its matching disposition. A native finding is an initial, required pull-request
-finding. A later nonblocking finding has the `nonblocking_follow_up` basis.
+severity has its matching disposition. A native finding is a required pull-request finding.
+A later native import must satisfy the existing later-finding policy and cannot use the `initial`
+basis. It retains the exchange history and requires an author response before reviewer resolution.
+A later nonblocking finding has the `nonblocking_follow_up` basis.
 
 ### Response input
 
