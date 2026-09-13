@@ -388,7 +388,7 @@ envelope. The command rejects a wrong digest or a state that no valid transition
 ### `extract`
 
 The input is one UTF-8 Markdown carrier document, not JSON. The result is its normalized canonical
-envelope. The document must contain exactly one final carrier section. It must have this form:
+envelope. The document must contain exactly one final carrier section. The plain form is:
 
 ````text
 <exact visible content>
@@ -399,12 +399,28 @@ envelope. The document must contain exactly one final carrier section. It must h
 ```
 ````
 
+The compressed form keeps the same marker. It replaces the `json` fence with
+`athena-json-zlib-base64-v1`. The fence contains one line of canonical, padded Base64. The decoded
+bytes contain exactly one complete zlib stream. That stream expands to the exact canonical envelope
+UTF-8 bytes from the plain form. Compression does not change the envelope schema, accepted-event
+ledger, event order, state digest, or any retained artifact receipt.
+
+Both the complete input document and the expanded envelope have a 1 MiB limit. The reader bounds
+decompression before JSON parsing. It rejects invalid Base64, noncanonical padding, an invalid or
+truncated stream, concatenated streams, trailing bytes, and an oversized result. It then applies
+the existing strict canonical JSON, envelope, digest, and full-ledger checks. A different valid zlib
+representation can encode the same canonical envelope; compressed bytes are not a logical identity.
+
 The marker digest, envelope digest, carrier kind, visible-content digest, and provider body limit
-must agree. The marker and its JSON fence must be a top-level final section. The visible content
+must agree. The marker and its payload fence must be a top-level final section. The visible content
 cannot leave a top-level fenced code block open at the carrier boundary.
-The final JSON fence must end with a line feed or at the end of input.
+The final payload fence must end with a line feed or at the end of input.
 No text, spaces, or extra blank lines can follow that fence. The reader preserves
 all input bytes for digest and size checks. The renderer continues to emit a final line feed.
+
+Readers that support only the plain form reject the new fence. They must not infer state from its
+marker. Upgrade the consumer before publication of a compressed carrier. Existing plain carriers
+remain valid and do not need republication.
 
 ### `render`
 
@@ -418,6 +434,17 @@ The JSON request has exactly these fields:
 
 The output is the exact carrier document. It ends with a line feed. `visible_content` cannot contain
 a review-exchange marker. Its digest must equal `artifact_binding.visible_content_sha256`.
+The renderer preserves the existing plain form byte for byte when that form fits the provider body
+limit. Otherwise, it tries the compressed form. It rejects a compressed result that still exceeds
+the provider limit, or an envelope that exceeds the expanded-input limit. It never shortens visible
+content, removes ledger entries, or divides the carrier into multiple publications.
+
+For recovery of an existing compressed pull-request carrier, the delivery adapter verifies the
+decoded canonical envelope and exact visible bytes. It also retains the review identity, actor,
+head, no-edit, uniqueness, and historical body-receipt checks. The adapter does not require another
+compressor to produce identical bytes. Recovery of a plain carrier keeps its exact-body comparison.
+A new publication still requires exact readback of its prepared body. After selection of the
+original review, subsequent reads must retain its identity and body bytes before another write.
 
 ## Pull-request terminal closure manifest
 
