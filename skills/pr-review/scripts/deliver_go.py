@@ -2541,17 +2541,41 @@ def _closure_response_body(
 
 
 def _matching_terminal_reviews(
-    snapshot: PullRequestSnapshot, body: str, head_oid: str
+    snapshot: PullRequestSnapshot,
+    body: str,
+    head_oid: str,
+    *,
+    recover_compressed: bool = False,
 ) -> list[ReviewRecord]:
     return [
         review
         for review in snapshot.reviews
-        if review.body == body
+        if (
+            review.body == body
+            or (recover_compressed and _same_compressed_carrier(review.body, body))
+        )
         and review.head_oid == head_oid
         and review.viewer_did_author
         and not review.includes_created_edit
         and review.state in {"COMMENT", "COMMENTED"}
     ]
+
+
+def _same_compressed_carrier(left: str, right: str) -> bool:
+    """Authenticate compressed recovery without assuming identical compressors."""
+    prefix = f"\n```{review_exchange.COMPRESSED_CARRIER_FENCE}\n"
+    for body in (left, right):
+        marker = review_exchange.CARRIER_PATTERN.search(body)
+        if marker is None or not body[marker.end() :].startswith(prefix):
+            return False
+    try:
+        left_envelope = review_exchange.extract_carrier(left)
+        right_envelope = review_exchange.extract_carrier(right)
+    except review_exchange.ProtocolError:
+        return False
+    return _same_envelope(left_envelope, right_envelope) and _carrier_visible(
+        left
+    ) == _carrier_visible(right)
 
 
 def _conflicting_terminal_review(
@@ -2733,7 +2757,10 @@ def _closure_reply_recovered(
     ):
         return False
     terminal_reviews = _matching_terminal_reviews(
-        snapshot, terminal_review_body(manifest), binding.head_oid
+        snapshot,
+        terminal_review_body(manifest),
+        binding.head_oid,
+        recover_compressed=True,
     )
     if len(terminal_reviews) != 1:
         return False
@@ -2882,7 +2909,11 @@ def deliver_go_v1(
     initial = _snapshot(forge, binding)
     last_snapshot = initial
     body = terminal_review_body(manifest)
-    matching = _matching_terminal_reviews(initial, body, binding.head_oid)
+    matching = _matching_terminal_reviews(
+        initial, body, binding.head_oid, recover_compressed=True
+    )
+    if len(matching) == 1:
+        body = matching[0].body
     _verify_go_state_history(forge, initial, binding, manifest, body)
     if len(matching) > 1:
         raise DeliveryError("The current-head terminal COMMENT evidence is ambiguous.")
@@ -2910,6 +2941,12 @@ def deliver_go_v1(
     def read() -> PullRequestSnapshot:
         nonlocal last_snapshot
         last_snapshot = _snapshot(forge, binding)
+        if terminal_review_id is not None:
+            terminal = _matching_terminal_reviews(last_snapshot, body, binding.head_oid)
+            if len(terminal) != 1 or terminal[0].id != terminal_review_id:
+                raise DeliveryError(
+                    "The selected terminal COMMENT changed during delivery."
+                )
         return last_snapshot
 
     def write(action: str, callback: Any, *arguments: Any) -> None:
@@ -3116,7 +3153,7 @@ def _verify_no_go_snapshot(
     snapshot: PullRequestSnapshot,
     binding: ReviewBinding,
     proof: NoGoProof,
-) -> None:
+) -> str:
     """Verify one exact NO-GO or conditional carrier and its complete ancestry."""
     envelope = _require_pr_envelope(
         proof.state_envelope, binding, schema_id=review_exchange.STATE_SCHEMA_ID
@@ -3156,7 +3193,7 @@ def _verify_no_go_snapshot(
         review
         for review in snapshot.reviews
         if review.id == proof.review_id
-        and review.body == body
+        and (review.body == body or _same_compressed_carrier(review.body, body))
         and review.head_oid == binding.head_oid
         and review.viewer_did_author
         and not review.includes_created_edit
@@ -3195,6 +3232,7 @@ def _verify_no_go_snapshot(
             and other["state_sha256"] not in verified_state_sha256s
         ):
             raise DeliveryError("The current reviewer round has conflicting carriers.")
+    return matching[0].body
 
 
 def deliver_no_go(
@@ -3204,7 +3242,7 @@ def deliver_no_go(
     initial = _snapshot(forge, binding)
     if proof is None:
         raise DeliveryError("A verified current-head NO-GO state carrier is required.")
-    _verify_no_go_snapshot(forge, initial, binding, proof)
+    original_body = _verify_no_go_snapshot(forge, initial, binding, proof)
     _verify_live_requirements(forge, proof.requirements_binding)
     if NO_GO_LABEL in initial.labels and GO_LABEL not in initial.labels:
         return DeliveryResult(
@@ -3220,7 +3258,10 @@ def deliver_no_go(
         _call_write("implementation NO-GO label", forge.set_implementation_no_go)
         final = _snapshot(forge, binding)
         last_snapshot = final
-        _verify_no_go_snapshot(forge, final, binding, proof)
+        if _verify_no_go_snapshot(forge, final, binding, proof) != original_body:
+            raise DeliveryError(
+                "The exact NO-GO carrier changed during label delivery."
+            )
         _verify_live_requirements(forge, proof.requirements_binding)
         if NO_GO_LABEL not in final.labels or GO_LABEL in final.labels:
             raise DeliveryError(

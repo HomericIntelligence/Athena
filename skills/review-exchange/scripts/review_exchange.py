@@ -3,11 +3,14 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import copy
 import importlib.util
 import json
 import re
 import sys
+import zlib
 from collections.abc import Callable, Mapping, Sequence
 from hashlib import sha256
 from html.parser import HTMLParser
@@ -46,6 +49,7 @@ HEX_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 FINDING_ID = re.compile(r"F-(?:00[1-9]|0[1-9][0-9]|100)\Z")
 NATIVE_FINDING_ID = re.compile(r"native:[A-Za-z0-9._~:/+=-]{1,256}\Z")
 CARRIER_PREFIX = "<!-- HomericIntelligence:review-exchange:"
+COMPRESSED_CARRIER_FENCE = "athena-json-zlib-base64-v1"
 CARRIER_PATTERN = re.compile(
     r"^<!-- HomericIntelligence:review-exchange:v1 "
     r"kind=(state|author-event) sha256=([0-9a-f]{64}) -->$",
@@ -3288,6 +3292,30 @@ def _single_line_diagnostic(error: BaseException) -> str:
     )
 
 
+def _decode_carrier_payload(encoded: str, fence: str) -> bytes:
+    """Decode one bounded transport without changing its envelope bytes."""
+    if fence == "json":
+        return encoded.encode("utf-8")
+    if fence != COMPRESSED_CARRIER_FENCE:
+        raise ProtocolError("The carrier payload encoding is not supported.")
+    try:
+        compressed = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise ProtocolError("The carrier payload is not valid Base64.") from error
+    if base64.b64encode(compressed).decode("ascii") != encoded:
+        raise ProtocolError("The carrier Base64 is not canonical.")
+    decoder = zlib.decompressobj()
+    try:
+        decoded = decoder.decompress(compressed, MAX_INPUT_BYTES + 1)
+    except zlib.error as error:
+        raise ProtocolError("The carrier compression stream is invalid.") from error
+    if len(decoded) > MAX_INPUT_BYTES or decoder.unconsumed_tail:
+        raise ProtocolError("The decoded carrier is larger than 1 MiB.")
+    if not decoder.eof or decoder.unused_data:
+        raise ProtocolError("The carrier must contain one complete compression stream.")
+    return decoded
+
+
 def render_carrier(visible_content: str, value: object, kind: str) -> str:
     """Append one verified final carrier to exact visible content."""
     if not isinstance(visible_content, str):
@@ -3307,10 +3335,19 @@ def render_carrier(visible_content: str, value: object, kind: str) -> str:
         f"kind={kind} sha256={envelope['state_sha256']} -->"
     )
     separator = "\n\n" if visible_content else ""
-    document = (
-        f"{visible_content}{separator}{marker}\n```json\n"
-        f"{canonical_json(envelope)}\n```\n"
-    )
+    encoded = canonical_json(envelope)
+    if len(encoded.encode("utf-8")) > MAX_INPUT_BYTES:
+        raise ProtocolError("The carrier envelope is larger than 1 MiB.")
+    document = f"{visible_content}{separator}{marker}\n```json\n{encoded}\n```\n"
+    provider = envelope["state"]["target"]["provider"]
+    if len(document.encode("utf-8")) > PROVIDER_BODY_LIMITS[provider]:
+        compressed = base64.b64encode(zlib.compress(encoded.encode("utf-8"))).decode(
+            "ascii"
+        )
+        document = (
+            f"{visible_content}{separator}{marker}\n```{COMPRESSED_CARRIER_FENCE}\n"
+            f"{compressed}\n```\n"
+        )
     marker_start = len(visible_content) + len(separator)
     if (
         marker_start,
@@ -3318,7 +3355,6 @@ def render_carrier(visible_content: str, value: object, kind: str) -> str:
         marker,
     ) not in top_level_markdown_lines(document, require_closed=True):
         raise ProtocolError("The review-exchange marker is not a top-level line.")
-    provider = envelope["state"]["target"]["provider"]
     if len(document.encode("utf-8")) > PROVIDER_BODY_LIMITS[provider]:
         raise ProtocolError(f"The document exceeds the {provider} body limit.")
     return document
@@ -3352,7 +3388,12 @@ def extract_carrier(document: str) -> dict[str, Any]:
     top_level_markdown_lines(visible, require_closed=True)
     suffix = document[match.end() :]
     closing_fence = "\n```\n" if suffix.endswith("\n```\n") else "\n```"
-    if not suffix.startswith("\n```json\n") or not suffix.endswith(closing_fence):
+    opening, separator, payload = suffix.removeprefix("\n```").partition("\n")
+    if (
+        not suffix.startswith("\n```")
+        or not separator
+        or not suffix.endswith(closing_fence)
+    ):
         raise ProtocolError("The review-exchange JSON fence is malformed or not final.")
     if (
         match.start(),
@@ -3360,11 +3401,12 @@ def extract_carrier(document: str) -> dict[str, Any]:
         match.group(0),
     ) not in top_level_markdown_lines(document, require_closed=True):
         raise ProtocolError("The review-exchange marker is not a top-level line.")
-    encoded = suffix[len("\n```json\n") : -len(closing_fence)]
+    encoded = payload[: -len(closing_fence)]
     if "\n" in encoded:
-        raise ProtocolError("The carrier JSON must use canonical one-line encoding.")
-    envelope = verify_envelope(parse_json_bytes(encoded.encode("utf-8")))
-    if canonical_json(envelope) != encoded:
+        raise ProtocolError("The carrier payload must use canonical one-line encoding.")
+    decoded = _decode_carrier_payload(encoded, opening)
+    envelope = verify_envelope(parse_json_bytes(decoded))
+    if canonical_json(envelope).encode("utf-8") != decoded:
         raise ProtocolError("The carrier JSON is not canonical.")
     if match.group(1) != _carrier_kind(envelope):
         raise ProtocolError("The carrier kind does not match the envelope.")
