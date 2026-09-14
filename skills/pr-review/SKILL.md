@@ -178,9 +178,9 @@ invocation.
 
 1. Resolve exactly one open pull request or merge request from the requested target or the normal
    unambiguous discovery rule.
-2. Bind the exact target, base and current head, reviewed-scope digest, requirements digest, and
-   complete declared scope set. Read the complete applicable review-record history in provider
-   publication order.
+2. Bind the exact target and current head. Retain the observed base as integration context. Bind the
+   reviewed-scope digest, requirements digest, and complete declared scope set. Read the complete
+   applicable review-record history in provider publication order.
 3. Extract and verify each exchange carrier with `review_exchange.py extract` and
    `review_exchange.py verify`. Select exactly one latest accepted state review. Reduce each later
    contiguous author-event carrier in verified provider order. Each event must bind the state that
@@ -242,9 +242,9 @@ workflow in the same invocation.
 
 1. Resolve exactly one open pull request or merge request from the requested target or the normal
    unambiguous discovery rule.
-2. Bind the exact target, base, current head, reviewed-scope digest, requirements digest, and
-   complete declared scope set. Read the complete applicable review-record and authority-record
-   history in provider publication order.
+2. Bind the exact target and current head. Retain the observed base as integration context. Bind the
+   reviewed-scope digest, requirements digest, and complete declared scope set. Read the complete
+   applicable review-record and authority-record history in provider publication order.
 3. Extract and verify each exchange carrier with `review_exchange.py extract` and
    `review_exchange.py verify`. Select exactly one latest accepted state review. Reduce each later
    contiguous author-event carrier in verified provider order. Each event must bind the state that
@@ -347,6 +347,7 @@ workflow in the same invocation.
     logical state is a complete conditional state, do not continue it automatically. Before round 5,
     only a later explicit default-profile reviewer assessment can increase the round and set
     `go_eligible=true`. Reject a repeated CI-free assessment and a round-5 eligibility upgrade.
+    Target-branch movement alone does not change the reviewed head or start a new exchange.
 21. Preserve prior finding identities. Reconcile them before you add a finding. After a changed-head
     author response, explicitly keep or reopen each revalidated terminal finding in the next
     complete assessment. Do not treat its prior-head reviewer response as current evidence.

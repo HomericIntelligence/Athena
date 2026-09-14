@@ -467,16 +467,28 @@ def expected_target(
 def ensure_expected_identity(
     identity: ImmutableIdentity | None, expected: tuple[str, str] | None
 ) -> None:
-    """Fail closed when collected revisions differ from the resolved pull request."""
+    """Fail closed when the collected head differs from the resolved pull request."""
     if expected is None:
         return
     if identity is None:
         raise RuntimeError("GitHub did not return an immutable pull-request identity.")
-    if (identity.base_oid, identity.head_oid) != expected:
+    if identity.head_oid != expected[1]:
         raise RuntimeError(
-            "The immutable pull-request identity does not match the expected base "
-            "object identifier and head object identifier."
+            "The immutable pull-request identity does not match the expected head "
+            "object identifier."
         )
+
+
+def same_review_implementation(
+    first: ImmutableIdentity, second: ImmutableIdentity
+) -> bool:
+    """Return whether two observations bind the same pull-request implementation."""
+    return (
+        first.repository.casefold() == second.repository.casefold()
+        and first.number == second.number
+        and first.url == second.url
+        and first.head_oid == second.head_oid
+    )
 
 
 def ensure_expected_target(
@@ -1605,7 +1617,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 changed_path_manifest,
                 current_target_path_manifest,
                 source_snapshot,
-            ) = strict_changed_paths(metadata, expected, target)
+            ) = strict_changed_paths(metadata, (identity.base_oid, expected[1]), target)
             changed_files = list(changed_path_manifest.paths)
             try:
                 checks = head_bound_check_runs(repository, expected[1])
@@ -1658,9 +1670,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             repository,
             require_immutable_identity=require_immutable_identity,
         )
-        if final_identity != identity:
+        if not same_review_implementation(final_identity, identity):
             raise RuntimeError(
-                "The immutable pull-request identity changed during evidence collection."
+                "The pull-request implementation changed during evidence collection."
             )
         ensure_expected_identity(final_identity, expected)
         ensure_expected_target(final_identity, target)

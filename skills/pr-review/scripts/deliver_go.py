@@ -372,7 +372,6 @@ def _same_binding(snapshot: PullRequestSnapshot, binding: ReviewBinding) -> bool
         and snapshot.url == binding.url
         and snapshot.state == "OPEN"
         and not snapshot.is_draft
-        and snapshot.base_oid == binding.base_oid
         and snapshot.head_oid == binding.head_oid
     )
 
@@ -380,7 +379,7 @@ def _same_binding(snapshot: PullRequestSnapshot, binding: ReviewBinding) -> bool
 def _require_binding(snapshot: PullRequestSnapshot, binding: ReviewBinding) -> None:
     if not _same_binding(snapshot, binding):
         raise DeliveryError(
-            "The pull-request identity changed or is not open; withhold GO delivery."
+            "The pull-request head, target, or state changed; withhold GO delivery."
         )
 
 
@@ -3428,6 +3427,8 @@ class GitHubForge:
     def collect_requirements_binding(
         self, requirement_issue_urls: tuple[str, ...]
     ) -> RequirementsBinding:
+        snapshot = self.snapshot()
+        _require_binding(snapshot, self.binding)
         target = collect_evidence.ExpectedReviewTarget(
             host=self.host,
             repository=self.binding.repository,
@@ -3437,7 +3438,7 @@ class GitHubForge:
         observed = collect_evidence.collect_requirements_binding(
             str(self.binding.number),
             target,
-            (self.binding.base_oid, self.binding.head_oid),
+            (snapshot.base_oid, self.binding.head_oid),
             requirement_issue_urls,
         )
         return RequirementsBinding(

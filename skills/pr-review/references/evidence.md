@@ -24,7 +24,7 @@ and review output.
   review conclusion on the bound source, contracts, tests, standards, and reproducible validation.
 
 ```text
-[configured forge] -> [open artifact identity] -> [immutable base/head]
+[configured forge] -> [open artifact identity] -> [captured base + exact head]
                                                         |
 [linked requirements] -> [scope + path manifest] -> [immutable source tree]
                                                         |
@@ -109,6 +109,9 @@ a number or branch discovery, use both flags. Retain these returned values:
 The helper must reject a different returned target. `exit 2` means that there is no pull request (PR).
 `exit 3` means that there are multiple candidates.
 
+The base OID records source and integration context at collection time. The exact head OID identifies
+the reviewed implementation. A later target-branch commit does not change that implementation.
+
 Do not fetch through an ambient checkout remote. Do not pull through an ambient checkout remote. Do
 not clone through an ambient checkout remote. Do not invoke a remote helper through an ambient
 checkout remote. Do not otherwise acquire objects through that remote. Use exact OIDs only after you
@@ -192,7 +195,7 @@ Require these returned bindings before source inspection:
 
 | Binding | Required content |
 | --- | --- |
-| `reviewed_identity` | `github.com`, repository, number, canonical URL, `OPEN`, and exact base/head OIDs. |
+| `reviewed_identity` | `github.com`, repository, number, canonical URL, `OPEN`, captured base OID, and exact head OID. |
 | `reviewed_scope` | Canonical digest of title, body, closing references, open/draft state, and base/head names. |
 | `reviewed_linked_requirements` | Ordered canonical ID, repository, number, URL, and content digest for every consumed linked issue, plus its aggregate digest. |
 | `changed_path_manifest` | UTF-8 NUL-delimited, sorted `merge-base..head` author-intent path set, with count and digest. |
@@ -201,9 +204,11 @@ Require these returned bindings before source inspection:
 
 Require a complete, non-shallow selected local repository or returned snapshot. Require one
 unambiguous merge base. Derive the manifest again from its immutable objects. Compare the manifest with
-the returned binding. Compare the returned identity and scope with `resolve_pr.py` and the retained
-review fields. If `source_snapshot` is present, inspect only its `source_path`. Otherwise, read the
-verified local head tree. Read these items from that immutable source:
+the returned binding. Compare the returned target, exact head, and scope with `resolve_pr.py` and the
+retained review fields. Retain each observed base OID as source context. Do not require a later base
+OID to equal the base OID from `resolve_pr.py`. If `source_snapshot` is present, inspect only its
+`source_path`. Otherwise, read the verified local head tree. Read these items from that immutable
+source:
 
 - each changed file;
 - guidance;
@@ -402,8 +407,9 @@ claims.
 ### Identity
 
 For GitHub, use `resolve_pr.py` and the explicit target pair or direct-user canonical URL. For GitLab,
-use its configured MR capability. Require the open state. For GitHub, require the exact base and head
-OIDs. For GitLab, require the complete `base_sha`, `start_sha`, and `head_sha` tuple.
+use its configured MR capability. Require the open state. For GitHub, retain the captured base OID
+and require the exact head OID. For GitLab, require the complete `base_sha`, `start_sha`, and
+`head_sha` tuple.
 
 ### Scope binding
 
@@ -421,8 +427,9 @@ The capability must bind these values:
 - draft state; and
 - each linked work item that the review uses and its digest.
 
-The capability must reject mutable revisions. Before publication, read all four records again. For
-GitLab, retain the same complete position tuple. Revalidate it before publication.
+The capability must reject a mutable reviewed head. Before publication, read all four records again.
+For GitHub, target movement is integration context and does not start a new review. For GitLab,
+retain the same complete position tuple. Revalidate it before publication.
 
 ### Source
 

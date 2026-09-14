@@ -2596,6 +2596,32 @@ class LiveRequirementsBindingTests(unittest.TestCase):
         self.assertEqual("1" * 64, binding.requirements_sha256)
         self.assertEqual((), binding.requirement_issue_urls)
 
+    def test_target_advance_keeps_same_head_requirements_binding(self) -> None:
+        linked = self.empty_linked()
+
+        binding = self.collect(
+            (
+                pull_request(base_oid="c" * 40),
+                pull_request(base_oid="d" * 40),
+            ),
+            (linked, linked),
+        )
+
+        self.assertRegex(binding.reviewed_scope_sha256, r"^[0-9a-f]{64}$")
+        self.assertEqual("1" * 64, binding.requirements_sha256)
+
+    def test_target_branch_name_change_still_rejects_requirements_binding(self) -> None:
+        linked = self.empty_linked()
+
+        with self.assertRaises(RuntimeError):
+            self.collect(
+                (
+                    pull_request(),
+                    pull_request(base_ref_name="release"),
+                ),
+                (linked, linked),
+            )
+
     def test_returns_the_selected_requirement_urls_as_one_canonical_set(self) -> None:
         items = (
             self.collector.LinkedRequirement(
