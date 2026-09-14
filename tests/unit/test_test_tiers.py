@@ -20,7 +20,7 @@ NIGHTLY_MODULES = {
 
 SECURITY_FAST_CLASS = "tests/unit/test_helper_failure_paths.py::HelperFailurePathTests"
 SECURITY_FAST_TESTS = {
-    f"{SECURITY_FAST_CLASS}::test_collector_binds_both_immutable_path_lenses",
+    f"{SECURITY_FAST_CLASS}::test_collector_binds_separate_immutable_path_lenses",
     f"{SECURITY_FAST_CLASS}::test_collector_rejects_checks_for_a_different_head",
     f"{SECURITY_FAST_CLASS}::test_collector_rejects_incomplete_or_invalid_expected_revisions",
     f"{SECURITY_FAST_CLASS}::test_scope_bounds_candidates_and_rejects_special_files",
