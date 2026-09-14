@@ -480,9 +480,11 @@ def ensure_expected_identity(
 
 
 def same_review_implementation(
-    first: ImmutableIdentity, second: ImmutableIdentity
+    first: ImmutableIdentity | None, second: ImmutableIdentity | None
 ) -> bool:
     """Return whether two observations bind the same pull-request implementation."""
+    if first is None or second is None:
+        return first is second
     return (
         first.repository.casefold() == second.repository.casefold()
         and first.number == second.number
@@ -1613,6 +1615,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         check_evidence: dict[str, str | int] | None = None
         if expected is not None:
             assert target is not None
+            assert identity is not None
             (
                 changed_path_manifest,
                 current_target_path_manifest,
