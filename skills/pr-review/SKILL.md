@@ -348,6 +348,11 @@ workflow in the same invocation.
     only a later explicit default-profile reviewer assessment can increase the round and set
     `go_eligible=true`. Reject a repeated CI-free assessment and a round-5 eligibility upgrade.
     Target-branch movement alone does not change the reviewed head or start a new exchange.
+    During terminal GitHub GO delivery only, the delivery adapter can recover one Athena-owned
+    directly superseded state carrier that has exactly one additional final line feed. Require the
+    unchanged carrier body to end with `\n```\n\n`. Require removal of only the final line feed to
+    pass the strict parser. Require the proposed terminal state to be the verified direct
+    authoritative reframe successor. Reject all other malformed carriers.
 21. Preserve prior finding identities. Reconcile them before you add a finding. After a changed-head
     author response, explicitly keep or reopen each revalidated terminal finding in the next
     complete assessment. Do not treat its prior-head reviewer response as current evidence.
