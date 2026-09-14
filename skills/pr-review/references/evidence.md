@@ -195,7 +195,8 @@ Require these returned bindings before source inspection:
 | `reviewed_identity` | `github.com`, repository, number, canonical URL, `OPEN`, and exact base/head OIDs. |
 | `reviewed_scope` | Canonical digest of title, body, closing references, open/draft state, and base/head names. |
 | `reviewed_linked_requirements` | Ordered canonical ID, repository, number, URL, and content digest for every consumed linked issue, plus its aggregate digest. |
-| `changed_path_manifest` | UTF-8 NUL-delimited, sorted union of `merge-base..head` and `base..head` path sets, with count and digest. |
+| `changed_path_manifest` | UTF-8 NUL-delimited, sorted `merge-base..head` author-intent path set, with count and digest. |
+| `current_target_path_manifest` | UTF-8 NUL-delimited, sorted `base..head` diagnostic path set, with count and digest. |
 | `source_snapshot` | Present only when local objects were absent: a detached, read-only source path plus its root, verified merge base, and head tree OID. |
 
 Require a complete, non-shallow selected local repository or returned snapshot. Require one
@@ -300,7 +301,8 @@ Retain these records. Re-fetch them before every GitLab publication:
 | --- | --- |
 | `reviewed_identity` | Host, project, stable MR ID/IID, canonical URL, open state, exact base/start/head SHAs. |
 | `reviewed_scope` | Canonical digest of title, description, draft state, source/target names, and linked-work identities; exclude discussions and CI evidence. |
-| `changed_path_manifest` | NUL-safe count and digest of the union of both immutable diff lenses. |
+| `changed_path_manifest` | NUL-safe count and digest of the author-intent diff lens. |
+| `current_target_path_manifest` | NUL-safe count and digest of the diagnostic current-target diff lens. |
 | `reviewed_linked_requirements` | Canonical ID, URL, and content digest of title, description, acceptance criteria, and every consumed comment or plan artifact. |
 | `merge_readiness` | `approval_state` from GitLab or `UNAVAILABLE`, the exact MR `head_sha` for that state, and an `authority` note; excluded from verdict inputs and scope digests. |
 
@@ -387,6 +389,9 @@ Do not substitute one lens for the other. Report a behind branch as source-histo
 current-base content to detect work that is already landed or is zombie work. On a squash-merge
 repository, do not use ancestry alone for this decision. Treat an incomplete history or non-unique
 merge base as a coverage failure. Do not use it as a reason to select an arbitrary lens.
+The author-intent manifest defines the implementation scope. The current-target manifest is
+diagnostic evidence only. A target-branch change cannot add an implementation path or invalidate an
+unchanged review head.
 
 ## CI-free source-review profile
 

@@ -1186,7 +1186,28 @@ def immutable_range_paths(
 def immutable_changed_paths(
     base_oid: str, head_oid: str, *, cwd: Path | None = None
 ) -> ChangedPathManifest:
-    """Bind the union of author-intent and current-target immutable paths."""
+    """Bind the author-intent paths for one immutable pull-request head."""
+    author_intent, _ = immutable_changed_path_lenses(base_oid, head_oid, cwd=cwd)
+    return author_intent
+
+
+def changed_path_manifest(entries: Sequence[bytes]) -> ChangedPathManifest:
+    """Return one canonical manifest for validated Git path bytes."""
+    canonical_entries = sorted(set(entries))
+    try:
+        paths = tuple(entry.decode("utf-8") for entry in canonical_entries)
+    except UnicodeDecodeError as error:
+        raise RuntimeError(
+            "Git returned a changed path that is not valid 'UTF-8'."
+        ) from error
+    canonical_bytes = b"".join(entry + b"\0" for entry in canonical_entries)
+    return ChangedPathManifest(paths=paths, sha256=sha256(canonical_bytes).hexdigest())
+
+
+def immutable_changed_path_lenses(
+    base_oid: str, head_oid: str, *, cwd: Path | None = None
+) -> tuple[ChangedPathManifest, ChangedPathManifest]:
+    """Bind separate author-intent and current-target path manifests."""
     require_complete_git_history(cwd=cwd)
     for oid in (base_oid, head_oid):
         git_bytes("cat-file", "-e", f"{oid}^{{commit}}", cwd=cwd)
@@ -1197,15 +1218,10 @@ def immutable_changed_paths(
     git_bytes("cat-file", "-e", f"{merge_base}^{{commit}}", cwd=cwd)
     author_intent_paths = immutable_range_paths(merge_base, head_oid, cwd=cwd)
     current_target_paths = immutable_range_paths(base_oid, head_oid, cwd=cwd)
-    canonical_entries = sorted(set(author_intent_paths) | set(current_target_paths))
-    try:
-        paths = tuple(entry.decode("utf-8") for entry in canonical_entries)
-    except UnicodeDecodeError as error:
-        raise RuntimeError(
-            "Git returned a changed path that is not valid 'UTF-8'."
-        ) from error
-    canonical_bytes = b"".join(entry + b"\0" for entry in canonical_entries)
-    return ChangedPathManifest(paths=paths, sha256=sha256(canonical_bytes).hexdigest())
+    return (
+        changed_path_manifest(author_intent_paths),
+        changed_path_manifest(current_target_paths),
+    )
 
 
 def local_immutable_objects_available(base_oid: str, head_oid: str) -> bool:
@@ -1222,11 +1238,14 @@ def strict_changed_paths(
     metadata: dict[str, Any],
     expected: tuple[str, str],
     target: ExpectedReviewTarget,
-) -> tuple[ChangedPathManifest, MaterializedSnapshot | None]:
+) -> tuple[ChangedPathManifest, ChangedPathManifest, MaterializedSnapshot | None]:
     """Derive strict paths locally or from a verified host-owned materialized snapshot."""
     base_oid, head_oid = expected
     if local_immutable_objects_available(base_oid, head_oid):
-        return immutable_changed_paths(base_oid, head_oid), None
+        author_intent, current_target = immutable_changed_path_lenses(
+            base_oid, head_oid
+        )
+        return author_intent, current_target, None
     base_ref = metadata.get("baseRefName")
     if not isinstance(base_ref, str):
         raise TypeError(
@@ -1240,9 +1259,10 @@ def strict_changed_paths(
         head_oid=head_oid,
     )
     try:
-        return immutable_changed_paths(
+        author_intent, current_target = immutable_changed_path_lenses(
             base_oid, head_oid, cwd=snapshot.source_path
-        ), snapshot
+        )
+        return author_intent, current_target, snapshot
     except BaseException:
         remove_snapshot(snapshot.root)
         raise
@@ -1576,13 +1596,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             else None
         )
         changed_path_manifest: ChangedPathManifest | None = None
+        current_target_path_manifest: ChangedPathManifest | None = None
         source_snapshot: MaterializedSnapshot | None = None
         check_evidence: dict[str, str | int] | None = None
         if expected is not None:
             assert target is not None
-            changed_path_manifest, source_snapshot = strict_changed_paths(
-                metadata, expected, target
-            )
+            (
+                changed_path_manifest,
+                current_target_path_manifest,
+                source_snapshot,
+            ) = strict_changed_paths(metadata, expected, target)
             changed_files = list(changed_path_manifest.paths)
             try:
                 checks = head_bound_check_runs(repository, expected[1])
@@ -1685,6 +1708,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if changed_path_manifest is not None:
         evidence["changed_path_manifest"] = changed_path_manifest.as_json()
+    if current_target_path_manifest is not None:
+        evidence["current_target_paths"] = list(current_target_path_manifest.paths)
+        evidence["current_target_path_manifest"] = (
+            current_target_path_manifest.as_json()
+        )
     if source_snapshot is not None:
         evidence["source_snapshot"] = source_snapshot.as_json()
     if check_evidence is not None:

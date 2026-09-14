@@ -158,7 +158,7 @@ class HelperFailurePathTests(unittest.TestCase):
             ):
                 collector.head_bound_check_runs("owner/repository", head_oid)
 
-    def test_collector_binds_both_immutable_path_lenses(self) -> None:
+    def test_collector_binds_separate_immutable_path_lenses(self) -> None:
         collector = load_helper("pr-review", "collect_evidence")
         base_oid = "a" * 40
         head_oid = "b" * 40
@@ -180,12 +180,17 @@ class HelperFailurePathTests(unittest.TestCase):
                 ],
             ) as range_paths,
         ):
-            manifest = collector.immutable_changed_paths(base_oid, head_oid)
+            author_intent, current_target = collector.immutable_changed_path_lenses(
+                base_oid, head_oid
+            )
 
-        self.assertEqual(("author-intent.txt", "current-target.txt"), manifest.paths)
+        self.assertEqual(("author-intent.txt",), author_intent.paths)
         self.assertEqual(
-            sha256(b"author-intent.txt\0current-target.txt\0").hexdigest(),
-            manifest.sha256,
+            sha256(b"author-intent.txt\0").hexdigest(), author_intent.sha256
+        )
+        self.assertEqual(("current-target.txt",), current_target.paths)
+        self.assertEqual(
+            sha256(b"current-target.txt\0").hexdigest(), current_target.sha256
         )
         self.assertEqual(
             [

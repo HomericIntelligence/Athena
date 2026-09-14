@@ -137,6 +137,28 @@ def initialize_divergent_repository(
     return base_oid, head_oid
 
 
+def initialize_target_advanced_repository(
+    repository: Path, changed_path: str
+) -> tuple[str, str]:
+    """Create a feature change and a different target-only change."""
+    git(repository, "init", "--quiet")
+    git(repository, "config", "user.name", "Athena Tests")
+    git(repository, "config", "user.email", "athena-tests@example.invalid")
+    (repository / changed_path).write_text("base\n", encoding="utf-8")
+    git(repository, "add", changed_path)
+    git(repository, "commit", "--quiet", "-m", "test: merge base")
+    git(repository, "branch", "-M", "main")
+    git(repository, "checkout", "--quiet", "-b", "feature")
+    (repository / changed_path).write_text("feature\n", encoding="utf-8")
+    git(repository, "commit", "--all", "--quiet", "-m", "test: feature change")
+    head_oid = git(repository, "rev-parse", "HEAD")
+    git(repository, "checkout", "--quiet", "main")
+    (repository / "target-only.txt").write_text("target\n", encoding="utf-8")
+    git(repository, "add", "target-only.txt")
+    git(repository, "commit", "--quiet", "-m", "test: target change")
+    return git(repository, "rev-parse", "HEAD"), head_oid
+
+
 def initialize_shallow_repository(
     repository: Path, changed_path: str
 ) -> tuple[str, str]:
@@ -2505,7 +2527,7 @@ class BoundedChangedPathReaderTests(unittest.TestCase):
             ),
             patch.object(
                 self.collector,
-                "immutable_changed_paths",
+                "immutable_changed_path_lenses",
                 side_effect=self.collector.ChangedPathCoverageGap("safe path limit"),
             ),
             patch("sys.stdout", output),
@@ -3602,7 +3624,7 @@ class ImmutableEvidenceTests(unittest.TestCase):
             ["replacement.txt"], json.loads(result.stdout)["changed_files"]
         )
 
-    def test_binds_the_union_of_author_intent_and_current_target_paths(self) -> None:
+    def test_author_intent_keeps_a_target_equivalent_feature_path(self) -> None:
         """A target-equivalent tree must not hide a feature's changed path."""
         result, call_count, _, _ = self.run_collector(
             [pull_request(), pull_request()],
@@ -3612,6 +3634,28 @@ class ImmutableEvidenceTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(2, call_count)
         self.assertEqual(["changed.txt"], json.loads(result.stdout)["changed_files"])
+
+    def test_target_advance_does_not_add_target_only_paths(self) -> None:
+        result, call_count, _, _ = self.run_collector(
+            [pull_request(), pull_request()],
+            repository_initializer=initialize_target_advanced_repository,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(2, call_count)
+        evidence = json.loads(result.stdout)
+        self.assertEqual(["changed.txt"], evidence["changed_files"])
+        self.assertEqual(
+            sha256(b"changed.txt\0").hexdigest(),
+            evidence["changed_path_manifest"]["sha256"],
+        )
+        self.assertEqual(
+            ["changed.txt", "target-only.txt"], evidence["current_target_paths"]
+        )
+        self.assertEqual(
+            sha256(b"changed.txt\0target-only.txt\0").hexdigest(),
+            evidence["current_target_path_manifest"]["sha256"],
+        )
 
     def test_rejects_shallow_history_before_binding_changed_paths(self) -> None:
         result, call_count, _, _ = self.run_collector(
