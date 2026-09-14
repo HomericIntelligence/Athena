@@ -181,9 +181,10 @@ stale, foreign, repeated, or ambiguous author event. Do not infer an answer from
 acknowledgment, thread resolution, or old prose. A normal report-only author response can prepare
 this exact review; it cannot publish it.
 
-Immediately before author-event publication, revalidate the exact target, base, current head,
-reviewed scope, requirements, complete scope set, latest state review, complete pending
-author-event chain, logical state, provider order, and publisher actor. For GitHub, publish one
+Immediately before author-event publication, revalidate the exact target, current head, reviewed
+scope, requirements, complete scope set, latest state review, complete pending author-event chain,
+logical state, provider order, and publisher actor. Retain the current base as integration context.
+For GitHub, publish one
 atomic review with the current head as `commit_id`,
 `COMMENT` as `event`, the exact rendered author-event carrier as `body`, and an empty `comments`
 array. Read the review and target again. Require the exact body bytes, actor, target, current head,
@@ -213,8 +214,8 @@ The proof has only these fields:
 
 - `schema_id`, with the value `athena.pr-review.no-go-proof`;
 - `schema_version`, with the value `1`;
-- `binding`, with the exact repository, pull-request number and URL, base object identifier, and
-  head object identifier;
+- `binding`, with the exact repository, pull-request number and URL, captured base object identifier,
+  and exact head object identifier;
 - `review_id`, with the published `COMMENT` review identity;
 - `state`, with the complete version-1 state envelope; and
 - `visible_content`, with the exact text before the state carrier; and
@@ -338,7 +339,7 @@ Save the completed canonical JSON and invoke delivery:
 
 The helper uses this order:
 
-1. Bind the canonical open, non-draft pull request and exact base and head.
+1. Bind the canonical open, non-draft pull request, captured base context, and exact head.
 2. Read all threads, complete conversations, review records, and implementation-state labels.
 3. Before a mutation, validate the complete terminal state and its selected supersession ancestry,
    manifest, ownership, capabilities, composite finding identities, origin heads, answers,
@@ -432,9 +433,11 @@ repository-policy gate. This option does not permit a direct merge, retry, appro
 change, bypass, or policy change.
 
 1. Resolve the canonical host, repository, pull-request number and node ID, open non-draft state,
-   base and head object identifiers, both diff lenses, scope digest, requirements digest, path
-   manifest, effective pre-admission gates, required approvals, and queue route again.
-2. If a value changed, a binding is absent, or a gate failed or is pending, withhold auto-merge.
+   current target and exact head object identifiers, both diff lenses, scope digest, requirements
+   digest, path manifest, effective pre-admission gates, required approvals, and queue route again.
+2. If the reviewed head or a stable binding changed, a binding is absent, or a gate failed or is
+   pending, withhold auto-merge. Treat target movement as integration context. If the current target
+   causes a merge conflict, withhold auto-merge.
 3. If the author or reviewer changed, a required thread is open, carrier publication is unverified,
    or terminal evidence conflicts, withhold auto-merge.
 4. Require an authenticated capability that binds the target and can enable normal auto-merge

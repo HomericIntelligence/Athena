@@ -40,6 +40,7 @@ class FakeForge:
 
     def __init__(self, module: ModuleType, *, threads: tuple[Any, ...]) -> None:
         self.module = module
+        self.base_oid = "a" * 40
         self.head_oid = "b" * 40
         self.labels = {"state:implementation-no-go", "enhancement"}
         self.threads = {thread.id: thread for thread in threads}
@@ -74,7 +75,7 @@ class FakeForge:
             url="https://github.com/owner/repository/pull/7",
             state="OPEN",
             is_draft=False,
-            base_oid="a" * 40,
+            base_oid=self.base_oid,
             head_oid=self.head_oid,
             labels=frozenset(self.labels),
             threads=tuple(self.threads.values()),
@@ -2421,6 +2422,38 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             [call.args[0] for call in collect.call_args_list],
         )
 
+    def test_github_adapter_collects_requirements_from_the_live_target(self) -> None:
+        expected = self.delivery.collect_evidence.ReviewRequirementsBinding(
+            reviewed_scope_sha256="1" * 64,
+            requirements_sha256="2" * 64,
+            requirement_issue_urls=(),
+        )
+        adapter = self.delivery.GitHubForge(self.binding())
+        live_snapshot = self.delivery.PullRequestSnapshot(
+            repository="owner/repository",
+            number=7,
+            url="https://github.com/owner/repository/pull/7",
+            state="OPEN",
+            is_draft=False,
+            base_oid="c" * 40,
+            head_oid="b" * 40,
+            labels=frozenset(),
+            threads=(),
+            reviews=(),
+        )
+        with (
+            patch.object(adapter, "snapshot", return_value=live_snapshot),
+            patch.object(
+                self.delivery.collect_evidence,
+                "collect_requirements_binding",
+                return_value=expected,
+            ) as collect,
+        ):
+            observed = adapter.collect_requirements_binding(())
+
+        self.assertEqual("1" * 64, observed.reviewed_scope_sha256)
+        self.assertEqual(("c" * 40, "b" * 40), collect.call_args.args[2])
+
     def test_github_adapter_posts_bound_reply_and_resolution_mutations(self) -> None:
         calls: list[tuple[str, ...]] = []
 
@@ -2923,6 +2956,32 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         )
         self.assertTrue(forge.threads["thread-1"].comments[-1].viewer_did_author)
         self.assertEqual({"state:implementation-go", "enhancement"}, forge.labels)
+
+    def test_target_advance_keeps_same_head_delivery_eligible(self) -> None:
+        thread = self.owned_thread()
+        forge = FakeForge(self.delivery, threads=(thread,))
+        forge.base_oid = "c" * 40
+        manifest = self.v1_manifest(thread)
+        self.add_history(forge, manifest)
+
+        result = self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+
+        self.assertEqual("delivered", result.status)
+        self.assertEqual("b" * 40, result.observed_head_oid)
+        self.assertEqual(1, forge.events.count("terminal"))
+        self.assertEqual(1, forge.events.count("labels"))
+
+    def test_changed_head_still_withholds_delivery(self) -> None:
+        thread = self.owned_thread()
+        forge = FakeForge(self.delivery, threads=(thread,))
+        forge.head_oid = "c" * 40
+        manifest = self.v1_manifest(thread)
+        self.add_history(forge, manifest)
+
+        with self.assertRaises(self.delivery.DeliveryError):
+            self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+
+        self.assertEqual(["read"], forge.events)
 
     def test_v1_delivery_replays_author_event_without_final_newline(self) -> None:
         thread = self.owned_thread()
