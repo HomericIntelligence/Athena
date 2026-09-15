@@ -123,7 +123,7 @@ _FORMAT_ONLY_INLINE_ROOT_COMPATIBILITY: Mapping[str, Any] = MappingProxyType(
         "original_line": 1465,
         "author": "mvillmow",
         "author_association": "MEMBER",
-        "original_published_at": "2026-09-15T08:30:51Z",
+        "original_published_at": "2026-09-15T08:30:50Z",
         "original_last_edited_at": None,
         "canonical_last_edited_at": "2026-09-15T08:33:12Z",
         "original_body": _FORMAT_ONLY_INLINE_ROOT_ORIGINAL_BODY,
