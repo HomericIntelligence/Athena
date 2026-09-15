@@ -46,12 +46,20 @@ Do the same verification before publication. If evidence is missing, malformed, 
 mismatched, report a coverage failure. Do not infer a substitute. Do not inspect mutable bytes. Do not
 publish from that evidence.
 
-When a pull-request head changes without a requirements change, continue the same exchange through
-a separate `--author-response` head refresh. Bind the event to the exact current logical state and
-new revision. Derive that logical state by reducing each verified pending author-event carrier in
-provider order after the latest state carrier. The refresh invalidates prior coverage and does not
+When a pull-request head changes without a requirements change and the current exchange accepts a
+head refresh, continue that exchange through a separate `--author-response` invocation. Bind the
+event to the exact current logical state and new revision. Derive that logical state by reducing
+each verified pending author-event carrier in provider order after the latest state carrier. The
+refresh invalidates prior coverage and does not
 increase the reviewer-round count. The next reviewer assessment must inspect and bind the refreshed
 immutable source. A material requirements change requires an authoritative reframe instead.
+
+A terminal GO cannot accept an author refresh. For GitHub, use the
+[completed-history rule](delivery.md#verified-go-delivery) to determine whether an independent
+older-head GO permits a new exchange. Preserve and verify all retained history. Review the complete
+current artifact and collect the selected profile's evidence again. An unchanged source tree does
+not transfer earlier review coverage, CI results, or GO authority to a new head. A pending or
+conditional exchange cannot use this route. Do not infer an equivalent GitLab route.
 
 ## Default profile
 

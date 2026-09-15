@@ -333,11 +333,18 @@ workflow in the same invocation.
     a human decision.
 17. Before you calculate the score, complete each failed or sampled dimension.
 18. Calculate the score from earned evidence.
-19. Extract and verify the latest prior state carrier, if present. Reduce every later contiguous
-    author-event carrier in verified provider order to derive the current logical state. For a
-    pending author-event chain, require its final event to bind the current head and reviewed-scope
-    digest. Without such a chain, require the latest state to bind those values. An eligibility
-    upgrade from an unchanged complete conditional state has no new author event. If the head
+19. Extract and verify the complete retained carrier history. For GitHub, classify independent
+    older-head exchanges under the
+    [completed-history rule](references/delivery.md#verified-go-delivery). Only exchanges that meet
+    every condition can be excluded from current-exchange selection. Retain and verify their full
+    history. If no current exchange remains, start one distinct exchange at round 1 with a full
+    review of the current artifact. Do not transfer earlier coverage or check evidence. Otherwise,
+    select the latest state carrier in the current exchange. Reduce every later contiguous
+    author-event carrier in verified provider order to derive its logical state. For a continued
+    exchange with a pending author-event chain, require the final event to bind the current head
+    and reviewed-scope digest. Without such a chain, require the current exchange's latest state
+    to bind those values. An eligibility upgrade from an unchanged complete conditional state has
+    no new author event. If the head
     changed, require a separate `--author-response` refresh before reviewer assessment. Reject a
     missing predecessor, stale event, repeated event, fork, or ambiguous carrier chain.
 20. If the logical state has `next_action=author_response`, stop. Require a separate
@@ -353,12 +360,14 @@ workflow in the same invocation.
     unchanged carrier body to end with `\n```\n\n`. Require removal of only the final line feed to
     pass the strict parser. Require the proposed terminal state to be the verified direct
     authoritative reframe successor. Reject all other malformed carriers.
-21. Preserve prior finding identities. Reconcile them before you add a finding. After a changed-head
-    author response, explicitly keep or reopen each revalidated terminal finding in the next
-    complete assessment. Do not treat its prior-head reviewer response as current evidence.
-22. Reduce exactly one consecutive reviewer round from the logical state. Set `go_eligible=true`
-    for a default reviewer assessment and `go_eligible=false` for a CI-free reviewer assessment. For
-    the assessment, preserve the exact logical-state artifact revision and artifact digest. Use the
+21. Preserve prior finding identities within each exchange. Reconcile them before you add a finding.
+    After a changed-head author response, explicitly keep or reopen each revalidated terminal
+    finding in the next complete assessment. Do not treat its prior-head reviewer response as current evidence.
+22. Reduce exactly one consecutive reviewer round from the logical state. When the verified GitHub
+    completed-history rule leaves no current exchange, reduce an initial round-1 assessment instead.
+    Set `go_eligible=true` for a default reviewer assessment and `go_eligible=false` for a CI-free
+    reviewer assessment. A continued assessment preserves the exact logical-state artifact revision
+    and artifact digest. An initial assessment binds the exact current artifact. Use the
     visible-content digest for the new reviewer carrier. Render the complete state carrier. Add this
     compact marker to each new anchorable inline finding:
     `<!-- HomericIntelligence:review-finding:v1 exchange=<exchange-id> id=F-NNN -->`.

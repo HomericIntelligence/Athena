@@ -535,6 +535,15 @@ complete pull-request state can accept an eligible reviewer assessment for the s
 also accept an author refresh for a new head. Other normal events cannot continue a complete
 exchange. Thus, a reframe cannot discard an escalation or restart the round limit without authority.
 
+For GitHub, a later head can receive a separate review after independent older-head exchanges meet
+the [completed-history conditions](../../skills/pr-review/references/delivery.md#verified-go-delivery).
+This starts a distinct exchange; it does not continue the old terminal state. Preserve and verify
+the old history and its requirements binding. Require a full review of the current artifact and
+the selected profile's current evidence. Equal source trees do not preserve earlier authorization.
+This route cannot reset a pending or conditional exchange, bypass the old exchange's round limit,
+or grant thread-closure authority. Same-head GO keeps its exact delivered-proof requirements.
+Do not infer this GitHub delivery capability for another review surface or provider.
+
 Each reframe event has `superseded_exchange_ids`. This list gives all earlier exchange identifiers
 from the oldest exchange to the direct predecessor. The list must equal the predecessor's list plus
 the predecessor's exchange identifier. Values must be unique. The new exchange identifier must not

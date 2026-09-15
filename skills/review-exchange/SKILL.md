@@ -67,12 +67,19 @@ result. Exit code `1` is a protocol rejection. Exit code `2` is an operational f
 ## Safety and fallback
 
 Do not edit an envelope or carrier manually. Do not infer an author answer or finding closure from
-legacy prose. When a reviewed artifact changes, use an author response to refresh the artifact
-binding and all active finding answers. Re-answer each required finding that was resolved,
-withdrawn, or accepted as risk on the prior artifact. Keep the same finding identifiers. Do not
-carry a risk-acceptance receipt to the new artifact. A pull-request refresh before its next review
+legacy prose. When a reviewed artifact changes and its current phase permits an author response,
+use that response to refresh the artifact binding and all active finding answers. Re-answer each
+required finding that was resolved, withdrawn, or accepted as risk on the prior artifact. Keep the
+same finding identifiers. Do not carry a risk-acceptance receipt to the new artifact. A pull-request
+refresh before its next review
 must also bind a new head revision. Do not make a sixth reviewer assessment. Do not use a label,
 acknowledgment, or stale carrier as proof of closure.
+
+A terminal GO does not accept an author refresh. The invoking pull-request workflow selects any
+new GitHub review through its
+[completed-history rule](../pr-review/references/delivery.md#verified-go-delivery). This helper does
+not infer a new exchange or discard prior history. Pending and conditional exchanges keep their
+existing continuation rules and round limit.
 
 If the host cannot prove complete state or safe delivery, return the prepared artifact and withhold
 a favorable delivered result. GitLab uses the same state reducer through its native discussion and
