@@ -250,6 +250,18 @@ present and `state:implementation-go` to be absent.
 `already_delivered` is an idempotent success only for that exact label state on the unchanged head.
 A write or readback failure is partial. Do not claim delivery or make a blind retry.
 
+### One historical inline-root recovery
+
+The helper has one source-held compatibility record for the PR 1572 inline root.
+Use `--format-only-inline-root-recovery <file>` only with `--deliver-no-go` and
+`--state-carrier-file`. The file is canonical JSON. It can select only that
+record by its fixed binding, state, review, root, and manifest digest.
+
+The recovery accepts one reviewer-owned root with one marker moved to its own
+final line. It does not accept changed finding text, a foreign root, another
+edit, an edited review, a reply, a changed source anchor, or GO delivery. The
+helper verifies the fixed root and carrier before and after the label write.
+
 ## Verified GO delivery
 
 A direct default-profile GitHub review owns this narrow finalization unless an enclosing coordinator
