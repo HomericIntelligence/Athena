@@ -1943,6 +1943,45 @@ class IssueReviewExchangeTests(unittest.TestCase):
             "publication_identity_conflict", publication["diagnostics"][0]["code"]
         )
 
+    def test_recovered_plan_update_rechecks_authority_at_publication(self) -> None:
+        snapshot, _ = self.initial_plan_snapshot()
+        plan = snapshot["comments"][0]
+        plan["body"] = f"{plan['body']}\n"
+        recovery_authority = self.carrier_recovery_authority(snapshot, plan)
+        snapshot["comments"].append(recovery_authority)
+        snapshot["issue"]["body"] = "Changed issue requirements."
+
+        prepared = self.adapter.prepare_plan(self.plan_request(snapshot))
+        published = self.apply_operation(snapshot, prepared, "unused")
+        verified = self.adapter.verify_publication(
+            {"prepared": prepared, "snapshot": published}
+        )
+
+        self.assertEqual("verified", verified["status"])
+        self.assertIsNotNone(prepared["recovery_authority_receipt"])
+        for case in ("removed", "altered"):
+            with self.subTest(case=case):
+                drifted = copy.deepcopy(published)
+                live_authority = next(
+                    comment
+                    for comment in drifted["comments"]
+                    if comment["id"] == recovery_authority["id"]
+                )
+                if case == "removed":
+                    drifted["comments"].remove(live_authority)
+                else:
+                    live_authority["body"] = f"{live_authority['body']}\n"
+
+                publication = self.adapter.verify_publication(
+                    {"prepared": prepared, "snapshot": drifted}
+                )
+
+                self.assertEqual("unknown_outcome", publication["status"])
+                self.assertEqual(
+                    "publication_authority_drift",
+                    publication["diagnostics"][0]["code"],
+                )
+
     def test_only_top_level_marker_lines_define_issue_artifacts(self) -> None:
         cases = (
             "A prose reference to <!-- HomericIntelligence:plan-issue --> is not identity.",

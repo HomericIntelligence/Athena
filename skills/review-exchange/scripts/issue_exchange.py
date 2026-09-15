@@ -348,6 +348,7 @@ def _extract_issue_carrier(
     snapshot: Mapping[str, Any],
     comment: Mapping[str, Any],
     recovered_ids: set[str],
+    recovery_receipts: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     try:
         return review_exchange.extract_carrier(comment["body"])
@@ -381,6 +382,13 @@ def _extract_issue_carrier(
         if len(authorities) != 1:
             raise
         recovered_ids.add(comment["id"])
+        if recovery_receipts is not None:
+            recovery_receipts.append(
+                {
+                    "reference": authorities[0]["url"],
+                    "sha256": _body_sha256(expected_authority),
+                }
+            )
         return envelope
 
 
@@ -434,6 +442,7 @@ def _precondition_sha256(
     plan: Mapping[str, Any] | None,
     review: Mapping[str, Any] | None,
     authority_receipt: Mapping[str, str] | None,
+    recovery_authority_receipt: Mapping[str, str] | None = None,
 ) -> str:
     return review_exchange.sha256_json(
         {
@@ -445,6 +454,7 @@ def _precondition_sha256(
             "plan": plan,
             "review": review,
             "authority_receipt": authority_receipt,
+            "recovery_authority_receipt": recovery_authority_receipt,
         }
     )
 
@@ -455,6 +465,7 @@ def _precondition(
     plan: Mapping[str, Any] | None,
     review: Mapping[str, Any] | None,
     authority_receipt: Mapping[str, str] | None = None,
+    recovery_authority_receipt: Mapping[str, str] | None = None,
 ) -> str:
     return _precondition_sha256(
         target=snapshot["target"],
@@ -463,6 +474,7 @@ def _precondition(
         plan=_artifact_summary(plan),
         review=_artifact_summary(review),
         authority_receipt=authority_receipt,
+        recovery_authority_receipt=recovery_authority_receipt,
     )
 
 
@@ -1021,6 +1033,26 @@ def _peer_binding(
     return cast(dict[str, Any] | None, copy.deepcopy(peer))
 
 
+def _operation_recovery_authority_receipt(
+    snapshot: Mapping[str, Any], operation: Mapping[str, Any] | None
+) -> dict[str, str] | None:
+    if operation is None or operation["action"] != "update":
+        return None
+    comment = next(
+        (
+            candidate
+            for candidate in snapshot["comments"]
+            if candidate["id"] == operation["comment_id"]
+        ),
+        None,
+    )
+    if comment is None or review_exchange.CARRIER_PREFIX not in comment["body"]:
+        return None
+    receipts: list[dict[str, str]] = []
+    _extract_issue_carrier(snapshot, comment, set(), receipts)
+    return receipts[0] if receipts else None
+
+
 def _prepared_result(
     *,
     inspection: Mapping[str, Any],
@@ -1031,6 +1063,9 @@ def _prepared_result(
     authority_receipt: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     status = "ready" if operation is not None else "withheld"
+    recovery_authority_receipt = _operation_recovery_authority_receipt(
+        snapshot, operation
+    )
     state = None if state_envelope is None else state_envelope["state"]
     state_sha256 = None if state_envelope is None else state_envelope["state_sha256"]
     next_action = inspection["next_action"]
@@ -1040,7 +1075,7 @@ def _prepared_result(
     if state is None and artifact == "plan":
         next_action = "prepare_review"
     precondition = inspection["precondition_sha256"]
-    if authority_receipt is not None:
+    if authority_receipt is not None or recovery_authority_receipt is not None:
         precondition = _precondition_sha256(
             target=snapshot["target"],
             actor_id=snapshot["actor"]["id"],
@@ -1048,6 +1083,7 @@ def _prepared_result(
             plan=inspection["plan"],
             review=inspection["review"],
             authority_receipt=authority_receipt,
+            recovery_authority_receipt=recovery_authority_receipt,
         )
     return {
         "schema_id": PREPARE_SCHEMA_ID,
@@ -1063,6 +1099,7 @@ def _prepared_result(
         "authority_receipt": (
             None if authority_receipt is None else dict(authority_receipt)
         ),
+        "recovery_authority_receipt": recovery_authority_receipt,
         "next_action": next_action,
         "operation": None if operation is None else dict(operation),
         "diagnostics": diagnostics,
@@ -1963,6 +2000,7 @@ def _validate_prepared_publication(value: object) -> dict[str, Any]:
                 "state",
                 "state_sha256",
                 "authority_receipt",
+                "recovery_authority_receipt",
                 "next_action",
                 "operation",
                 "diagnostics",
@@ -1993,6 +2031,11 @@ def _validate_prepared_publication(value: object) -> dict[str, Any]:
         "prepared authority receipt",
         nullable=True,
     )
+    recovery_authority = _authority_record(
+        prepared["recovery_authority_receipt"],
+        "prepared recovery authority receipt",
+        nullable=True,
+    )
     operation = _prepared_comment_operation(prepared["operation"])
     changed_summary = (
         None
@@ -2012,6 +2055,7 @@ def _validate_prepared_publication(value: object) -> dict[str, Any]:
         plan=prepared_plan,
         review=prepared_review,
         authority_receipt=authority,
+        recovery_authority_receipt=recovery_authority,
     )
     if precondition != expected_precondition:
         raise ProtocolError("The prepared publication precondition does not match.")
@@ -2110,6 +2154,7 @@ def _validate_prepared_publication(value: object) -> dict[str, Any]:
         "state": state,
         "state_sha256": state_sha256,
         "authority_receipt": authority,
+        "recovery_authority_receipt": recovery_authority,
         "next_action": next_action,
         "operation": operation,
         "diagnostics": [],
@@ -2167,7 +2212,9 @@ def verify_publication(value: object) -> dict[str, Any]:
     if verified:
         verified, matches = _publication_identity_matches(snapshot, prepared)
     if verified and (
-        prepared["state"] is not None or prepared["authority_receipt"] is not None
+        prepared["state"] is not None
+        or prepared["authority_receipt"] is not None
+        or prepared["recovery_authority_receipt"] is not None
     ):
         try:
             if prepared["state"] is not None:
@@ -2198,6 +2245,10 @@ def verify_publication(value: object) -> dict[str, Any]:
                     raise ProtocolError(
                         "The reframe plan does not supersede the exact live review state."
                     )
+            if prepared["recovery_authority_receipt"] is not None:
+                _verify_carrier_recovery_authority(
+                    snapshot, prepared["recovery_authority_receipt"], prepared
+                )
         except ProtocolError as error:
             verified = False
             authority_error = str(error)
@@ -2279,6 +2330,89 @@ def _authority_comment(
             "A canonical workflow artifact cannot also be an authority receipt."
         )
     return {"reference": reference, "sha256": digest}, body
+
+
+def _verify_carrier_recovery_authority(
+    snapshot: Mapping[str, Any],
+    receipt: object,
+    prepared: Mapping[str, Any],
+) -> None:
+    _authority, body = _authority_comment(snapshot, receipt)
+    raw = review_exchange.parse_json_bytes(body.encode("utf-8"))
+    record = _object(
+        raw,
+        "carrier recovery authority",
+        frozenset(
+            {
+                "schema_id",
+                "schema_version",
+                "action",
+                "target",
+                "comment_id",
+                "body_sha256",
+                "canonical_body_sha256",
+                "carrier_state_sha256",
+            }
+        ),
+    )
+    target = _object(
+        record["target"],
+        "carrier recovery authority.target",
+        frozenset({"provider", "repository", "number", "url"}),
+    )
+    canonical = {
+        "schema_id": _string(
+            record["schema_id"], "carrier recovery authority.schema_id"
+        ),
+        "schema_version": _integer(
+            record["schema_version"], "carrier recovery authority.schema_version"
+        ),
+        "action": _string(record["action"], "carrier recovery authority.action"),
+        "target": {
+            "provider": _string(
+                target["provider"], "carrier recovery authority.target.provider"
+            ),
+            "repository": _string(
+                target["repository"],
+                "carrier recovery authority.target.repository",
+            ),
+            "number": _integer(
+                target["number"], "carrier recovery authority.target.number"
+            ),
+            "url": _string(target["url"], "carrier recovery authority.target.url"),
+        },
+        "comment_id": _string(
+            record["comment_id"], "carrier recovery authority.comment_id"
+        ),
+        "body_sha256": _digest(
+            record["body_sha256"], "carrier recovery authority.body_sha256"
+        ),
+        "canonical_body_sha256": _digest(
+            record["canonical_body_sha256"],
+            "carrier recovery authority.canonical_body_sha256",
+        ),
+        "carrier_state_sha256": _digest(
+            record["carrier_state_sha256"],
+            "carrier recovery authority.carrier_state_sha256",
+        ),
+    }
+    operation = prepared["operation"]
+    expected_target = {
+        key: prepared["target"][key]
+        for key in ("provider", "repository", "number", "url")
+    }
+    if (
+        body != review_exchange.canonical_json(canonical)
+        or canonical["schema_id"] != RECOVERY_AUTHORITY_SCHEMA_ID
+        or canonical["schema_version"] != SCHEMA_VERSION
+        or canonical["action"] != "supersede_malformed_carrier"
+        or canonical["target"] != expected_target
+        or canonical["comment_id"] != operation["comment_id"]
+        or canonical["body_sha256"] != operation["expected_body_sha256"]
+    ):
+        raise ProtocolError(
+            "The recovery authority does not bind the prepared mutation."
+        )
 
 
 def _verify_reframe_plan_authority(
