@@ -5920,24 +5920,180 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             self.assertNotIn("labels", forge.events)
 
     def test_new_head_can_start_after_an_older_completed_exchange(self) -> None:
-        thread = self.owned_thread()
-        forge = FakeForge(self.delivery, threads=(thread,))
-        manifest = self.v1_manifest(thread)
-        self.add_history(forge, manifest)
-        old, old_visible = self.completed_exchange(
-            manifest,
-            requirements_sha256=manifest.state_envelope["state"]["requirements_sha256"],
-        )
-        old_record = replace(
-            self.carrier_record("old-terminal", old, old_visible),
-            submitted_at="2025-12-31T23:59:59Z",
-        )
-        forge.reviews.insert(0, old_record)
+        for retained_go in (False, True):
+            with self.subTest(retained_go=retained_go):
+                thread = self.owned_thread()
+                forge = FakeForge(self.delivery, threads=(thread,))
+                if retained_go:
+                    forge.labels = {"state:implementation-go", "enhancement"}
+                manifest = self.v1_manifest(thread)
+                self.add_history(forge, manifest)
+                old, old_visible = self.completed_exchange(
+                    manifest,
+                    requirements_sha256=manifest.state_envelope["state"][
+                        "requirements_sha256"
+                    ],
+                )
+                old_record = replace(
+                    self.carrier_record("old-terminal", old, old_visible),
+                    submitted_at="2025-12-31T23:59:59Z",
+                )
+                forge.reviews.insert(0, old_record)
 
-        result = self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+                result = self.delivery.deliver_go_v1(forge, self.binding(), manifest)
 
-        self.assertEqual("delivered", result.status)
-        self.assertEqual({"state:implementation-go", "enhancement"}, forge.labels)
+                self.assertEqual("delivered", result.status)
+                self.assertEqual(
+                    {"state:implementation-go", "enhancement"}, forge.labels
+                )
+                self.assertEqual(old_record, forge.reviews[0])
+                self.assertEqual(1, forge.events.count("terminal"))
+                self.assertEqual(1, forge.events.count("labels"))
+                self.assertLess(
+                    forge.events.index("terminal"), forge.events.index("labels")
+                )
+
+    def test_new_round_one_retained_go_label_requires_completed_history(self) -> None:
+        for completed_history in (False, True):
+            with self.subTest(completed_history=completed_history):
+                manifest, _ = self.terminal_inline_manifest()
+                event = dict(manifest.state_envelope["state"]["accepted_events"][0])
+                event["new_findings"] = []
+                terminal = self.delivery.review_exchange.reduce_request(
+                    {"previous": None, "event": event}
+                )["envelope"]
+                manifest = replace(manifest, state_envelope=terminal, comments=())
+                forge = FakeForge(self.delivery, threads=())
+                forge.labels = {"state:implementation-go", "enhancement"}
+                if completed_history:
+                    old, old_visible = self.completed_exchange(
+                        manifest,
+                        requirements_sha256=terminal["state"]["requirements_sha256"],
+                    )
+                    forge.reviews.append(
+                        replace(
+                            self.carrier_record("old-terminal", old, old_visible),
+                            submitted_at="2025-12-31T23:59:59Z",
+                        )
+                    )
+                initial_reviews = tuple(forge.reviews)
+                if not completed_history:
+                    with self.assertRaises(self.delivery.DeliveryError):
+                        self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+                    self.assertEqual(["read", "requirements:verify"], forge.events)
+                    self.assertEqual(initial_reviews, tuple(forge.reviews))
+                    self.assertEqual(
+                        {"state:implementation-go", "enhancement"}, forge.labels
+                    )
+                    continue
+
+                result = self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+
+                self.assertEqual("delivered", result.status)
+                self.assertEqual(initial_reviews, tuple(forge.reviews[:-1]))
+                self.assertEqual(self.binding().head_oid, forge.reviews[-1].head_oid)
+                self.assertEqual(
+                    self.delivery.terminal_review_body(manifest), forge.reviews[-1].body
+                )
+                self.assertEqual(1, forge.events.count("terminal"))
+                self.assertEqual(1, forge.events.count("labels"))
+                self.assertLess(
+                    forge.events.index("terminal"), forge.events.index("labels")
+                )
+                self.assertFalse(
+                    any(
+                        event.startswith(("reply:", "resolve:"))
+                        for event in forge.events
+                    )
+                )
+                replay = self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+                self.assertEqual("already_delivered", replay.status)
+                self.assertEqual(1, forge.events.count("terminal"))
+                self.assertEqual(1, forge.events.count("labels"))
+
+    def test_retained_go_label_thread_recovery_requires_completed_history(self) -> None:
+        for failed_operation in ("reply", "resolve"):
+            for completed_history in (False, True):
+                with self.subTest(
+                    failed_operation=failed_operation,
+                    completed_history=completed_history,
+                ):
+                    thread = self.owned_thread()
+                    forge = FakeForge(self.delivery, threads=(thread,))
+                    manifest = self.v1_manifest(thread)
+                    self.add_history(forge, manifest)
+                    if completed_history:
+                        forge.labels = {"state:implementation-go", "enhancement"}
+                        old, old_visible = self.completed_exchange(
+                            manifest,
+                            requirements_sha256=manifest.state_envelope["state"][
+                                "requirements_sha256"
+                            ],
+                        )
+                        forge.reviews.insert(
+                            0,
+                            replace(
+                                self.carrier_record("old-terminal", old, old_visible),
+                                submitted_at="2025-12-31T23:59:59Z",
+                            ),
+                        )
+                    original_reviews = tuple(forge.reviews)
+                    setattr(forge, f"fail_{failed_operation}", True)
+
+                    with self.assertRaises(self.delivery.DeliveryError) as failed:
+                        self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+
+                    self.assertIsNotNone(failed.exception.report)
+                    self.assertEqual("partial", failed.exception.report.status)
+                    self.assertEqual(
+                        failed_operation, failed.exception.report.uncertain_operation
+                    )
+                    self.assertEqual(1, forge.events.count("terminal"))
+                    self.assertEqual(0, forge.events.count("labels"))
+                    self.assertFalse(forge.threads[thread.id].is_resolved)
+                    self.assertEqual(original_reviews, tuple(forge.reviews[:-1]))
+                    terminal_review = forge.reviews[-1]
+                    self.assertEqual(self.binding().head_oid, terminal_review.head_oid)
+                    self.assertEqual(
+                        self.delivery.terminal_review_body(manifest),
+                        terminal_review.body,
+                    )
+                    setattr(forge, f"fail_{failed_operation}", False)
+                    forge.labels = {"state:implementation-go", "enhancement"}
+                    events_before_recovery = len(forge.events)
+                    if not completed_history:
+                        with self.assertRaises(self.delivery.DeliveryError):
+                            self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+                        self.assertEqual(
+                            ["read", "requirements:verify"],
+                            forge.events[events_before_recovery:],
+                        )
+                        self.assertFalse(forge.threads[thread.id].is_resolved)
+                        self.assertEqual(terminal_review, forge.reviews[-1])
+                        continue
+
+                    result = self.delivery.deliver_go_v1(
+                        forge, self.binding(), manifest
+                    )
+
+                    self.assertEqual("delivered", result.status)
+                    self.assertEqual((thread.id,), result.resolved_thread_ids)
+                    self.assertEqual(terminal_review.id, result.terminal_review_id)
+                    self.assertEqual(1, forge.events.count("terminal"))
+                    self.assertEqual(1, forge.events.count("labels"))
+                    self.assertEqual(original_reviews, tuple(forge.reviews[:-1]))
+                    self.assertEqual(terminal_review, forge.reviews[-1])
+                    self.assertEqual(2, len(forge.threads[thread.id].comments))
+                    self.assertTrue(forge.threads[thread.id].is_resolved)
+                    self.assertEqual(
+                        {"state:implementation-go", "enhancement"}, forge.labels
+                    )
+                    replay = self.delivery.deliver_go_v1(
+                        forge, self.binding(), manifest
+                    )
+                    self.assertEqual("already_delivered", replay.status)
+                    self.assertEqual(1, forge.events.count("terminal"))
+                    self.assertEqual(1, forge.events.count("labels"))
 
     def test_archived_exchange_requires_its_atomic_inline_finding_root(self) -> None:
         thread = self.owned_thread()

@@ -445,6 +445,12 @@ supersede an old finding, transfer a risk acceptance, or authorize a historical 
 Preserve all original-root, ownership, chronology, current-head, and delivery checks. Do not use it
 to abandon a pending or conditional exchange.
 
+A GO label retained from this verified completed history is not current-head proof.
+After full current-artifact validation, continue with publication of the new terminal
+carrier and normal readback before final label verification. Keep a GO label without
+a matching current-head terminal record or verified completed history as a delivery
+failure. Do not remove the retained label as a preparatory workaround.
+
 Treat the exact same-head terminal record, zero open threads, and exclusive GO label as
 `already_delivered`. A label without the matching current-head terminal ledger is not proof. If the
 terminal carrier exists after an interrupted run, validate the same manifest and resume only the
