@@ -7637,7 +7637,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             "original_line": 1465,
             "author": "mvillmow",
             "author_association": "MEMBER",
-            "original_published_at": "2026-09-15T08:30:51Z",
+            "original_published_at": "2026-09-15T08:30:50Z",
             "original_last_edited_at": None,
             "canonical_last_edited_at": "2026-09-15T08:33:12Z",
             "original_body": original_body,
@@ -7659,6 +7659,22 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         )
         self.assertEqual(
             expected, dict(self.delivery._FORMAT_ONLY_INLINE_ROOT_COMPATIBILITY)
+        )
+
+    def test_pr1572_recovery_compatibility_uses_graphql_published_at(self) -> None:
+        compatibility = self.delivery._format_only_compatibility_document()
+        graphql_root = {
+            "id": "PRRC_kwDOTfsgBs7vOqKD",
+            "publishedAt": "2026-09-15T08:30:50Z",
+        }
+        rest_created_at = "2026-09-15T08:30:51Z"
+
+        self.assertEqual(compatibility["root_id"], graphql_root["id"])
+        self.assertEqual("2026-09-15T08:30:50Z", graphql_root["publishedAt"])
+        self.assertEqual("2026-09-15T08:30:51Z", rest_created_at)
+        self.assertNotEqual(graphql_root["publishedAt"], rest_created_at)
+        self.assertEqual(
+            graphql_root["publishedAt"], compatibility["original_published_at"]
         )
 
     def _call_format_only_recovery(
