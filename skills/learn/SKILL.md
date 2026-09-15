@@ -10,8 +10,10 @@ allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 
 Purpose: Preserve one concise reusable rule. Do not preserve many copies that have the same intent.
 First, determine if the source contains an evidence-backed change that can help future work. Then
-put current guidance, history, and supporting notes in their specified artifacts. If the user
-requests a write, deliver it through a pull request (PR) from an isolated worktree.
+put current guidance, history, and supporting notes in their specified artifacts. A direct
+`$athena:learn` invocation is a durable-learning request: after discovery, deliver an eligible
+`create`, `amend`, or `consolidate` disposition through a pull request (PR) from an isolated
+worktree. Do not require a second write-confirmation message.
 
 Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to all
 prose that it produces.
@@ -236,8 +238,10 @@ tests, or artifacts that have no consumer only to support a lesson.
 
 Read-only discovery does not increase the requested scope. If the task requests durable learning,
 you can use the resolved repository and full delivery path. Use a new PR or the single Existing-PR
-target that discovery selected. A recommendation or indirect invocation is read-only. For read-only
-work, return the candidate rule, the likely disposition if known, and each corpus or remote limit.
+target that discovery selected. Only an explicitly read-only request is read-only. A direct
+`$athena:learn` invocation without that qualifier must complete the durable PR workflow when an
+eligible lesson exists. For explicitly read-only work, return the candidate rule, the likely
+disposition if known, and each corpus or remote limit.
 
 ## Use an existing PR
 
