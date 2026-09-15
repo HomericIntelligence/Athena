@@ -3503,17 +3503,9 @@ def _verify_no_go_snapshot(
         and state["phase"] != "complete"
         and state["next_action"] != "finalize"
     )
-    terminal_conditional = (
-        state["phase"] == "complete"
-        and state["verdict"] == "CONDITIONAL GO"
-        and state["next_action"] == "none"
-        and state["go_eligible"] is False
-    )
-    if state["artifact_binding"]["revision"] != binding.head_oid or not (
-        nonterminal_no_go or terminal_conditional
-    ):
+    if state["artifact_binding"]["revision"] != binding.head_oid or not nonterminal_no_go:
         raise DeliveryError(
-            "The NO-GO proof is not a current nonterminal or conditional state."
+            "The NO-GO proof is not a current nonterminal state."
         )
     try:
         body = review_exchange.render_carrier(proof.visible_content, envelope, "state")

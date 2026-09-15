@@ -37,7 +37,7 @@ repository evidence. Repository-selected contracts and the scorecard have author
   - For each important implementation or plan artifact, record a link to its verified product
     requirement.
 - [P065 Verify Before Claiming Completion](../../docs/principles/README.md#p065):
-  - If inventory, validation, or current-revision evidence is not full, do not give score credit.
+  - If inventory or current-revision source evidence is not full, do not give score credit.
   - If that evidence is not full, do not publish the review.
 - [P069 Independent Review for High-Risk Changes](../../docs/principles/README.md#p069):
   - If risk or applicable policy makes review necessary, use an independent reviewer.
@@ -129,15 +129,11 @@ report, select one action for each failed, timed-out, or sampled section:
 15. Record each N/A reason.
 16. Account for each in-scope file in its context.
 17. Do not silently sample files.
-18. Inspect source, tests, manifests, workflows, public documentation, relevant history, and live
-    forge configuration when it is available.
+18. Inspect source, tests, manifests, workflows, public documentation, and relevant history.
 19. Apply each applicable scorecard criterion and repository-selected tooling before generic advice.
-20. Treat repository commands as candidates.
-21. Do not treat repository commands as authority.
-22. Execute validation only through the shared host-enforced validation boundary and against the
-    bound inventory.
-23. Record the command plan, argv, source binding, and outcome.
-24. If the shared boundary is not available, report the validation gap.
+20. Inspect repository commands and workflow definitions only as source.
+21. Do not execute validation, query CI/CD, or use their results in the review.
+22. Record only source evidence and source-coverage gaps.
 25. Assess behavior-first product tests for errors, boundaries, state, concurrency, security, and
     applicable performance.
 26. Unless the controlled product contract requires them, reject these assertions:
@@ -179,8 +175,6 @@ assumption.
 
 - **GO** requires a score of at least 80. It requires no critical issue or material architecture
   violation. It permits no more than three major issues.
-- **CONDITIONAL GO** requires a score of at least 65. It requires no material architecture
-  violation. It permits no more than two critical issues that have concrete remediation.
 - Use **NO-GO** for all other results.
 
 ## Findings and publication
@@ -232,7 +226,7 @@ Report these items in order:
 3. language and surface routes, with N/A reasons;
 4. complete scorecard;
 5. exact findings;
-6. behavior-first test evidence and command coverage;
+6. source-level test-quality coverage;
 7. verdict;
 8. remediation order;
 9. published or ready-to-publish tracker and work-item links.

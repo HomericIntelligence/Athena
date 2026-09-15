@@ -202,7 +202,7 @@ A state record has these fields:
 | `go_eligible` | Boolean. `false` is valid only for a pull-request state. |
 | `progress` | One progress record for each reviewer round |
 | `findings` | Ordered list of 0 through 100 stored findings |
-| `verdict` | `GO`, `CONDITIONAL GO`, or `NO-GO` |
+| `verdict` | `GO` or `NO-GO` |
 | `next_action` | `author_response`, `review_assessment`, `finalize`, `human_decision`, or `none` |
 
 The accepted-event ledger starts with the initial reviewer assessment or reframe. It contains at
@@ -332,7 +332,7 @@ A corrective reviewer assessment has these fields:
 | `artifact_binding` | Exact author artifact revision and artifact digest, with the visible-content digest for the new reviewer carrier |
 | `scope` | Exact author scope set |
 | `coverage_complete` | Boolean |
-| `go_eligible` | Boolean. Use `false` for a CI-free pull-request assessment. |
+| `go_eligible` | Literal Boolean `true`. Review verdicts cannot depend on CI/CD. |
 | `responses` | One reviewer response for each prior author answer |
 | `new_findings` | Ordered list of permitted later finding inputs |
 | `stop_reason` | `null` or a stop reason from the list below |
@@ -355,7 +355,7 @@ An authoritative human event has these fields:
 | `decisions` | Nonempty list of unique human decisions |
 
 An author response or human decision inherits `go_eligible` from the prior state. Before round 5,
-when a complete pull-request state has `verdict=CONDITIONAL GO`, `next_action=none`, and
+when a complete pull-request state has `verdict=GO`, `next_action=finalize`, and
 `go_eligible=false`, one later reviewer assessment can set `go_eligible=true`. It must increase the
 round by one. A repeated `false` value is invalid. An author refresh for a new head can instead move
 this state to `awaiting_evidence`. At round 5, an ineligible assessment produces

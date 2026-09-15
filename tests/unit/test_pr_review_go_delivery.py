@@ -6151,28 +6151,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self.assertNotIn("terminal", forge.events)
         self.assertNotIn("labels", forge.events)
 
-    def test_new_head_cannot_reset_a_conditional_exchange(self) -> None:
-        thread = self.owned_thread()
-        forge = FakeForge(self.delivery, threads=(thread,))
-        manifest = self.v1_manifest(thread)
-        self.add_history(forge, manifest)
-        old, old_visible = self.completed_exchange(
-            manifest,
-            requirements_sha256=manifest.state_envelope["state"]["requirements_sha256"],
-            go_eligible=False,
-        )
-        old_record = replace(
-            self.carrier_record("old-conditional", old, old_visible),
-            submitted_at="2025-12-31T23:59:59Z",
-        )
-        forge.reviews.insert(0, old_record)
-
-        with self.assertRaises(self.delivery.DeliveryError):
-            self.delivery.deliver_go_v1(forge, self.binding(), manifest)
-
-        self.assertNotIn("terminal", forge.events)
-        self.assertNotIn("labels", forge.events)
-
     def test_new_requirements_need_an_authoritative_supersession(self) -> None:
         thread = self.owned_thread()
         forge = FakeForge(self.delivery, threads=(thread,))
@@ -8433,77 +8411,9 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self.assertEqual("already_delivered", replay.status)
         self.assertEqual(1, forge.events.count("labels:no-go"))
 
-    def test_conditional_go_uses_only_the_exclusive_no_go_delivery_path(self) -> None:
-        proof, record = self.conditional_go_proof()
-        forge = FakeForge(self.delivery, threads=())
-        forge.labels = {"state:implementation-go", "enhancement"}
-        forge.reviews.append(record)
-
-        result = self.delivery.deliver_no_go(forge, self.binding(), proof)
-
-        self.assertEqual("delivered", result.status)
-        self.assertEqual("state:implementation-no-go", result.label)
-        self.assertEqual({"state:implementation-no-go", "enhancement"}, forge.labels)
-        self.assertEqual(1, forge.events.count("labels:no-go"))
-        self.assertNotIn("terminal", forge.events)
-        self.assertNotIn("labels", forge.events)
-
-        replay = self.delivery.deliver_no_go(forge, self.binding(), proof)
-        self.assertEqual("already_delivered", replay.status)
-        self.assertEqual(1, forge.events.count("labels:no-go"))
-
-    def test_conditional_go_cannot_enter_terminal_go_delivery(self) -> None:
-        proof, record = self.conditional_go_proof()
-        manifest = self.delivery.ClosureManifest(
-            state_envelope=proof.state_envelope,
-            terminal_visible_content=proof.visible_content,
-            entries=(),
-            requirements_binding=proof.requirements_binding,
-        )
-        forge = FakeForge(self.delivery, threads=())
-        forge.reviews.append(record)
-
-        with self.assertRaises(self.delivery.DeliveryError):
-            self.delivery.deliver_go_v1(forge, self.binding(), manifest)
-
-        self.assertEqual(["read"], forge.events)
-
-    def test_eligible_go_cannot_be_used_as_a_no_go_proof(self) -> None:
-        conditional, _record = self.conditional_go_proof()
-        exchange = self.delivery.review_exchange
-        visible = "The eligible review can deliver GO."
-        event = {
-            "event_type": "reviewer_assessment",
-            "exchange_id": "exchange-conditional",
-            "prior_state_sha256": conditional.state_envelope["state_sha256"],
-            "round": 2,
-            "artifact_binding": {
-                **conditional.state_envelope["state"]["artifact_binding"],
-                "visible_content_sha256": exchange.sha256_text(visible),
-            },
-            "scope": conditional.state_envelope["state"]["scope"],
-            "coverage_complete": True,
-            "go_eligible": True,
-            "responses": [],
-            "new_findings": [],
-            "stop_reason": None,
-        }
-        terminal = exchange.reduce_request(
-            {"previous": conditional.state_envelope, "event": event}
-        )["envelope"]
-        proof = self.delivery.NoGoProof(
-            terminal,
-            visible,
-            "go-review-1",
-            self.requirements_binding(terminal),
-        )
-        forge = FakeForge(self.delivery, threads=())
-        forge.reviews.append(self.carrier_record(proof.review_id, terminal, visible))
-
-        with self.assertRaises(self.delivery.DeliveryError):
-            self.delivery.deliver_no_go(forge, self.binding(), proof)
-
-        self.assertNotIn("labels:no-go", forge.events)
+    def test_conditional_go_proof_is_rejected(self) -> None:
+        with self.assertRaises(self.delivery.review_exchange.ProtocolError):
+            self.conditional_go_proof()
 
     def test_no_go_rejects_a_proof_that_is_not_the_unique_chain_tip(self) -> None:
         proof, record = self.no_go_proof()
