@@ -288,6 +288,7 @@ class VerifiedStateChain:
     envelopes: Mapping[str, dict[str, Any]]
     selected_state_sha256s: frozenset[str]
     verified_state_sha256s: frozenset[str]
+    archived_terminal_sha256s: frozenset[str]
     superseding_state_sha256s: Mapping[str, str]
     finding_origin_review_ids: Mapping[tuple[str, str], str]
     author_event_review_ids: Mapping[tuple[str, str], str]
@@ -2365,6 +2366,7 @@ def _verify_state_chain(
         envelopes=selected_envelopes,
         selected_state_sha256s=selected_state_sha256s,
         verified_state_sha256s=frozenset(verified_states),
+        archived_terminal_sha256s=frozenset(archived_terminal_sha256s),
         superseding_state_sha256s=superseding_state_sha256s,
         finding_origin_review_ids=finding_origin_review_ids,
         author_event_review_ids=author_event_review_ids,
@@ -3038,7 +3040,7 @@ def _verify_go_state_history(
     binding: ReviewBinding,
     manifest: ClosureManifest,
     body: str,
-) -> set[str]:
+) -> VerifiedStateChain:
     chain = _verify_state_chain(
         forge,
         manifest.state_envelope,
@@ -3059,7 +3061,7 @@ def _verify_go_state_history(
         chain.verified_state_sha256s,
     ):
         raise DeliveryError("The current-head terminal COMMENT evidence is ambiguous.")
-    return set(chain.verified_state_sha256s)
+    return chain
 
 
 def _closure_reply_recovered(
@@ -3237,7 +3239,7 @@ def deliver_go_v1(
     )
     if len(matching) == 1:
         body = matching[0].body
-    _verify_go_state_history(forge, initial, binding, manifest, body)
+    initial_history = _verify_go_state_history(forge, initial, binding, manifest, body)
     if len(matching) > 1:
         raise DeliveryError("The current-head terminal COMMENT evidence is ambiguous.")
     if matching:
@@ -3338,9 +3340,10 @@ def deliver_go_v1(
                 _verify_live_requirements(forge, manifest.requirements_binding)
                 complete_write()
                 return result("delivered")
-            raise DeliveryError(
-                "A GO label without one matching current-head terminal ledger is not proof."
-            )
+            if not initial_history.archived_terminal_sha256s:
+                raise DeliveryError(
+                    "A GO label without one matching current-head terminal ledger is not proof."
+                )
         if not matching:
             write(
                 "terminal review",
