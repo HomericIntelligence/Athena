@@ -602,6 +602,7 @@ A prepared issue-comment result has these fields:
 | `state` | Result state record or `null` |
 | `state_sha256` | Digest of `state` or `null` |
 | `authority_receipt` | Reframe-plan authority receipt, or `null` for all other results |
+| `recovery_authority_receipt` | Carrier-recovery authority receipt when the operation replaces the recovered carrier, or `null` |
 | `next_action` | `prepare_plan`, `prepare_review`, `author_response`, `review_assessment`, `finalize`, `human_decision`, or `none` |
 | `operation` | Prepared comment operation or `null` |
 | `diagnostics` | List of diagnostic records |
@@ -612,9 +613,10 @@ operation and an empty diagnostic list. A `withheld` result has no operation and
 The issue-comment precondition is the digest of canonical JSON with `schema_id` set to
 `athena.issue-exchange.precondition`, `schema_version` set to `1`, and these fields: exact issue
 `target`, `actor_id`, `requirements_sha256`, canonical plan summary or `null`, canonical review
-summary or `null`, and `authority_receipt`. The authority receipt is non-null only for a reframe-plan
-operation. Thus, publication verification can detect authority-comment drift during that first
-reframe phase.
+summary or `null`, `authority_receipt`, and `recovery_authority_receipt`. The action authority
+receipt is non-null only for a reframe-plan operation. The recovery authority receipt is non-null
+only when the operation replaces a recovered carrier. Thus, publication verification can detect
+authority-comment drift during the applicable mutation.
 
 ### `inspect`
 
@@ -638,6 +640,28 @@ The input is one issue snapshot. The result has these fields:
 The command does not infer answers from unversioned prose. It returns `withheld` for a malformed,
 duplicate, foreign, stale, or conflicting canonical artifact. A valid finalized issue returns
 `finalized` and `next_action=none`.
+
+One historical exception applies only in the issue adapter. The generic carrier parser stays
+strict. The issue adapter can read at most one actor-owned carrier that has exactly one additional
+final line feed. The adapter requires one live authority comment with this exact canonical JSON
+record:
+
+| Field | Type and value |
+| --- | --- |
+| `schema_id` | `athena.issue-exchange.carrier-recovery-authority` |
+| `schema_version` | Integer `1` |
+| `action` | `supersede_malformed_carrier` |
+| `target` | Exact issue review target |
+| `comment_id` | Exact malformed comment identity |
+| `body_sha256` | Digest of the unchanged malformed body |
+| `canonical_body_sha256` | Digest after removal of only the additional final line feed |
+| `carrier_state_sha256` | Digest from the strict parse of that canonical body |
+
+The authority comment author must have repository authority. The adapter rechecks the complete
+record at each read. It rejects a foreign carrier, two recoverable carriers, two matching authority
+comments, a different suffix, or a record with a different digest. New publication stays canonical.
+The exception does not make an unknown publication result successful. Reframe and human-decision
+operations still require their separate action-bound authority records.
 
 An unchanged finalized body stays terminal. A body that keeps a finalization marker but no longer
 matches its `F` digest is malformed and stays withheld. After an authoritative person replaces the
@@ -800,7 +824,9 @@ These values bind the exact prepared operation and readback. An `unknown_outcome
 receipt. It does not authorize a retry. Readback repeats canonical marker identity checks and live
 action-bound authority verification. For a reframe-plan publication, it uses the ephemeral prepared
 `authority_receipt` and requires `inspect` to recognize the exact live peer as the superseded state
-of the pending reframe. For a review publication, it uses the receipts in the result state.
+of the pending reframe. When an operation replaces a recovered carrier, verification also requires
+the exact live `recovery_authority_receipt`. For a review publication, it uses the receipts in the
+result state.
 
 For a corrective plan publication, verification reduces the exact live retained review state with
 the published author-event carrier. The derived state and digest must equal the prepared result.
