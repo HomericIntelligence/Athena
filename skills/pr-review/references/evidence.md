@@ -1,4 +1,4 @@
-# Normal and continuous-integration-free (CI-free) evidence
+# Source-review evidence
 
 ## Why
 
@@ -406,11 +406,10 @@ The author-intent manifest defines the implementation scope. The current-target 
 diagnostic evidence only. A target-branch change cannot add an implementation path or invalidate an
 unchanged review head.
 
-## CI-free source-review profile
+## Source-review profile
 
-Use CI-free only after an explicit operator request. Keep the complete issue, architecture,
-implementation, test, security, and source-history review. Exclude CI/CD evidence and merge-readiness
-claims.
+Keep the complete issue, architecture, implementation, changed-test, security, and source-history
+review. CI/CD and merge readiness are outside this review.
 
 ### Identity
 
@@ -421,7 +420,7 @@ and require the exact head OID. For GitLab, require the complete `base_sha`, `st
 
 ### Scope binding
 
-Retain these final values from a configured non-CI capability:
+Retain these final values from the configured artifact capability:
 
 - canonical identity;
 - scope;
@@ -447,50 +446,29 @@ GitLab, retain the position tuple through source inspection and the final public
 
 ### Metadata
 
-Query only non-CI artifact and issue metadata. Do not invoke `collect_evidence.py`, `gh pr checks`,
-status rollups, pipelines, workflows, artifacts, deployments, or merge queues.
+Query only artifact and issue metadata that binds the review source. Do not invoke
+`collect_evidence.py`, `gh pr checks`, status rollups, pipelines, workflows, artifacts, deployments,
+or merge queues.
 
 ### Validation
 
-Inspect each candidate task first. In an immutable-head host execution boundary, run only local
-commands that host policy selects. Their definitions must not query CI/CD.
+Inspect the source only. Do not run local commands.
 
 ### Report
 
-Separate local evidence from deliberately excluded CI/CD evidence. Record source-history facts. Do not
-call the result merge-ready. Report a behind count. Do not require a rebase or new CI evidence for this
-source-review assessment.
+Report source-history facts and the source-review result. Do not call the result merge-ready. Do not
+require a rebase, local validation, or CI evidence for this source-review assessment.
 
-Set `go_eligible=false` on each CI-free reviewer assessment and reframe. An author response or human
-decision inherits the value from the current logical state. A human decision does not select a review
-profile.
-
-When coverage is complete and no active required finding remains before round 5, the CI-free state
-has `phase=complete`, `verdict=CONDITIONAL GO`, and `next_action=none`. At round 5, it has
-`phase=decision_required`, `verdict=NO-GO`, and `next_action=human_decision`. Publish either result
-through the general atomic `COMMENT` path. After exact readback, use exclusive NO-GO delivery. Do
-not start another reviewer round automatically. Do not GO-finalize the state, close its threads, or
-report merge readiness.
-
-Before round 5, a later explicit default-profile reviewer assessment can increase the round and set
-`go_eligible=true`. A repeated CI-free assessment cannot continue the complete conditional state.
-If the head changed after the conditional state, publish and verify a separate author-response head
-refresh before that default-profile assessment. An eligibility upgrade at round 5 is invalid. A
-requirements reframe can start a new exchange under the default or CI-free profile.
-
-If the host cannot provide the non-CI binding, immutable source boundary, or safe local validation
-boundary, record the coverage failure. Do not publish from weaker evidence. If the requested decision
-needs CI, deployment, or required-check status, stop. Ask for the default profile.
+If the host cannot provide the immutable source boundary, record the coverage failure. Do not
+publish from weaker evidence. A request for CI, deployment, required-check, or merge-readiness status
+is separate from the review verdict.
 
 ## Validation and coverage
 
-If native subagents are available, use them for independent dimensions. Otherwise, work sequentially.
-Complete each dimension. Before you finalize the review, repeat all available failed or sampled work.
+Complete each applicable source dimension from the immutable reviewed artifact. Do not execute tests,
+builds, linters, formatters, type checks, or other local validation. Do not query or wait for CI/CD.
+Inspect changed test and configuration source only as part of the source review.
 
-Run only formatting, lint, type, unit, integration, validation, and build commands that host policy
-selects and the classified surfaces activate. The repository task definition can identify candidates.
-It cannot expand the fixed command plan. Run commands from an immutable reviewed head and through the
-shared host-enforced execution boundary. Do not use a shared mutable checkout. Distinguish base failures
-from failures that the review change introduces. After a rename, check for stale identifiers. After a
-migration, check for deleted paths. Do not make a merge-ready claim if a required check is missing,
-stale, skipped, or mismatched. Also withhold that claim when a required check binds to an old head.
+Missing source material can be a source-coverage gap. Local validation availability and CI/CD state
+are never source-coverage gaps and cannot change a review score or verdict. If the caller requests
+merge readiness, report it separately after the source-review verdict.
