@@ -237,6 +237,12 @@ The helper makes one set from both inputs. It removes duplicate references to th
 It binds each issue's identity, body, title, state, and full comment history to
 `reviewed_linked_requirements`. The binding includes plans in issue comments.
 
+Request linked-issue comments in pages of 25. Each page remains limited to 256 KiB.
+The ten-page limit permits at most 250 comments per issue. A full tenth page requires
+an empty terminal page. If the terminal page contains comments, reject the complete
+collection. The independent 1,000-comment limit remains an upper bound, not guaranteed
+capacity. Byte, aggregate, request, and deadline limits can stop collection earlier.
+
 The combined set uses the existing resource limits and final revalidation.
 Use the same selected set when you rebind before
 publication. A non-closing reference does not change the PR or close an issue.

@@ -1888,7 +1888,7 @@ def is_linked_issue_comments_request():
 def is_canonical_linked_issue_comments_request():
     endpoint = (
         r"repos/owner/requirements/issues/[1-9][0-9]*/comments"
-        r"\\?per_page=100&page=[1-9][0-9]*"
+        r"\\?per_page=25&page=[1-9][0-9]*"
     )
     return (
         len(arguments) == 6
@@ -2080,7 +2080,7 @@ class FakeGhArgumentValidationTests(unittest.TestCase):
             "github.com",
             "--method",
             "GET",
-            "repos/owner/requirements/issues/10/comments?per_page=100&page=1",
+            "repos/owner/requirements/issues/10/comments?per_page=25&page=1",
         )
         invalid = (
             (
@@ -2091,7 +2091,7 @@ class FakeGhArgumentValidationTests(unittest.TestCase):
                 "attacker.invalid",
                 "--method",
                 "GET",
-                "repos/owner/requirements/issues/10/comments?per_page=100&page=1",
+                "repos/owner/requirements/issues/10/comments?per_page=25&page=1",
             ),
             (
                 "api",
@@ -2099,7 +2099,7 @@ class FakeGhArgumentValidationTests(unittest.TestCase):
                 "github.com",
                 "--method",
                 "GET",
-                "repos/attacker/requirements/issues/10/comments?per_page=100&page=1",
+                "repos/attacker/requirements/issues/10/comments?per_page=25&page=1",
             ),
             (
                 "api",
@@ -2107,7 +2107,7 @@ class FakeGhArgumentValidationTests(unittest.TestCase):
                 "github.com",
                 "--method",
                 "GET",
-                "repos/owner/requirements/issues/10/comments?per_page=100",
+                "repos/owner/requirements/issues/10/comments?per_page=25",
             ),
         )
 
