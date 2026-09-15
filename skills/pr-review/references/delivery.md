@@ -105,6 +105,20 @@ separate author-response invocation to bind the new artifact before the current 
 That head refresh does not increase the reviewer-round count. A material requirements change uses
 the reframe rule. It does not silently reset the exchange.
 
+Terminal GitHub GO delivery has one compatibility rule for an immutable historical carrier. The
+adapter can remove exactly one final line feed from one Athena-owned state carrier when all these
+conditions apply:
+
+- the unchanged body then passes the strict carrier parser;
+- the original body ends with the exact bytes `\n```\n\n`;
+- the proposed terminal state directly supersedes that state digest; and
+- the direct successor is a verified authoritative requirements reframe.
+
+This rule does not change the carrier parser or the publication format. It does not apply to a
+foreign carrier, an author-event carrier, a second malformed carrier, another suffix, a human
+decision, a NO-GO delivery, or a state without a direct authoritative reframe. Run all normal
+state-chain, authority, publication-order, source, thread, and label checks after recovery.
+
 Before a human decision or requirements reframe, the pull-request surface adapter must resolve one
 exact current logical state. Start with the latest accepted state carrier. Reduce each later
 contiguous author-event carrier in verified provider order. Reject a stale event, fork, gap, or

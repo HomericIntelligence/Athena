@@ -976,7 +976,9 @@ def _require_pr_envelope(
 
 
 def _review_carriers(
-    snapshot: PullRequestSnapshot, binding: ReviewBinding
+    snapshot: PullRequestSnapshot,
+    binding: ReviewBinding,
+    directly_superseded_state_sha256: str | None = None,
 ) -> tuple[
     dict[str, tuple[ReviewRecord, dict[str, Any]]],
     tuple[tuple[ReviewRecord, dict[str, Any]], ...],
@@ -984,6 +986,7 @@ def _review_carriers(
     states: dict[str, tuple[ReviewRecord, dict[str, Any]]] = {}
     authors: list[tuple[ReviewRecord, dict[str, Any]]] = []
     carrier_ids: set[str] = set()
+    recovered_review_id: str | None = None
     for review in snapshot.reviews:
         if review_exchange.CARRIER_PREFIX not in review.body:
             continue
@@ -1001,9 +1004,30 @@ def _review_carriers(
         try:
             envelope = review_exchange.extract_carrier(review.body)
         except review_exchange.ProtocolError as error:
-            raise DeliveryError(
-                f"A pull-request carrier is invalid: {error}"
-            ) from error
+            recoverable = (
+                directly_superseded_state_sha256 is not None
+                and recovered_review_id is None
+                and review.viewer_did_author
+                and review.body.endswith("\n```\n\n")
+            )
+            if not recoverable:
+                raise DeliveryError(
+                    f"A pull-request carrier is invalid: {error}"
+                ) from error
+            try:
+                envelope = review_exchange.extract_carrier(review.body[:-1])
+            except review_exchange.ProtocolError:
+                raise DeliveryError(
+                    f"A pull-request carrier is invalid: {error}"
+                ) from error
+            if (
+                envelope["schema_id"] != review_exchange.STATE_SCHEMA_ID
+                or envelope["state_sha256"] != directly_superseded_state_sha256
+            ):
+                raise DeliveryError(
+                    f"A pull-request carrier is invalid: {error}"
+                ) from error
+            recovered_review_id = review.id
         envelope = _require_pr_envelope(
             envelope, binding, schema_id=cast(str, envelope["schema_id"])
         )
@@ -1724,9 +1748,25 @@ def _verify_state_chain(
     binding: ReviewBinding,
     anchor_source: Path | None = None,
     historical_anchor_proofs: tuple[dict[str, Any], ...] = (),
+    *,
+    recover_direct_reframe: bool = False,
 ) -> VerifiedStateChain:
     """Replay every persisted event that leads to one terminal reviewer state."""
-    states, author_records = _review_carriers(snapshot, binding)
+    terminal_state = terminal["state"]
+    direct_supersession = (
+        terminal_state["supersedes_state_sha256"]
+        if recover_direct_reframe
+        and terminal["schema_id"] == review_exchange.STATE_SCHEMA_ID
+        and terminal_state["round"] == 1
+        and terminal_state["prior_state_sha256"] is None
+        and terminal_state["supersession_authority_receipt"] is not None
+        and len(terminal_state["accepted_events"]) == 1
+        and terminal_state["accepted_events"][0]["event_type"] == "reframe"
+        else None
+    )
+    states, author_records = _review_carriers(
+        snapshot, binding, cast(str | None, direct_supersession)
+    )
     author_transitions, logical_envelopes = _derive_author_transitions(
         states, author_records
     )
@@ -2171,6 +2211,7 @@ def validate_closure_manifest(
         binding,
         manifest.anchor_source,
         manifest.historical_anchor_proofs,
+        recover_direct_reframe=True,
     )
     terminal_digest = cast(str, manifest.state_envelope["state_sha256"])
     terminal_exchange_id = cast(str, manifest.state_envelope["state"]["exchange_id"])
@@ -2723,6 +2764,7 @@ def _verify_go_state_history(
         binding,
         manifest.anchor_source,
         manifest.historical_anchor_proofs,
+        recover_direct_reframe=True,
     )
     _validate_terminal_inline_comments(
         binding, manifest, set(chain.terminal_new_finding_ids)
