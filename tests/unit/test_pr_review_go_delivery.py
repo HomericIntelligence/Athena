@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import io
 import json
@@ -11,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from argparse import Namespace
+from collections.abc import Callable
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from dataclasses import replace
 from datetime import datetime, timedelta
@@ -18,6 +20,162 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 from unittest.mock import patch
+
+FORMAT_ONLY_INLINE_ROOT_PROOF_JSON = r"""{
+  "binding": {
+    "base_oid": "1bfefe2e406b17a9800bb0c7491320f72b43b588",
+    "head_oid": "16bea1e982977d864464c982d0d005800d0f38b3",
+    "number": 1572,
+    "repository": "LLM360/comet",
+    "url": "https://github.com/LLM360/comet/pull/1572"
+  },
+  "requirements_binding": {
+    "requirement_issue_urls": [
+      "https://github.com/LLM360/comet/issues/1374"
+    ],
+    "requirements_sha256": "86e12abf9f347f61cd28dac3546569ff9a9bcd3b274c5125bc3c94b396a638a8",
+    "reviewed_scope_sha256": "cef51018296f9eef6bfcf6b03e383c93026660b95c97a3b9d6a428686f4e6844"
+  },
+  "review_id": "PRR_kwDOTfsgBs8AAAABNmS6cQ",
+  "schema_id": "athena.pr-review.no-go-proof",
+  "schema_version": 1,
+  "state": {
+    "schema_id": "athena.review-exchange.state",
+    "schema_version": 1,
+    "state": {
+      "accepted_event_sha256": "b59285ad2d89e5f0d2766a96621b64f65cb7053aab775c86d2f4ef464913d847",
+      "accepted_events": [
+        {
+          "artifact_binding": {
+            "revision": "16bea1e982977d864464c982d0d005800d0f38b3",
+            "sha256": "cef51018296f9eef6bfcf6b03e383c93026660b95c97a3b9d6a428686f4e6844",
+            "visible_content_sha256": "f9bf3051b533f8bca07c08575637457ef9ffaf1c0a615c82bb17b9c2a89d11ba"
+          },
+          "coverage_complete": true,
+          "event_type": "reviewer_assessment",
+          "exchange_id": "pr1572-k2-source-publication-20260915-r1",
+          "go_eligible": true,
+          "new_findings": [
+            {
+              "category": null,
+              "closure_condition": "Complete the #1524 repair exchange and deliver its current-head GO. Then reconstruct or retarget this change on the accepted owner and run its Linux publication checks on that resulting head.",
+              "disposition": "required",
+              "evidence": [
+                "The publisher imports create_private_staging_tree at scripts/build_vllm_k2_wheel.py:1465 and delegates all graph publication to that owner.",
+                "The captured base is PR #1524 at 1bfefe2e406b17a9800bb0c7491320f72b43b588.",
+                "PR #1524 remains open with exclusive state:implementation-no-go and three active required findings, including descriptor-transfer and cleanup-order failures in src/comet/runtime_files.py.",
+                "Issue #1374 requires the merged descriptor-backed staging and publication authority."
+              ],
+              "id": "F-001",
+              "impact": "This change cannot meet its required publication-owner contract while its only owner remains in a required NO-GO repair exchange.",
+              "introduction": "initial",
+              "location": "scripts/build_vllm_k2_wheel.py:1465",
+              "material_architecture": false,
+              "severity": "major"
+            }
+          ],
+          "prior_state_sha256": null,
+          "requirements_sha256": "86e12abf9f347f61cd28dac3546569ff9a9bcd3b274c5125bc3c94b396a638a8",
+          "responses": [],
+          "round": 1,
+          "scope": [
+            "dependency:PR#1524@1bfefe2e406b17a9800bb0c7491320f72b43b588",
+            "interface:publish_source_graph",
+            "issue:#1374",
+            "path:scripts/build_vllm_k2_wheel.py",
+            "path:tests/test_vllm_k2_wheel.py",
+            "workflow:descriptor-backed source publication"
+          ],
+          "stop_reason": null,
+          "supersedes_state_sha256": null,
+          "surface": "pull_request",
+          "target": {
+            "number": 1572,
+            "provider": "github",
+            "repository": "LLM360/comet",
+            "url": "https://github.com/LLM360/comet/pull/1572"
+          }
+        }
+      ],
+      "artifact_binding": {
+        "revision": "16bea1e982977d864464c982d0d005800d0f38b3",
+        "sha256": "cef51018296f9eef6bfcf6b03e383c93026660b95c97a3b9d6a428686f4e6844",
+        "visible_content_sha256": "f9bf3051b533f8bca07c08575637457ef9ffaf1c0a615c82bb17b9c2a89d11ba"
+      },
+      "coverage_complete": true,
+      "exchange_id": "pr1572-k2-source-publication-20260915-r1",
+      "findings": [
+        {
+          "author_response": null,
+          "authority_receipt": null,
+          "category": null,
+          "closure_condition": "Complete the #1524 repair exchange and deliver its current-head GO. Then reconstruct or retarget this change on the accepted owner and run its Linux publication checks on that resulting head.",
+          "closure_revision": 1,
+          "disposition": "required",
+          "evidence": [
+            "The publisher imports create_private_staging_tree at scripts/build_vllm_k2_wheel.py:1465 and delegates all graph publication to that owner.",
+            "The captured base is PR #1524 at 1bfefe2e406b17a9800bb0c7491320f72b43b588.",
+            "PR #1524 remains open with exclusive state:implementation-no-go and three active required findings, including descriptor-transfer and cleanup-order failures in src/comet/runtime_files.py.",
+            "Issue #1374 requires the merged descriptor-backed staging and publication authority."
+          ],
+          "id": "F-001",
+          "impact": "This change cannot meet its required publication-owner contract while its only owner remains in a required NO-GO repair exchange.",
+          "introduced_round": 1,
+          "introduction": "initial",
+          "location": "scripts/build_vllm_k2_wheel.py:1465",
+          "material_architecture": false,
+          "reviewer_response": null,
+          "severity": "major",
+          "state": "open"
+        }
+      ],
+      "go_eligible": true,
+      "next_action": "author_response",
+      "phase": "awaiting_author",
+      "prior_state_sha256": null,
+      "progress": [
+        {
+          "accepted_event_sha256": "b59285ad2d89e5f0d2766a96621b64f65cb7053aab775c86d2f4ef464913d847",
+          "artifact_revision": "16bea1e982977d864464c982d0d005800d0f38b3",
+          "required_remaining": 1,
+          "round": 1,
+          "scope": [
+            "dependency:PR#1524@1bfefe2e406b17a9800bb0c7491320f72b43b588",
+            "interface:publish_source_graph",
+            "issue:#1374",
+            "path:scripts/build_vllm_k2_wheel.py",
+            "path:tests/test_vllm_k2_wheel.py",
+            "workflow:descriptor-backed source publication"
+          ],
+          "scope_size": 6
+        }
+      ],
+      "requirements_sha256": "86e12abf9f347f61cd28dac3546569ff9a9bcd3b274c5125bc3c94b396a638a8",
+      "round": 1,
+      "round_limit": 5,
+      "scope": [
+        "dependency:PR#1524@1bfefe2e406b17a9800bb0c7491320f72b43b588",
+        "interface:publish_source_graph",
+        "issue:#1374",
+        "path:scripts/build_vllm_k2_wheel.py",
+        "path:tests/test_vllm_k2_wheel.py",
+        "workflow:descriptor-backed source publication"
+      ],
+      "supersedes_state_sha256": null,
+      "supersession_authority_receipt": null,
+      "surface": "pull_request",
+      "target": {
+        "number": 1572,
+        "provider": "github",
+        "repository": "LLM360/comet",
+        "url": "https://github.com/LLM360/comet/pull/1572"
+      },
+      "verdict": "NO-GO"
+    },
+    "state_sha256": "3fb75ec1e567d21e27d92bf54a97c78cbaa0ef84553ae57615dfc3442bb56496"
+  },
+  "visible_content": "# Review: NO-GO\n\n## Required finding\n\n`F-001` blocks this pull request.\n\nThe new publisher imports `create_private_staging_tree` and uses it as the only filesystem owner. Its captured base is PR #1524. That pull request still has the exclusive `state:implementation-no-go` label and three open required findings. Two findings report a descriptor-transfer failure and an incorrect cleanup order in the owner that this pull request calls.\n\nDo not advance this source publication on that base. Complete the #1524 repair exchange and deliver its current-head GO. Then reconstruct or retarget this change on the accepted owner and run its Linux publication checks on that resulting head.\n\n## Evidence\n\n- Reviewed head: `16bea1e982977d864464c982d0d005800d0f38b3`.\n- Captured base: `1bfefe2e406b17a9800bb0c7491320f72b43b588` from PR #1524.\n- Bound requirement: #1374. Requirements digest: `86e12abf9f347f61cd28dac3546569ff9a9bcd3b274c5125bc3c94b396a638a8`.\n- The strict collector found 21 terminal head-bound checks. The completed checks succeeded or had their declared skipped route.\n- `scripts/build_vllm_k2_wheel.py:1465` imports the #1524 descriptor owner before it stages the graph.\n- PR #1524 remains open and awaits an author response for its three required findings at the same base revision.\n\n## Verdict\n\n**NO-GO.** The exchange awaits an author response.\n\n<!-- HomericIntelligence:review-anchors:v1 -->\n```json\n{\"base_oid\":\"1bfefe2e406b17a9800bb0c7491320f72b43b588\",\"diff_policy\":\"immutable-two-lens-v1\",\"findings\":[{\"id\":\"F-001\",\"line\":1465,\"path\":\"scripts/build_vllm_k2_wheel.py\",\"publication\":\"inline\",\"side\":\"RIGHT\"}],\"head_oid\":\"16bea1e982977d864464c982d0d005800d0f38b3\",\"hunks_sha256\":{\"author_intent\":\"7e4b57a1a37933654bf8af503ec84a8d4f610489d2048da23b3e51f1bc9c7474\",\"current_target\":\"7e4b57a1a37933654bf8af503ec84a8d4f610489d2048da23b3e51f1bc9c7474\"},\"merge_base_oid\":\"1bfefe2e406b17a9800bb0c7491320f72b43b588\",\"schema_id\":\"athena.pr-review.anchor-manifest\",\"schema_version\":1}\n```\n"
+}"""
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "skills" / "pr-review" / "scripts" / "deliver_go.py"
@@ -38,10 +196,23 @@ def load_module() -> ModuleType:
 class FakeForge:
     """Record delivery operations and expose mutable forge state."""
 
-    def __init__(self, module: ModuleType, *, threads: tuple[Any, ...]) -> None:
+    def __init__(
+        self,
+        module: ModuleType,
+        *,
+        threads: tuple[Any, ...],
+        binding: Any | None = None,
+    ) -> None:
         self.module = module
-        self.base_oid = "a" * 40
-        self.head_oid = "b" * 40
+        self.repository = "owner/repository" if binding is None else binding.repository
+        self.number = 7 if binding is None else binding.number
+        self.url = (
+            "https://github.com/owner/repository/pull/7"
+            if binding is None
+            else binding.url
+        )
+        self.base_oid = "a" * 40 if binding is None else binding.base_oid
+        self.head_oid = "b" * 40 if binding is None else binding.head_oid
         self.labels = {"state:implementation-no-go", "enhancement"}
         self.threads = {thread.id: thread for thread in threads}
         self.reviews: list[Any] = []
@@ -70,9 +241,9 @@ class FakeForge:
     def snapshot(self) -> Any:
         self.events.append("read")
         return self.module.PullRequestSnapshot(
-            repository="owner/repository",
-            number=7,
-            url="https://github.com/owner/repository/pull/7",
+            repository=self.repository,
+            number=self.number,
+            url=self.url,
             state="OPEN",
             is_draft=False,
             base_oid=self.base_oid,
@@ -2748,7 +2919,52 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             )
         self.assertEqual(0, status)
         load.assert_called_once_with(Path("/bound/no-go.json"), self.binding())
-        deliver.assert_called_once_with(forge, self.binding(), proof)
+        deliver.assert_called_once_with(
+            forge,
+            self.binding(),
+            proof,
+            format_only_inline_root_recovery=None,
+        )
+
+        recovery = object()
+        with (
+            patch.object(self.delivery, "GitHubForge", return_value=forge),
+            patch.object(self.delivery, "load_no_go_proof", return_value=proof),
+            patch.object(
+                self.delivery,
+                "load_format_only_inline_root_recovery",
+                return_value=recovery,
+            ) as load_recovery,
+            patch.object(
+                self.delivery,
+                "deliver_no_go",
+                return_value=self.delivery.DeliveryResult(
+                    "delivered", (), "state:implementation-no-go"
+                ),
+            ) as deliver,
+            redirect_stdout(io.StringIO()),
+        ):
+            status = self.delivery.main(
+                [
+                    *common,
+                    "--deliver-no-go",
+                    "--state-carrier-file",
+                    "/bound/no-go.json",
+                    "--format-only-inline-root-recovery",
+                    "/bound/recovery.json",
+                    "7",
+                ]
+            )
+        self.assertEqual(0, status)
+        load_recovery.assert_called_once_with(
+            Path("/bound/recovery.json"), self.binding()
+        )
+        deliver.assert_called_once_with(
+            forge,
+            self.binding(),
+            proof,
+            format_only_inline_root_recovery=recovery,
+        )
 
         responses = (object(),)
         with (
@@ -2813,6 +3029,14 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                 ["--prepare-manifest", "--state-carrier-file", "/bound/state.json"],
             ),
             (
+                "prepare-with-recovery",
+                [
+                    "--prepare-manifest",
+                    "--format-only-inline-root-recovery",
+                    "/bound/recovery.json",
+                ],
+            ),
+            (
                 "no-go-with-requirement",
                 [
                     "--deliver-no-go",
@@ -2829,6 +3053,15 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     "/bound/legacy.json",
                     "--state-carrier-file",
                     "/bound/state.json",
+                ],
+            ),
+            (
+                "legacy-with-recovery",
+                [
+                    "--verify-legacy-go",
+                    "/bound/legacy.json",
+                    "--format-only-inline-root-recovery",
+                    "/bound/recovery.json",
                 ],
             ),
             (
@@ -2858,11 +3091,21 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     "/bound/state.json",
                 ],
             ),
+            (
+                "go-with-recovery",
+                [
+                    "--response-manifest",
+                    "/bound/manifest.json",
+                    "--format-only-inline-root-recovery",
+                    "/bound/recovery.json",
+                ],
+            ),
         )
         operations = (
             "prepare_response_manifest",
             "load_response_manifest",
             "load_no_go_proof",
+            "load_format_only_inline_root_recovery",
             "load_legacy_proof",
             "deliver_go_v1",
             "deliver_no_go",
@@ -7153,6 +7396,795 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
 
         self.assertEqual(["read"], forge.events)
 
+    def format_only_inline_root_fixture(
+        self, *, edited_root: bool = True
+    ) -> tuple[Any, Any, Any, dict[str, Any], dict[str, Any]]:
+        """Build a complete synthetic source and a sealed recovery record."""
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        self._git_fixture(root, "init", "-q")
+        self._git_fixture(root, "config", "user.name", "Fixture")
+        self._git_fixture(root, "config", "user.email", "fixture@example.invalid")
+        source = root / "src" / "publisher.py"
+        source.parent.mkdir()
+        lines = [f"line {number}\n" for number in range(1, 13)]
+        source.write_text("".join(lines), encoding="utf-8")
+        self._git_fixture(root, "add", "src/publisher.py")
+        self._git_fixture(root, "commit", "-qm", "synthetic base")
+        base_oid = self._git_fixture(root, "rev-parse", "HEAD")
+        lines[9] = "changed owner line\n"
+        source.write_text("".join(lines), encoding="utf-8")
+        self._git_fixture(root, "commit", "-am", "synthetic head")
+        head_oid = self._git_fixture(root, "rev-parse", "HEAD")
+        self.assertEqual(
+            "false", self._git_fixture(root, "rev-parse", "--is-shallow-repository")
+        )
+        self._git_fixture(root, "cat-file", "-e", f"{base_oid}^{{commit}}")
+        self._git_fixture(root, "cat-file", "-e", f"{head_oid}^{{commit}}")
+        self.assertEqual(
+            base_oid, self._git_fixture(root, "merge-base", base_oid, head_oid)
+        )
+        self.assertIn(
+            "changed owner line",
+            self._git_fixture(root, "show", f"{head_oid}:src/publisher.py"),
+        )
+
+        binding = self.delivery.ReviewBinding(
+            repository="owner/repository",
+            number=7,
+            url="https://github.com/owner/repository/pull/7",
+            base_oid=base_oid,
+            head_oid=head_oid,
+        )
+        finding = {
+            "id": "F-001",
+            "category": None,
+            "severity": "major",
+            "disposition": "required",
+            "material_architecture": False,
+            "location": "src/publisher.py:10",
+            "impact": "The source owner is unresolved.",
+            "evidence": ["Controlled source evidence."],
+            "closure_condition": "The owner is repaired.",
+            "introduction": "initial",
+        }
+        manifest = self.delivery.anchor_proofs.prepare_manifest(
+            root, base_oid, head_oid, [finding]
+        )
+        visible = (
+            "# Review: NO-GO\n\n## Required finding\n\n"
+            "`F-001` blocks this pull request.\n\n"
+            "<!-- HomericIntelligence:review-anchors:v1 -->\n```json\n"
+            f"{self.delivery.anchor_proofs.canonical(manifest)}\n```\n"
+        )
+        exchange = self.delivery.review_exchange
+        envelope = exchange.reduce_request(
+            {
+                "previous": None,
+                "event": {
+                    "event_type": "reviewer_assessment",
+                    "exchange_id": "synthetic-format-only-root",
+                    "prior_state_sha256": None,
+                    "round": 1,
+                    "surface": "pull_request",
+                    "target": {
+                        "provider": "github",
+                        "repository": binding.repository,
+                        "number": binding.number,
+                        "url": binding.url,
+                    },
+                    "requirements_sha256": "d" * 64,
+                    "supersedes_state_sha256": None,
+                    "artifact_binding": {
+                        "revision": head_oid,
+                        "sha256": "5" * 64,
+                        "visible_content_sha256": exchange.sha256_text(visible),
+                    },
+                    "scope": ["path:src/publisher.py"],
+                    "coverage_complete": True,
+                    "go_eligible": True,
+                    "responses": [],
+                    "new_findings": [finding],
+                    "stop_reason": None,
+                },
+            }
+        )["envelope"]
+        proof = self.delivery.NoGoProof(
+            state_envelope=envelope,
+            visible_content=visible,
+            review_id="synthetic-review",
+            requirements_binding=self.delivery.RequirementsBinding(
+                reviewed_scope_sha256="5" * 64,
+                requirements_sha256="d" * 64,
+                requirement_issue_urls=(),
+            ),
+            anchor_source=root,
+        )
+        original_body = (
+            "F-001: The synthetic source owner is unresolved before delivery."
+            "<!-- HomericIntelligence:review-finding:v1 "
+            "exchange=synthetic-format-only-root id=F-001 -->"
+        )
+        canonical_body = original_body.replace("<!--", "\n<!--", 1)
+        compatibility = {
+            "schema_id": "athena.pr-review.format-only-inline-root-compatibility",
+            "schema_version": 1,
+            "manifest_id": "synthetic-inline-root-marker-placement-v1",
+            "binding": {
+                "repository": binding.repository,
+                "number": binding.number,
+                "url": binding.url,
+                "base_oid": binding.base_oid,
+                "head_oid": binding.head_oid,
+            },
+            "state_sha256": envelope["state_sha256"],
+            "exchange_id": "synthetic-format-only-root",
+            "finding_id": "F-001",
+            "review_id": "synthetic-review",
+            "review_database_id": 520,
+            "review_submitted_at": "2026-01-01T00:00:00Z",
+            "root_id": "PRRC_synthetic_root",
+            "root_database_id": 401,
+            "path": "src/publisher.py",
+            "side": "RIGHT",
+            "original_line": 10,
+            "author": "reviewer",
+            "author_association": "MEMBER",
+            "original_published_at": "2026-01-01T00:00:01Z",
+            "original_last_edited_at": None,
+            "canonical_last_edited_at": "2026-01-01T00:00:02Z",
+            "original_body": original_body,
+            "original_body_sha256": hashlib.sha256(
+                original_body.encode("utf-8")
+            ).hexdigest(),
+            "canonical_body": canonical_body,
+            "canonical_body_sha256": hashlib.sha256(
+                canonical_body.encode("utf-8")
+            ).hexdigest(),
+        }
+        recovery = {
+            "schema_id": "athena.pr-review.format-only-inline-root-recovery",
+            "schema_version": 1,
+            "binding": compatibility["binding"],
+            "compatibility_manifest_id": compatibility["manifest_id"],
+            "compatibility_manifest_sha256": exchange.sha256_json(compatibility),
+            "state_sha256": compatibility["state_sha256"],
+            "exchange_id": compatibility["exchange_id"],
+            "review_id": compatibility["review_id"],
+            "review_database_id": compatibility["review_database_id"],
+            "root_id": compatibility["root_id"],
+            "root_database_id": compatibility["root_database_id"],
+        }
+        root_comment = self.delivery.ReviewComment(
+            id=compatibility["root_id"],
+            full_database_id=str(compatibility["root_database_id"]),
+            body=canonical_body,
+            author=compatibility["author"],
+            author_association=compatibility["author_association"],
+            viewer_did_author=True,
+            review_head_oid=binding.head_oid,
+            review_id=compatibility["review_id"],
+            path=compatibility["path"],
+            side=compatibility["side"],
+            line=compatibility["original_line"],
+            original_line=compatibility["original_line"],
+            published_at=compatibility["original_published_at"],
+            last_edited_at=(
+                compatibility["canonical_last_edited_at"] if edited_root else None
+            ),
+        )
+        thread = self.delivery.ReviewThread(
+            id="synthetic-thread",
+            is_resolved=False,
+            comments=(root_comment,),
+            viewer_can_reply=True,
+            viewer_can_resolve=True,
+        )
+        forge = FakeForge(self.delivery, threads=(thread,), binding=binding)
+        forge.labels = {"state:implementation-go"}
+        forge.reviews.append(
+            self.delivery.ReviewRecord(
+                id=compatibility["review_id"],
+                body=exchange.render_carrier(visible, envelope, "state"),
+                head_oid=binding.head_oid,
+                author=compatibility["author"],
+                viewer_did_author=True,
+                includes_created_edit=False,
+                state="COMMENTED",
+                author_association=compatibility["author_association"],
+                submitted_at=compatibility["review_submitted_at"],
+            )
+        )
+        return forge, binding, proof, recovery, compatibility
+
+    @staticmethod
+    def _git_fixture(root: Path, *args: str) -> str:
+        """Run Git only in a temporary test-owned source repository."""
+        return subprocess.run(
+            ["git", "-C", str(root), "-c", "commit.gpgsign=false", *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    def _assert_pr1572_default_compatibility(self) -> None:
+        """Bind the unpatched private record to frozen provider evidence."""
+        document = json.loads(FORMAT_ONLY_INLINE_ROOT_PROOF_JSON)
+        original_body = (
+            "F-001: This publisher imports the unresolved #1524 descriptor owner. "
+            "Complete that owner repair and bind this change to the accepted owner "
+            "before publication."
+            "<!-- HomericIntelligence:review-finding:v1 "
+            "exchange=pr1572-k2-source-publication-20260915-r1 id=F-001 -->"
+        )
+        canonical_body = original_body.replace("<!--", "\n<!--", 1)
+        expected = {
+            "schema_id": "athena.pr-review.format-only-inline-root-compatibility",
+            "schema_version": 1,
+            "manifest_id": "comet-pr1572-inline-root-marker-placement-v1",
+            "binding": document["binding"],
+            "state_sha256": document["state"]["state_sha256"],
+            "exchange_id": "pr1572-k2-source-publication-20260915-r1",
+            "finding_id": "F-001",
+            "review_id": document["review_id"],
+            "review_database_id": 5207538289,
+            "review_submitted_at": "2026-09-15T08:30:50Z",
+            "root_id": "PRRC_kwDOTfsgBs7vOqKD",
+            "root_database_id": 4013597315,
+            "path": "scripts/build_vllm_k2_wheel.py",
+            "side": "RIGHT",
+            "original_line": 1465,
+            "author": "mvillmow",
+            "author_association": "MEMBER",
+            "original_published_at": "2026-09-15T08:30:51Z",
+            "original_last_edited_at": None,
+            "canonical_last_edited_at": "2026-09-15T08:33:12Z",
+            "original_body": original_body,
+            "original_body_sha256": hashlib.sha256(
+                original_body.encode("utf-8")
+            ).hexdigest(),
+            "canonical_body": canonical_body,
+            "canonical_body_sha256": hashlib.sha256(
+                canonical_body.encode("utf-8")
+            ).hexdigest(),
+        }
+        self.assertEqual(
+            "8deee8512fb556c7873abd839759192c42385654ebb8f0cf3ce4befb37f95943",
+            expected["original_body_sha256"],
+        )
+        self.assertEqual(
+            "99d14897b95ef50d2e15711f8d1cb66bffb4730b4fc3dfb966c896d7b66418e1",
+            expected["canonical_body_sha256"],
+        )
+        self.assertEqual(
+            expected, dict(self.delivery._FORMAT_ONLY_INLINE_ROOT_COMPATIBILITY)
+        )
+
+    def _call_format_only_recovery(
+        self,
+        forge: Any,
+        binding: Any,
+        proof: Any,
+        recovery: dict[str, Any],
+        compatibility: dict[str, Any],
+    ) -> Any | None:
+        """Return None only for the known RED missing-keyword boundary."""
+        try:
+            with patch.object(
+                self.delivery,
+                "_FORMAT_ONLY_INLINE_ROOT_COMPATIBILITY",
+                compatibility,
+                create=True,
+            ):
+                return self.delivery.deliver_no_go(
+                    forge,
+                    binding,
+                    proof,
+                    format_only_inline_root_recovery=recovery,
+                )
+        except TypeError as error:
+            expected = (
+                "deliver_no_go() got an unexpected keyword argument "
+                "'format_only_inline_root_recovery'"
+            )
+            if str(error) != expected:
+                raise
+            return None
+
+    def test_format_only_inline_root_fixture_has_a_current_delivery_control(
+        self,
+    ) -> None:
+        (
+            forge,
+            binding,
+            proof,
+            _recovery,
+            _compatibility,
+        ) = self.format_only_inline_root_fixture(edited_root=False)
+
+        result = self.delivery.deliver_no_go(forge, binding, proof)
+
+        self.assertEqual("delivered", result.status)
+        self.assertEqual({"state:implementation-no-go"}, forge.labels)
+        self.assertEqual(1, forge.events.count("labels:no-go"))
+        self.assertGreaterEqual(forge.events.count("read"), 2)
+
+    def test_format_only_inline_root_recovery_delivers_no_go_through_two_snapshots(
+        self,
+    ) -> None:
+        (
+            forge,
+            binding,
+            proof,
+            recovery,
+            compatibility,
+        ) = self.format_only_inline_root_fixture()
+        result = self._call_format_only_recovery(
+            forge, binding, proof, recovery, compatibility
+        )
+        if result is None:
+            self.fail("The exact format-only root recovery delivery API is absent.")
+        self.assertTrue(
+            hasattr(self.delivery, "_FORMAT_ONLY_INLINE_ROOT_COMPATIBILITY"),
+            "The recovery API requires its fixed private compatibility record.",
+        )
+        self._assert_pr1572_default_compatibility()
+
+        self.assertEqual("delivered", result.status)
+        self.assertEqual({"state:implementation-no-go"}, forge.labels)
+        self.assertEqual(1, forge.events.count("labels:no-go"))
+        self.assertGreaterEqual(forge.events.count("read"), 2)
+
+    def test_format_only_inline_root_recovery_reports_post_label_drift_without_retry(
+        self,
+    ) -> None:
+        """A post-label readback change remains partial and never becomes success."""
+        (
+            forge,
+            binding,
+            proof,
+            recovery,
+            compatibility,
+        ) = self.format_only_inline_root_fixture()
+        forge.remove_reviews_after_no_go_label = True
+        try:
+            result = self._call_format_only_recovery(
+                forge, binding, proof, recovery, compatibility
+            )
+        except self.delivery.DeliveryError as error:
+            report = error.report
+            self.assertIsNotNone(report)
+            self.assertEqual("partial", report.status)
+            self.assertEqual("implementation NO-GO label", report.uncertain_operation)
+            self.assertTrue(report.recovery_read_required)
+            self.assertEqual(1, forge.events.count("labels:no-go"))
+            self.assertNotIn("delivered", str(report))
+            return
+        if result is None:
+            self.assertEqual([], forge.events)
+            return
+        self.fail("A changed post-label snapshot must not report delivery success.")
+
+    def test_format_only_inline_root_recovery_rejects_delivery_input_before_write(
+        self,
+    ) -> None:
+        cases: dict[str, Callable[[Any, dict[str, Any]], None]] = {
+            "semantic live-body edit": lambda forge, recovery: (
+                self._replace_recovery_root(
+                    forge,
+                    body=(
+                        "F-001: A forged finding replaces the reviewer prose.\n"
+                        "<!-- HomericIntelligence:review-finding:v1 "
+                        "exchange=synthetic-format-only-root id=F-001 -->"
+                    ),
+                )
+            ),
+            "edited carrier": lambda forge, recovery: self._replace_recovery_carrier(
+                forge, last_edited_at="2026-09-15T12:00:00Z"
+            ),
+            "foreign root": lambda forge, recovery: self._replace_recovery_root(
+                forge, viewer_did_author=False
+            ),
+            "root reply": lambda forge, recovery: self._add_recovery_root_reply(forge),
+            "unused recovery": lambda forge, recovery: self._replace_recovery_root(
+                forge, last_edited_at=None
+            ),
+            "stale head": lambda forge, recovery: setattr(forge, "head_oid", "0" * 40),
+            "forged reference prose": lambda forge, recovery: recovery.update(
+                {"original_body": "A forged historical finding."}
+            ),
+            "forged reference digest": lambda forge, recovery: recovery.update(
+                {"canonical_body_sha256": "0" * 64}
+            ),
+        }
+        for name, mutate in cases.items():
+            with self.subTest(name=name):
+                (
+                    forge,
+                    binding,
+                    proof,
+                    recovery,
+                    compatibility,
+                ) = self.format_only_inline_root_fixture()
+                mutate(forge, recovery)
+                self._assert_format_only_recovery_rejected_before_write(
+                    forge, binding, proof, recovery, compatibility
+                )
+
+    def test_format_only_inline_root_recovery_rejects_reference_identity_matrix(
+        self,
+    ) -> None:
+        """Reject each recovery-reference identity before delivery writes."""
+        mutations: dict[str, Callable[[dict[str, Any]], None]] = {
+            "schema identifier": lambda recovery: recovery.update(
+                {"schema_id": "athena.pr-review.other-recovery"}
+            ),
+            "schema version": lambda recovery: recovery.update({"schema_version": 2}),
+            "repository": lambda recovery: recovery["binding"].update(
+                {"repository": "LLM360/other"}
+            ),
+            "pull request": lambda recovery: recovery["binding"].update(
+                {"number": 1573}
+            ),
+            "pull-request URL": lambda recovery: recovery["binding"].update(
+                {"url": "https://github.com/LLM360/comet/pull/1573"}
+            ),
+            "base OID": lambda recovery: recovery["binding"].update(
+                {"base_oid": "0" * 40}
+            ),
+            "head OID": lambda recovery: recovery["binding"].update(
+                {"head_oid": "0" * 40}
+            ),
+            "manifest identifier": lambda recovery: recovery.update(
+                {"compatibility_manifest_id": "another-manifest"}
+            ),
+            "manifest digest": lambda recovery: recovery.update(
+                {"compatibility_manifest_sha256": "0" * 64}
+            ),
+            "state digest": lambda recovery: recovery.update(
+                {"state_sha256": "0" * 64}
+            ),
+            "exchange identifier": lambda recovery: recovery.update(
+                {"exchange_id": "another-exchange"}
+            ),
+            "review GraphQL ID": lambda recovery: recovery.update(
+                {"review_id": "PRR_other"}
+            ),
+            "review numeric ID": lambda recovery: recovery.update(
+                {"review_database_id": 1}
+            ),
+            "root GraphQL ID": lambda recovery: recovery.update(
+                {"root_id": "PRRC_other"}
+            ),
+            "root numeric ID": lambda recovery: recovery.update(
+                {"root_database_id": 1}
+            ),
+        }
+        required = (
+            "schema_id",
+            "schema_version",
+            "binding",
+            "compatibility_manifest_id",
+            "compatibility_manifest_sha256",
+            "state_sha256",
+            "exchange_id",
+            "review_id",
+            "review_database_id",
+            "root_id",
+            "root_database_id",
+        )
+        for name, mutate in mutations.items():
+            with self.subTest(name=name):
+                (
+                    forge,
+                    binding,
+                    proof,
+                    recovery,
+                    compatibility,
+                ) = self.format_only_inline_root_fixture()
+                mutate(recovery)
+                self._assert_format_only_recovery_rejected_before_write(
+                    forge, binding, proof, recovery, compatibility
+                )
+        for field in required:
+            with self.subTest(missing=field):
+                (
+                    forge,
+                    binding,
+                    proof,
+                    recovery,
+                    compatibility,
+                ) = self.format_only_inline_root_fixture()
+                del recovery[field]
+                self._assert_format_only_recovery_rejected_before_write(
+                    forge, binding, proof, recovery, compatibility
+                )
+        for field, value in (
+            ("original_body", "forged prose"),
+            ("original_body_sha256", "0" * 64),
+            ("canonical_body", "forged canonical prose"),
+            ("canonical_body_sha256", "0" * 64),
+            ("artifact_root", "/untrusted/artifact"),
+        ):
+            with self.subTest(unknown=field):
+                (
+                    forge,
+                    binding,
+                    proof,
+                    recovery,
+                    compatibility,
+                ) = self.format_only_inline_root_fixture()
+                recovery[field] = value
+                self._assert_format_only_recovery_rejected_before_write(
+                    forge, binding, proof, recovery, compatibility
+                )
+
+    def test_format_only_recovery_rejects_rewritten_caller_and_reference_binding(
+        self,
+    ) -> None:
+        """The caller binding cannot select the fixed record through a new reference."""
+        (
+            _forge,
+            binding,
+            proof,
+            recovery,
+            compatibility,
+        ) = self.format_only_inline_root_fixture()
+        changes = {
+            "repository": "other/repository",
+            "number": 8,
+            "url": "https://github.com/other/repository/pull/8",
+            "base_oid": "0" * 40,
+            "head_oid": "1" * 40,
+        }
+        for field, value in changes.items():
+            with self.subTest(field=field):
+                changed_binding = replace(binding, **{field: value})
+                candidate = json.loads(json.dumps(recovery))
+                candidate["binding"] = self.delivery._binding_dict(changed_binding)
+                with (
+                    patch.object(
+                        self.delivery,
+                        "_FORMAT_ONLY_INLINE_ROOT_COMPATIBILITY",
+                        compatibility,
+                        create=True,
+                    ),
+                    self.assertRaises(self.delivery.DeliveryError),
+                ):
+                    self.delivery._validate_format_only_recovery_reference(
+                        candidate, changed_binding, proof.state_envelope
+                    )
+
+    def test_format_only_recovery_rejects_scalar_aliases_through_direct_api(
+        self,
+    ) -> None:
+        """Boolean and float aliases cannot satisfy the strict reference schema."""
+        (
+            _forge,
+            binding,
+            proof,
+            recovery,
+            compatibility,
+        ) = self.format_only_inline_root_fixture()
+        mutations = (
+            ("schema version true", "schema_version", True),
+            ("schema version float", "schema_version", 1.0),
+            ("review ID true", "review_database_id", True),
+            ("review ID float", "review_database_id", 520.0),
+            ("root ID true", "root_database_id", True),
+            ("root ID float", "root_database_id", 401.0),
+            ("binding number true", "binding.number", True),
+            ("binding number float", "binding.number", 7.0),
+        )
+        for name, field, value in mutations:
+            with self.subTest(name=name):
+                candidate = json.loads(json.dumps(recovery))
+                if field == "binding.number":
+                    candidate["binding"]["number"] = value
+                else:
+                    candidate[field] = value
+                with (
+                    patch.object(
+                        self.delivery,
+                        "_FORMAT_ONLY_INLINE_ROOT_COMPATIBILITY",
+                        compatibility,
+                        create=True,
+                    ),
+                    self.assertRaises(self.delivery.DeliveryError),
+                ):
+                    self.delivery._validate_format_only_recovery_reference(
+                        candidate, binding, proof.state_envelope
+                    )
+
+    def test_format_only_inline_root_recovery_rejects_live_identity_matrix(
+        self,
+    ) -> None:
+        """Reject a changed current root, carrier, or immutable review identity."""
+        mutations = {
+            "changed finding prose": lambda forge: self._replace_recovery_root(
+                forge,
+                body=(
+                    "F-001: Forged prose.\n"
+                    "<!-- HomericIntelligence:review-finding:v1 "
+                    "exchange=synthetic-format-only-root id=F-001 -->"
+                ),
+            ),
+            "missing marker": lambda forge: self._replace_recovery_root(
+                forge, body="F-001: The marker is absent."
+            ),
+            "changed marker exchange": lambda forge: self._replace_recovery_root(
+                forge,
+                body=(
+                    "F-001: The synthetic source owner is unresolved before delivery.\n"
+                    "<!-- HomericIntelligence:review-finding:v1 "
+                    "exchange=other id=F-001 -->"
+                ),
+            ),
+            "repeated marker": lambda forge: self._replace_recovery_root(
+                forge,
+                body=(
+                    "<!-- HomericIntelligence:review-finding:v1 "
+                    "exchange=synthetic-format-only-root id=F-001 -->\n"
+                    "F-001: The synthetic source owner is unresolved before delivery.\n"
+                    "<!-- HomericIntelligence:review-finding:v1 "
+                    "exchange=synthetic-format-only-root id=F-001 -->"
+                ),
+            ),
+            "root GraphQL ID": lambda forge: self._replace_recovery_root(
+                forge, id="PRRC_other"
+            ),
+            "root numeric ID": lambda forge: self._replace_recovery_root(
+                forge, full_database_id="1"
+            ),
+            "root path": lambda forge: self._replace_recovery_root(
+                forge, path="scripts/other.py"
+            ),
+            "root side": lambda forge: self._replace_recovery_root(forge, side="LEFT"),
+            "root line": lambda forge: self._replace_recovery_root(forge, line=1),
+            "root original line": lambda forge: self._replace_recovery_root(
+                forge, original_line=1
+            ),
+            "root author": lambda forge: self._replace_recovery_root(
+                forge, author="foreign"
+            ),
+            "root association": lambda forge: self._replace_recovery_root(
+                forge, author_association="NONE"
+            ),
+            "root ownership": lambda forge: self._replace_recovery_root(
+                forge, viewer_did_author=False
+            ),
+            "root creation time": lambda forge: self._replace_recovery_root(
+                forge, published_at="2026-09-15T08:30:52Z"
+            ),
+            "root edit time": lambda forge: self._replace_recovery_root(
+                forge, last_edited_at="2026-09-15T08:33:13Z"
+            ),
+            "root review identity": lambda forge: self._replace_recovery_root(
+                forge, review_id="PRR_other"
+            ),
+            "root review head": lambda forge: self._replace_recovery_root(
+                forge, review_head_oid="0" * 40
+            ),
+            "review identifier": lambda forge: self._replace_recovery_carrier(
+                forge, id="PRR_other"
+            ),
+            "review head": lambda forge: self._replace_recovery_carrier(
+                forge, head_oid="0" * 40
+            ),
+            "review author": lambda forge: self._replace_recovery_carrier(
+                forge, author="foreign"
+            ),
+            "review ownership": lambda forge: self._replace_recovery_carrier(
+                forge, viewer_did_author=False
+            ),
+            "review state": lambda forge: self._replace_recovery_carrier(
+                forge, state="APPROVED"
+            ),
+            "review edit state": lambda forge: self._replace_recovery_carrier(
+                forge, last_edited_at="2026-09-15T12:00:00Z"
+            ),
+            "review submission time": lambda forge: self._replace_recovery_carrier(
+                forge, submitted_at="2026-09-15T08:30:51Z"
+            ),
+            "root reply": self._add_recovery_root_reply,
+            "second root": self._add_recovery_second_root,
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name=name):
+                (
+                    forge,
+                    binding,
+                    proof,
+                    recovery,
+                    compatibility,
+                ) = self.format_only_inline_root_fixture()
+                mutate(forge)
+                self._assert_format_only_recovery_rejected_before_write(
+                    forge, binding, proof, recovery, compatibility
+                )
+
+    def _assert_format_only_recovery_rejected_before_write(
+        self,
+        forge: Any,
+        binding: Any,
+        proof: Any,
+        recovery: dict[str, Any],
+        compatibility: dict[str, Any],
+    ) -> None:
+        """Require a recovery rejection before a forge write after GREEN."""
+        labels_before = set(forge.labels)
+        try:
+            result = self._call_format_only_recovery(
+                forge, binding, proof, recovery, compatibility
+            )
+        except self.delivery.DeliveryError:
+            result = "rejected"
+        if result is None:
+            self.assertEqual([], forge.events)
+        else:
+            self.assertEqual("rejected", result)
+        self.assertEqual(labels_before, forge.labels)
+        self.assertFalse(
+            any(
+                event == "labels:no-go"
+                or event.startswith(("reply:", "resolve:", "terminal"))
+                for event in forge.events
+            )
+        )
+
+    def test_format_only_inline_root_recovery_does_not_weaken_ordinary_policy(
+        self,
+    ) -> None:
+        forge, binding, proof, _recovery, _compatibility = (
+            self.format_only_inline_root_fixture()
+        )
+        labels_before = set(forge.labels)
+
+        with self.assertRaises(self.delivery.DeliveryError):
+            self.delivery.deliver_no_go(forge, binding, proof)
+
+        self.assertEqual(labels_before, forge.labels)
+        self.assertNotIn("labels:no-go", forge.events)
+
+    def _replace_recovery_root(self, forge: Any, **updates: Any) -> None:
+        thread = forge.threads["synthetic-thread"]
+        forge.threads[thread.id] = replace(
+            thread, comments=(replace(thread.comments[0], **updates),)
+        )
+
+    def _replace_recovery_carrier(self, forge: Any, **updates: Any) -> None:
+        forge.reviews[0] = replace(forge.reviews[0], **updates)
+
+    def _add_recovery_root_reply(self, forge: Any) -> None:
+        thread = forge.threads["synthetic-thread"]
+        reply = self.delivery.ReviewComment(
+            id="PRRC_unexpected_reply",
+            body="This reply changes the root conversation.",
+            author="other-reviewer",
+            viewer_did_author=False,
+        )
+        forge.threads[thread.id] = replace(thread, comments=(*thread.comments, reply))
+
+    def _add_recovery_second_root(self, forge: Any) -> None:
+        """Add a second immutable-looking root to the selected review."""
+        thread = forge.threads["synthetic-thread"]
+        root = replace(
+            thread.comments[0],
+            id="PRRC_second_root",
+            full_database_id="4013597316",
+            path="scripts/other.py",
+            line=1,
+            original_line=1,
+        )
+        forge.threads["synthetic-second-root"] = self.delivery.ReviewThread(
+            id="synthetic-second-root",
+            is_resolved=False,
+            comments=(root,),
+            viewer_can_reply=True,
+            viewer_can_resolve=True,
+        )
+
     def test_same_head_v1_go_rejects_premature_thread_resolution(self) -> None:
         thread = self.owned_thread()
         manifest = self.v1_manifest(thread)
@@ -7951,6 +8983,71 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                 self.delivery.load_no_go_proof(path, self.binding())
 
         self.assertEqual(proof, loaded)
+
+    def test_format_only_recovery_loader_accepts_only_the_source_reference(
+        self,
+    ) -> None:
+        """A recovery file cannot provide an alternate historical record."""
+        document = json.loads(FORMAT_ONLY_INLINE_ROOT_PROOF_JSON)
+        binding = self.delivery.ReviewBinding(**document["binding"])
+        reference = self.delivery._expected_format_only_recovery_reference(
+            binding, self.delivery._format_only_compatibility_document()
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "recovery.json"
+            path.write_text(
+                self.delivery.review_exchange.canonical_json(reference),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                reference,
+                self.delivery.load_format_only_inline_root_recovery(path, binding),
+            )
+            cases: dict[str, Callable[[dict[str, Any]], None]] = {
+                "unknown field": lambda value: value.update({"body": "forged"}),
+                "missing root": lambda value: value.pop("root_id"),
+                "changed digest": lambda value: value.update(
+                    {"compatibility_manifest_sha256": "0" * 64}
+                ),
+                "changed binding": lambda value: value["binding"].update(
+                    {"head_oid": "0" * 40}
+                ),
+                "schema version true": lambda value: value.update(
+                    {"schema_version": True}
+                ),
+                "schema version float": lambda value: value.update(
+                    {"schema_version": 1.0}
+                ),
+                "review ID true": lambda value: value.update(
+                    {"review_database_id": True}
+                ),
+                "root ID float": lambda value: value.update(
+                    {"root_database_id": 4013597315.0}
+                ),
+                "binding number true": lambda value: value["binding"].update(
+                    {"number": True}
+                ),
+                "binding number float": lambda value: value["binding"].update(
+                    {"number": 1572.0}
+                ),
+            }
+            for name, mutate in cases.items():
+                with self.subTest(name=name):
+                    candidate = json.loads(json.dumps(reference))
+                    mutate(candidate)
+                    path.write_text(
+                        self.delivery.review_exchange.canonical_json(candidate),
+                        encoding="utf-8",
+                    )
+                    with self.assertRaises(self.delivery.DeliveryError):
+                        self.delivery.load_format_only_inline_root_recovery(
+                            path, binding
+                        )
+            path.write_text(
+                json.dumps(reference, indent=2, sort_keys=True), encoding="utf-8"
+            )
+            with self.assertRaises(self.delivery.DeliveryError):
+                self.delivery.load_format_only_inline_root_recovery(path, binding)
 
     def test_v1_loaders_bound_input_before_parsing_and_require_canonical_json(
         self,

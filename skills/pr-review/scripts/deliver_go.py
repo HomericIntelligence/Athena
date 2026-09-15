@@ -13,6 +13,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, NoReturn, Protocol, cast
 from urllib.parse import quote
 
@@ -81,6 +82,55 @@ NO_GO_PROOF_SCHEMA_ID = "athena.pr-review.no-go-proof"
 FINDING_MARKER = re.compile(
     r"<!-- HomericIntelligence:review-finding:v1 "
     r"exchange=([^\s]+) id=(F-(?:00[1-9]|0[1-9][0-9]|100)) -->"
+)
+FORMAT_ONLY_INLINE_ROOT_RECOVERY_SCHEMA_ID = (
+    "athena.pr-review.format-only-inline-root-recovery"
+)
+_FORMAT_ONLY_INLINE_ROOT_ORIGINAL_BODY = (
+    "F-001: This publisher imports the unresolved #1524 descriptor owner. "
+    "Complete that owner repair and bind this change to the accepted owner "
+    "before publication."
+    "<!-- HomericIntelligence:review-finding:v1 "
+    "exchange=pr1572-k2-source-publication-20260915-r1 id=F-001 -->"
+)
+_FORMAT_ONLY_INLINE_ROOT_CANONICAL_BODY = (
+    _FORMAT_ONLY_INLINE_ROOT_ORIGINAL_BODY.replace("<!--", "\n<!--", 1)
+)
+_FORMAT_ONLY_INLINE_ROOT_COMPATIBILITY: Mapping[str, Any] = MappingProxyType(
+    {
+        "schema_id": "athena.pr-review.format-only-inline-root-compatibility",
+        "schema_version": 1,
+        "manifest_id": "comet-pr1572-inline-root-marker-placement-v1",
+        "binding": MappingProxyType(
+            {
+                "repository": "LLM360/comet",
+                "number": 1572,
+                "url": "https://github.com/LLM360/comet/pull/1572",
+                "base_oid": "1bfefe2e406b17a9800bb0c7491320f72b43b588",
+                "head_oid": "16bea1e982977d864464c982d0d005800d0f38b3",
+            }
+        ),
+        "state_sha256": "3fb75ec1e567d21e27d92bf54a97c78cbaa0ef84553ae57615dfc3442bb56496",
+        "exchange_id": "pr1572-k2-source-publication-20260915-r1",
+        "finding_id": "F-001",
+        "review_id": "PRR_kwDOTfsgBs8AAAABNmS6cQ",
+        "review_database_id": 5207538289,
+        "review_submitted_at": "2026-09-15T08:30:50Z",
+        "root_id": "PRRC_kwDOTfsgBs7vOqKD",
+        "root_database_id": 4013597315,
+        "path": "scripts/build_vllm_k2_wheel.py",
+        "side": "RIGHT",
+        "original_line": 1465,
+        "author": "mvillmow",
+        "author_association": "MEMBER",
+        "original_published_at": "2026-09-15T08:30:51Z",
+        "original_last_edited_at": None,
+        "canonical_last_edited_at": "2026-09-15T08:33:12Z",
+        "original_body": _FORMAT_ONLY_INLINE_ROOT_ORIGINAL_BODY,
+        "original_body_sha256": "8deee8512fb556c7873abd839759192c42385654ebb8f0cf3ce4befb37f95943",
+        "canonical_body": _FORMAT_ONLY_INLINE_ROOT_CANONICAL_BODY,
+        "canonical_body_sha256": "99d14897b95ef50d2e15711f8d1cb66bffb4730b4fc3dfb966c896d7b66418e1",
+    }
 )
 
 
@@ -691,6 +741,195 @@ def _require_manifest_fields(
     return cast(dict[str, Any], value)
 
 
+_FORMAT_ONLY_COMPATIBILITY_FIELDS = frozenset(
+    {
+        "schema_id",
+        "schema_version",
+        "manifest_id",
+        "binding",
+        "state_sha256",
+        "exchange_id",
+        "finding_id",
+        "review_id",
+        "review_database_id",
+        "review_submitted_at",
+        "root_id",
+        "root_database_id",
+        "path",
+        "side",
+        "original_line",
+        "author",
+        "author_association",
+        "original_published_at",
+        "original_last_edited_at",
+        "canonical_last_edited_at",
+        "original_body",
+        "original_body_sha256",
+        "canonical_body",
+        "canonical_body_sha256",
+    }
+)
+_FORMAT_ONLY_REFERENCE_FIELDS = frozenset(
+    {
+        "schema_id",
+        "schema_version",
+        "binding",
+        "compatibility_manifest_id",
+        "compatibility_manifest_sha256",
+        "state_sha256",
+        "exchange_id",
+        "review_id",
+        "review_database_id",
+        "root_id",
+        "root_database_id",
+    }
+)
+
+
+def _format_only_compatibility_document() -> dict[str, Any]:
+    """Return the fixed source record after its local integrity checks."""
+    raw = _FORMAT_ONLY_INLINE_ROOT_COMPATIBILITY
+    if not isinstance(raw, Mapping):
+        raise DeliveryError("The format-only source compatibility record is invalid.")
+    compatibility = dict(raw)
+    if frozenset(compatibility) != _FORMAT_ONLY_COMPATIBILITY_FIELDS:
+        raise DeliveryError("The format-only source compatibility record is invalid.")
+    binding = compatibility["binding"]
+    if not isinstance(binding, Mapping):
+        raise DeliveryError("The format-only source compatibility record is invalid.")
+    compatibility["binding"] = dict(binding)
+    for field in (
+        "schema_id",
+        "manifest_id",
+        "state_sha256",
+        "exchange_id",
+        "finding_id",
+        "review_id",
+        "review_submitted_at",
+        "root_id",
+        "path",
+        "side",
+        "author",
+        "author_association",
+        "original_published_at",
+        "canonical_last_edited_at",
+        "original_body",
+        "original_body_sha256",
+        "canonical_body",
+        "canonical_body_sha256",
+    ):
+        if not isinstance(compatibility[field], str) or not compatibility[field]:
+            raise DeliveryError(
+                "The format-only source compatibility record is invalid."
+            )
+    if (
+        compatibility["schema_id"]
+        != "athena.pr-review.format-only-inline-root-compatibility"
+        or compatibility["schema_version"] != 1
+        or type(compatibility["review_database_id"]) is not int
+        or type(compatibility["root_database_id"]) is not int
+        or type(compatibility["original_line"]) is not int
+        or compatibility["original_line"] < 1
+        or compatibility["original_last_edited_at"] is not None
+        or compatibility["side"] not in {"LEFT", "RIGHT"}
+    ):
+        raise DeliveryError("The format-only source compatibility record is invalid.")
+    for digest_field, body_field in (
+        ("original_body_sha256", "original_body"),
+        ("canonical_body_sha256", "canonical_body"),
+    ):
+        digest = compatibility[digest_field]
+        if (
+            re.fullmatch(r"[0-9a-f]{64}", digest) is None
+            or sha256(compatibility[body_field].encode("utf-8")).hexdigest() != digest
+        ):
+            raise DeliveryError(
+                "The format-only source compatibility record is invalid."
+            )
+    return compatibility
+
+
+def _expected_format_only_recovery_reference(
+    binding: ReviewBinding, compatibility: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Return the only recovery reference that can select the source record."""
+    return {
+        "schema_id": FORMAT_ONLY_INLINE_ROOT_RECOVERY_SCHEMA_ID,
+        "schema_version": 1,
+        "binding": _binding_dict(binding),
+        "compatibility_manifest_id": compatibility["manifest_id"],
+        "compatibility_manifest_sha256": review_exchange.sha256_json(compatibility),
+        "state_sha256": compatibility["state_sha256"],
+        "exchange_id": compatibility["exchange_id"],
+        "review_id": compatibility["review_id"],
+        "review_database_id": compatibility["review_database_id"],
+        "root_id": compatibility["root_id"],
+        "root_database_id": compatibility["root_database_id"],
+    }
+
+
+def _format_only_binding_matches(value: object, expected: Mapping[str, Any]) -> bool:
+    """Require one exact binding with no Boolean or float aliases."""
+    if not isinstance(value, Mapping) or frozenset(value) != frozenset(expected):
+        return False
+    return (
+        type(value["repository"]) is str
+        and type(value["number"]) is int
+        and type(value["url"]) is str
+        and type(value["base_oid"]) is str
+        and type(value["head_oid"]) is str
+        and dict(value) == dict(expected)
+    )
+
+
+def _validated_format_only_recovery_reference(
+    value: Mapping[str, Any], binding: ReviewBinding
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Check reference types and bind both callers to the fixed source record."""
+    reference = _require_manifest_fields(
+        value, _FORMAT_ONLY_REFERENCE_FIELDS, "format-only recovery reference"
+    )
+    compatibility = _format_only_compatibility_document()
+    source_binding = compatibility["binding"]
+    if not _format_only_binding_matches(_binding_dict(binding), source_binding):
+        raise DeliveryError("The format-only recovery caller does not match source.")
+    if (
+        type(reference["schema_version"]) is not int
+        or reference["schema_version"] != 1
+        or type(reference["review_database_id"]) is not int
+        or type(reference["root_database_id"]) is not int
+        or not _format_only_binding_matches(reference["binding"], source_binding)
+    ):
+        raise DeliveryError(
+            "The format-only recovery reference has invalid scalar types."
+        )
+    if reference != _expected_format_only_recovery_reference(binding, compatibility):
+        raise DeliveryError("The format-only recovery reference does not match source.")
+    return reference, compatibility
+
+
+def _validate_format_only_recovery_reference(
+    value: Mapping[str, Any] | None,
+    binding: ReviewBinding,
+    envelope: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Accept the sole source-selected recovery reference for its exact state."""
+    if value is None:
+        return None
+    _, compatibility = _validated_format_only_recovery_reference(value, binding)
+    state = envelope["state"]
+    if (
+        envelope["state_sha256"] != compatibility["state_sha256"]
+        or state["exchange_id"] != compatibility["exchange_id"]
+        or not any(
+            finding["id"] == compatibility["finding_id"]
+            for finding in state["findings"]
+        )
+    ):
+        raise DeliveryError("The format-only recovery reference does not match state.")
+    return compatibility
+
+
 def _requirements_binding(value: object) -> RequirementsBinding:
     raw = _require_manifest_fields(
         value,
@@ -1224,17 +1463,19 @@ def _verify_carrier_review_roots(
     new_finding_ids_by_state: Mapping[str, frozenset[str]],
     anchor_source: Path | None = None,
     historical_anchor_proofs: tuple[dict[str, Any], ...] = (),
+    format_only_compatibility: Mapping[str, Any] | None = None,
 ) -> None:
     """Bind each selected carrier review to its complete atomic inline batch."""
-    roots_by_review: dict[str, list[ReviewComment]] = {}
+    roots_by_review: dict[str, list[tuple[ReviewComment, ReviewThread]]] = {}
     for thread in snapshot.threads:
         if not thread.comments:
             continue
         root = thread.comments[0]
         if root.review_id is not None:
-            roots_by_review.setdefault(root.review_id, []).append(root)
+            roots_by_review.setdefault(root.review_id, []).append((root, thread))
     if any(roots_by_review.get(review_id) for review_id in selected_author_ids):
         raise DeliveryError("An author-event carrier review owns an inline finding.")
+    recovered_root_seen = False
     for digest in verified_state_sha256s:
         verified_envelope = verified_envelopes.get(digest)
         if verified_envelope is None:
@@ -1281,7 +1522,7 @@ def _verify_carrier_review_roots(
             review.id,
         )
         actual: set[str] = set()
-        for root in roots_by_review.get(review.id, []):
+        for root, thread in roots_by_review.get(review.id, []):
             marker = _finding_marker(root)
             if marker is None:
                 raise DeliveryError(
@@ -1289,13 +1530,48 @@ def _verify_carrier_review_roots(
                 )
             exchange_id, finding_id = marker
             anchor = expected.get(finding_id)
+            recovered_root = (
+                format_only_compatibility is not None
+                and root.id == format_only_compatibility["root_id"]
+                and root.full_database_id
+                == str(format_only_compatibility["root_database_id"])
+                and root.body == format_only_compatibility["canonical_body"]
+                and root.author == format_only_compatibility["author"]
+                and root.author_association
+                == format_only_compatibility["author_association"]
+                and root.viewer_did_author
+                and root.review_id == format_only_compatibility["review_id"]
+                and root.review_head_oid == binding.head_oid
+                and root.path == format_only_compatibility["path"]
+                and root.side == format_only_compatibility["side"]
+                and root.line == format_only_compatibility["original_line"]
+                and root.original_line == format_only_compatibility["original_line"]
+                and root.published_at
+                == format_only_compatibility["original_published_at"]
+                and root.last_edited_at
+                == format_only_compatibility["canonical_last_edited_at"]
+                and review.id == format_only_compatibility["review_id"]
+                and review.head_oid == binding.head_oid
+                and review.author == format_only_compatibility["author"]
+                and review.author_association
+                == format_only_compatibility["author_association"]
+                and review.viewer_did_author
+                and not review.includes_created_edit
+                and review.last_edited_at is None
+                and review.state in {"COMMENT", "COMMENTED"}
+                and review.submitted_at
+                == format_only_compatibility["review_submitted_at"]
+                and exchange_id == format_only_compatibility["exchange_id"]
+                and finding_id == format_only_compatibility["finding_id"]
+                and len(thread.comments) == 1
+            )
             if (
                 exchange_id != state["exchange_id"]
                 or anchor is None
                 or finding_id in actual
                 or not root.viewer_did_author
                 or root.review_head_oid != review.head_oid
-                or root.last_edited_at is not None
+                or (root.last_edited_at is not None and not recovered_root)
                 or root.path != anchor[0]
                 or root.original_line != anchor[2]
                 or (anchor[1] is not None and root.side != anchor[1])
@@ -1304,11 +1580,15 @@ def _verify_carrier_review_roots(
                 raise DeliveryError(
                     "A reviewer-state carrier has an invalid inline finding batch."
                 )
+            if recovered_root:
+                recovered_root_seen = True
             actual.add(finding_id)
         if actual != set(expected):
             raise DeliveryError(
                 "A reviewer-state carrier does not own its exact inline finding batch."
             )
+    if format_only_compatibility is not None and not recovered_root_seen:
+        raise DeliveryError("The format-only recovery reference is unused.")
 
 
 def _try_reduce(
@@ -1750,6 +2030,7 @@ def _verify_state_chain(
     historical_anchor_proofs: tuple[dict[str, Any], ...] = (),
     *,
     recover_direct_reframe: bool = False,
+    format_only_compatibility: Mapping[str, Any] | None = None,
 ) -> VerifiedStateChain:
     """Replay every persisted event that leads to one terminal reviewer state."""
     terminal_state = terminal["state"]
@@ -2071,6 +2352,7 @@ def _verify_state_chain(
         new_finding_ids_by_state,
         anchor_source,
         historical_anchor_proofs,
+        format_only_compatibility,
     )
     if any(
         proof.get("state_sha256") not in verified_states
@@ -3194,12 +3476,16 @@ def _verify_no_go_snapshot(
     snapshot: PullRequestSnapshot,
     binding: ReviewBinding,
     proof: NoGoProof,
+    format_only_inline_root_recovery: Mapping[str, Any] | None = None,
 ) -> str:
     """Verify one exact NO-GO or conditional carrier and its complete ancestry."""
     envelope = _require_pr_envelope(
         proof.state_envelope, binding, schema_id=review_exchange.STATE_SCHEMA_ID
     )
     state = envelope["state"]
+    format_only_compatibility = _validate_format_only_recovery_reference(
+        format_only_inline_root_recovery, binding, envelope
+    )
     if state["requirements_sha256"] != proof.requirements_binding.requirements_sha256:
         raise DeliveryError(
             "The NO-GO state does not bind the retained linked requirements."
@@ -3250,6 +3536,7 @@ def _verify_no_go_snapshot(
             binding,
             proof.anchor_source,
             proof.historical_anchor_proofs,
+            format_only_compatibility=format_only_compatibility,
         ).verified_state_sha256s
     )
     for review in snapshot.reviews:
@@ -3277,13 +3564,23 @@ def _verify_no_go_snapshot(
 
 
 def deliver_no_go(
-    forge: Forge, binding: ReviewBinding, proof: NoGoProof | None
+    forge: Forge,
+    binding: ReviewBinding,
+    proof: NoGoProof | None,
+    *,
+    format_only_inline_root_recovery: Mapping[str, Any] | None = None,
 ) -> DeliveryResult:
     """Apply and verify the exclusive current-head NO-GO label state."""
     initial = _snapshot(forge, binding)
     if proof is None:
         raise DeliveryError("A verified current-head NO-GO state carrier is required.")
-    original_body = _verify_no_go_snapshot(forge, initial, binding, proof)
+    original_body = _verify_no_go_snapshot(
+        forge,
+        initial,
+        binding,
+        proof,
+        format_only_inline_root_recovery,
+    )
     _verify_live_requirements(forge, proof.requirements_binding)
     if NO_GO_LABEL in initial.labels and GO_LABEL not in initial.labels:
         return DeliveryResult(
@@ -3299,7 +3596,16 @@ def deliver_no_go(
         _call_write("implementation NO-GO label", forge.set_implementation_no_go)
         final = _snapshot(forge, binding)
         last_snapshot = final
-        if _verify_no_go_snapshot(forge, final, binding, proof) != original_body:
+        if (
+            _verify_no_go_snapshot(
+                forge,
+                final,
+                binding,
+                proof,
+                format_only_inline_root_recovery,
+            )
+            != original_body
+        ):
             raise DeliveryError(
                 "The exact NO-GO carrier changed during label delivery."
             )
@@ -3991,6 +4297,22 @@ def load_no_go_proof(path: Path, binding: ReviewBinding) -> NoGoProof:
     )
 
 
+def load_format_only_inline_root_recovery(
+    path: Path, binding: ReviewBinding
+) -> dict[str, Any]:
+    """Load the sole canonical reference for the historical marker repair."""
+    document = _read_json_document(
+        path, "format-only inline-root recovery reference", canonical=True
+    )
+    reference = _require_manifest_fields(
+        document,
+        _FORMAT_ONLY_REFERENCE_FIELDS,
+        "format-only recovery reference",
+    )
+    _validated_format_only_recovery_reference(reference, binding)
+    return reference
+
+
 def prepare_response_manifest(
     forge: Forge,
     binding: ReviewBinding,
@@ -4123,6 +4445,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     delivery_input.add_argument("--verify-legacy-go", type=Path)
     delivery_input.add_argument("--deliver-no-go", action="store_true")
     parser.add_argument("--state-carrier-file", type=Path)
+    parser.add_argument("--format-only-inline-root-recovery", type=Path)
     parser.add_argument("--anchor-source", type=Path)
     parser.add_argument("--historical-anchor-proofs", type=Path)
     parser.add_argument(
@@ -4163,6 +4486,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise DeliveryError(
                     "A state-carrier file is valid only for NO-GO delivery."
                 )
+            if args.format_only_inline_root_recovery is not None:
+                raise DeliveryError(
+                    "A format-only recovery reference is valid only for NO-GO delivery."
+                )
             print(
                 review_exchange.canonical_json(
                     prepare_response_manifest(
@@ -4182,13 +4509,25 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.state_carrier_file is None:
                 raise DeliveryError("NO-GO delivery requires --state-carrier-file.")
             proof = load_no_go_proof(args.state_carrier_file, binding)
+            recovery = (
+                None
+                if args.format_only_inline_root_recovery is None
+                else load_format_only_inline_root_recovery(
+                    args.format_only_inline_root_recovery, binding
+                )
+            )
             if args.anchor_source is not None:
                 proof = replace(
                     proof,
                     anchor_source=args.anchor_source,
                     historical_anchor_proofs=historical,
                 )
-            result = deliver_no_go(forge, binding, proof)
+            result = deliver_no_go(
+                forge,
+                binding,
+                proof,
+                format_only_inline_root_recovery=recovery,
+            )
         elif args.verify_legacy_go is not None:
             if args.requirement_issue:
                 raise DeliveryError(
@@ -4197,6 +4536,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.state_carrier_file is not None:
                 raise DeliveryError(
                     "A state-carrier file is valid only for NO-GO delivery."
+                )
+            if args.format_only_inline_root_recovery is not None:
+                raise DeliveryError(
+                    "A format-only recovery reference is valid only for NO-GO delivery."
                 )
             result = verify_legacy_go(
                 forge,
@@ -4211,6 +4554,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.state_carrier_file is not None:
                 raise DeliveryError(
                     "A state-carrier file is valid only for NO-GO delivery."
+                )
+            if args.format_only_inline_root_recovery is not None:
+                raise DeliveryError(
+                    "A format-only recovery reference is valid only for NO-GO delivery."
                 )
             if args.response_manifest is None:
                 raise DeliveryError("The response manifest path is missing.")
