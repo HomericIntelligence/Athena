@@ -59,6 +59,7 @@ FINALIZE_PATTERN = re.compile(
     r"F=([0-9a-f]{64}) -->"
 )
 REVIEWED_PLAN_PREFIX = "<!-- HomericIntelligence:reviewed-plan:v1 "
+RECOVERY_AUTHORITY_SCHEMA_ID = "athena.issue-exchange.carrier-recovery-authority"
 REVIEWED_PLAN_PATTERN = re.compile(
     r"<!-- HomericIntelligence:reviewed-plan:v1 "
     r"token=([0-9a-f]{64}) -->"
@@ -343,6 +344,46 @@ def _role_comments(
     return matches
 
 
+def _extract_issue_carrier(
+    snapshot: Mapping[str, Any],
+    comment: Mapping[str, Any],
+    recovered_ids: set[str],
+) -> dict[str, Any]:
+    try:
+        return review_exchange.extract_carrier(comment["body"])
+    except ProtocolError:
+        if (
+            recovered_ids
+            or comment["author"]["id"] != snapshot["actor"]["id"]
+            or not comment["body"].endswith("\n```\n\n")
+        ):
+            raise
+        canonical_body = comment["body"][:-1]
+        envelope = review_exchange.extract_carrier(canonical_body)
+        expected_authority = review_exchange.canonical_json(
+            {
+                "schema_id": RECOVERY_AUTHORITY_SCHEMA_ID,
+                "schema_version": SCHEMA_VERSION,
+                "action": "supersede_malformed_carrier",
+                "target": _core_target(snapshot),
+                "comment_id": comment["id"],
+                "body_sha256": _body_sha256(comment["body"]),
+                "canonical_body_sha256": _body_sha256(canonical_body),
+                "carrier_state_sha256": envelope["state_sha256"],
+            }
+        )
+        authorities = [
+            candidate
+            for candidate in snapshot["comments"]
+            if candidate["body"] == expected_authority
+            and candidate["author"]["is_authority"]
+        ]
+        if len(authorities) != 1:
+            raise
+        recovered_ids.add(comment["id"])
+        return envelope
+
+
 def _reviewed_plan_token(body: str) -> str:
     """Return the one exact plan-source token in a review artifact."""
     matches: list[str] = []
@@ -614,15 +655,16 @@ def inspect_snapshot(value: object) -> dict[str, Any]:
     review = review_comments[0] if review_comments else None
     plan_envelope: dict[str, Any] | None = None
     review_envelope: dict[str, Any] | None = None
+    recovered_ids: set[str] = set()
     try:
         if plan is not None and review_exchange.CARRIER_PREFIX in plan["body"]:
-            plan_envelope = review_exchange.extract_carrier(plan["body"])
+            plan_envelope = _extract_issue_carrier(snapshot, plan, recovered_ids)
             if plan_envelope["schema_id"] != review_exchange.AUTHOR_EVENT_SCHEMA_ID:
                 raise ProtocolError(
                     "The plan comment does not contain an author event."
                 )
         if review is not None and review_exchange.CARRIER_PREFIX in review["body"]:
-            review_envelope = review_exchange.extract_carrier(review["body"])
+            review_envelope = _extract_issue_carrier(snapshot, review, recovered_ids)
             if review_envelope["schema_id"] != review_exchange.STATE_SCHEMA_ID:
                 raise ProtocolError("The review comment does not contain review state.")
     except ProtocolError as error:
@@ -1080,12 +1122,13 @@ def _verified_reframe_context(
         )
     plan = plan_comments[0]
     review = review_comments[0]
-    retained = review_exchange.extract_carrier(review["body"])
+    recovered_ids: set[str] = set()
+    retained = _extract_issue_carrier(snapshot, review, recovered_ids)
     if retained != previous:
         raise ProtocolError(
             "The supplied prior state is not the retained review state."
         )
-    plan_envelope = review_exchange.extract_carrier(plan["body"])
+    plan_envelope = _extract_issue_carrier(snapshot, plan, recovered_ids)
     if plan_envelope["schema_id"] != review_exchange.AUTHOR_EVENT_SCHEMA_ID:
         raise ProtocolError("The retained plan does not contain an author event.")
     plan_state = plan_envelope["state"]
@@ -1233,12 +1276,13 @@ def _verified_replanned_context(
         )
     plan = plan_comments[0]
     review = review_comments[0]
-    retained = review_exchange.extract_carrier(review["body"])
+    recovered_ids: set[str] = set()
+    retained = _extract_issue_carrier(snapshot, review, recovered_ids)
     if retained != previous:
         raise ProtocolError(
             "The supplied prior state is not the retained review state."
         )
-    plan_envelope = review_exchange.extract_carrier(plan["body"])
+    plan_envelope = _extract_issue_carrier(snapshot, plan, recovered_ids)
     if plan_envelope["schema_id"] != review_exchange.AUTHOR_EVENT_SCHEMA_ID:
         raise ProtocolError("The reframed plan does not contain an author event.")
     plan_state = plan_envelope["state"]
@@ -1675,8 +1719,8 @@ def prepare_review(value: object) -> dict[str, Any]:
     previous = inspection["envelope"]
     if previous is None:
         if review_exchange.CARRIER_PREFIX in current_plan_comment["body"]:
-            plan_envelope = review_exchange.extract_carrier(
-                current_plan_comment["body"]
+            plan_envelope = _extract_issue_carrier(
+                snapshot, current_plan_comment, set()
             )
             plan_state = plan_envelope["state"]
             exchange_id = plan_state["exchange_id"]
@@ -2337,7 +2381,8 @@ def _verify_issue_source_chain(
     review: Mapping[str, Any],
     requirements_sha256: str,
 ) -> None:
-    review_envelope = review_exchange.extract_carrier(review["body"])
+    recovered_ids: set[str] = set()
+    review_envelope = _extract_issue_carrier(snapshot, review, recovered_ids)
     expected_envelope = review_exchange.make_envelope(state)
     if (
         review_envelope != expected_envelope
@@ -2354,7 +2399,7 @@ def _verify_issue_source_chain(
             "The terminal review does not bind exact R, P, and V sources."
         )
     if review_exchange.CARRIER_PREFIX in plan["body"]:
-        plan_envelope = review_exchange.extract_carrier(plan["body"])
+        plan_envelope = _extract_issue_carrier(snapshot, plan, recovered_ids)
         if plan_envelope not in _expected_retained_plan_envelopes(state, plan):
             raise ProtocolError(
                 "The terminal plan carrier is outside the review chain."
@@ -2759,8 +2804,8 @@ def verify_finalize(value: object) -> dict[str, Any]:
             remaining.append(matches[0]["id"])
         try:
             if plan_comments and review_comments:
-                retained_review = review_exchange.extract_carrier(
-                    review_comments[0]["body"]
+                retained_review = _extract_issue_carrier(
+                    snapshot, review_comments[0], set()
                 )
                 _verify_issue_source_chain(
                     snapshot,
@@ -2771,8 +2816,8 @@ def verify_finalize(value: object) -> dict[str, Any]:
                     marker["R"],
                 )
             elif review_comments:
-                retained_review = review_exchange.extract_carrier(
-                    review_comments[0]["body"]
+                retained_review = _extract_issue_carrier(
+                    snapshot, review_comments[0], set()
                 )
                 state = retained_review["state"]
                 if (

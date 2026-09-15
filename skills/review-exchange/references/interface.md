@@ -639,6 +639,28 @@ The command does not infer answers from unversioned prose. It returns `withheld`
 duplicate, foreign, stale, or conflicting canonical artifact. A valid finalized issue returns
 `finalized` and `next_action=none`.
 
+One historical exception applies only in the issue adapter. The generic carrier parser stays
+strict. The issue adapter can read at most one actor-owned carrier that has exactly one additional
+final line feed. The adapter requires one live authority comment with this exact canonical JSON
+record:
+
+| Field | Type and value |
+| --- | --- |
+| `schema_id` | `athena.issue-exchange.carrier-recovery-authority` |
+| `schema_version` | Integer `1` |
+| `action` | `supersede_malformed_carrier` |
+| `target` | Exact issue review target |
+| `comment_id` | Exact malformed comment identity |
+| `body_sha256` | Digest of the unchanged malformed body |
+| `canonical_body_sha256` | Digest after removal of only the additional final line feed |
+| `carrier_state_sha256` | Digest from the strict parse of that canonical body |
+
+The authority comment author must have repository authority. The adapter rechecks the complete
+record at each read. It rejects a foreign carrier, two recoverable carriers, two matching authority
+comments, a different suffix, or a record with a different digest. New publication stays canonical.
+The exception does not make an unknown publication result successful. Reframe and human-decision
+operations still require their separate action-bound authority records.
+
 An unchanged finalized body stays terminal. A body that keeps a finalization marker but no longer
 matches its `F` digest is malformed and stays withheld. After an authoritative person replaces the
 sealed body with clean requirements and removes the obsolete finalization marker, `inspect` starts a

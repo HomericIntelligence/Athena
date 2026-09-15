@@ -163,6 +163,39 @@ class IssueReviewExchangeTests(unittest.TestCase):
         authority["author"]["is_authority"] = True
         return authority
 
+    def carrier_recovery_authority(
+        self,
+        snapshot: dict[str, Any],
+        carrier: dict[str, Any],
+        *,
+        authority_id: str = "carrier-recovery-authority",
+    ) -> dict[str, Any]:
+        canonical_body = carrier["body"][:-1]
+        envelope = self.adapter.review_exchange.extract_carrier(canonical_body)
+        authority = self.comment(
+            authority_id,
+            self.adapter.review_exchange.canonical_json(
+                {
+                    "schema_id": "athena.issue-exchange.carrier-recovery-authority",
+                    "schema_version": 1,
+                    "action": "supersede_malformed_carrier",
+                    "target": self.adapter._core_target(
+                        self.adapter._snapshot(snapshot)
+                    ),
+                    "comment_id": carrier["id"],
+                    "body_sha256": self.adapter.review_exchange.sha256_text(
+                        carrier["body"]
+                    ),
+                    "canonical_body_sha256": self.adapter.review_exchange.sha256_text(
+                        canonical_body
+                    ),
+                    "carrier_state_sha256": envelope["state_sha256"],
+                }
+            ),
+        )
+        authority["author"]["is_authority"] = True
+        return authority
+
     def finding(self) -> dict[str, Any]:
         return {
             "id": "F-001",
@@ -1722,6 +1755,193 @@ class IssueReviewExchangeTests(unittest.TestCase):
                 inspected = self.adapter.inspect_snapshot(snapshot)
                 self.assertEqual("withheld", inspected["status"])
                 self.assertEqual("human_decision", inspected["next_action"])
+
+    def test_owned_issue_plan_with_one_extra_final_line_feed_is_recovered(
+        self,
+    ) -> None:
+        with_plan, _ = self.initial_plan_snapshot()
+        plan = with_plan["comments"][0]
+        canonical_body = plan["body"]
+        plan["body"] = f"{canonical_body}\n"
+
+        with self.assertRaises(self.adapter.review_exchange.ProtocolError):
+            self.adapter.review_exchange.extract_carrier(plan["body"])
+
+        with_plan["comments"].append(self.carrier_recovery_authority(with_plan, plan))
+
+        inspected = self.adapter.inspect_snapshot(with_plan)
+        prepared = self.adapter.prepare_review(self.review_request(with_plan))
+
+        self.assertEqual("ready", inspected["status"])
+        self.assertEqual("prepare_review", inspected["next_action"])
+        self.assertEqual("create", prepared["operation"]["action"])
+        self.assertEqual("review", prepared["operation"]["artifact"])
+
+    def test_issue_carrier_recovery_requires_exact_actor_and_authority(self) -> None:
+        for case in (
+            "missing authority",
+            "non-authority approval",
+            "duplicate authority",
+            "wrong authority digest",
+            "foreign carrier",
+            "wrong suffix",
+            "two malformed carriers",
+        ):
+            with self.subTest(case=case):
+                snapshot = self.go_snapshot()
+                plan, review = snapshot["comments"]
+                plan["body"] = f"{plan['body']}\n"
+                authority = self.carrier_recovery_authority(snapshot, plan)
+                snapshot["comments"].append(authority)
+                if case == "missing authority":
+                    snapshot["comments"].remove(authority)
+                elif case == "non-authority approval":
+                    authority["author"]["is_authority"] = False
+                elif case == "duplicate authority":
+                    duplicate = copy.deepcopy(authority)
+                    duplicate["id"] = "duplicate-carrier-recovery-authority"
+                    duplicate["url"] = (
+                        "https://example.invalid/comments/"
+                        "duplicate-carrier-recovery-authority"
+                    )
+                    snapshot["comments"].append(duplicate)
+                elif case == "wrong authority digest":
+                    authority_body = json.loads(authority["body"])
+                    authority_body["body_sha256"] = "f" * 64
+                    authority["body"] = self.adapter.review_exchange.canonical_json(
+                        authority_body
+                    )
+                elif case == "foreign carrier":
+                    plan["author"] = {
+                        "id": "U_foreign",
+                        "login": "foreign",
+                        "is_authority": False,
+                    }
+                elif case == "wrong suffix":
+                    plan["body"] = f"{plan['body']}\n"
+                else:
+                    review["body"] = f"{review['body']}\n"
+                    snapshot["comments"].append(
+                        self.carrier_recovery_authority(
+                            snapshot,
+                            review,
+                            authority_id="review-recovery-authority",
+                        )
+                    )
+
+                inspected = self.adapter.inspect_snapshot(snapshot)
+
+                self.assertEqual("withheld", inspected["status"])
+                self.assertEqual(
+                    "foreign_marker"
+                    if case == "foreign carrier"
+                    else "malformed_carrier",
+                    inspected["diagnostics"][0]["code"],
+                )
+
+    def test_recovered_review_still_requires_exact_reframe_authority(self) -> None:
+        snapshot = self.go_snapshot()
+        previous = self.adapter.review_exchange.extract_carrier(
+            snapshot["comments"][1]["body"]
+        )
+        review = snapshot["comments"][1]
+        review["body"] = f"{review['body']}\n"
+        snapshot["comments"].append(self.carrier_recovery_authority(snapshot, review))
+        snapshot["issue"]["body"] = "Implement the next bounded protocol requirements."
+        reframe_authority = self.reframe_authority(snapshot, previous)
+        snapshot["comments"].append(reframe_authority)
+
+        request = self.reframe_plan_request(snapshot, previous)
+        prepared = self.adapter.prepare_plan(request)
+
+        self.assertEqual("ready", prepared["status"])
+        self.assertEqual("update", prepared["operation"]["action"])
+        without_reframe_authority = copy.deepcopy(snapshot)
+        without_reframe_authority["comments"].remove(
+            next(
+                comment
+                for comment in without_reframe_authority["comments"]
+                if comment["id"] == reframe_authority["id"]
+            )
+        )
+        request_without_authority = copy.deepcopy(request)
+        request_without_authority["snapshot"] = without_reframe_authority
+        with self.assertRaises(self.adapter.review_exchange.ProtocolError):
+            self.adapter.prepare_plan(request_without_authority)
+
+    def test_recovered_review_still_requires_exact_human_decision_authority(
+        self,
+    ) -> None:
+        no_go = self.no_go_snapshot()
+        risk_request = {
+            "finding_id": "F-001",
+            "kind": "risk_acceptance",
+            "evidence": ["The compatibility risk cannot be removed in this release."],
+            "tradeoff": "The repository authority accepts the bounded compatibility risk.",
+        }
+        plan = self.adapter.prepare_plan(
+            self.plan_request(no_go, responses=[risk_request])
+        )
+        snapshot = self.apply_operation(no_go, plan, "unused")
+        review = snapshot["comments"][1]
+        review["body"] = f"{review['body']}\n"
+        snapshot["comments"].append(self.carrier_recovery_authority(snapshot, review))
+        human_authority = self.human_authority(snapshot)
+        snapshot["comments"].append(human_authority)
+
+        request = self.human_review_request(snapshot)
+        prepared = self.adapter.prepare_review(request)
+
+        self.assertEqual("ready", prepared["status"])
+        self.assertEqual("update", prepared["operation"]["action"])
+        without_human_authority = copy.deepcopy(snapshot)
+        without_human_authority["comments"].remove(
+            next(
+                comment
+                for comment in without_human_authority["comments"]
+                if comment["id"] == human_authority["id"]
+            )
+        )
+        request_without_authority = copy.deepcopy(request)
+        request_without_authority["snapshot"] = without_human_authority
+        with self.assertRaises(self.adapter.review_exchange.ProtocolError):
+            self.adapter.prepare_review(request_without_authority)
+
+    def test_authorized_recovered_plan_can_complete_and_finalize(self) -> None:
+        snapshot, _ = self.initial_plan_snapshot()
+        plan = snapshot["comments"][0]
+        plan["body"] = f"{plan['body']}\n"
+        snapshot["comments"].append(self.carrier_recovery_authority(snapshot, plan))
+        prepared_review = self.adapter.prepare_review(self.review_request(snapshot))
+        terminal = self.apply_operation(snapshot, prepared_review, "review-1")
+
+        publication = self.adapter.verify_publication(
+            {"prepared": prepared_review, "snapshot": terminal}
+        )
+        finalized = self.adapter.verify_finalize(
+            {"snapshot": terminal, "candidate_body": "# Final plan"}
+        )
+
+        self.assertEqual("verified", publication["status"])
+        self.assertEqual("ready", finalized["status"])
+
+    def test_recovery_does_not_upgrade_unknown_original_publication(self) -> None:
+        baseline = self.snapshot()
+        prepared_plan = self.adapter.prepare_plan(self.plan_request(baseline))
+        snapshot = self.apply_operation(baseline, prepared_plan, "plan-1")
+        plan = snapshot["comments"][0]
+        plan["body"] = f"{plan['body']}\n"
+        snapshot["comments"].append(self.carrier_recovery_authority(snapshot, plan))
+
+        publication = self.adapter.verify_publication(
+            {"prepared": prepared_plan, "snapshot": snapshot}
+        )
+
+        self.assertEqual("unknown_outcome", publication["status"])
+        self.assertIsNone(publication["receipt"])
+        self.assertEqual(
+            "publication_identity_conflict", publication["diagnostics"][0]["code"]
+        )
 
     def test_only_top_level_marker_lines_define_issue_artifacts(self) -> None:
         cases = (
