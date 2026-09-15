@@ -100,10 +100,12 @@ reviewed commit, complete body carrier, and each expected path, side, line, find
 verification fails or is uncertain, make no additional write. Do not retry. Do not substitute a
 prose-only comment or `gh pr review --comment`.
 
-If a bound value changes, withhold the complete set. When only the pull-request head changes, use a
-separate author-response invocation to bind the new artifact before the current exchange continues.
-That head refresh does not increase the reviewer-round count. A material requirements change uses
-the reframe rule. It does not silently reset the exchange.
+If a bound value changes, withhold the complete set. When the pull-request head changes and the
+current exchange accepts a head refresh, use a separate author-response invocation before that
+exchange continues. The refresh does not increase the reviewer-round count. A terminal GO cannot
+accept this event. For GitHub, apply the completed-history conditions below before starting a
+separate exchange for a new head. A material requirements change uses the reframe rule. It does not
+silently reset the exchange.
 
 Terminal GitHub GO delivery has one compatibility rule for an immutable historical carrier. The
 adapter can remove exactly one final line feed from one Athena-owned state carrier when all these
@@ -422,6 +424,14 @@ state has `phase=complete`, `verdict=GO`, `next_action=finalize`, and `go_eligib
 bind the retained requirements, and its terminal carrier must precede each carrier or authority
 record in the current exchange. Its exchange identifier must not occur in the selected current or
 supersession ancestry. A conditional or later-published old-head carrier cannot reset the exchange.
+
+If this verified history leaves no current exchange, a new GitHub review can start at round 1 with
+a distinct exchange identity. Keep each old exchange and its complete event ledger unchanged.
+Review the current artifact in full under the selected profile. A default review requires current
+head evidence before GO, even when the old and new source trees are identical. This route does not
+supersede an old finding, transfer a risk acceptance, or authorize a historical thread closure.
+Preserve all original-root, ownership, chronology, current-head, and delivery checks. Do not use it
+to abandon a pending or conditional exchange.
 
 Treat the exact same-head terminal record, zero open threads, and exclusive GO label as
 `already_delivered`. A label without the matching current-head terminal ledger is not proof. If the
