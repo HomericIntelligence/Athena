@@ -303,9 +303,9 @@ class ReviewExchangeTests(unittest.TestCase):
         self.assertNotIn("go_eligible", result["state"])
 
     def test_round_five_ineligible_assessment_requires_a_human_decision(self) -> None:
-        state = self.reduce(
-            self.initial_event(findings=[], coverage_complete=False)
-        )["envelope"]
+        state = self.reduce(self.initial_event(findings=[], coverage_complete=False))[
+            "envelope"
+        ]
         for round_number in range(2, 5):
             event = self.review_event(
                 state,
@@ -538,9 +538,9 @@ class ReviewExchangeTests(unittest.TestCase):
     def test_changed_pr_head_does_not_revalidate_nonblocking_findings(self) -> None:
         observation = self.finding(severity="minor", disposition="suggestion")
         observation["closure_condition"] = None
-        conditional = self.reduce(
-            self.initial_event(findings=[observation])
-        )["envelope"]
+        conditional = self.reduce(self.initial_event(findings=[observation]))[
+            "envelope"
+        ]
         refresh = self.author_event(conditional, "fix", revision="revision-2")
         refresh["responses"] = []
 
@@ -838,9 +838,9 @@ class ReviewExchangeTests(unittest.TestCase):
                 self.reduce(event, previous)
 
     def test_artifact_refresh_keeps_the_five_assessment_limit(self) -> None:
-        state = self.reduce(
-            self.initial_event(findings=[], coverage_complete=False)
-        )["envelope"]
+        state = self.reduce(self.initial_event(findings=[], coverage_complete=False))[
+            "envelope"
+        ]
         for round_number in (2, 3):
             review = self.review_event(
                 state,
@@ -1446,9 +1446,7 @@ class ReviewExchangeTests(unittest.TestCase):
     def test_malformed_artifact_in_conditional_history_is_a_protocol_error(
         self,
     ) -> None:
-        conditional = self.reduce(self.initial_event(findings=[]))[
-            "envelope"
-        ]
+        conditional = self.reduce(self.initial_event(findings=[]))["envelope"]
         malformed_event = self.author_event(
             conditional,
             "fix",

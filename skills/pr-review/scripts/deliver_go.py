@@ -3498,10 +3498,11 @@ def _verify_no_go_snapshot(
         and state["phase"] != "complete"
         and state["next_action"] != "finalize"
     )
-    if state["artifact_binding"]["revision"] != binding.head_oid or not nonterminal_no_go:
-        raise DeliveryError(
-            "The NO-GO proof is not a current nonterminal state."
-        )
+    if (
+        state["artifact_binding"]["revision"] != binding.head_oid
+        or not nonterminal_no_go
+    ):
+        raise DeliveryError("The NO-GO proof is not a current nonterminal state.")
     try:
         body = review_exchange.render_carrier(proof.visible_content, envelope, "state")
     except review_exchange.ProtocolError as error:

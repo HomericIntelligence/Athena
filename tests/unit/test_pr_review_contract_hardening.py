@@ -2355,7 +2355,6 @@ class BoundedLinkedCommentReaderTests(unittest.TestCase):
             self.collector.paginated_issue_comments("owner/requirements", 11, budget)
 
 
-
 class BoundedChangedPathReaderTests(unittest.TestCase):
     """Exercise bounded immutable path collection without a live Git process."""
 

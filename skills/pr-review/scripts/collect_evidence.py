@@ -1284,7 +1284,6 @@ def gh(*arguments: str, accepted_codes: tuple[int, ...] = (0,)) -> str:
     return result.stdout
 
 
-
 def pr_metadata(
     pull_request: str, target: ExpectedReviewTarget | None
 ) -> dict[str, Any]:

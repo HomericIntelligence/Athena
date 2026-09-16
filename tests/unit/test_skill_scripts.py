@@ -1296,7 +1296,6 @@ class PullRequestScriptTests(unittest.TestCase):
         )
 
 
-
 class ChangeReviewScriptTests(unittest.TestCase):
     def test_worktree_includes_nonignored_untracked_content_without_mutation(
         self,
