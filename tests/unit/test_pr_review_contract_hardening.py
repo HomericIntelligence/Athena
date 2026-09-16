@@ -1692,9 +1692,6 @@ class StrictSnapshotFallbackTests(unittest.TestCase):
                         ],
                     ),
                     patch.object(
-                        self.collector, "head_bound_check_runs", return_value=[]
-                    ),
-                    patch.object(
                         snapshot_module,
                         "canonical_repository_url",
                         return_value=str(remote),
@@ -2357,90 +2354,6 @@ class BoundedLinkedCommentReaderTests(unittest.TestCase):
             self.collector.paginated_issue_comments("owner/requirements", 10, budget)
             self.collector.paginated_issue_comments("owner/requirements", 11, budget)
 
-
-class HeadBoundCheckEvidenceTests(unittest.TestCase):
-    """Require bounded, fail-closed GitHub check-run collection."""
-
-    def setUp(self) -> None:
-        self.module_name = f"test_collect_evidence_checks_{id(self)}"
-        self.collector = load_collector(self.module_name)
-
-    def tearDown(self) -> None:
-        sys.modules.pop(self.module_name, None)
-
-    def test_preserves_a_bounded_provider_failure_as_a_coverage_gap(self) -> None:
-        failure = self.collector.CheckEvidenceCoverageGap(
-            "check-run response exceeds the safe byte limit"
-        )
-        with (
-            patch.object(
-                self.collector,
-                "bounded_gh_output",
-                side_effect=failure,
-            ),
-            patch.object(
-                self.collector,
-                "gh",
-                return_value=json.dumps(
-                    [
-                        {
-                            "total_count": 1,
-                            "check_runs": [
-                                {
-                                    "id": 1,
-                                    "name": "required-checks",
-                                    "head_sha": HEAD_OID,
-                                    "status": "completed",
-                                    "conclusion": "success",
-                                }
-                            ],
-                        }
-                    ]
-                ),
-            ),
-            self.assertRaises(self.collector.CheckEvidenceCoverageGap) as context,
-        ):
-            self.collector.head_bound_check_runs("owner/repository", HEAD_OID)
-        self.assertIs(failure, context.exception)
-
-    def test_rejects_check_runs_that_exceed_the_page_limit(self) -> None:
-        responses = (
-            json.dumps(
-                {
-                    "total_count": 2,
-                    "check_runs": [
-                        {
-                            "id": 1,
-                            "name": "first-check",
-                            "head_sha": HEAD_OID,
-                            "status": "completed",
-                            "conclusion": "success",
-                        }
-                    ],
-                }
-            ).encode(),
-            json.dumps(
-                {
-                    "total_count": 2,
-                    "check_runs": [
-                        {
-                            "id": 2,
-                            "name": "second-check",
-                            "head_sha": HEAD_OID,
-                            "status": "completed",
-                            "conclusion": "success",
-                        }
-                    ],
-                }
-            ).encode(),
-        )
-
-        with (
-            patch.object(self.collector, "MAX_CHECK_RUN_PAGES", 1),
-            patch.object(self.collector, "bounded_gh_output", side_effect=responses),
-            self.assertRaises(self.collector.CheckEvidenceCoverageGap),
-        ):
-            self.collector.head_bound_check_runs("owner/repository", HEAD_OID)
 
 
 class BoundedChangedPathReaderTests(unittest.TestCase):
