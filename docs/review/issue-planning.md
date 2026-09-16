@@ -253,14 +253,14 @@ review round. A risk decision can accept only a recorded `risk_acceptance` reque
 selection can change only an active closure condition, and it cannot start round 6.
 
 A requirements reframe is a two-step exchange on the retained comments. First, `plan-issue` uses
-`prepare-plan` with a `reframe` event, the exact old retained v1 state, a live authority
+`prepare-plan` with a `reframe` event, the exact old retained state, a live authority
 receipt, and the new declared targets. It updates the same plan comment. After exact readback,
 `issue-review` uses `prepare-review` with the same old state, authority receipt, and targets. It
 updates the same review comment with round 1 of the new exchange. The new state stores
 `supersession_authority_receipt`, cites the old state digest, and starts with a new exchange and
 requirements identity. Revalidate the receipt in both preparation steps, after publication, during
 inspection, and before finalization. If either write has an uncertain result, stop. Do not create a
-replacement comment or continue the second step. A reframe can supersede any retained v1
+replacement comment or continue the second step. A reframe can supersede any retained
 phase, including `complete`. Normal events cannot continue a complete exchange.
 
 For legacy adoption, give the helper only the exact current unversioned plan and optional review in

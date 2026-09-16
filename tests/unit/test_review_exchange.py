@@ -2529,7 +2529,7 @@ class ReviewExchangeTests(unittest.TestCase):
         state_extra["state_sha256"] = self.exchange.sha256_json(state_extra["state"])
         cases.append(state_extra)
         wrong_version = copy.deepcopy(envelope)
-        wrong_version["schema_version"] = 2
+        wrong_version["schema_version"] = 3
         cases.append(wrong_version)
         for value in cases:
             with (
@@ -2537,6 +2537,32 @@ class ReviewExchangeTests(unittest.TestCase):
                 self.assertRaises(self.exchange.ProtocolError),
             ):
                 self.exchange.verify_envelope(value)
+
+    def test_legacy_go_eligibility_state_upgrades_before_author_response(self) -> None:
+        legacy = self.initial_state()
+        legacy["schema_version"] = 1
+        legacy["state"]["go_eligible"] = True
+        legacy_event = legacy["state"]["accepted_events"][0]
+        legacy_event["go_eligible"] = True
+        legacy_event_digest = self.exchange.sha256_json(
+            {
+                "schema_id": "athena.review-exchange.event",
+                "schema_version": 1,
+                "event": legacy_event,
+            }
+        )
+        legacy["state"]["accepted_event_sha256"] = legacy_event_digest
+        legacy["state"]["progress"][0]["accepted_event_sha256"] = legacy_event_digest
+        legacy["state_sha256"] = self.exchange.sha256_json(legacy["state"])
+
+        upgraded = self.exchange.verify_envelope(legacy)
+        result = self.reduce(self.author_event(upgraded, "fix"), upgraded)
+
+        self.assertEqual(2, upgraded["schema_version"])
+        self.assertNotIn("go_eligible", upgraded["state"])
+        self.assertNotIn("go_eligible", upgraded["state"]["accepted_events"][0])
+        self.assertEqual("accepted", result["status"])
+        self.assertEqual("awaiting_reviewer", result["envelope"]["state"]["phase"])
 
     def test_envelope_state_must_be_an_exact_json_object(self) -> None:
         valid = self.initial_state()
