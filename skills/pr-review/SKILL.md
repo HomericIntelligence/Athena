@@ -120,8 +120,8 @@ publication, and readback. A reviewer-round invocation must not create or publis
 
 An invocation that supplies `event_type=human_decision` or `event_type=reframe` is an
 authority-transition invocation. A human-decision invocation does not use a profile flag. Use it
-only by itself or with `--report-only`. Reject a profile flag for this event. It inherits
-`go_eligible` from the current logical state. A reframe uses the source-review profile. An authority
+only by itself or with `--report-only`. Reject a profile flag for this event. A reframe uses the
+source-review profile. An authority
 transition is incompatible with
 `--author-response`, `--prevalidated`, and
 `--enable-auto-merge-on-go`. The invocation owns transition preparation, publication, readback, and
@@ -253,13 +253,13 @@ workflow in the same invocation.
    head and its artifact digest to equal the current reviewed-scope digest. If either value differs,
    report stale state and stop before reduction. Bind those same artifact values and the
    visible-content digest for the new state carrier. Require a nonempty explicit decision list. This
-   event must keep the reviewer-round count and the retained `go_eligible` value.
+   event must keep the reviewer-round count.
 5. For `reframe`, require materially changed requirements, a new exchange identity, `round=1`, the
    same surface and target, and both `prior_state_sha256` and `supersedes_state_sha256` equal to the
    logical state digest. Set `superseded_exchange_ids` to the exact unique, oldest-first genesis
    ancestry followed by the immediate prior exchange ID. The new exchange ID must not occur in that
    list. Bind the current artifact, the new complete scope set, and a complete new round-1
-   assessment. Set `go_eligible=true`. Require an empty response list. Bind the visible-content digest for the new state
+   assessment. Require an empty response list. Bind the visible-content digest for the new state
    carrier. This event must record the logical state as superseded.
 6. Resolve the supplied receipt to one exact live authority record in the bound forge snapshot.
    Verify its body digest, current repository authority, target, event action, exchange,
@@ -267,7 +267,7 @@ workflow in the same invocation.
    event fields from that record.
 7. Run `review_exchange.py reduce` with the exact logical state and explicit event. Require an
    accepted or idempotently replayed result. Require the event digest, artifact binding, authority
-   receipt, GO eligibility, and action-specific round and supersession invariants to match the
+   receipt, and action-specific round and supersession invariants to match the
    result.
 8. Run `review_exchange.py render` for `kind=state`. Use only the exact prepared visible text and
    result envelope. Do not edit the carrier or its digest. For `human_decision`, use an empty
@@ -357,7 +357,7 @@ workflow in the same invocation.
     finding in the next complete assessment. Do not treat its prior-head reviewer response as current evidence.
 22. Reduce exactly one consecutive reviewer round from the logical state. When the verified GitHub
     completed-history rule leaves no current exchange, reduce an initial round-1 assessment instead.
-    Set `go_eligible=true` for each reviewer assessment. A continued assessment preserves the exact logical-state artifact revision
+    A continued assessment preserves the exact logical-state artifact revision
     and artifact digest. An initial assessment binds the exact current artifact. Use the
     visible-content digest for the new reviewer carrier. Render the complete state carrier. Add this
     compact marker to each new anchorable inline finding:
@@ -401,7 +401,7 @@ Use the shared applicable-weight formula:
 | Implementation | 18% | Correctness, errors, types, maintainability, duplication, portability, and unexpected behavior. |
 | Testing and evidence | 15% | Applicable testing and evidence principles, including P091 when behavior is developed test-first, meaningful assertions, and honest evidence. |
 | Security and safety | 10% | Applicable security and authority principles for inputs, permissions, destructive paths, supply chain, rollback, and failure behavior. |
-| Integration and release | 7% | Applicable reliability and execution-integrity principles for staleness, conflicts, checks, packaging, documentation, compatibility, and transfer. |
+| Integration and release | 7% | Applicable source-level reliability and execution-integrity principles for staleness, packaging, documentation, compatibility, and transfer. |
 
 Start each applicable dimension at zero. Award credit only for evidence that you inspect. Exclude
 weight only when the classifier proves that it is N/A. Map the result to A 93–100, B 80–92, C 70–79,
@@ -410,7 +410,7 @@ D 60–69, or F 0–59.
 An A has no active finding with critical or major severity. A B has no active finding with critical
 severity and no more than one active finding with major severity. A critical or major
 `accepted_risk` finding does not count as active, but it must stay in the findings and report with
-its verified authority receipt. Mark each CI/CD-only criterion N/A. Give the
+its verified authority receipt. Mark each non-source criterion N/A. Give the
 reason for each N/A criterion. Do not give unsupported credit for an applicable coverage gap.
 
 If a maintainer explicitly declares the first supported release, you can mark compatibility,
@@ -424,12 +424,11 @@ For source-review reports, present these items in order:
 3. routed sections and N/A sections;
 4. findings in severity order, with independent dispositions and every accepted risk;
 5. score and terminal verdict;
-6. commands and coverage gaps;
-7. merge readiness or repository-policy state; approval state never lowers the score or verdict;
-8. exchange ID, round and progress, carrier URL and readback, terminal record, thread-response and
+6. source-coverage limits;
+7. exchange ID, round and progress, carrier URL and readback, terminal record, thread-response and
    resolution identities, exclusive implementation-state label, exact delivery status, and
    auto-merge state;
-9. brief strengths.
+8. brief strengths.
 
 For the prevalidated profile, use only its structured-audit override.
 

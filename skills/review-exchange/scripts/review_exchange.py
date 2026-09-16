@@ -248,13 +248,6 @@ def _boolean(value: object, name: str) -> bool:
     return value
 
 
-def _required_source_review_eligibility(value: object, name: str) -> bool:
-    """Reject obsolete CI-derived review eligibility states."""
-    if not _boolean(value, name):
-        raise ProtocolError("A source review cannot depend on CI eligibility.")
-    return True
-
-
 def _enum(value: object, name: str, allowed: frozenset[str]) -> str:
     text = _string(value, name)
     if text not in allowed:
@@ -858,7 +851,6 @@ def _validate_state(value: object) -> dict[str, Any]:
                 "supersedes_state_sha256",
                 "supersession_authority_receipt",
                 "coverage_complete",
-                "go_eligible",
                 "progress",
                 "findings",
                 "verdict",
@@ -929,9 +921,6 @@ def _validate_state(value: object) -> dict[str, Any]:
             }
         ),
     )
-    go_eligible = _boolean(state["go_eligible"], "state.go_eligible")
-    if not go_eligible:
-        raise ProtocolError("Review state cannot depend on CI eligibility.")
     verdict = _enum(
         state["verdict"],
         "state.verdict",
@@ -1055,7 +1044,6 @@ def _validate_state(value: object) -> dict[str, Any]:
         "supersedes_state_sha256": supersedes,
         "supersession_authority_receipt": supersession_authority,
         "coverage_complete": coverage,
-        "go_eligible": go_eligible,
         "progress": progress,
         "findings": findings,
         "verdict": verdict,
@@ -1171,7 +1159,6 @@ def _initial_review_event(value: object) -> dict[str, Any]:
                 "artifact_binding",
                 "scope",
                 "coverage_complete",
-                "go_eligible",
                 "responses",
                 "new_findings",
                 "stop_reason",
@@ -1225,9 +1212,6 @@ def _initial_review_event(value: object) -> dict[str, Any]:
         "coverage_complete": _boolean(
             event["coverage_complete"], "initial coverage completeness"
         ),
-        "go_eligible": _required_source_review_eligibility(
-            event["go_eligible"], "initial GO eligibility"
-        ),
         "responses": [],
         "new_findings": new_findings,
         "stop_reason": (
@@ -1257,7 +1241,6 @@ def _reframe_event(value: object) -> dict[str, Any]:
                 "artifact_binding",
                 "scope",
                 "coverage_complete",
-                "go_eligible",
                 "responses",
                 "new_findings",
                 "stop_reason",
@@ -1350,7 +1333,6 @@ def _continued_review_event(
                 "artifact_binding",
                 "scope",
                 "coverage_complete",
-                "go_eligible",
                 "responses",
                 "new_findings",
                 "stop_reason",
@@ -1373,9 +1355,6 @@ def _continued_review_event(
         "scope": _scope(event["scope"], "reviewer scope"),
         "coverage_complete": _boolean(
             event["coverage_complete"], "reviewer coverage completeness"
-        ),
-        "go_eligible": _required_source_review_eligibility(
-            event["go_eligible"], "reviewer GO eligibility"
         ),
         "responses": _unique_responses(
             event["responses"], "reviewer responses", _reviewer_response
@@ -1732,7 +1711,6 @@ def verify_authority_record_for_state(
 def _state_phase(
     findings: Sequence[Mapping[str, Any]],
     coverage_complete: bool,
-    go_eligible: bool,
     *,
     stop_reason: str | None,
     round_number: int,
@@ -1804,7 +1782,6 @@ def _initial_reduce(
     phase, verdict, next_action, reason = _state_phase(
         findings,
         event["coverage_complete"],
-        event["go_eligible"],
         stop_reason=event["stop_reason"],
         round_number=1,
     )
@@ -1824,7 +1801,6 @@ def _initial_reduce(
         "supersedes_state_sha256": event["supersedes_state_sha256"],
         "supersession_authority_receipt": None,
         "coverage_complete": event["coverage_complete"],
-        "go_eligible": event["go_eligible"],
         "progress": [
             {
                 "round": 1,
@@ -2180,7 +2156,6 @@ def _review_reduce(
     phase, verdict, next_action, reason = _state_phase(
         findings,
         event["coverage_complete"],
-        event["go_eligible"],
         stop_reason=reason_override,
         round_number=event["round"],
     )
@@ -2194,7 +2169,6 @@ def _review_reduce(
         "accepted_event_sha256": event_digest,
         "accepted_events": [*previous["accepted_events"], copy.deepcopy(event)],
         "coverage_complete": event["coverage_complete"],
-        "go_eligible": event["go_eligible"],
         "progress": [
             *previous["progress"],
             {
@@ -2258,7 +2232,6 @@ def _human_reduce(
         phase, verdict, next_action, reason = _state_phase(
             findings,
             previous["coverage_complete"],
-            previous["go_eligible"],
             stop_reason=None,
             round_number=previous["round"],
         )

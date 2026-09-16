@@ -150,7 +150,6 @@ def legacy_case(source: tuple[Path, str, str]) -> tuple[Any, Any, Any, Any]:
                 },
                 "scope": ["path:justfile"],
                 "coverage_complete": True,
-                "go_eligible": True,
                 "responses": [],
                 "new_findings": findings,
                 "stop_reason": None,

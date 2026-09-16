@@ -240,7 +240,7 @@ The proof has only these fields:
 The helper extracts the state carrier from the exact review body. It compares the extracted carrier
 with `state` and `visible_content`. It must verify either the nonterminal `phase!=complete`,
 `verdict=NO-GO`, and `next_action!=finalize` tuple or the terminal `phase=complete`,
-`verdict=GO`, `next_action=finalize`, and `go_eligible=true` tuple. It also verifies the
+`verdict=GO` and `next_action=finalize` tuple. It also verifies the
 review identity, body digest, carrier digest, reviewed head, and live requirements binding before a
 label write. The state
 `artifact_binding.sha256` and `requirements_sha256` values must equal their respective retained
@@ -431,7 +431,7 @@ They cannot authorize a new response, resolution, review, or label mutation. A v
 must not select legacy input as a fallback.
 
 Treat an independent older-head version-1 exchange as completed history only when its terminal
-state has `phase=complete`, `verdict=GO`, `next_action=finalize`, and `go_eligible=true`. It must
+state has `phase=complete`, `verdict=GO`, and `next_action=finalize`. It must
 bind the retained requirements, and its terminal carrier must precede each carrier or authority
 record in the current exchange. Its exchange identifier must not occur in the selected current or
 supersession ancestry. A conditional or later-published old-head carrier cannot reset the exchange.

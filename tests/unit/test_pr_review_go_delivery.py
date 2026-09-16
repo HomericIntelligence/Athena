@@ -54,7 +54,6 @@ FORMAT_ONLY_INLINE_ROOT_PROOF_JSON = r"""{
           "coverage_complete": true,
           "event_type": "reviewer_assessment",
           "exchange_id": "pr1572-k2-source-publication-20260915-r1",
-          "go_eligible": true,
           "new_findings": [
             {
               "category": null,
@@ -129,7 +128,6 @@ FORMAT_ONLY_INLINE_ROOT_PROOF_JSON = r"""{
           "state": "open"
         }
       ],
-      "go_eligible": true,
       "next_action": "author_response",
       "phase": "awaiting_author",
       "prior_state_sha256": null,
@@ -741,7 +739,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         *,
         requirements_sha256: str,
         head_oid: str = "a" * 40,
-        go_eligible: bool = True,
     ) -> tuple[dict[str, Any], str]:
         exchange = self.delivery.review_exchange
         visible = "The previous head completed its review."
@@ -764,7 +761,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/old.py"],
                     "coverage_complete": True,
-                    "go_eligible": go_eligible,
                     "responses": [],
                     "new_findings": [],
                     "stop_reason": None,
@@ -797,7 +793,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/old.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [
                         {
@@ -876,7 +871,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": [f"path:{state_path}"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [
                         {
@@ -976,7 +970,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                         },
                         "scope": [f"path:{state_path}"],
                         "coverage_complete": True,
-                        "go_eligible": True,
                         "responses": [
                             {
                                 "finding_id": closure.finding_id,
@@ -1130,7 +1123,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/follow.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [
                         {
@@ -1240,7 +1232,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/example.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [
                         {
                             "finding_id": "F-001",
@@ -1311,7 +1302,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/no_go.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [
                         {
@@ -1366,7 +1356,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/conditional.py"],
                     "coverage_complete": True,
-                    "go_eligible": False,
                     "responses": [],
                     "new_findings": [],
                     "stop_reason": None,
@@ -1548,7 +1537,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/example.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [
                         {
@@ -1613,7 +1601,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/example.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [
                         {
                             "finding_id": "F-001",
@@ -1683,7 +1670,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/example.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [
                         {
                             "finding_id": "F-001",
@@ -1761,7 +1747,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/old.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [
                         {
@@ -1838,7 +1823,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/new.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [
                         {
@@ -3326,7 +3310,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/evidence.py"],
                     "coverage_complete": False,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [],
                     "stop_reason": None,
@@ -3353,7 +3336,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/evidence.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [],
                     "stop_reason": None,
@@ -3600,7 +3582,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["workflow:review-delivery"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [
                         {
@@ -4013,7 +3994,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": answered["state"]["scope"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [
                         {
                             "finding_id": "F-001",
@@ -5498,7 +5478,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/example.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [],
                     "stop_reason": None,
@@ -5543,7 +5522,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/example.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [
                         {
                             "finding_id": "F-001",
@@ -5593,7 +5571,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/example.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [
                         {
                             "finding_id": finding_id,
@@ -5648,7 +5625,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/example.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [
                         {
                             "finding_id": "F-001",
@@ -5695,7 +5671,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/middle.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [],
                     "stop_reason": None,
@@ -5737,7 +5712,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/returned.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [],
                     "stop_reason": None,
@@ -5768,7 +5742,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/current.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [],
                     "stop_reason": None,
@@ -5866,7 +5839,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/reset.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [],
                     "stop_reason": None,
@@ -6221,7 +6193,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/current.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [],
                     "stop_reason": None,
@@ -6361,7 +6332,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/duplicate.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [],
                     "stop_reason": None,
@@ -6443,7 +6413,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/example.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [],
                     "stop_reason": None,
@@ -6584,7 +6553,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/example.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [],
                     "stop_reason": None,
@@ -6674,7 +6642,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/old.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [
                         {
@@ -6751,7 +6718,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/new.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [
                         {
@@ -6896,7 +6862,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/middle.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [
                         {
@@ -6995,7 +6960,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/final.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [],
                     "stop_reason": None,
@@ -7141,7 +7105,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/reframed.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [],
                     "stop_reason": None,
@@ -7617,7 +7580,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/publisher.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [finding],
                     "stop_reason": None,
@@ -8411,10 +8373,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self.assertEqual("already_delivered", replay.status)
         self.assertEqual(1, forge.events.count("labels:no-go"))
 
-    def test_conditional_go_proof_is_rejected(self) -> None:
-        with self.assertRaises(self.delivery.review_exchange.ProtocolError):
-            self.conditional_go_proof()
-
     def test_no_go_rejects_a_proof_that_is_not_the_unique_chain_tip(self) -> None:
         proof, record = self.no_go_proof()
         exchange = self.delivery.review_exchange
@@ -8460,7 +8418,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/no_go.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [
                         {
                             "finding_id": "F-001",
@@ -8527,7 +8484,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/old.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [],
                     "stop_reason": "requirements_reframe",
@@ -8567,7 +8523,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["path:src/new.py"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [
                         {
@@ -8655,7 +8610,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     },
                     "scope": ["workflow:review-delivery"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [],
                     "stop_reason": "requirements_reframe",
@@ -8702,7 +8656,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                         },
                         "scope": ["workflow:review-delivery"],
                         "coverage_complete": True,
-                        "go_eligible": True,
                         "responses": [],
                         "new_findings": [],
                         "stop_reason": None,

@@ -89,7 +89,6 @@ class ReviewExchangeTests(unittest.TestCase):
         *,
         findings: list[dict[str, Any]] | None = None,
         coverage_complete: bool = True,
-        go_eligible: bool = True,
         stop_reason: str | None = None,
         exchange_id: str = "exchange-7",
         requirements_sha256: str = HEX_C,
@@ -107,7 +106,6 @@ class ReviewExchangeTests(unittest.TestCase):
             "artifact_binding": self.artifact(),
             "scope": ["path:src/example.py"],
             "coverage_complete": coverage_complete,
-            "go_eligible": go_eligible,
             "responses": [],
             "new_findings": findings if findings is not None else [self.finding()],
             "stop_reason": stop_reason,
@@ -172,7 +170,6 @@ class ReviewExchangeTests(unittest.TestCase):
         closure_condition: str | None = None,
         findings: list[dict[str, Any]] | None = None,
         coverage_complete: bool = True,
-        go_eligible: bool = True,
         stop_reason: str | None = None,
     ) -> dict[str, Any]:
         return {
@@ -183,7 +180,6 @@ class ReviewExchangeTests(unittest.TestCase):
             "artifact_binding": state["state"]["artifact_binding"],
             "scope": state["state"]["scope"],
             "coverage_complete": coverage_complete,
-            "go_eligible": go_eligible,
             "responses": [
                 {
                     "finding_id": "F-001",
@@ -228,7 +224,6 @@ class ReviewExchangeTests(unittest.TestCase):
         *,
         exchange_id: str = "exchange-8",
         requirements_sha256: str = HEX_A,
-        go_eligible: bool = True,
         superseded_exchange_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         if superseded_exchange_ids is None:
@@ -254,7 +249,6 @@ class ReviewExchangeTests(unittest.TestCase):
             "artifact_binding": self.artifact("revision-reframed"),
             "scope": ["path:src/example.py"],
             "coverage_complete": True,
-            "go_eligible": go_eligible,
             "responses": [],
             "new_findings": [],
             "stop_reason": None,
@@ -301,15 +295,16 @@ class ReviewExchangeTests(unittest.TestCase):
         self.assertEqual("GO", go["envelope"]["state"]["verdict"])
         self.assertEqual("finalize", go["envelope"]["state"]["next_action"])
 
-    def test_pull_request_assessment_rejects_ci_eligibility_input(self) -> None:
-        event = self.initial_event(findings=[], go_eligible=False)
+    def test_pull_request_assessment_has_no_ci_eligibility_input(self) -> None:
+        event = self.initial_event(findings=[])
 
-        with self.assertRaises(self.exchange.ProtocolError):
-            self.reduce(event)
+        result = self.reduce(event)["envelope"]
+        self.assertEqual("GO", result["state"]["verdict"])
+        self.assertNotIn("go_eligible", result["state"])
 
     def test_round_five_ineligible_assessment_requires_a_human_decision(self) -> None:
         state = self.reduce(
-            self.initial_event(findings=[], coverage_complete=False, go_eligible=True)
+            self.initial_event(findings=[], coverage_complete=False)
         )["envelope"]
         for round_number in range(2, 5):
             event = self.review_event(
@@ -317,7 +312,6 @@ class ReviewExchangeTests(unittest.TestCase):
                 "resolve",
                 round_number=round_number,
                 coverage_complete=False,
-                go_eligible=True,
             )
             event["responses"] = []
             state = self.reduce(event, state)["envelope"]
@@ -326,7 +320,6 @@ class ReviewExchangeTests(unittest.TestCase):
             "resolve",
             round_number=5,
             coverage_complete=False,
-            go_eligible=True,
         )
         round_five["responses"] = []
         exhausted = self.reduce(round_five, state)["envelope"]
@@ -338,14 +331,13 @@ class ReviewExchangeTests(unittest.TestCase):
             exhausted,
             "resolve",
             round_number=5,
-            go_eligible=True,
         )
         upgrade["responses"] = []
         with self.assertRaises(self.exchange.ProtocolError):
             self.reduce(upgrade, exhausted)
 
-    def test_author_human_and_reframe_preserve_go_eligibility_rules(self) -> None:
-        prior = self.reduce(self.initial_event(go_eligible=True))["envelope"]
+    def test_author_human_and_reframe_preserve_source_review_rules(self) -> None:
+        prior = self.reduce(self.initial_event())["envelope"]
         answered = self.reduce(
             self.author_event(prior, "risk_acceptance", revision="revision-1"), prior
         )["envelope"]
@@ -353,51 +345,10 @@ class ReviewExchangeTests(unittest.TestCase):
             "envelope"
         ]
 
-        self.assertTrue(answered["state"]["go_eligible"])
         self.assertEqual("GO", accepted["state"]["verdict"])
-        self.assertTrue(accepted["state"]["go_eligible"])
 
         reframed = self.reduce(self.reframe_event(accepted), accepted)["envelope"]
         self.assertEqual("GO", reframed["state"]["verdict"])
-        self.assertTrue(reframed["state"]["go_eligible"])
-
-    def test_issue_state_requires_go_eligibility(self) -> None:
-        event = self.initial_event(findings=[], go_eligible=False)
-        event["surface"] = "issue"
-
-        with self.assertRaises(self.exchange.ProtocolError):
-            self.reduce(event)
-
-    def test_reviewer_and_reframe_events_require_boolean_go_eligibility(self) -> None:
-        initial = self.initial_event()
-        missing = {key: value for key, value in initial.items() if key != "go_eligible"}
-        with self.assertRaises(self.exchange.ProtocolError):
-            self.reduce(missing)
-        with self.assertRaises(self.exchange.ProtocolError):
-            self.reduce({**initial, "go_eligible": "yes"})
-
-        prior = self.reduce(self.initial_event(stop_reason="requirements_reframe"))[
-            "envelope"
-        ]
-        reframe = self.reframe_event(prior)
-        del reframe["go_eligible"]
-        with self.assertRaises(self.exchange.ProtocolError):
-            self.reduce(reframe, prior)
-
-    def test_state_replay_rejects_forged_go_eligibility(self) -> None:
-        conditional = self.reduce(self.initial_event(findings=[], go_eligible=True))[
-            "envelope"
-        ]
-        forged = copy.deepcopy(conditional)
-        forged["state"].update(
-            go_eligible=False,
-            verdict="GO",
-            next_action="finalize",
-        )
-        forged["state_sha256"] = self.exchange.sha256_json(forged["state"])
-
-        with self.assertRaises(self.exchange.ProtocolError):
-            self.exchange.verify_envelope(forged)
 
     def test_nonblocking_findings_cannot_force_another_exchange_step(self) -> None:
         observation = self.finding(severity="minor", disposition="suggestion")
@@ -528,13 +479,12 @@ class ReviewExchangeTests(unittest.TestCase):
                 self.assertEqual("artifact_refreshed", result["decision"]["reason"])
 
     def test_changed_pr_head_requires_terminal_finding_revalidation(self) -> None:
-        initial = self.reduce(self.initial_event(go_eligible=True))["envelope"]
+        initial = self.reduce(self.initial_event())["envelope"]
         corrected = self.reduce(self.author_event(initial, "fix"), initial)
         resolved = self.reduce(
             self.review_event(
                 corrected["envelope"],
                 "resolve",
-                go_eligible=True,
             ),
             corrected["envelope"],
         )["envelope"]
@@ -544,7 +494,7 @@ class ReviewExchangeTests(unittest.TestCase):
             self.reduce(refresh, resolved)
 
     def test_changed_pr_head_revalidates_withdrawn_finding(self) -> None:
-        initial = self.reduce(self.initial_event(go_eligible=True))["envelope"]
+        initial = self.reduce(self.initial_event())["envelope"]
         contested = self.reduce(self.author_event(initial, "contest"), initial)[
             "envelope"
         ]
@@ -552,7 +502,6 @@ class ReviewExchangeTests(unittest.TestCase):
             self.review_event(
                 contested,
                 "accept",
-                go_eligible=True,
                 evidence=["The original contest is valid."],
             ),
             contested,
@@ -564,7 +513,7 @@ class ReviewExchangeTests(unittest.TestCase):
             self.reduce(refresh, withdrawn)
 
     def test_changed_pr_head_clears_accepted_risk_authority(self) -> None:
-        initial = self.reduce(self.initial_event(go_eligible=True))["envelope"]
+        initial = self.reduce(self.initial_event())["envelope"]
         requested = self.reduce(
             self.author_event(
                 initial,
@@ -590,7 +539,7 @@ class ReviewExchangeTests(unittest.TestCase):
         observation = self.finding(severity="minor", disposition="suggestion")
         observation["closure_condition"] = None
         conditional = self.reduce(
-            self.initial_event(findings=[observation], go_eligible=True)
+            self.initial_event(findings=[observation])
         )["envelope"]
         refresh = self.author_event(conditional, "fix", revision="revision-2")
         refresh["responses"] = []
@@ -890,7 +839,7 @@ class ReviewExchangeTests(unittest.TestCase):
 
     def test_artifact_refresh_keeps_the_five_assessment_limit(self) -> None:
         state = self.reduce(
-            self.initial_event(findings=[], coverage_complete=False, go_eligible=True)
+            self.initial_event(findings=[], coverage_complete=False)
         )["envelope"]
         for round_number in (2, 3):
             review = self.review_event(
@@ -898,7 +847,6 @@ class ReviewExchangeTests(unittest.TestCase):
                 "resolve",
                 round_number=round_number,
                 coverage_complete=False,
-                go_eligible=True,
             )
             review["responses"] = []
             state = self.reduce(review, state)["envelope"]
@@ -907,7 +855,6 @@ class ReviewExchangeTests(unittest.TestCase):
             "resolve",
             round_number=4,
             coverage_complete=False,
-            go_eligible=True,
         )
         conditional_review["responses"] = []
         conditional = self.reduce(conditional_review, state)["envelope"]
@@ -922,7 +869,6 @@ class ReviewExchangeTests(unittest.TestCase):
             refreshed,
             "resolve",
             round_number=5,
-            go_eligible=True,
         )
         final_review["responses"] = []
         complete = self.reduce(final_review, refreshed)["envelope"]
@@ -938,7 +884,6 @@ class ReviewExchangeTests(unittest.TestCase):
             complete,
             "resolve",
             round_number=6,
-            go_eligible=True,
         )
         sixth["responses"] = []
         with self.assertRaises(self.exchange.ProtocolError):
@@ -1296,7 +1241,6 @@ class ReviewExchangeTests(unittest.TestCase):
                 refreshed,
                 "resolve",
                 round_number=2,
-                go_eligible=True,
             )
             review["responses"] = []
 
@@ -1502,7 +1446,7 @@ class ReviewExchangeTests(unittest.TestCase):
     def test_malformed_artifact_in_conditional_history_is_a_protocol_error(
         self,
     ) -> None:
-        conditional = self.reduce(self.initial_event(findings=[], go_eligible=True))[
+        conditional = self.reduce(self.initial_event(findings=[]))[
             "envelope"
         ]
         malformed_event = self.author_event(
@@ -3596,8 +3540,8 @@ class ReviewExchangeTests(unittest.TestCase):
         cases.append(("progress sequence", {**valid, "progress": []}))
         cases.append(
             (
-                "missing GO eligibility",
-                {key: value for key, value in valid.items() if key != "go_eligible"},
+                "obsolete GO eligibility",
+                {**valid, "go_eligible": True},
             )
         )
         cases.append(("phase tuple", {**valid, "verdict": "GO"}))

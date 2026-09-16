@@ -494,16 +494,11 @@ reviewer change, or migration does not reset this limit.
 An artifact refresh does not add reviewer progress. The accepted-event limit bounds repeated
 author refreshes.
 
-Each reviewer assessment and reframe records `go_eligible=true`. Review verdicts do not depend on
-local validation or CI/CD. An author response or human decision keeps the value from the prior state.
+Review verdicts depend only on the bound source artifact, declared requirements, findings, and
+source-review coverage. Do not use local validation or CI/CD state as review evidence.
 
-When no active required finding remains and coverage is complete, `go_eligible=true` produces
-`phase=complete`, `verdict=GO`, and `next_action=finalize`. Before round 5, the same state with
-The exchange does not support a conditional-GO review state.
-Deliver the exclusive implementation `NO-GO` label for this conditional state. One later explicit
-reviewer assessment with `go_eligible=true` can continue it. A repeated ineligible assessment cannot
-continue it. At round 5, an ineligible assessment produces `phase=decision_required`,
-`verdict=NO-GO`, and `next_action=human_decision`.
+When no active required finding remains and source-review coverage is complete, the exchange has
+`phase=complete`, `verdict=GO`, and `next_action=finalize`. There is no conditional-GO state.
 
 For each corrective round, record the previous and current count of active required findings and the
 declared scope set. Compare declared targets, not artifact byte count, to detect scope growth. A
@@ -518,9 +513,8 @@ Stop early with `NO-GO` and `next_action=human_decision` when one of these condi
 - the parties have no consensus; or
 - the work needs a requirements reframe.
 
-Round 5 can produce `GO` only when `go_eligible=true`. If the assessment is not GO-eligible, or if
-an active finding or coverage gap remains, set the exchange phase to `decision_required`. Do not
-make a sixth automated reviewer assessment.
+At round 5, an active finding or source-coverage gap sets the exchange phase to
+`decision_required`. Do not make a sixth automated reviewer assessment.
 At round 5, an authoritative human can accept a previously requested risk, stop the exchange, or
 require a reframe. The decision cannot select a closure condition that needs a sixth assessment.
 
@@ -532,7 +526,8 @@ Revalidate the receipt from its forge record whenever you inspect, publish, or f
 exchange. A reframe can supersede any retained v1 phase, including `complete`. A conditional
 complete pull-request state can accept an eligible reviewer assessment for the same artifact. It can
 also accept an author refresh for a new head. Other normal events cannot continue a complete
-exchange. Thus, a reframe cannot discard an escalation or restart the round limit without authority.
+exchange. A terminal state cannot accept a normal continuation. Thus, a reframe cannot discard an
+escalation or restart the round limit without authority.
 
 For GitHub, a later head can receive a separate review after independent older-head exchanges meet
 the [completed-history conditions](../../skills/pr-review/references/delivery.md#verified-go-delivery).

@@ -2870,150 +2870,15 @@ class ImmutableEvidenceTests(unittest.TestCase):
         self.assertEqual("main", evidence["reviewed_scope"]["fields"]["baseRefName"])
         self.assertEqual("feature", evidence["reviewed_scope"]["fields"]["headRefName"])
         self.assertEqual(0, evidence["reviewed_linked_requirements"]["count"])
-        self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
+        self.assertNotIn("check_evidence", evidence)
 
-    def test_collects_check_runs_bound_to_the_reviewed_head(self) -> None:
-        result, _, _, head_oid = self.run_collector(
-            [pull_request(), pull_request()],
-            head_bound_check_pages=[
-                {
-                    "total_count": 1,
-                    "check_runs": [
-                        {
-                            "id": 1,
-                            "name": "required-checks",
-                            "head_sha": HEAD_OID,
-                            "status": "completed",
-                            "conclusion": "success",
-                        }
-                    ],
-                }
-            ],
-        )
+    def test_source_evidence_omits_check_results(self) -> None:
+        result, _, _, _ = self.run_collector([pull_request(), pull_request()])
 
         self.assertEqual(0, result.returncode, result.stderr)
         evidence = json.loads(result.stdout)
-        self.assertEqual("head_bound", evidence["check_evidence"]["status"])
-        self.assertEqual(head_oid, evidence["check_evidence"]["head_oid"])
-        self.assertEqual(1, evidence["check_evidence"]["count"])
-        self.assertEqual("required-checks", evidence["checks"][0]["name"])
-
-    def test_treats_missing_head_bound_check_evidence_as_a_coverage_gap(self) -> None:
-        result, _, _, _ = self.run_collector(
-            [pull_request(), pull_request()], head_bound_check_pages=[]
-        )
-
-        self.assertEqual(0, result.returncode, result.stderr)
-        evidence = json.loads(result.stdout)
-        self.assertEqual([], evidence["checks"])
-        self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
-        self.assertTrue(evidence["check_evidence"]["reason"])
-
-    def test_treats_stale_check_runs_as_a_coverage_gap(self) -> None:
-        result, _, _, _ = self.run_collector(
-            [pull_request(), pull_request()],
-            head_bound_check_pages=[
-                {
-                    "total_count": 1,
-                    "check_runs": [
-                        {
-                            "id": 1,
-                            "name": "required-checks",
-                            "head_sha": BASE_OID,
-                            "status": "completed",
-                            "conclusion": "success",
-                        }
-                    ],
-                }
-            ],
-        )
-
-        self.assertEqual(0, result.returncode, result.stderr)
-        evidence = json.loads(result.stdout)
-        self.assertEqual([], evidence["checks"])
-        self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
-        self.assertTrue(evidence["check_evidence"]["reason"])
-
-    def test_treats_mixed_head_check_runs_as_a_coverage_gap(self) -> None:
-        result, _, _, _ = self.run_collector(
-            [pull_request(), pull_request()],
-            head_bound_check_pages=[
-                {
-                    "total_count": 2,
-                    "check_runs": [
-                        {
-                            "id": 1,
-                            "name": "current-check",
-                            "head_sha": HEAD_OID,
-                            "status": "completed",
-                            "conclusion": "success",
-                        },
-                        {
-                            "id": 2,
-                            "name": "stale-check",
-                            "head_sha": BASE_OID,
-                            "status": "completed",
-                            "conclusion": "success",
-                        },
-                    ],
-                }
-            ],
-        )
-
-        self.assertEqual(0, result.returncode, result.stderr)
-        evidence = json.loads(result.stdout)
-        self.assertEqual([], evidence["checks"])
-        self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
-        self.assertTrue(evidence["check_evidence"]["reason"])
-
-    def test_treats_partial_check_runs_as_a_coverage_gap(self) -> None:
-        result, _, _, _ = self.run_collector(
-            [pull_request(), pull_request()],
-            head_bound_check_pages=[
-                {
-                    "total_count": 2,
-                    "check_runs": [
-                        {
-                            "id": 1,
-                            "name": "required-checks",
-                            "head_sha": HEAD_OID,
-                            "status": "completed",
-                            "conclusion": "success",
-                        }
-                    ],
-                }
-            ],
-        )
-
-        self.assertEqual(0, result.returncode, result.stderr)
-        evidence = json.loads(result.stdout)
-        self.assertEqual([], evidence["checks"])
-        self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
-        self.assertTrue(evidence["check_evidence"]["reason"])
-
-    def test_treats_malformed_check_runs_as_a_coverage_gap(self) -> None:
-        result, _, _, _ = self.run_collector(
-            [pull_request(), pull_request()],
-            head_bound_check_pages=[
-                {
-                    "total_count": 1,
-                    "check_runs": [
-                        {
-                            "id": 1,
-                            "name": "required-checks",
-                            "status": "completed",
-                            "conclusion": "success",
-                        }
-                    ],
-                }
-            ],
-        )
-
-        self.assertEqual(0, result.returncode, result.stderr)
-        evidence = json.loads(result.stdout)
-        self.assertEqual([], evidence["checks"])
-        self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
-        self.assertTrue(evidence["check_evidence"]["reason"])
+        self.assertNotIn("checks", evidence)
+        self.assertNotIn("check_evidence", evidence)
 
     def test_requires_an_explicit_review_target_for_strict_evidence(self) -> None:
         result, call_count, _, _ = self.run_collector(
@@ -3630,9 +3495,7 @@ class ImmutableEvidenceTests(unittest.TestCase):
         result, _, _, _ = self.run_collector([initial, final])
 
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual(
-            "APPROVED", json.loads(result.stdout)["merge_readiness"]["review_decision"]
-        )
+        self.assertNotIn("merge_readiness", json.loads(result.stdout))
         self.assertEqual(
             [{"id": "final"}], json.loads(result.stdout)["pull_request"]["reviews"]
         )
