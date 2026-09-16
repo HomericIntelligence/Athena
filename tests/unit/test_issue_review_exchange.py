@@ -693,7 +693,7 @@ class IssueReviewExchangeTests(unittest.TestCase):
 
         self.assertEqual("create", prepared["operation"]["action"])
         self.assertEqual("NO-GO", prepared["state"]["verdict"])
-        self.assertTrue(prepared["state"]["go_eligible"])
+        self.assertNotIn("go_eligible", prepared["state"])
         self.assertEqual(1, prepared["state"]["round"])
         self.assertEqual("F-001", prepared["state"]["findings"][0]["id"])
         self.assertIn(
@@ -702,7 +702,7 @@ class IssueReviewExchangeTests(unittest.TestCase):
         )
 
         supplied_eligibility = self.review_request(with_plan)
-        supplied_eligibility["event"]["go_eligible"] = False
+        supplied_eligibility["event"]["go_eligible"] = True
         with self.assertRaises(self.adapter.ProtocolError):
             self.adapter.prepare_review(supplied_eligibility)
 
@@ -2505,7 +2505,6 @@ class IssueReviewExchangeTests(unittest.TestCase):
                     "artifact_binding": plan_envelope["state"]["artifact_binding"],
                     "scope": plan_envelope["state"]["scope"],
                     "coverage_complete": True,
-                    "go_eligible": True,
                     "responses": [],
                     "new_findings": [],
                     "stop_reason": None,

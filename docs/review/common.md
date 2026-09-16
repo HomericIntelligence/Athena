@@ -424,7 +424,7 @@ reviewer assessment. This refresh is valid in these states:
 
 - `awaiting_reviewer`;
 - `awaiting_evidence`; or
-- `complete` with `verdict=CONDITIONAL GO` before round 5.
+- `complete` with `verdict=GO` when no active required finding or source-coverage gap remains.
 
 The refresh must bind a new head revision. A different artifact digest at the same head is not
 sufficient. On both review surfaces, each author response that changes the artifact revision or
@@ -494,17 +494,11 @@ reviewer change, or migration does not reset this limit.
 An artifact refresh does not add reviewer progress. The accepted-event limit bounds repeated
 author refreshes.
 
-Each reviewer assessment and reframe records `go_eligible`. Set it to `true` only when the review
-profile can deliver `GO`. A CI-free pull-request review sets it to `false`. An author response or
-human decision keeps the value from the prior state. The issue adapter always sets it to `true`.
+Review verdicts depend only on the bound source artifact, declared requirements, findings, and
+source-review coverage. Do not use local validation or CI/CD state as review evidence.
 
-When no active required finding remains and coverage is complete, `go_eligible=true` produces
-`phase=complete`, `verdict=GO`, and `next_action=finalize`. Before round 5, the same state with
-`go_eligible=false` produces `phase=complete`, `verdict=CONDITIONAL GO`, and `next_action=none`.
-Deliver the exclusive implementation `NO-GO` label for this conditional state. One later explicit
-reviewer assessment with `go_eligible=true` can continue it. A repeated ineligible assessment cannot
-continue it. At round 5, an ineligible assessment produces `phase=decision_required`,
-`verdict=NO-GO`, and `next_action=human_decision`.
+When no active required finding remains and source-review coverage is complete, the exchange has
+`phase=complete`, `verdict=GO`, and `next_action=finalize`. There is no conditional-GO state.
 
 For each corrective round, record the previous and current count of active required findings and the
 declared scope set. Compare declared targets, not artifact byte count, to detect scope growth. A
@@ -519,9 +513,8 @@ Stop early with `NO-GO` and `next_action=human_decision` when one of these condi
 - the parties have no consensus; or
 - the work needs a requirements reframe.
 
-Round 5 can produce `GO` only when `go_eligible=true`. If the assessment is not GO-eligible, or if
-an active finding or coverage gap remains, set the exchange phase to `decision_required`. Do not
-make a sixth automated reviewer assessment.
+At round 5, an active finding or source-coverage gap sets the exchange phase to
+`decision_required`. Do not make a sixth automated reviewer assessment.
 At round 5, an authoritative human can accept a previously requested risk, stop the exchange, or
 require a reframe. The decision cannot select a closure condition that needs a sixth assessment.
 
@@ -533,7 +526,8 @@ Revalidate the receipt from its forge record whenever you inspect, publish, or f
 exchange. A reframe can supersede any retained v1 phase, including `complete`. A conditional
 complete pull-request state can accept an eligible reviewer assessment for the same artifact. It can
 also accept an author refresh for a new head. Other normal events cannot continue a complete
-exchange. Thus, a reframe cannot discard an escalation or restart the round limit without authority.
+exchange. A terminal state cannot accept a normal continuation. Thus, a reframe cannot discard an
+escalation or restart the round limit without authority.
 
 For GitHub, a later head can receive a separate review after independent older-head exchanges meet
 the [completed-history conditions](../../skills/pr-review/references/delivery.md#verified-go-delivery).
@@ -636,7 +630,7 @@ Apply [P033](../principles/README.md#p033), [P044](../principles/README.md#p044)
 | Change review | Do not write repository or forge state. Use local read-only annotations when the host supports them. Otherwise, use console `path:line` output. Do not insert review notes into source. |
 | Issue planning and issue review | Use only the documented issue-comment action for delivery. Treat `--draft` and `--report-only` as read-only. |
 | Issue-plan finalization | Treat `--draft` as read-only. A verified finalized planning epoch can replace the resolved issue body once. After exact readback, `finalize-plan` can delete only its sealed actor-owned plan and review comments. Do not change other forge state. Do not retry an uncertain deletion. |
-| Pull request review | For each applicable bounded-exchange round, publish one logical comment-only review batch. An explicit author-response action can publish one author-event carrier between reviewer rounds. For GitHub, publish exactly one atomic `COMMENT` review for the selected action. Put the complete state carrier and each new anchorable finding in the reviewer-round batch. Put the author-event carrier in a separate author-response review with an empty `comments` array. For GitLab, publish the finding discussions and state note in one supported atomic draft or batch. If this capability is not available, return the prepared batch and withhold publication. A state or author-event note that has no accompanying new finding discussion can be one immutable note. Do not split GitHub findings into separate reviews or posts. Do not retry an indeterminate post. Do not post a generic clean review. A verified terminal exchange carrier is the only clean-result exception. Enable auto-merge only after an explicit `--enable-auto-merge-on-go` action and an exact delivered `GO`. Before you enable it, revalidate the artifact, head, terminal ledger, required checks, merge policy, and provider. Do not enable it for `CONDITIONAL GO`, `NO-GO`, `--report-only`, continuous-integration-free (CI-free), or prevalidated review. The prevalidated profile does not post or run commands. |
+| Pull request review | For each applicable bounded-exchange round, publish one logical comment-only review batch. An explicit author-response action can publish one author-event carrier between reviewer rounds. For GitHub, publish exactly one atomic `COMMENT` review for the selected action. Put the complete state carrier and each new anchorable finding in the reviewer-round batch. Put the author-event carrier in a separate author-response review with an empty `comments` array. For GitLab, publish the finding discussions and state note in one supported atomic draft or batch. If this capability is not available, return the prepared batch and withhold publication. A state or author-event note that has no accompanying new finding discussion can be one immutable note. Do not split GitHub findings into separate reviews or posts. Do not retry an indeterminate post. Do not post a generic clean review. A verified terminal exchange carrier is the only clean-result exception. Enable auto-merge only after an explicit `--enable-auto-merge-on-go` action and an exact delivered `GO`. Before you enable it, revalidate the artifact, head, terminal ledger, required checks, merge policy, and provider. Required checks are merge-policy facts, not review evidence. Do not enable auto-merge for `NO-GO`, `--report-only`, or prevalidated review. The prevalidated profile does not post or run commands. |
 | Repository review | If findings remain, create a tracking hierarchy and work items without duplicates. On GitHub, use a writable configured Project and existing unambiguous fields when they are available. Treat `--report-only` as read-only. |
 | Realignment assessment handoff | Keep the assessment local and read-only. Stop after the assessment report. Repair can write repository state only through a separate `realign --apply` request for candidate identifiers that the user explicitly approves. Before repair, rebind the selected commit and tree OIDs, or the worktree `HEAD` and overlay identity. Rebind the target and candidate evidence from that source. Approval does not authorize forge writes, dependency installation, public API changes or migrations, or unrelated cleanup. |
 

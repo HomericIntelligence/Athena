@@ -199,10 +199,9 @@ A state record has these fields:
 | `supersedes_state_sha256` | Superseded state digest or `null` |
 | `supersession_authority_receipt` | Authority receipt for a reframe, or `null` when `supersedes_state_sha256` is `null` |
 | `coverage_complete` | Boolean |
-| `go_eligible` | Boolean. `false` is valid only for a pull-request state. |
 | `progress` | One progress record for each reviewer round |
 | `findings` | Ordered list of 0 through 100 stored findings |
-| `verdict` | `GO`, `CONDITIONAL GO`, or `NO-GO` |
+| `verdict` | `GO` or `NO-GO` |
 | `next_action` | `author_response`, `review_assessment`, `finalize`, `human_decision`, or `none` |
 
 The accepted-event ledger starts with the initial reviewer assessment or reframe. It contains at
@@ -260,7 +259,6 @@ An initial reviewer assessment has these fields:
 | `artifact_binding` | Artifact binding |
 | `scope` | Nonempty list of unique target strings |
 | `coverage_complete` | Boolean |
-| `go_eligible` | Boolean. An issue assessment uses `true`. |
 | `responses` | Empty list |
 | `new_findings` | Ordered list of finding inputs |
 | `stop_reason` | `null` or a stop reason from the list below |
@@ -297,8 +295,7 @@ A continued author response has these fields:
 | `responses` | One author response for each required finding that the transition must answer |
 
 Normally, a continued author response applies to `awaiting_author`. For a pull request, it can also
-refresh a changed head in `awaiting_reviewer`, `awaiting_evidence`, or a pre-round-5 conditional
-complete state. A refresh must change `artifact_binding.revision`. A different artifact digest with
+refresh a changed head in `awaiting_reviewer` or `awaiting_evidence`. A refresh must change `artifact_binding.revision`. A different artifact digest with
 the same revision is not sufficient.
 
 On both review surfaces, each response that changes the artifact revision or digest must answer all
@@ -318,7 +315,7 @@ conditional complete state, the result moves to `awaiting_reviewer` when it reva
 required finding. When it has no active or terminal required finding, `responses` is empty and the
 result moves to `awaiting_evidence`. Each refresh has `verdict=NO-GO`,
 `next_action=review_assessment`, and `coverage_complete=false`. It keeps the reviewer round,
-progress records, `go_eligible`, and finding identifiers. It appends one accepted event. Thus, the
+progress records, and finding identifiers. It appends one accepted event. Thus, the
 509-event ledger limit bounds repeated refreshes.
 
 A corrective reviewer assessment has these fields:
@@ -332,7 +329,6 @@ A corrective reviewer assessment has these fields:
 | `artifact_binding` | Exact author artifact revision and artifact digest, with the visible-content digest for the new reviewer carrier |
 | `scope` | Exact author scope set |
 | `coverage_complete` | Boolean |
-| `go_eligible` | Boolean. Use `false` for a CI-free pull-request assessment. |
 | `responses` | One reviewer response for each prior author answer |
 | `new_findings` | Ordered list of permitted later finding inputs |
 | `stop_reason` | `null` or a stop reason from the list below |
@@ -354,13 +350,7 @@ An authoritative human event has these fields:
 | `authority_receipt` | Authority receipt |
 | `decisions` | Nonempty list of unique human decisions |
 
-An author response or human decision inherits `go_eligible` from the prior state. Before round 5,
-when a complete pull-request state has `verdict=CONDITIONAL GO`, `next_action=none`, and
-`go_eligible=false`, one later reviewer assessment can set `go_eligible=true`. It must increase the
-round by one. A repeated `false` value is invalid. An author refresh for a new head can instead move
-this state to `awaiting_evidence`. At round 5, an ineligible assessment produces
-`phase=decision_required`, `verdict=NO-GO`, and `next_action=human_decision`. A reframe remains
-valid.
+A terminal GO cannot accept an author response or a reviewer assessment. A reframe remains valid.
 
 At round 5, `select_closure` is invalid because it would require round 6. A requirements reframe is
 the only event that can change the exchange identity.
@@ -478,7 +468,7 @@ each write, and after final readback. A mismatch, coverage gap, or operational f
 state-dependent write or favorable result.
 
 The terminal closure manifest requires `phase=complete`, `verdict=GO`,
-`next_action=finalize`, and `go_eligible=true`. A current exact conditional state is valid evidence
+`next_action=finalize`. A current exact terminal state is valid evidence
 only for the exclusive implementation `NO-GO` label path.
 
 A closure entry has exactly these fields:
@@ -789,9 +779,7 @@ A reframe review event has these fields:
 | `scope` | Nonempty list of scope-target objects that equals the reframe plan targets |
 
 The helper verifies the exact action-bound reframe record again from the current snapshot. The
-resulting state stores the verified receipt in `supersession_authority_receipt`. The issue adapter
-sets `go_eligible=true` on each generated common reviewer assessment and reframe. The issue request
-does not accept this field.
+resulting state stores the verified receipt in `supersession_authority_receipt`.
 
 The result is a prepared issue-comment result. Round 1 creates the canonical review comment only
 when it is absent. A continuation updates that same comment. The helper inserts this generated

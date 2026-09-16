@@ -40,32 +40,31 @@ policy.
 
 ## Decision
 
-For a default or continuous-integration-free (CI-free) normal report, calculate findings and the
-score. Then, reduce the reviewer event and emit one verdict. For the prevalidated profile, emit only
+For a source-review report, calculate findings and the score from the bound source. Then, reduce the
+reviewer event and emit one verdict. For the prevalidated profile, emit only
 its structured audit. Do not emit a verdict, scorecard, carrier, or publication. GitLab can report a
 verdict. This skill must not enable GitLab auto-merge.
 
 | Verdict | Required conditions |
 | --- | --- |
-| **GO** | Use only for the default profile. Require grade A (93–100), architecture alignment or an evidenced intentional change, zero active findings with critical or major severity, zero active required findings, complete applicable coverage, and passing host-selected checks on the reviewed head. The exchange state must also have `phase=complete`, `verdict=GO`, `next_action=finalize`, an exact current-head artifact binding, and only terminal finding states. Keep each `accepted_risk` finding in the report with its verified authority receipt. A delivered GO also requires the verified delivery postconditions below. |
-| **CONDITIONAL GO** | Use only for a clean CI-free assessment before round 5. Require architecture to pass, no active required source finding, complete applicable CI-free coverage, and a score of at least B. The state is `phase=complete`, `next_action=none`, and `go_eligible=false`. For direct normal GitHub delivery, make the NO-GO label exclusive. A coverage or evidence gap produces `NO-GO`. |
-| **NO-GO** | Use it for a score below B, an active required finding, a material architecture violation, failed required validation, or an invalid or stale binding. For direct normal GitHub delivery, make the NO-GO label exclusive after verified carrier publication. |
+| **GO** | Require grade A (93–100), architecture alignment or an evidenced intentional change, zero active findings with critical or major severity, zero active required findings, complete applicable source coverage, an exact current-head artifact binding, and only terminal finding states. Keep each `accepted_risk` finding in the report with its verified authority receipt. A delivered GO also requires the verified delivery postconditions below. |
+| **NO-GO** | Use it for a score below B, an active required finding, a material architecture violation, an incomplete source review, or an invalid or stale binding. For direct normal GitHub delivery, make the NO-GO label exclusive after verified carrier publication. |
 
 ### Merge readiness
 
-Report forge approval and required-gate state as a separate **Merge readiness** fact when
-default-profile evidence is available. GO is a review verdict. It is not an approval, merge
+Report forge approval and required-gate state as a separate **Merge readiness** fact only when the
+caller requests it. GO is a review verdict. It is not an approval, merge
 authorization, or claim that each branch-protection rule passed.
 
 `--report-only` can report that evidence is GO-eligible. It must record
 `delivery: withheld (read-only)` and `auto_merge: withheld (read-only)`. Without
 `--enable-auto-merge-on-go`, a delivered GO records `auto_merge: withheld (not requested)`. For
-CONDITIONAL GO, NO-GO, CI-free, prevalidated, and GitLab, record `auto_merge: not-eligible` with the
+NO-GO, prevalidated, and GitLab, record `auto_merge: not-eligible` with the
 blocker.
 
 ## Reviewer-round carrier
 
-Default and CI-free direct delivery publish one exact-head state carrier for each reviewer round.
+Source-review direct delivery publishes one exact-head state carrier for each reviewer round.
 A normal `--report-only` review calls the exchange helper and returns the prepared carrier and
 logical batch. It does not publish, resolve a thread, or change a label. `--prevalidated` does not
 call an exchange or delivery helper.
@@ -178,7 +177,7 @@ Thread prose can give context, but it is not the author answer and cannot replac
 
 A normal response starts from `phase=awaiting_author`. A pull-request head refresh can also start
 from `phase=awaiting_reviewer`, `phase=awaiting_evidence`, or a pre-round-5 complete
-`CONDITIONAL GO`, but the revision must change. Each changed-head response covers every active
+`GO`, but the revision must change. Each changed-head response covers every active
 required finding. It also covers each required finding in `resolved`, `withdrawn`, or
 `accepted_risk` state. It uses the same identifiers, replaces the prior answers, and clears the
 prior reviewer replies. It also clears a prior accepted-risk authority receipt. A new risk request
@@ -211,7 +210,7 @@ Do not assess the implementation or increase the reviewer round in the same invo
 
 ## Exclusive NO-GO delivery
 
-After exact readback of a nonterminal, CONDITIONAL GO, or NO-GO round, use the installed helper with
+After exact readback of a nonterminal or NO-GO round, use the installed helper with
 the retained target, immutable identities, and verified version-1 state-carrier proof:
 
 ```bash
@@ -241,7 +240,7 @@ The proof has only these fields:
 The helper extracts the state carrier from the exact review body. It compares the extracted carrier
 with `state` and `visible_content`. It must verify either the nonterminal `phase!=complete`,
 `verdict=NO-GO`, and `next_action!=finalize` tuple or the terminal `phase=complete`,
-`verdict=CONDITIONAL GO`, `next_action=none`, and `go_eligible=false` tuple. It also verifies the
+`verdict=GO` and `next_action=finalize` tuple. It also verifies the
 review identity, body digest, carrier digest, reviewed head, and live requirements binding before a
 label write. The state
 `artifact_binding.sha256` and `requirements_sha256` values must equal their respective retained
@@ -267,7 +266,7 @@ helper verifies the fixed root and carrier before and after the label write.
 A direct default-profile GitHub review owns this narrow finalization unless an enclosing coordinator
 is the declared single delivery owner. This helper is the only terminal state-review publisher. Do
 not publish the terminal round through the general reviewer-round path first. Complete finalization
-before you expose a delivered GO. CI-free, prevalidated, report-only, and GitLab invocations do not
+before you expose a delivered GO. Prevalidated, report-only, and GitLab invocations do not
 run this GitHub finalizer.
 
 First, run the read-only version-1 preparation with the same target arguments:
@@ -432,7 +431,7 @@ They cannot authorize a new response, resolution, review, or label mutation. A v
 must not select legacy input as a fallback.
 
 Treat an independent older-head version-1 exchange as completed history only when its terminal
-state has `phase=complete`, `verdict=GO`, `next_action=finalize`, and `go_eligible=true`. It must
+state has `phase=complete`, `verdict=GO`, and `next_action=finalize`. It must
 bind the retained requirements, and its terminal carrier must precede each carrier or authority
 record in the current exchange. Its exchange identifier must not occur in the selected current or
 supersession ancestry. A conditional or later-published old-head carrier cannot reset the exchange.

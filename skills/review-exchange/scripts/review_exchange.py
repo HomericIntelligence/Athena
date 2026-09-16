@@ -851,7 +851,6 @@ def _validate_state(value: object) -> dict[str, Any]:
                 "supersedes_state_sha256",
                 "supersession_authority_receipt",
                 "coverage_complete",
-                "go_eligible",
                 "progress",
                 "findings",
                 "verdict",
@@ -922,11 +921,10 @@ def _validate_state(value: object) -> dict[str, Any]:
             }
         ),
     )
-    go_eligible = _boolean(state["go_eligible"], "state.go_eligible")
     verdict = _enum(
         state["verdict"],
         "state.verdict",
-        frozenset({"GO", "NO-GO", "CONDITIONAL GO"}),
+        frozenset({"GO", "NO-GO"}),
     )
     next_action = _enum(
         state["next_action"],
@@ -945,15 +943,13 @@ def _validate_state(value: object) -> dict[str, Any]:
         "awaiting_author": ("NO-GO", "author_response"),
         "awaiting_reviewer": ("NO-GO", "review_assessment"),
         "awaiting_evidence": ("NO-GO", "review_assessment"),
-        "complete": (("GO", "finalize") if go_eligible else ("CONDITIONAL GO", "none")),
+        "complete": ("GO", "finalize"),
         "decision_required": ("NO-GO", "human_decision"),
     }[phase]
     if (verdict, next_action) != expected:
         raise ProtocolError("State phase, verdict, and next action do not agree.")
     coverage = _boolean(state["coverage_complete"], "state.coverage_complete")
     active = _active_required(findings)
-    if surface == "issue" and not go_eligible:
-        raise ProtocolError("An issue review state must be eligible for GO.")
     if phase == "complete" and (active or not coverage):
         raise ProtocolError("A complete state has an active finding or coverage gap.")
     if phase == "awaiting_author" and not active:
@@ -1048,7 +1044,6 @@ def _validate_state(value: object) -> dict[str, Any]:
         "supersedes_state_sha256": supersedes,
         "supersession_authority_receipt": supersession_authority,
         "coverage_complete": coverage,
-        "go_eligible": go_eligible,
         "progress": progress,
         "findings": findings,
         "verdict": verdict,
@@ -1164,7 +1159,6 @@ def _initial_review_event(value: object) -> dict[str, Any]:
                 "artifact_binding",
                 "scope",
                 "coverage_complete",
-                "go_eligible",
                 "responses",
                 "new_findings",
                 "stop_reason",
@@ -1218,7 +1212,6 @@ def _initial_review_event(value: object) -> dict[str, Any]:
         "coverage_complete": _boolean(
             event["coverage_complete"], "initial coverage completeness"
         ),
-        "go_eligible": _boolean(event["go_eligible"], "initial GO eligibility"),
         "responses": [],
         "new_findings": new_findings,
         "stop_reason": (
@@ -1248,7 +1241,6 @@ def _reframe_event(value: object) -> dict[str, Any]:
                 "artifact_binding",
                 "scope",
                 "coverage_complete",
-                "go_eligible",
                 "responses",
                 "new_findings",
                 "stop_reason",
@@ -1341,7 +1333,6 @@ def _continued_review_event(
                 "artifact_binding",
                 "scope",
                 "coverage_complete",
-                "go_eligible",
                 "responses",
                 "new_findings",
                 "stop_reason",
@@ -1365,7 +1356,6 @@ def _continued_review_event(
         "coverage_complete": _boolean(
             event["coverage_complete"], "reviewer coverage completeness"
         ),
-        "go_eligible": _boolean(event["go_eligible"], "reviewer GO eligibility"),
         "responses": _unique_responses(
             event["responses"], "reviewer responses", _reviewer_response
         ),
@@ -1721,7 +1711,6 @@ def verify_authority_record_for_state(
 def _state_phase(
     findings: Sequence[Mapping[str, Any]],
     coverage_complete: bool,
-    go_eligible: bool,
     *,
     stop_reason: str | None,
     round_number: int,
@@ -1741,11 +1730,7 @@ def _state_phase(
             (stop_reason or "reviewer_escalation"),
         )
     if not active and coverage_complete:
-        if go_eligible:
-            return "complete", "GO", "finalize", "complete"
-        if round_number == ROUND_LIMIT:
-            return "decision_required", "NO-GO", "human_decision", "review_limit"
-        return "complete", "CONDITIONAL GO", "none", "conditional_complete"
+        return "complete", "GO", "finalize", "complete"
     if round_number == ROUND_LIMIT:
         return "decision_required", "NO-GO", "human_decision", "review_limit"
     if active:
@@ -1797,7 +1782,6 @@ def _initial_reduce(
     phase, verdict, next_action, reason = _state_phase(
         findings,
         event["coverage_complete"],
-        event["go_eligible"],
         stop_reason=event["stop_reason"],
         round_number=1,
     )
@@ -1817,7 +1801,6 @@ def _initial_reduce(
         "supersedes_state_sha256": event["supersedes_state_sha256"],
         "supersession_authority_receipt": None,
         "coverage_complete": event["coverage_complete"],
-        "go_eligible": event["go_eligible"],
         "progress": [
             {
                 "round": 1,
@@ -1875,21 +1858,10 @@ def _author_reduce(
     changed_artifact = changed_revision or (
         event["artifact_binding"]["sha256"] != previous["artifact_binding"]["sha256"]
     )
-    conditional_complete = (
-        previous["surface"] == "pull_request"
-        and previous["phase"] == "complete"
-        and previous["verdict"] == "CONDITIONAL GO"
-        and previous["next_action"] == "none"
-        and not previous["go_eligible"]
-        and previous["round"] < ROUND_LIMIT
-    )
     artifact_refresh = (
         previous["surface"] == "pull_request"
         and changed_revision
-        and (
-            previous["phase"] in {"awaiting_reviewer", "awaiting_evidence"}
-            or conditional_complete
-        )
+        and previous["phase"] in {"awaiting_reviewer", "awaiting_evidence"}
     )
     if previous["phase"] != "awaiting_author" and not artifact_refresh:
         raise ProtocolError("The exchange is not awaiting an author response.")
@@ -2115,23 +2087,8 @@ def _revalidated_terminal_ids(previous: Mapping[str, Any]) -> set[str]:
 def _review_reduce(
     previous: dict[str, Any], event: dict[str, Any], event_digest: str
 ) -> tuple[dict[str, Any], str]:
-    conditional_complete = (
-        previous["surface"] == "pull_request"
-        and previous["phase"] == "complete"
-        and previous["verdict"] == "CONDITIONAL GO"
-        and previous["next_action"] == "none"
-        and not previous["go_eligible"]
-    )
-    if previous["phase"] not in {"awaiting_reviewer", "awaiting_evidence"} and not (
-        conditional_complete
-    ):
+    if previous["phase"] not in {"awaiting_reviewer", "awaiting_evidence"}:
         raise ProtocolError("The exchange is not awaiting a reviewer assessment.")
-    if conditional_complete and not event["go_eligible"]:
-        raise ProtocolError(
-            "A conditional review can continue only with a GO-eligible assessment."
-        )
-    if conditional_complete and previous["round"] == ROUND_LIMIT:
-        raise ProtocolError("A round-5 conditional review cannot add another round.")
     expected_round = previous["round"] + 1
     if event["round"] != expected_round:
         raise ProtocolError("Reviewer rounds must be consecutive.")
@@ -2199,7 +2156,6 @@ def _review_reduce(
     phase, verdict, next_action, reason = _state_phase(
         findings,
         event["coverage_complete"],
-        event["go_eligible"],
         stop_reason=reason_override,
         round_number=event["round"],
     )
@@ -2213,7 +2169,6 @@ def _review_reduce(
         "accepted_event_sha256": event_digest,
         "accepted_events": [*previous["accepted_events"], copy.deepcopy(event)],
         "coverage_complete": event["coverage_complete"],
-        "go_eligible": event["go_eligible"],
         "progress": [
             *previous["progress"],
             {
@@ -2277,7 +2232,6 @@ def _human_reduce(
         phase, verdict, next_action, reason = _state_phase(
             findings,
             previous["coverage_complete"],
-            previous["go_eligible"],
             stop_reason=None,
             round_number=previous["round"],
         )
@@ -2365,23 +2319,7 @@ def _verify_state_history(expected: Mapping[str, Any]) -> None:
             raise ProtocolError(
                 "A current-exchange history cannot contain this event type."
             )
-        conditional_continuation = (
-            current["surface"] == "pull_request"
-            and current["phase"] == "complete"
-            and current["verdict"] == "CONDITIONAL GO"
-            and current["next_action"] == "none"
-            and not current["go_eligible"]
-            and current["round"] < ROUND_LIMIT
-            and (
-                event_type == "reviewer_assessment"
-                or (
-                    event_type == "author_response"
-                    and event["artifact_binding"]["revision"]
-                    != current["artifact_binding"]["revision"]
-                )
-            )
-        )
-        if current["phase"] == "complete" and not conditional_continuation:
+        if current["phase"] == "complete":
             raise ProtocolError("State history continues after a terminal review.")
         if current["phase"] == "decision_required" and event_type not in {
             "human_decision",
@@ -2395,14 +2333,6 @@ def _verify_state_history(expected: Mapping[str, Any]) -> None:
             )
         if event["exchange_id"] != current["exchange_id"]:
             raise ProtocolError("An accepted event changes the review exchange.")
-        if (
-            current["phase"] == "complete"
-            and event_type == "reviewer_assessment"
-            and not event["go_eligible"]
-        ):
-            raise ProtocolError(
-                "A conditional review can continue only with a GO-eligible assessment."
-            )
         event_digest = _event_digest(event)
         if event_type == "author_response":
             current, _author_record, _ = _author_reduce(current, event, event_digest)
@@ -2490,27 +2420,7 @@ def reduce_request(value: object) -> dict[str, Any]:
     event_digest = _event_digest(event)
     if previous_envelope is not None:
         previous = cast(dict[str, Any], previous_envelope["state"])
-        conditional_continuation = (
-            previous["surface"] == "pull_request"
-            and previous["phase"] == "complete"
-            and previous["verdict"] == "CONDITIONAL GO"
-            and previous["next_action"] == "none"
-            and not previous["go_eligible"]
-            and previous["round"] < ROUND_LIMIT
-            and (
-                (event_type == "reviewer_assessment" and event["go_eligible"])
-                or (
-                    event_type == "author_response"
-                    and event["artifact_binding"]["revision"]
-                    != previous["artifact_binding"]["revision"]
-                )
-            )
-        )
-        if (
-            previous["phase"] == "complete"
-            and event_type != "reframe"
-            and not (conditional_continuation)
-        ):
+        if previous["phase"] == "complete" and event_type != "reframe":
             raise ProtocolError("A terminal review state cannot accept another event.")
         if previous["phase"] == "decision_required" and event_type not in {
             "human_decision",

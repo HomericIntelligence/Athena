@@ -1642,7 +1642,6 @@ def prepare_review(value: object) -> dict[str, Any]:
             "coverage_complete": _boolean(
                 event["coverage_complete"], "reframe coverage completeness"
             ),
-            "go_eligible": True,
             "responses": [],
             "new_findings": event["new_findings"],
             "stop_reason": event["stop_reason"],
@@ -1889,7 +1888,6 @@ def prepare_review(value: object) -> dict[str, Any]:
             "coverage_complete": _boolean(
                 event["coverage_complete"], "review coverage completeness"
             ),
-            "go_eligible": True,
             "responses": [],
             "new_findings": event["new_findings"],
             "stop_reason": event["stop_reason"],
@@ -1914,7 +1912,6 @@ def prepare_review(value: object) -> dict[str, Any]:
             "coverage_complete": _boolean(
                 event["coverage_complete"], "review coverage completeness"
             ),
-            "go_eligible": True,
             "responses": event["responses"],
             "new_findings": event["new_findings"],
             "stop_reason": event["stop_reason"],

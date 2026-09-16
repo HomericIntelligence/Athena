@@ -63,7 +63,7 @@ else:
 # file-list fallback only for backward compatibility.
 FIELDS = (
     "number,title,body,state,isDraft,author,baseRefName,headRefName,"
-    "baseRefOid,headRefOid,reviewDecision,reviews,statusCheckRollup,"
+    "baseRefOid,headRefOid,reviews,"
     "closingIssuesReferences,url"
 )
 ISSUE_FIELDS = "id,number,url,title,body,state"
@@ -86,11 +86,6 @@ MAX_CHANGED_PATH_MANIFEST_BYTES = 2 * 1024 * 1024
 MAX_CHANGED_PATHS = 10_000
 MAX_CHANGED_PATH_STDERR_BYTES = 16 * 1024
 CHANGED_PATH_REQUEST_TIMEOUT_SECONDS = 30.0
-MAX_CHECK_RUN_BYTES = 2 * 1024 * 1024
-MAX_CHECK_RUN_PAGES = 100
-MAX_CHECK_RUNS = 10_000
-MAX_CHECK_RUN_STDERR_BYTES = 16 * 1024
-CHECK_RUN_REQUEST_TIMEOUT_SECONDS = 30.0
 
 
 class LinkedRequirementsCoverageGap(RuntimeError):
@@ -99,10 +94,6 @@ class LinkedRequirementsCoverageGap(RuntimeError):
 
 class ChangedPathCoverageGap(RuntimeError):
     """Changed paths exceed the bounded immutable-evidence collector."""
-
-
-class CheckEvidenceCoverageGap(RuntimeError):
-    """GitHub checks cannot be bound completely to the reviewed head."""
 
 
 @dataclass
@@ -309,7 +300,6 @@ def metadata_error(metadata: object, *, require_immutable_identity: bool) -> str
         "author": dict,
         "baseRefName": str,
         "headRefName": str,
-        "statusCheckRollup": list,
         "url": str,
     }
     invalid = [
@@ -1294,130 +1284,6 @@ def gh(*arguments: str, accepted_codes: tuple[int, ...] = (0,)) -> str:
     return result.stdout
 
 
-def head_bound_check_runs(repository: str, head_oid: str) -> list[dict[str, Any]]:
-    """Return complete GitHub check-run evidence bound to one immutable commit."""
-    total_count: int | None = None
-    runs: list[dict[str, Any]] = []
-    run_ids: set[int] = set()
-    bytes_read = 0
-    for page_number in range(1, MAX_CHECK_RUN_PAGES + 2):
-        if page_number > MAX_CHECK_RUN_PAGES:
-            raise CheckEvidenceCoverageGap(
-                "GitHub check runs exceed the safe page limit."
-            )
-        remaining_bytes = MAX_CHECK_RUN_BYTES - bytes_read
-        if remaining_bytes <= 0:
-            raise CheckEvidenceCoverageGap(
-                "GitHub check runs exceed the safe aggregate byte limit."
-            )
-        try:
-            response = bounded_gh_output(
-                (
-                    "api",
-                    "--hostname",
-                    "github.com",
-                    "--method",
-                    "GET",
-                    "-H",
-                    "Accept: application/vnd.github+json",
-                    (
-                        f"repos/{repository}/commits/{head_oid}/check-runs?"
-                        f"per_page=100&page={page_number}"
-                    ),
-                ),
-                maximum_bytes=remaining_bytes,
-                limit_error="The GitHub check-run response exceeds the safe byte limit.",
-                timeout_seconds=CHECK_RUN_REQUEST_TIMEOUT_SECONDS,
-                stderr_maximum_bytes=MAX_CHECK_RUN_STDERR_BYTES,
-                stderr_limit_error=(
-                    "The GitHub check-run response exceeds the safe standard-error limit."
-                ),
-                deadline_error=(
-                    "The GitHub check-run provider exceeded the safe deadline."
-                ),
-                output_error="The tool cannot read GitHub check-run provider output.",
-                unavailable_output_error=(
-                    "The GitHub CLI process did not provide check-run output."
-                ),
-                operating_system_error="The tool cannot collect GitHub check runs",
-                coverage_gap=CheckEvidenceCoverageGap,
-            )
-        except RuntimeError as error:
-            if isinstance(error, CheckEvidenceCoverageGap):
-                raise
-            raise CheckEvidenceCoverageGap(
-                "GitHub did not return readable check evidence for the head object identifier."
-            ) from error
-        bytes_read += len(response)
-        try:
-            page = json.loads(response)
-        except json.JSONDecodeError as error:
-            raise CheckEvidenceCoverageGap(
-                "GitHub did not return readable check evidence for the head object identifier."
-            ) from error
-        if not isinstance(page, dict):
-            raise CheckEvidenceCoverageGap(
-                "GitHub returned a check-run page that is not valid."
-            )
-        page_total = page.get("total_count")
-        page_runs = page.get("check_runs")
-        if (
-            isinstance(page_total, bool)
-            or not isinstance(page_total, int)
-            or page_total < 0
-            or not isinstance(page_runs, list)
-        ):
-            raise CheckEvidenceCoverageGap(
-                "GitHub returned incomplete check-run evidence."
-            )
-        if total_count is None:
-            total_count = page_total
-            if total_count > MAX_CHECK_RUNS:
-                raise CheckEvidenceCoverageGap(
-                    "GitHub check runs exceed the safe run limit."
-                )
-        elif page_total != total_count:
-            raise CheckEvidenceCoverageGap(
-                "GitHub returned inconsistent check-run totals."
-            )
-        for run in page_runs:
-            if not isinstance(run, dict):
-                raise CheckEvidenceCoverageGap(
-                    "GitHub returned a check run that is not valid."
-                )
-            run_id = run.get("id")
-            run_head_oid = run.get("head_sha")
-            if (
-                isinstance(run_id, bool)
-                or not isinstance(run_id, int)
-                or run_id < 1
-                or run_id in run_ids
-                or not isinstance(run.get("name"), str)
-                or not run["name"]
-                or not isinstance(run.get("status"), str)
-                or not isinstance(run.get("conclusion"), str | type(None))
-                or not isinstance(run_head_oid, str)
-                or COMMIT_OID.fullmatch(run_head_oid) is None
-            ):
-                raise CheckEvidenceCoverageGap(
-                    "GitHub returned incomplete check-run evidence."
-                )
-            if run_head_oid != head_oid:
-                raise CheckEvidenceCoverageGap(
-                    "GitHub returned a check run that is bound to a different head "
-                    "object identifier."
-                )
-            run_ids.add(run_id)
-            runs.append(run)
-        if len(runs) == total_count:
-            return runs
-        if not page_runs:
-            raise CheckEvidenceCoverageGap(
-                "GitHub returned partial check-run evidence."
-            )
-    raise AssertionError("The bounded check-run pagination did not terminate.")
-
-
 def pr_metadata(
     pull_request: str, target: ExpectedReviewTarget | None
 ) -> dict[str, Any]:
@@ -1468,25 +1334,6 @@ def collect_requirements_binding(
             "The pull-request requirements changed during live binding collection."
         )
     return observed[0]
-
-
-def merge_readiness(metadata: dict[str, Any]) -> dict[str, str]:
-    """Return forge approval state as evidence separate from the review verdict."""
-    decision = metadata.get("reviewDecision")
-    if not isinstance(decision, str) or not decision:
-        decision = "UNAVAILABLE"
-    approval_gate = {
-        "APPROVED": "satisfied",
-        "CHANGES_REQUESTED": "blocked",
-        "REVIEW_REQUIRED": "blocked",
-    }.get(decision, "unknown")
-    return {
-        "auto_merge_approval_gate": approval_gate,
-        "authority": (
-            "Repository-policy evidence excluded from the review verdict and scope digests."
-        ),
-        "review_decision": decision,
-    }
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1612,7 +1459,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         changed_path_manifest: ChangedPathManifest | None = None
         current_target_path_manifest: ChangedPathManifest | None = None
         source_snapshot: MaterializedSnapshot | None = None
-        check_evidence: dict[str, str | int] | None = None
         if expected is not None:
             assert target is not None
             assert identity is not None
@@ -1622,21 +1468,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 source_snapshot,
             ) = strict_changed_paths(metadata, (identity.base_oid, expected[1]), target)
             changed_files = list(changed_path_manifest.paths)
-            try:
-                checks = head_bound_check_runs(repository, expected[1])
-            except CheckEvidenceCoverageGap as error:
-                checks = []
-                check_evidence = {
-                    "status": "coverage_gap",
-                    "reason": str(error),
-                    "head_oid": expected[1],
-                }
-            else:
-                check_evidence = {
-                    "status": "head_bound",
-                    "head_oid": expected[1],
-                    "count": len(checks),
-                }
         else:
             changed_files = [
                 line
@@ -1649,18 +1480,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ).splitlines()
                 if line
             ]
-            checks = json.loads(
-                gh(
-                    "pr",
-                    "checks",
-                    pull_request,
-                    "--json",
-                    "name,state,startedAt,completedAt,link,workflow",
-                    accepted_codes=(0, 1, 8),
-                )
-            )
-            if not isinstance(checks, list):
-                raise RuntimeError("GitHub returned check evidence that is not valid.")
         final_metadata = pr_metadata(pull_request, target)
         final_problem = metadata_error(
             final_metadata, require_immutable_identity=require_immutable_identity
@@ -1705,13 +1524,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     evidence: dict[str, object] = {
         "changed_files": changed_files,
         "changed_paths": changed_files,
-        "checks": checks,
         "pull_request": {
             key: value
             for key, value in final_metadata.items()
             if key != "reviewDecision"
         },
-        "merge_readiness": merge_readiness(final_metadata),
     }
     if identity is not None:
         evidence["reviewed_identity"] = identity.as_json()
@@ -1730,8 +1547,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if source_snapshot is not None:
         evidence["source_snapshot"] = source_snapshot.as_json()
-    if check_evidence is not None:
-        evidence["check_evidence"] = check_evidence
     print(json.dumps(evidence, sort_keys=True))
     return 0
 

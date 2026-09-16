@@ -1624,7 +1624,6 @@ def _verify_initial_state(envelope: Mapping[str, Any]) -> bool:
             "artifact_binding": state["artifact_binding"],
             "scope": state["scope"],
             "coverage_complete": state["coverage_complete"],
-            "go_eligible": state["go_eligible"],
             "responses": [],
             "new_findings": [
                 _finding_event_fields(finding) for finding in state["findings"]
@@ -1684,7 +1683,6 @@ def _infer_reviewer_event(
         "artifact_binding": current_state["artifact_binding"],
         "scope": current_state["scope"],
         "coverage_complete": current_state["coverage_complete"],
-        "go_eligible": current_state["go_eligible"],
         "responses": responses,
         "new_findings": new_findings,
         "stop_reason": stop_reason,
@@ -1710,7 +1708,6 @@ def _infer_reframe_event(
         "artifact_binding": state["artifact_binding"],
         "scope": state["scope"],
         "coverage_complete": state["coverage_complete"],
-        "go_eligible": state["go_eligible"],
         "responses": [],
         "new_findings": [
             _finding_event_fields(finding) for finding in state["findings"]
@@ -2308,7 +2305,6 @@ def _verify_state_chain(
                 if envelope["state"]["phase"] == "complete"
                 and envelope["state"]["verdict"] == "GO"
                 and envelope["state"]["next_action"] == "finalize"
-                and envelope["state"]["go_eligible"] is True
                 and envelope["state"]["requirements_sha256"]
                 == terminal["state"]["requirements_sha256"]
             ]
@@ -2398,7 +2394,6 @@ def _terminal_state(
         state["phase"] != "complete"
         or state["verdict"] != "GO"
         or state["next_action"] != "finalize"
-        or state["go_eligible"] is not True
     ):
         raise DeliveryError("The v1 closure manifest does not contain a terminal GO.")
     if state["artifact_binding"]["revision"] != binding.head_oid:
@@ -3503,18 +3498,11 @@ def _verify_no_go_snapshot(
         and state["phase"] != "complete"
         and state["next_action"] != "finalize"
     )
-    terminal_conditional = (
-        state["phase"] == "complete"
-        and state["verdict"] == "CONDITIONAL GO"
-        and state["next_action"] == "none"
-        and state["go_eligible"] is False
-    )
-    if state["artifact_binding"]["revision"] != binding.head_oid or not (
-        nonterminal_no_go or terminal_conditional
+    if (
+        state["artifact_binding"]["revision"] != binding.head_oid
+        or not nonterminal_no_go
     ):
-        raise DeliveryError(
-            "The NO-GO proof is not a current nonterminal or conditional state."
-        )
+        raise DeliveryError("The NO-GO proof is not a current nonterminal state.")
     try:
         body = review_exchange.render_carrier(proof.visible_content, envelope, "state")
     except review_exchange.ProtocolError as error:

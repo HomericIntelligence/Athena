@@ -144,7 +144,6 @@ class PackageOpenCodeTests(unittest.TestCase):
                 },
                 "scope": ["path:src/example.py"],
                 "coverage_complete": True,
-                "go_eligible": True,
                 "responses": [],
                 "new_findings": [],
                 "stop_reason": None,

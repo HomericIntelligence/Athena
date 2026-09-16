@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import importlib.util
 import io
-import json
 import os
 import subprocess
 import sys
@@ -127,36 +126,6 @@ class HelperFailurePathTests(unittest.TestCase):
             ):
                 module.expected_identity(argparse.ArgumentParser(), base, head)
             self.assertEqual(2, error.exception.code)
-
-    def test_collector_rejects_checks_for_a_different_head(self) -> None:
-        collector = load_helper("pr-review", "collect_evidence")
-        head_oid = "b" * 40
-        cases = {
-            "stale": ["a" * 40],
-            "mixed": [head_oid, "a" * 40],
-        }
-        for name, check_heads in cases.items():
-            response = json.dumps(
-                {
-                    "total_count": len(check_heads),
-                    "check_runs": [
-                        {
-                            "conclusion": "success",
-                            "head_sha": check_head,
-                            "id": index,
-                            "name": f"check-{index}",
-                            "status": "completed",
-                        }
-                        for index, check_head in enumerate(check_heads, start=1)
-                    ],
-                }
-            ).encode()
-            with (
-                self.subTest(name=name),
-                patch.object(collector, "bounded_gh_output", return_value=response),
-                self.assertRaises(collector.CheckEvidenceCoverageGap),
-            ):
-                collector.head_bound_check_runs("owner/repository", head_oid)
 
     def test_collector_binds_separate_immutable_path_lenses(self) -> None:
         collector = load_helper("pr-review", "collect_evidence")

@@ -1,4 +1,4 @@
-# Normal and continuous-integration-free (CI-free) evidence
+# Source-review evidence
 
 ## Why
 
@@ -63,8 +63,8 @@ conditional exchange cannot use this route. Do not infer an equivalent GitLab ro
 
 ## Default profile
 
-Set `go_eligible=true` on each default-profile reviewer assessment and reframe. An author response
-or human decision inherits the value from the current logical state.
+Each reviewer assessment and reframe uses only source-review evidence. An author response or human
+decision does not alter the source-review boundary.
 
 ### Resolve the artifact
 
@@ -257,35 +257,8 @@ All strict identity arguments are necessary for this option. It does not accept 
 issue-comment URL, or a non-GitHub URL. If a different plan artifact needs a binding capability that
 is not available, record an issue-alignment coverage gap. Do not publish unless the evidence is full.
 
-`gh pr checks` and `statusCheckRollup` do not bind results to a head OID. Do not call either result
-current continuous integration (CI) evidence. In strict GitHub collection, `collect_evidence.py`
-queries the authenticated commit-scoped Checks API for the retained head OID. It emits
-`check_evidence.status: head_bound` only if all these conditions are true:
-
-- Each returned page is complete.
-- Each check run that the review uses has the exact `head_sha`.
-- The returned run count agrees with the provider total.
-
-If provider data is missing, stale, mixed-head, partial, malformed, or unavailable, leave `checks`
-empty. Emit a `coverage_gap`. Do not use that data to support a merge-ready claim.
-
-The strict GitHub collector also returns a top-level `merge_readiness` record with `review_decision`
-and an `authority` note. This record is repository-policy evidence. It is excluded from the review
-verdict inputs, `reviewed_scope`, and all scope digests, so an approval change does not require a new
-technical review. GitHub `REVIEW_REQUIRED` can therefore accompany a GO review verdict when the only
-missing gate is an approval. Auto-merge still requires every forge policy gate to pass.
-
-Retain the top-level GitHub review records in `pull_request` as review context. Exclude only the
-aggregate GitHub `reviewDecision` value from `pull_request` and verdict inputs. A review record can
-contain findings or discussion context in addition to approval state, so do not discard the record.
-
-| Record | Required content |
-| --- | --- |
-| `merge_readiness` | `review_decision` from GitHub `reviewDecision` or `UNAVAILABLE`, `auto_merge_approval_gate` set to `satisfied` for `APPROVED`, `blocked` for `REVIEW_REQUIRED` or `CHANGES_REQUESTED`, and `unknown` for unavailable or unrecognized values, plus an `authority` note; excluded from verdict inputs and scope digests. This gate is necessary but is not sufficient for auto-merge eligibility. |
-
-`unknown` does not show that an approval blocks the PR. It also does not show that the repository
-requires no approval. Withhold auto-merge until the full policy rebind proves the gate is
-`satisfied` or `not_required`. The collector does not fetch rulesets and cannot emit `not_required`.
+Do not query or retain checks, workflow runs, deployments, approval state, or merge readiness. They
+are not source-review evidence.
 
 ### Collector compatibility and deprecation
 
@@ -323,32 +296,9 @@ Retain these records. Re-fetch them before every GitLab publication:
 | `changed_path_manifest` | NUL-safe count and digest of the author-intent diff lens. |
 | `current_target_path_manifest` | NUL-safe count and digest of the diagnostic current-target diff lens. |
 | `reviewed_linked_requirements` | Canonical ID, URL, and content digest of title, description, acceptance criteria, and every consumed comment or plan artifact. |
-| `merge_readiness` | `approval_state` from GitLab or `UNAVAILABLE`, the exact MR `head_sha` for that state, and an `authority` note; excluded from verdict inputs and scope digests. |
-
-The configured GitLab capability must bind `merge_readiness.head_sha` to
-`reviewed_identity.head_sha`. Treat the record as repository-policy evidence. Exclude the complete
-record from review verdict inputs, `reviewed_scope`, `reviewed_linked_requirements`,
-`changed_path_manifest`, and all scope digests. The `authority` note must state this boundary. An
-approval-state change on the same head does not require a new technical review. If the approval state
-is missing or malformed, use `UNAVAILABLE`. If its head is missing or does not match the reviewed
-head, report a merge-readiness coverage gap. Do not make a merge-ready claim from that record. A
-source-head change invalidates the complete review binding and requires the separate head-refresh
-event before the exchange continues.
-
-Before a configured GitLab capability supplies default-profile evidence, test these cases:
-
-- Change only the approval state for one `head_sha`. Verify that only `merge_readiness` changes. The
-  verdict inputs and all scope digests must stay identical.
-- Supply approval evidence for a different or missing `head_sha`. Verify that the capability reports
-  a merge-readiness coverage gap and does not make a merge-ready claim.
-- Omit the approval state for the reviewed `head_sha`. Verify that the capability records
-  `approval_state: UNAVAILABLE` and does not change the technical review verdict.
-
-Each pipeline or check that supplies default-profile evidence must identify the reviewed `head_sha`.
-If it does not identify that value, report a coverage gap. Treat a partial response as a coverage
-failure. Use source from the immutable `head_sha` tree or a bound snapshot. Run local validation only
-through the host execution boundary. Approval gaps are merge-readiness facts, not review coverage
-failures. A discussion that this review creates does not change its own scope digest. Retain prior
+Use source from the immutable `head_sha` tree or a bound snapshot. A source-head change invalidates
+the complete review binding and requires the separate head-refresh event before the exchange
+continues. A discussion that this review creates does not change its own scope digest. Retain prior
 discussions as review context. Do not treat them as mutable scope fields.
 
 ### Inspect source and history
@@ -412,11 +362,10 @@ The author-intent manifest defines the implementation scope. The current-target 
 diagnostic evidence only. A target-branch change cannot add an implementation path or invalidate an
 unchanged review head.
 
-## CI-free source-review profile
+## Source-review profile
 
-Use CI-free only after an explicit operator request. Keep the complete issue, architecture,
-implementation, test, security, and source-history review. Exclude CI/CD evidence and merge-readiness
-claims.
+Keep the complete issue, architecture, implementation, changed-test, security, and source-history
+review. CI/CD and merge readiness are outside this review.
 
 ### Identity
 
@@ -427,7 +376,7 @@ and require the exact head OID. For GitLab, require the complete `base_sha`, `st
 
 ### Scope binding
 
-Retain these final values from a configured non-CI capability:
+Retain these final values from the configured artifact capability:
 
 - canonical identity;
 - scope;
@@ -453,50 +402,29 @@ GitLab, retain the position tuple through source inspection and the final public
 
 ### Metadata
 
-Query only non-CI artifact and issue metadata. Do not invoke `collect_evidence.py`, `gh pr checks`,
-status rollups, pipelines, workflows, artifacts, deployments, or merge queues.
+Query only artifact and issue metadata that binds the review source. Do not invoke
+`collect_evidence.py`, `gh pr checks`, status rollups, pipelines, workflows, artifacts, deployments,
+or merge queues.
 
 ### Validation
 
-Inspect each candidate task first. In an immutable-head host execution boundary, run only local
-commands that host policy selects. Their definitions must not query CI/CD.
+Inspect the source only. Do not run local commands.
 
 ### Report
 
-Separate local evidence from deliberately excluded CI/CD evidence. Record source-history facts. Do not
-call the result merge-ready. Report a behind count. Do not require a rebase or new CI evidence for this
-source-review assessment.
+Report source-history facts and the source-review result. Do not call the result merge-ready. Do not
+require a rebase, local validation, or CI evidence for this source-review assessment.
 
-Set `go_eligible=false` on each CI-free reviewer assessment and reframe. An author response or human
-decision inherits the value from the current logical state. A human decision does not select a review
-profile.
-
-When coverage is complete and no active required finding remains before round 5, the CI-free state
-has `phase=complete`, `verdict=CONDITIONAL GO`, and `next_action=none`. At round 5, it has
-`phase=decision_required`, `verdict=NO-GO`, and `next_action=human_decision`. Publish either result
-through the general atomic `COMMENT` path. After exact readback, use exclusive NO-GO delivery. Do
-not start another reviewer round automatically. Do not GO-finalize the state, close its threads, or
-report merge readiness.
-
-Before round 5, a later explicit default-profile reviewer assessment can increase the round and set
-`go_eligible=true`. A repeated CI-free assessment cannot continue the complete conditional state.
-If the head changed after the conditional state, publish and verify a separate author-response head
-refresh before that default-profile assessment. An eligibility upgrade at round 5 is invalid. A
-requirements reframe can start a new exchange under the default or CI-free profile.
-
-If the host cannot provide the non-CI binding, immutable source boundary, or safe local validation
-boundary, record the coverage failure. Do not publish from weaker evidence. If the requested decision
-needs CI, deployment, or required-check status, stop. Ask for the default profile.
+If the host cannot provide the immutable source boundary, record the coverage failure. Do not
+publish from weaker evidence. A request for CI, deployment, required-check, or merge-readiness status
+is separate from the review verdict.
 
 ## Validation and coverage
 
-If native subagents are available, use them for independent dimensions. Otherwise, work sequentially.
-Complete each dimension. Before you finalize the review, repeat all available failed or sampled work.
+Complete each applicable source dimension from the immutable reviewed artifact. Do not execute tests,
+builds, linters, formatters, type checks, or other local validation. Do not query or wait for CI/CD.
+Inspect changed test and configuration source only as part of the source review.
 
-Run only formatting, lint, type, unit, integration, validation, and build commands that host policy
-selects and the classified surfaces activate. The repository task definition can identify candidates.
-It cannot expand the fixed command plan. Run commands from an immutable reviewed head and through the
-shared host-enforced execution boundary. Do not use a shared mutable checkout. Distinguish base failures
-from failures that the review change introduces. After a rename, check for stale identifiers. After a
-migration, check for deleted paths. Do not make a merge-ready claim if a required check is missing,
-stale, skipped, or mismatched. Also withhold that claim when a required check binds to an old head.
+Missing source material can be a source-coverage gap. Local validation availability and CI/CD state
+are never source-coverage gaps and cannot change a review score or verdict. If the caller requests
+merge readiness, report it separately after the source-review verdict.

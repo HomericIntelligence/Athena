@@ -106,10 +106,10 @@ Include these items in the console or host-native read-only annotation surface:
 
 1. Identify the scope, base and head or manifest digest, and files read.
 2. Give the architecture decision first.
-3. List applicable and `N/A` checks.
+3. List applicable and `N/A` source-review criteria.
 4. Give severity-ranked findings with the exact `path:line`, impact, and evidence.
 5. For each finding, give a correction that is proportional to the impact.
-6. Give behavior-first test and validation coverage.
+6. Give changed-test source coverage and source-coverage limits.
 7. Give residual risks and unverified assumptions.
 
 If the host supports native source annotations, use them only for changed locations. Otherwise, use

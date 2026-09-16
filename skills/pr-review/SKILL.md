@@ -1,8 +1,8 @@
 ---
 name: pr-review
 license: BSD-3-Clause
-description: Perform an architecture-first, adaptive GitHub pull-request or GitLab merge-request review. Bind the exact open artifact and immutable source. Continue a bounded two-sided exchange for normal delivery. Publish one exact-head `COMMENT` state carrier per reviewer round. Use `--author-response` to prepare or publish one exact-head author-event carrier and stop before reviewer assessment. Use an explicit `human_decision` event without an additional reviewer round. Use an explicit `reframe` event to start round 1 of a new exchange. Make the implementation-state labels exclusive. For a direct default GitHub terminal GO, publish the terminal carrier, close only ledger-authorized threads, and deliver the GO label. Use `--report-only` to prevent publication. Use `--ci-free` and `--prevalidated` only with their required evidence boundaries. Use `--enable-auto-merge-on-go` as a separate GitHub option after an exact delivered GO.
-argument-hint: "[--report-only] [--enable-auto-merge-on-go] [REVIEW_NUMBER_OR_URL] | [--ci-free] [--report-only] [REVIEW_NUMBER_OR_URL] | --author-response [--report-only] [REVIEW_NUMBER_OR_URL] | [--prevalidated] [REVIEW_NUMBER_OR_URL]"
+description: Perform an architecture-first source review of a GitHub pull request or GitLab merge request. Bind the exact open artifact and immutable source. Do not use local validation or CI/CD as review evidence. Publish one exact-head `COMMENT` state carrier per reviewer round. Use `--author-response`, an explicit `human_decision`, or an explicit `reframe` only for their stated exchange transition. Use `--report-only` to prevent publication. Use `--enable-auto-merge-on-go` only after an exact delivered GO.
+argument-hint: "[--report-only] [--enable-auto-merge-on-go] [REVIEW_NUMBER_OR_URL] | --author-response [--report-only] [REVIEW_NUMBER_OR_URL] | [--prevalidated] [REVIEW_NUMBER_OR_URL]"
 allowed-tools: [Read, Bash, Grep, Glob, Agent, WebFetch]
 ---
 
@@ -33,7 +33,7 @@ All profiles use the shared [review contract](../../docs/review/common.md),
 [behavior-first testing](../../docs/review/behavior-first-testing.md), and
 [pull/merge-request criteria](references/criteria.md).
 
-Default reviews, CI-free reviews, `--author-response`, and explicit authority events use the
+Source reviews, `--author-response`, and explicit authority events use the
 [review-exchange mechanism](../review-exchange/SKILL.md), including when `--report-only` applies.
 A normal report-only review, author response, or authority transition can validate prior state and
 prepare the next carrier. It cannot publish the carrier or establish durable state. `--prevalidated`
@@ -41,10 +41,10 @@ does not invoke a local helper or join an exchange.
 
 | When | Required detail |
 | --- | --- |
-| Default or `--ci-free` | Before you inspect source, read [normal and CI-free evidence](references/evidence.md). |
-| `--author-response` | Before you prepare a response, read the artifact-binding rules in [normal and CI-free evidence](references/evidence.md). Do not inspect or assess the implementation. |
-| Explicit `human_decision` event | Read the artifact-binding rules in [normal and CI-free evidence](references/evidence.md). Do not select a review profile, inspect the implementation, or make a reviewer assessment. The event inherits GO eligibility from the current logical state. |
-| Explicit `reframe` event | Read the selected default or CI-free evidence profile. The event contains its new round-1 assessment and GO eligibility for that profile. |
+| Source review | Before you inspect source, read [source-review evidence](references/evidence.md). |
+| `--author-response` | Before you prepare a response, read the artifact-binding rules in [source-review evidence](references/evidence.md). Do not inspect or assess the implementation. |
+| Explicit `human_decision` event | Read the artifact-binding rules in [source-review evidence](references/evidence.md). Do not inspect the implementation or make a reviewer assessment. |
+| Explicit `reframe` event | Read [source-review evidence](references/evidence.md). The event contains its new round-1 source assessment. |
 | `--prevalidated` | Before capability restriction, the host must inject the complete [prevalidated contract](references/prevalidated.md) into the attested review context. After this profile is active, read only that context and the immutable snapshot. |
 | Before a verdict or any publication | Read [decision and delivery](references/delivery.md). |
 
@@ -107,27 +107,22 @@ applicable, cite it. Do not cite a principle that is not applicable.
 
 | Mode | Review boundary | Delivery boundary |
 | --- | --- | --- |
-| Default | Resolve the configured forge target. Use exact-head source and check evidence. Set `go_eligible=true` for each reviewer assessment or reframe. | Publish one exact-head `COMMENT` carrier per reviewer round. After verified non-GO publication, make the NO-GO label exclusive. For an eligible terminal GO, complete verified terminal-carrier, thread, and GO-label delivery. |
-| `--ci-free` | Perform the full source review. Do not query continuous integration and continuous delivery (CI/CD) systems. Do not make merge-readiness claims. Set `go_eligible=false` for each reviewer assessment or reframe. | Publish the same round carrier and make the NO-GO label exclusive. Before round 5, a clean result is `phase=complete`, `verdict=CONDITIONAL GO`, and `next_action=none`. At round 5, it is decision-required. GO finalization, thread closure, and auto-merge are not available. |
+| Source review | Resolve the configured forge target. Use exact-head source only. Do not run, request, wait for, or score local validation or CI/CD. | Publish one exact-head `COMMENT` carrier per reviewer round. After verified non-GO publication, make the NO-GO label exclusive. For a terminal GO, complete verified terminal-carrier, thread, and GO-label delivery. |
 | `--author-response` | Resolve one retained exchange and its complete pending author-event chain. Normally, require `phase=awaiting_author` and `next_action=author_response`. For a pull-request head refresh, also permit the specified non-author phases below only when the head revision changed. Bind the logical prior state and the exact current artifact. Do not make a reviewer assessment, calculate a score, query CI/CD systems, or inspect the implementation. | Prepare or publish one exact-head author-event carrier. For GitHub, use one `COMMENT` review with an empty inline-comments array. For GitLab, use one immutable author-event note. Verify the complete readback. Do not change a label or thread. Stop before reviewer assessment. |
-| Explicit `human_decision` event | Bind one current logical state and one exact live authority record. Apply only the supplied event. Do not select a profile. Keep the reviewer-round count and inherited GO eligibility. | Prepare one state carrier with no inline comments. Use the result's normal delivery path. |
-| Explicit `reframe` event | Bind one current logical state and one exact live authority record. Start round 1 of a new exchange. Use `go_eligible=true` for the default profile and `go_eligible=false` for `--ci-free`. | Prepare one state carrier with the normal round-1 inline finding batch. Use the result's normal delivery path. |
+| Explicit `human_decision` event | Bind one current logical state and one exact live authority record. Apply only the supplied event. | Prepare one state carrier with no inline comments. Use the result's normal delivery path. |
+| Explicit `reframe` event | Bind one current logical state and one exact live authority record. Start round 1 of a new exchange. | Prepare one state carrier with the normal round-1 inline finding batch. Use the result's normal delivery path. |
 | `--prevalidated` | Review only the immutable snapshot and structured evidence that the host attests. Do not run commands, queries, delegation, or a local helper. | Emit only the structured audit for the caller. Do not publish. Do not make a merge-readiness claim. |
 | `--report-only` | Keep the selected review boundary. | Return findings or a ready-to-publish batch. Do not write to the forge. |
 
-`--ci-free` and `--prevalidated` are mutually exclusive. You can use `--report-only` with
-`--ci-free`. `--report-only` never weakens the prevalidated boundary.
-
-Use `--author-response` only by itself or with `--report-only`. It is incompatible with `--ci-free`,
-`--prevalidated`, and `--enable-auto-merge-on-go`. The invocation owns author-event preparation,
+Use `--author-response` only by itself or with `--report-only`. It is incompatible with
+`--prevalidated` and `--enable-auto-merge-on-go`. The invocation owns author-event preparation,
 publication, and readback. A reviewer-round invocation must not create or publish an author event.
 
 An invocation that supplies `event_type=human_decision` or `event_type=reframe` is an
 authority-transition invocation. A human-decision invocation does not use a profile flag. Use it
-only by itself or with `--report-only`. Reject a profile flag for this event. It inherits
-`go_eligible` from the current logical state. A reframe uses the default profile unless the caller
-explicitly selects `--ci-free`; it sets `go_eligible` for that selected profile. You can use
-`--report-only` with either reframe profile. An authority transition is incompatible with
+only by itself or with `--report-only`. Reject a profile flag for this event. A reframe uses the
+source-review profile. An authority
+transition is incompatible with
 `--author-response`, `--prevalidated`, and
 `--enable-auto-merge-on-go`. The invocation owns transition preparation, publication, readback, and
 the applicable normal delivery path. It must not also reduce a normal reviewer assessment. Reject
@@ -190,7 +185,7 @@ invocation.
    normal answer, require the logical state to have `phase=awaiting_author` and
    `next_action=author_response`. For a pull-request head refresh, also accept
    `phase=awaiting_reviewer`, `phase=awaiting_evidence`, or a pre-round-5 complete
-   `CONDITIONAL GO`, but only when the current head revision differs from the logical state revision.
+   `GO`, but only when the current head revision differs from the logical state revision.
 5. Require the caller to supply one explicit `fix`, `fix_with_tradeoff`, `contest`, or
    `risk_acceptance` answer for each active required finding. When the head changed, also require one
    answer for each required finding in `resolved`, `withdrawn`, or `accepted_risk` state. Keep its
@@ -237,7 +232,7 @@ invocation.
 
 Use this workflow only when the caller supplies exactly one explicit `human_decision` or `reframe`
 event and its authority receipt. A human decision does not use a profile flag. A reframe uses the
-default profile or an explicitly selected CI-free profile. Do not continue to the normal review
+source-review profile. Do not continue to the normal review
 workflow in the same invocation.
 
 1. Resolve exactly one open pull request or merge request from the requested target or the normal
@@ -258,14 +253,13 @@ workflow in the same invocation.
    head and its artifact digest to equal the current reviewed-scope digest. If either value differs,
    report stale state and stop before reduction. Bind those same artifact values and the
    visible-content digest for the new state carrier. Require a nonempty explicit decision list. This
-   event must keep the reviewer-round count and the retained `go_eligible` value.
+   event must keep the reviewer-round count.
 5. For `reframe`, require materially changed requirements, a new exchange identity, `round=1`, the
    same surface and target, and both `prior_state_sha256` and `supersedes_state_sha256` equal to the
    logical state digest. Set `superseded_exchange_ids` to the exact unique, oldest-first genesis
    ancestry followed by the immediate prior exchange ID. The new exchange ID must not occur in that
    list. Bind the current artifact, the new complete scope set, and a complete new round-1
-   assessment. Set `go_eligible=true` for the default profile or `go_eligible=false` for the CI-free
-   profile. Require an empty response list. Bind the visible-content digest for the new state
+   assessment. Require an empty response list. Bind the visible-content digest for the new state
    carrier. This event must record the logical state as superseded.
 6. Resolve the supplied receipt to one exact live authority record in the bound forge snapshot.
    Verify its body digest, current repository authority, target, event action, exchange,
@@ -273,7 +267,7 @@ workflow in the same invocation.
    event fields from that record.
 7. Run `review_exchange.py reduce` with the exact logical state and explicit event. Require an
    accepted or idempotently replayed result. Require the event digest, artifact binding, authority
-   receipt, GO eligibility, and action-specific round and supersession invariants to match the
+   receipt, and action-specific round and supersession invariants to match the
    result.
 8. Run `review_exchange.py render` for `kind=state`. Use only the exact prepared visible text and
    result envelope. Do not edit the carrier or its digest. For `human_decision`, use an empty
@@ -351,9 +345,7 @@ workflow in the same invocation.
     `--author-response` invocation. If it has `next_action=human_decision`, stop and require a later
     invocation with an explicit authority event. Do not reduce another reviewer round in either
     case. A requirements reframe also requires a separate authority-transition invocation. If the
-    logical state is a complete conditional state, do not continue it automatically. Before round 5,
-    only a later explicit default-profile reviewer assessment can increase the round and set
-    `go_eligible=true`. Reject a repeated CI-free assessment and a round-5 eligibility upgrade.
+    logical state is complete, do not continue it automatically.
     Target-branch movement alone does not change the reviewed head or start a new exchange.
     During terminal GitHub GO delivery only, the delivery adapter can recover one Athena-owned
     directly superseded state carrier that has exactly one additional final line feed. Require the
@@ -365,8 +357,7 @@ workflow in the same invocation.
     finding in the next complete assessment. Do not treat its prior-head reviewer response as current evidence.
 22. Reduce exactly one consecutive reviewer round from the logical state. When the verified GitHub
     completed-history rule leaves no current exchange, reduce an initial round-1 assessment instead.
-    Set `go_eligible=true` for a default reviewer assessment and `go_eligible=false` for a CI-free
-    reviewer assessment. A continued assessment preserves the exact logical-state artifact revision
+    A continued assessment preserves the exact logical-state artifact revision
     and artifact digest. An initial assessment binds the exact current artifact. Use the
     visible-content digest for the new reviewer carrier. Render the complete state carrier. Add this
     compact marker to each new anchorable inline finding:
@@ -376,7 +367,7 @@ workflow in the same invocation.
 24. For every result other than a direct default GitHub terminal GO, immediately before the write,
     bind the exact artifact, scope, linked requirements, and source again. Publish one exact-head
     atomic `COMMENT` review and verify its complete readback. This general path includes a complete
-    CI-free conditional state.
+    completed source-review state.
 25. After a verified general-path publication, give the verified version-1 state carrier to
     `deliver_go.py --deliver-no-go`. The helper verifies that proof before it makes
     `state:implementation-no-go` exclusive. A complete conditional state has no automatic next
@@ -410,7 +401,7 @@ Use the shared applicable-weight formula:
 | Implementation | 18% | Correctness, errors, types, maintainability, duplication, portability, and unexpected behavior. |
 | Testing and evidence | 15% | Applicable testing and evidence principles, including P091 when behavior is developed test-first, meaningful assertions, and honest evidence. |
 | Security and safety | 10% | Applicable security and authority principles for inputs, permissions, destructive paths, supply chain, rollback, and failure behavior. |
-| Integration and release | 7% | Applicable reliability and execution-integrity principles for staleness, conflicts, checks, packaging, documentation, compatibility, and transfer. |
+| Integration and release | 7% | Applicable source-level reliability and execution-integrity principles for staleness, packaging, documentation, compatibility, and transfer. |
 
 Start each applicable dimension at zero. Award credit only for evidence that you inspect. Exclude
 weight only when the classifier proves that it is N/A. Map the result to A 93–100, B 80–92, C 70–79,
@@ -419,26 +410,25 @@ D 60–69, or F 0–59.
 An A has no active finding with critical or major severity. A B has no active finding with critical
 severity and no more than one active finding with major severity. A critical or major
 `accepted_risk` finding does not count as active, but it must stay in the findings and report with
-its verified authority receipt. In a CI-free review, mark each CI/CD-only criterion N/A. Give the
+its verified authority receipt. Mark each non-source criterion N/A. Give the
 reason for each N/A criterion. Do not give unsupported credit for an applicable coverage gap.
 
 If a maintainer explicitly declares the first supported release, you can mark compatibility,
 migration, and version criteria N/A. State this product-maturity assumption. Do not infer
 compatibility.
 
-For default and CI-free reports, present these items in order:
+For source-review reports, present these items in order:
 
 1. identity and coverage;
 2. architecture decision;
 3. routed sections and N/A sections;
 4. findings in severity order, with independent dispositions and every accepted risk;
 5. score and terminal verdict;
-6. commands and coverage gaps;
-7. merge readiness or repository-policy state; approval state never lowers the score or verdict;
-8. exchange ID, round and progress, carrier URL and readback, terminal record, thread-response and
+6. source-coverage limits;
+7. exchange ID, round and progress, carrier URL and readback, terminal record, thread-response and
    resolution identities, exclusive implementation-state label, exact delivery status, and
    auto-merge state;
-9. brief strengths.
+8. brief strengths.
 
 For the prevalidated profile, use only its structured-audit override.
 
