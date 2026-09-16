@@ -219,9 +219,13 @@ Each envelope has exactly these fields:
 | Field | Type and value |
 | --- | --- |
 | `schema_id` | `athena.review-exchange.state` or `athena.review-exchange.author-event` |
-| `schema_version` | Integer `1` |
+| `schema_version` | Integer `2` |
 | `state` | State record or author-event record |
 | `state_sha256` | Digest of canonical JSON for `state` |
+
+The verifier accepts a valid version 1 envelope and returns a version 2 envelope. For a version 1
+state that contains `go_eligible`, the automatic upgrade applies only to a fresh round-1 review.
+The verifier validates the old state digest and replays its accepted event before the upgrade.
 
 An author-event record has these fields:
 
@@ -267,7 +271,7 @@ A requirements reframe has the same fields as an initial assessment, plus the re
 `authority_receipt` and `superseded_exchange_ids` fields. It has these different values:
 
 - `event_type` is `reframe`.
-- The outer request's `previous` field is the exact retained v1 state envelope. This envelope
+- The outer request's `previous` field is the exact retained state envelope. This envelope
   can be in any phase, including `complete`.
 - `exchange_id` differs from the prior exchange identity.
 - `prior_state_sha256` and `supersedes_state_sha256` equal the prior envelope digest.
@@ -660,7 +664,7 @@ new round-1 epoch. It does not treat the generated finalized plan or sealed prov
 requirements.
 
 After a verified reframe-plan publication, the plan contains the new author-event carrier while the
-review still contains the exact old retained v1 state. `inspect` recognizes only this narrow
+review still contains the exact old retained state. `inspect` recognizes only this narrow
 pending-reframe pair. It requires the deterministic new exchange identity, current requirements,
 same target and comment identities, empty responses, an exact prior-state binding, and one live
 action-bound authority record for the reframe. It returns `ready` and
@@ -688,7 +692,7 @@ A reframe plan event has exactly these fields:
 | Field | Type and value |
 | --- | --- |
 | `event_type` | `reframe` |
-| `previous` | Exact retained v1 review-state envelope, including a `complete` review |
+| `previous` | Exact retained review-state envelope, including a `complete` review |
 | `authority_receipt` | Exact live authority receipt for the requirements supersession |
 | `scope` | Nonempty list of unique scope-target objects for the new requirements |
 

@@ -39,6 +39,8 @@ AUTHOR_EVENT_SCHEMA_ID = "athena.review-exchange.author-event"
 RESULT_SCHEMA_ID = "athena.review-exchange.reduce-result"
 AUTHORITY_SCHEMA_ID = "athena.review-exchange.authority"
 SCHEMA_VERSION = 1
+ENVELOPE_SCHEMA_VERSION = 2
+LEGACY_ENVELOPE_SCHEMA_VERSION = 1
 ROUND_LIMIT = 5
 MAX_FINDINGS = 100
 MAX_ACCEPTED_EVENTS = MAX_FINDINGS * ROUND_LIMIT + (2 * ROUND_LIMIT - 1)
@@ -1099,6 +1101,79 @@ def _validate_author_event_record(value: object) -> dict[str, Any]:
     }
 
 
+def _upgrade_legacy_initial_state(value: object) -> dict[str, Any]:
+    legacy = _object(
+        value,
+        "legacy state",
+        frozenset(
+            {
+                "exchange_id",
+                "surface",
+                "target",
+                "requirements_sha256",
+                "round",
+                "round_limit",
+                "phase",
+                "artifact_binding",
+                "scope",
+                "prior_state_sha256",
+                "accepted_event_sha256",
+                "accepted_events",
+                "supersedes_state_sha256",
+                "supersession_authority_receipt",
+                "coverage_complete",
+                "go_eligible",
+                "progress",
+                "findings",
+                "verdict",
+                "next_action",
+            }
+        ),
+    )
+    go_eligible = _boolean(legacy["go_eligible"], "legacy state.go_eligible")
+    if legacy["surface"] == "issue" and not go_eligible:
+        raise ProtocolError("A legacy issue review state must be eligible for GO.")
+    raw_events = legacy["accepted_events"]
+    if not isinstance(raw_events, list) or len(raw_events) != 1:
+        raise ProtocolError(
+            "Only a round-1 legacy review state can be upgraded automatically."
+        )
+    raw_event = raw_events[0]
+    if not isinstance(raw_event, dict):
+        raise ProtocolError("The legacy accepted event must be an object.")
+    event = dict(raw_event)
+    event_eligibility = _boolean(
+        event.pop("go_eligible", None), "legacy reviewer GO eligibility"
+    )
+    if event_eligibility != go_eligible:
+        raise ProtocolError(
+            "The legacy state and reviewer GO eligibility values do not agree."
+        )
+    initial = _initial_review_event(event)
+    if initial["round"] != 1 or initial["supersedes_state_sha256"] is not None:
+        raise ProtocolError(
+            "Only a fresh round-1 legacy review state can be upgraded automatically."
+        )
+    upgraded, _ = _initial_reduce(initial, _event_digest(initial))
+
+    expected_legacy = copy.deepcopy(upgraded)
+    expected_legacy["go_eligible"] = go_eligible
+    expected_event = copy.deepcopy(initial)
+    expected_event["go_eligible"] = go_eligible
+    expected_event_digest = _event_digest(expected_event)
+    expected_legacy["accepted_events"] = [expected_event]
+    expected_legacy["accepted_event_sha256"] = expected_event_digest
+    expected_legacy["progress"][0]["accepted_event_sha256"] = expected_event_digest
+    if upgraded["phase"] == "complete" and not go_eligible:
+        expected_legacy["verdict"] = "CONDITIONAL GO"
+        expected_legacy["next_action"] = "none"
+    if expected_legacy != legacy:
+        raise ProtocolError(
+            "The legacy state does not match its accepted-event replay."
+        )
+    return upgraded
+
+
 def make_envelope(state: object, schema_id: str = STATE_SCHEMA_ID) -> dict[str, Any]:
     """Build one canonical envelope after full semantic validation."""
     if type(state) is not dict:
@@ -1112,7 +1187,7 @@ def make_envelope(state: object, schema_id: str = STATE_SCHEMA_ID) -> dict[str, 
         raise ProtocolError("The envelope schema identifier is not supported.")
     return {
         "schema_id": schema_id,
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": ENVELOPE_SCHEMA_VERSION,
         "state": validated,
         "state_sha256": sha256_json(validated),
     }
@@ -1130,15 +1205,26 @@ def verify_envelope(value: object) -> dict[str, Any]:
         "envelope.schema_id",
         frozenset({STATE_SCHEMA_ID, AUTHOR_EVENT_SCHEMA_ID}),
     )
-    if (
-        _integer(envelope["schema_version"], "envelope.schema_version", minimum=1)
-        != SCHEMA_VERSION
-    ):
+    schema_version = _integer(
+        envelope["schema_version"], "envelope.schema_version", minimum=1
+    )
+    if schema_version not in {
+        LEGACY_ENVELOPE_SCHEMA_VERSION,
+        ENVELOPE_SCHEMA_VERSION,
+    }:
         raise ProtocolError("The envelope schema version is not supported.")
-    canonical = make_envelope(envelope["state"], schema_id)
     supplied = _digest(envelope["state_sha256"], "envelope.state_sha256")
-    if supplied != canonical["state_sha256"]:
+    if supplied != sha256_json(envelope["state"]):
         raise ProtocolError("The envelope state digest does not match its state.")
+    state = envelope["state"]
+    if (
+        schema_version == LEGACY_ENVELOPE_SCHEMA_VERSION
+        and schema_id == STATE_SCHEMA_ID
+        and isinstance(state, dict)
+        and "go_eligible" in state
+    ):
+        state = _upgrade_legacy_initial_state(state)
+    canonical = make_envelope(state, schema_id)
     return canonical
 
 

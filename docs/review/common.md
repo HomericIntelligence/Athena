@@ -523,7 +523,7 @@ without increasing the round count. A requirements reframe starts a new exchange
 requirements identity. Every reframe requires an exact verified authority receipt. The new state
 stores that receipt as `supersession_authority_receipt`. It must cite and supersede the old state.
 Revalidate the receipt from its forge record whenever you inspect, publish, or finalize the new
-exchange. A reframe can supersede any retained v1 phase, including `complete`. A conditional
+exchange. A reframe can supersede any retained phase, including `complete`. A conditional
 complete pull-request state can accept an eligible reviewer assessment for the same artifact. It can
 also accept an author refresh for a new head. Other normal events cannot continue a complete
 exchange. A terminal state cannot accept a normal continuation. Thus, a reframe cannot discard an
@@ -572,17 +572,17 @@ repository state.
 The versioned envelope has exactly these fields:
 
 ```json
-{"schema_id":"<schema>","schema_version":1,"state":{},"state_sha256":"<sha256>"}
+{"schema_id":"<schema>","schema_version":2,"state":{},"state_sha256":"<sha256>"}
 ```
 
 The state records the exchange identifier, review surface, target, requirements digest, round and
 round limit, phase, exact artifact binding, canonical scope set, prior-state digest, current
 accepted-event digest, complete nonempty accepted-event ledger for the current exchange,
-superseded-state digest and authority receipt, coverage state, GO eligibility, progress records,
+superseded-state digest and authority receipt, coverage state, progress records,
 findings, verdict, and next action. The ledger contains no more than 509 events. Verification replays
 the ordered ledger from its initial assessment or reframe. It compares the complete result with the
 stored state. A fresh exchange has neither supersession value. A reframe has both. Canonical JSON
-uses UTF-8, sorted keys, compact encoding, and SHA-256. Reject unknown version-1 fields, duplicate
+uses UTF-8, sorted keys, compact encoding, and SHA-256. Reject unknown version-2 fields, duplicate
 keys or finding identifiers, invalid transitions, more than 100 findings, input larger than 1 MiB,
 and output larger than the target provider's body limit.
 
@@ -602,8 +602,13 @@ that the applicable delivery rule already permits.
 
 ### Compatibility and fallback
 
+Accept a valid version 1 envelope and return a version 2 envelope. If a version 1 state contains
+the retired `go_eligible` field, upgrade only a fresh round-1 review. Validate the old digest and
+replay the old accepted event before the upgrade. Reject a later legacy state because an automatic
+upgrade cannot prove its complete prior-state chain.
+
 Preserve a valid finalized legacy issue epoch and an unchanged, fully delivered legacy pull-request
-GO. Re-review an active unversioned issue review as version 1 round 1 in its existing actor-owned
+GO. Re-review an active unversioned issue review as version 2 round 1 in its existing actor-owned
 comment. Adopt an open legacy pull-request thread as a required finding with an immutable native
 identifier. Keep resolved history unchanged. Do not infer an answer, finding closure, or favorable
 result from legacy prose. If history is incomplete or ambiguous, fail closed.
