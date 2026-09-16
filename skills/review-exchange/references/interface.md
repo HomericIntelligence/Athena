@@ -702,6 +702,15 @@ A reframe plan event has exactly these fields:
 | `authority_receipt` | Exact live authority receipt for the requirements supersession |
 | `scope` | Nonempty list of unique scope-target objects for the new requirements |
 
+A legacy-reframe plan event has the same fields. Its `event_type` is `legacy_reframe`. Use this
+event only for one complete imported legacy exchange. The retained plan must have no author-event
+carrier. The retained review must have one version 1 terminal `GO` state.
+
+For GitHub, the retained plan and review must each use a positive REST numeric comment identity.
+Each identity must equal the numeric identity in its issue-comment URL. The helper rejects a
+GraphQL identity, mixed identity forms, and an identity that does not match its URL. The helper does
+not convert an identity.
+
 The reframe snapshot must contain the same retained plan and review comments, with changed
 requirements. The helper verifies the receipt against one noncanonical comment in the normalized
 current snapshot whose author has `is_authority=true`. The comment body must be an exact `reframe`
@@ -715,6 +724,12 @@ token in the retained review must bind the retained plan. If the plan contains a
 event that the review has not accepted, `prepare-plan` rejects the reframe. Complete and verify a
 reviewer assessment before the requirements change. The adapter does not overwrite the sole
 pending-event carrier or supersede a stale persisted state.
+
+For `legacy_reframe`, the helper also requires the exact retained review envelope, changed
+requirements, one canonical plan, one canonical review, and the exact live reframe authority. The
+prepared operation updates only the retained plan. It preserves the retained review and authority
+comments. An exact repeat gives the same prepared operation. After publication, a second legacy
+migration request is invalid because the plan now has an author-event carrier.
 
 The result is a prepared issue-comment result. A ready initial result prepares one `create` operation
 for the canonical plan comment. A ready continued result prepares one `update` operation for that

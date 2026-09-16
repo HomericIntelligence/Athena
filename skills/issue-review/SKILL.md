@@ -185,6 +185,10 @@ finalization, or a human decision. If the write or readback result is indetermin
 Do not invoke `issue-review` recursively. The reducer selects the verdict and prevents a sixth
 reviewer assessment.
 
+After a verified `legacy_reframe` plan update, use the normal `reframe` reviewer event. Set
+`legacy_import` to `false`. Verify the same old state, authority receipt, and target set. Do not
+import or change the old state.
+
 ### Authority transitions
 
 Use these paths only when the action dispatch selects them. The selected authority transition owns

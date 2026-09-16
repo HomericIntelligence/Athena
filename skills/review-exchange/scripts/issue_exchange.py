@@ -517,6 +517,21 @@ def _initial_exchange_id(snapshot: Mapping[str, Any], requirements_sha256: str) 
     )
 
 
+def _legacy_import_exchange_id(
+    snapshot: Mapping[str, Any], plan: Mapping[str, Any], requirements_sha256: str
+) -> str:
+    return (
+        "issue-"
+        + review_exchange.sha256_json(
+            {
+                "target": snapshot["target"],
+                "requirements_sha256": requirements_sha256,
+                "legacy_plan_sha256": _body_sha256(plan["body"]),
+            }
+        )[:24]
+    )
+
+
 def _artifact_matches(first: Mapping[str, Any], second: Mapping[str, Any]) -> bool:
     return bool(
         first["revision"] == second["revision"] and first["sha256"] == second["sha256"]
@@ -1216,6 +1231,76 @@ def _verified_reframe_context(
     return previous, plan, review
 
 
+def _require_github_rest_comment_identity(
+    snapshot: Mapping[str, Any], comment: Mapping[str, Any], name: str
+) -> None:
+    comment_id = comment["id"]
+    if (
+        snapshot["target"]["provider"] != "github"
+        or re.fullmatch(r"[1-9][0-9]*", comment_id) is None
+        or comment["url"] != f"{snapshot['target']['url']}#issuecomment-{comment_id}"
+    ):
+        raise ProtocolError(
+            f"The legacy {name} must have one exact GitHub REST comment identity."
+        )
+
+
+def _verified_legacy_reframe_context(
+    snapshot: Mapping[str, Any], value: object
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    previous = review_exchange.verify_envelope(value)
+    if previous["schema_id"] != review_exchange.STATE_SCHEMA_ID:
+        raise ProtocolError("The legacy reframe prior record is not review state.")
+    state = previous["state"]
+    requirements = _requirements_sha256(snapshot)
+    if (
+        state["surface"] != "issue"
+        or state["target"] != _core_target(snapshot)
+        or state["requirements_sha256"] == requirements
+    ):
+        raise ProtocolError(
+            "A legacy reframe requires changed requirements and prior review state."
+        )
+    if _finalized_status(snapshot["issue"]["body"]) != "absent":
+        raise ProtocolError("A finalized or malformed issue cannot be reframed.")
+    plan_comments = _role_comments(snapshot, PLAN_MARKERS)
+    review_comments = _role_comments(snapshot, REVIEW_MARKERS)
+    actor_id = snapshot["actor"]["id"]
+    if (
+        len(plan_comments) != 1
+        or len(review_comments) != 1
+        or plan_comments[0]["id"] == review_comments[0]["id"]
+        or any(
+            comment["author"]["id"] != actor_id
+            for comment in (*plan_comments, *review_comments)
+        )
+    ):
+        raise ProtocolError(
+            "A legacy reframe requires one actor-owned plan and review comment."
+        )
+    plan = plan_comments[0]
+    review = review_comments[0]
+    if review_exchange.CARRIER_PREFIX in plan["body"]:
+        raise ProtocolError("The legacy plan must not contain an author event.")
+    _require_github_rest_comment_identity(snapshot, plan, "plan comment")
+    _require_github_rest_comment_identity(snapshot, review, "review comment")
+    if state["exchange_id"] != _legacy_import_exchange_id(
+        snapshot, plan, state["requirements_sha256"]
+    ):
+        raise ProtocolError(
+            "The retained state does not have the legacy-import exchange identity."
+        )
+    _verify_issue_source_chain(
+        snapshot,
+        state,
+        previous["state_sha256"],
+        plan,
+        review,
+        state["requirements_sha256"],
+    )
+    return previous, plan, review
+
+
 def _reframe_preparation_view(
     snapshot: Mapping[str, Any],
     previous: Mapping[str, Any],
@@ -1346,13 +1431,19 @@ def _verified_replanned_context(
 def prepare_plan(value: object) -> dict[str, Any]:
     """Prepare one create or update for the canonical actor-owned plan."""
     snapshot, content, raw_event = _prepare_input(value, "prepare-plan request")
-    if raw_event.get("event_type") == "reframe":
+    event_type = raw_event.get("event_type")
+    if event_type in {"reframe", "legacy_reframe"}:
         reframe = _object(
             raw_event,
-            "plan reframe event",
+            f"plan {event_type} event",
             frozenset({"event_type", "previous", "authority_receipt", "scope"}),
         )
-        previous, plan_comment, review_comment = _verified_reframe_context(
+        context_verifier = (
+            _verified_legacy_reframe_context
+            if event_type == "legacy_reframe"
+            else _verified_reframe_context
+        )
+        previous, plan_comment, review_comment = context_verifier(
             snapshot, reframe["previous"]
         )
         authority, authority_body = _authority_comment(
@@ -1771,17 +1862,10 @@ def prepare_review(value: object) -> dict[str, Any]:
                     "The review event scope differs from the plan targets."
                 )
         else:
-            exchange_id = (
-                "issue-"
-                + review_exchange.sha256_json(
-                    {
-                        "target": snapshot["target"],
-                        "requirements_sha256": inspection["requirements_sha256"],
-                        "legacy_plan_sha256": _body_sha256(
-                            current_plan_comment["body"]
-                        ),
-                    }
-                )[:24]
+            exchange_id = _legacy_import_exchange_id(
+                snapshot,
+                current_plan_comment,
+                inspection["requirements_sha256"],
             )
             plan_digest = _body_sha256(current_plan_comment["body"])
             artifact = {

@@ -303,6 +303,13 @@ class IssueReviewExchangeTests(unittest.TestCase):
             },
         }
 
+    def legacy_reframe_plan_request(
+        self, snapshot: dict[str, Any], previous: dict[str, Any]
+    ) -> dict[str, Any]:
+        request = self.reframe_plan_request(snapshot, previous)
+        request["event"]["event_type"] = "legacy_reframe"
+        return request
+
     def reframe_review_request(
         self, snapshot: dict[str, Any], previous: dict[str, Any]
     ) -> dict[str, Any]:
@@ -387,6 +394,37 @@ class IssueReviewExchangeTests(unittest.TestCase):
             self.review_request(answered, responses=[review_response])
         )
         return self.apply_operation(answered, review, "unused")
+
+    def complete_legacy_snapshot(
+        self,
+        *,
+        plan_id: str = "1001",
+        review_id: str = "1002",
+        findings: list[dict[str, Any]] | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        legacy = self.snapshot()
+        legacy["comments"] = [
+            self.comment(
+                plan_id,
+                "<!-- HomericIntelligence:plan-issue -->\n\nLegacy plan.",
+            ),
+            self.comment(
+                review_id,
+                "<!-- HomericIntelligence:issue-review -->\n\nLegacy review.",
+            ),
+        ]
+        prepared_review = self.adapter.prepare_review(
+            self.review_request(
+                legacy,
+                findings=findings,
+                legacy_import=True,
+            )
+        )
+        imported = self.apply_operation(legacy, prepared_review, "unused")
+        previous = self.adapter.review_exchange.extract_carrier(
+            imported["comments"][1]["body"]
+        )
+        return imported, previous
 
     def test_inspect_new_issue_returns_bound_plan_action(self) -> None:
         result = self.adapter.inspect_snapshot(self.snapshot())
@@ -1162,6 +1200,212 @@ class IssueReviewExchangeTests(unittest.TestCase):
         )
         self.assertEqual("ready", inspected["status"])
         self.assertEqual("finalize", inspected["next_action"])
+
+    def test_changed_requirements_can_reframe_a_complete_imported_legacy_exchange(
+        self,
+    ) -> None:
+        imported, previous = self.complete_legacy_snapshot()
+        self.assertEqual("complete", previous["state"]["phase"])
+
+        changed = copy.deepcopy(imported)
+        changed["issue"]["body"] = "Implement the changed legacy protocol."
+        changed["comments"].append(self.reframe_authority(changed, previous))
+
+        prepared = self.adapter.prepare_plan(
+            self.legacy_reframe_plan_request(changed, previous)
+        )
+
+        self.assertEqual("ready", prepared["status"])
+        self.assertEqual("update", prepared["operation"]["action"])
+        self.assertEqual("1001", prepared["operation"]["comment_id"])
+        self.assertEqual(
+            self.adapter.review_exchange.sha256_text(imported["comments"][0]["body"]),
+            prepared["operation"]["expected_body_sha256"],
+        )
+        self.assertEqual(
+            self.target_scope(),
+            [
+                {"kind": item.split(":", 1)[0], "value": item.split(":", 1)[1]}
+                for item in self.adapter.review_exchange.extract_carrier(
+                    prepared["operation"]["body"]
+                )["state"]["scope"]
+            ],
+        )
+        self.assertEqual(
+            self.adapter._artifact_summary(imported["comments"][1]),
+            prepared["peer"],
+        )
+
+    def test_legacy_reframe_requires_one_complete_unversioned_plan_and_review(
+        self,
+    ) -> None:
+        imported, previous = self.complete_legacy_snapshot()
+        imported["issue"]["body"] = "Implement the changed legacy protocol."
+        imported["comments"].append(self.reframe_authority(imported, previous))
+
+        cases: dict[str, Callable[[dict[str, Any]], None]] = {
+            "missing review": lambda snapshot: snapshot["comments"].pop(1),
+            "second plan": lambda snapshot: snapshot["comments"].append(
+                self.comment(
+                    "1003",
+                    "<!-- HomericIntelligence:plan-issue -->\n\nSecond plan.",
+                )
+            ),
+            "existing author event": lambda snapshot: snapshot["comments"][
+                0
+            ].__setitem__(
+                "body",
+                snapshot["comments"][0]["body"]
+                + "\n\n<!-- HomericIntelligence:review-exchange:v1 malformed -->",
+            ),
+        }
+        for name, mutate in cases.items():
+            with self.subTest(name=name):
+                changed = copy.deepcopy(imported)
+                mutate(changed)
+                with self.assertRaises(self.adapter.ProtocolError):
+                    self.adapter.prepare_plan(
+                        self.legacy_reframe_plan_request(changed, previous)
+                    )
+
+        incomplete, incomplete_previous = self.complete_legacy_snapshot(
+            findings=[self.finding()]
+        )
+        self.assertEqual("awaiting_author", incomplete_previous["state"]["phase"])
+        incomplete["issue"]["body"] = "Implement the changed legacy protocol."
+        incomplete["comments"].append(
+            self.reframe_authority(incomplete, incomplete_previous)
+        )
+        with self.assertRaises(self.adapter.ProtocolError):
+            self.adapter.prepare_plan(
+                self.legacy_reframe_plan_request(incomplete, incomplete_previous)
+            )
+
+    def test_legacy_reframe_requires_exact_github_rest_comment_identities(
+        self,
+    ) -> None:
+        cases = (
+            ("P_graphql", "1002", None),
+            ("1001", "R_graphql", None),
+            (
+                "1001",
+                "1002",
+                "https://github.com/owner/repository/issues/210#issuecomment-9",
+            ),
+        )
+        for plan_id, review_id, false_plan_url in cases:
+            with self.subTest(plan_id=plan_id, review_id=review_id):
+                imported, previous = self.complete_legacy_snapshot(
+                    plan_id=plan_id, review_id=review_id
+                )
+                if false_plan_url is not None:
+                    imported["comments"][0]["url"] = false_plan_url
+                imported["issue"]["body"] = "Implement changed requirements."
+                imported["comments"].append(self.reframe_authority(imported, previous))
+                with self.assertRaisesRegex(
+                    self.adapter.ProtocolError, "REST comment identity"
+                ):
+                    self.adapter.prepare_plan(
+                        self.legacy_reframe_plan_request(imported, previous)
+                    )
+
+    def test_legacy_reframe_rejects_requirements_state_and_authority_drift(
+        self,
+    ) -> None:
+        imported, previous = self.complete_legacy_snapshot()
+        authority_snapshot = copy.deepcopy(imported)
+        authority_snapshot["issue"]["body"] = "Implement changed requirements."
+        authority_snapshot["comments"].append(
+            self.reframe_authority(authority_snapshot, previous)
+        )
+
+        unchanged_requirements = copy.deepcopy(imported)
+        unchanged_requirements["comments"].append(
+            self.reframe_authority(authority_snapshot, previous)
+        )
+        with self.assertRaises(self.adapter.ProtocolError):
+            self.adapter.prepare_plan(
+                self.legacy_reframe_plan_request(unchanged_requirements, previous)
+            )
+
+        changed_plan = copy.deepcopy(authority_snapshot)
+        changed_plan["comments"][0]["body"] += "\nChanged."
+        with self.assertRaises(self.adapter.ProtocolError):
+            self.adapter.prepare_plan(
+                self.legacy_reframe_plan_request(changed_plan, previous)
+            )
+
+        changed_review = copy.deepcopy(authority_snapshot)
+        changed_review["comments"][1]["body"] += "\nChanged."
+        with self.assertRaises(self.adapter.ProtocolError):
+            self.adapter.prepare_plan(
+                self.legacy_reframe_plan_request(changed_review, previous)
+            )
+
+        changed_authority = copy.deepcopy(authority_snapshot)
+        changed_authority["comments"][2]["body"] += "\nChanged."
+        request = self.legacy_reframe_plan_request(changed_authority, previous)
+        with self.assertRaises(self.adapter.ProtocolError):
+            self.adapter.prepare_plan(request)
+
+    def test_legacy_reframe_rejects_a_nonimported_exchange_identity(self) -> None:
+        imported, previous = self.complete_legacy_snapshot()
+        false_event = copy.deepcopy(previous["state"]["accepted_events"][0])
+        false_event["exchange_id"] = "issue-manually-reconstructed"
+        false_previous = self.adapter.review_exchange.reduce_request(
+            {"previous": None, "event": false_event}
+        )["envelope"]
+        review = imported["comments"][1]
+        visible = review["body"].split(
+            "\n\n<!-- HomericIntelligence:review-exchange:", 1
+        )[0]
+        review["body"] = self.adapter.review_exchange.render_carrier(
+            visible, false_previous, "state"
+        )
+        imported["issue"]["body"] = "Implement changed requirements."
+        imported["comments"].append(self.reframe_authority(imported, false_previous))
+
+        with self.assertRaisesRegex(
+            self.adapter.ProtocolError, "legacy-import exchange identity"
+        ):
+            self.adapter.prepare_plan(
+                self.legacy_reframe_plan_request(imported, false_previous)
+            )
+
+    def test_legacy_reframe_preparation_and_publication_are_replay_safe(self) -> None:
+        imported, previous = self.complete_legacy_snapshot()
+        changed = copy.deepcopy(imported)
+        changed["issue"]["body"] = "Implement changed requirements."
+        changed["comments"].append(self.reframe_authority(changed, previous))
+        request = self.legacy_reframe_plan_request(changed, previous)
+
+        first = self.adapter.prepare_plan(request)
+        second = self.adapter.prepare_plan(copy.deepcopy(request))
+        self.assertEqual(first, second)
+        retained_review = copy.deepcopy(changed["comments"][1])
+        published = self.apply_operation(changed, first, "unused")
+        verified = self.adapter.verify_publication(
+            {"prepared": first, "snapshot": published}
+        )
+
+        self.assertEqual("verified", verified["status"])
+        self.assertEqual(retained_review, published["comments"][1])
+        with self.assertRaises(self.adapter.ProtocolError):
+            self.adapter.prepare_plan(
+                self.legacy_reframe_plan_request(published, previous)
+            )
+
+        drifted = copy.deepcopy(published)
+        drifted["issue"]["body"] = "Implement different changed requirements."
+        unknown = self.adapter.verify_publication(
+            {"prepared": first, "snapshot": drifted}
+        )
+        replayed = self.adapter.verify_publication(
+            {"prepared": first, "snapshot": published}
+        )
+        self.assertEqual("unknown_outcome", unknown["status"])
+        self.assertIsNone(unknown["receipt"])
+        self.assertEqual(verified, replayed)
 
     def test_changed_requirements_require_a_checkpoint_before_reframe(
         self,
