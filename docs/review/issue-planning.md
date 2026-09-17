@@ -136,8 +136,9 @@ Failure actions:
 
 The repository target branch is not part of the canonical plan identity. Before implementation,
 the plan can name the commit from which a worktree must start. After implementation starts, use the
-recorded worktree start commit as the local review base. Do not revise a plan or repeat an issue
-review only because the remote target branch changes.
+recorded worktree start commit as the initial local review base. Do not revise a plan, repeat an
+issue review, or require a rebase only because the remote target branch changes. If a permitted
+rebase or conflict resolution changes candidate content, update the applicable review evidence.
 
 ## Executable carriers
 

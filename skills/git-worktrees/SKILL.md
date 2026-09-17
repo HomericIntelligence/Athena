@@ -103,7 +103,7 @@ You do not have to verify `.gitignore` for a path under `/tmp`. This path is out
 ## Create the worktree
 
 1. Resolve the intended base commit SHA.
-2. Record the intended base commit SHA as the worktree start commit and local review base.
+2. Record the intended base commit SHA as the worktree start commit and initial local review base.
 3. Keep the target repository as the current working directory.
 4. Resolve `scripts/prepare_worktree.py` from this installed skill directory.
 5. Prepare `BRANCH_NAME --start-point BASE_SHA --dry-run` as the helper arguments.
@@ -120,10 +120,13 @@ You do not have to verify `.gitignore` for a path under `/tmp`. This path is out
 15. Use the repository tests to verify a clean baseline.
 16. Report the path, start SHA, and result.
 
-After work starts, do not replace the local review base with a later remote target commit. Do not
-rebase only because the remote target branch changes. Use the current target branch only for
-integration and merge-readiness checks. If integration changes the candidate content, review that
-changed content against the recorded local review base.
+After work starts, do not replace the initial local review base with a later remote target commit
+only because the remote target branch changes. Do not rebase because the remote target branch moves
+or because the branch is behind. Rebase only when required target-branch content blocks the work,
+or after the work is complete when the forge reports a merge conflict that the agent must resolve.
+Use the current target branch only for integration and merge-readiness checks. Let the configured
+merge queue do normal target integration. If a permitted rebase or conflict resolution changes
+candidate content, review that changed content.
 
 **If the tests fail:** Report the failures. Ask whether to continue or investigate.
 

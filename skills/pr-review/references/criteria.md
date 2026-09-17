@@ -21,7 +21,7 @@ and review output.
   [P071 Consistency Over Personal Preference](../../../docs/principles/README.md#p071),
   [P072 Technical Evidence Over Preference](../../../docs/principles/README.md#p072), and
   [P074 Prefer Existing Mechanisms](../../../docs/principles/README.md#p074) when you inspect prior
-  work. Use history and behavior at the frozen local review base to decide if work is necessary, duplicate,
+  work. Use history and behavior at the recorded initial local review base to decide if work is necessary, duplicate,
   superseded, or safe to remove. Do not use title similarity or reviewer preference for this
   decision.
 - Apply [P021 Evolutionary and Reversible Design](../../../docs/principles/README.md#p021),
@@ -47,7 +47,7 @@ forge owns repository acceptance and merging.
 - Search these locations for already-landed, superseded, duplicate, or zombie
   work:
   - issue comments;
-  - source at the recorded local review base;
+  - source at the recorded initial local review base;
   - default-branch commits; and
   - all-state pull or merge requests on the configured forge.
 - Map each changed path to the stated scope.

@@ -72,11 +72,12 @@ timeout.
 - `required-checks-gate` depends on each gating job. It fails if a gating job is not successful.
 
 Add each new gating job to `required-checks-gate`. Never represent an advisory job as required. The
-tracked `main` ruleset and the live `main` ruleset require `required-checks-gate` to pass against the
-current `main` base before merge.
+tracked `main` ruleset uses the GitHub merge queue for normal target integration. It runs
+`required-checks-gate` for the staged merge-group revision before it merges the group.
 
-This merge-readiness rule does not change the frozen local review base. Movement of `main` does not
-invalidate a technical review of unchanged candidate content.
+A branch that is behind `main` but has no reported merge conflict does not require an agent rebase.
+Target movement does not invalidate a technical review of unchanged candidate content. The merge
+queue, not an agent rebase, owns normal target integration and merge-group validation.
 
 ## Test tiers
 

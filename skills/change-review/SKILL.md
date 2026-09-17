@@ -54,9 +54,11 @@ Select exactly one scope:
 - Use `--staged` to select index changes from `HEAD`.
 - Use `--range BASE..HEAD` to select the explicit Git range.
 
-For feature work, `BASE` is the recorded worktree start commit. Do not replace it with the latest
-remote target commit. Movement of the remote target branch does not invalidate a review of unchanged
-candidate content. Repeat the review only if the selected content or its requirements change.
+For feature work, `BASE` is the recorded worktree start commit and initial review base. Do not
+replace it with the latest remote target commit only because that branch changes. Movement of the
+remote target branch does not invalidate a review of unchanged candidate content. Do not require a
+rebase because the branch is behind. Repeat the review only if the selected content or its
+requirements change, including after a permitted rebase or conflict resolution.
 
 Before you inspect content, resolve the installed
 [`scripts/resolve_scope.py`](scripts/resolve_scope.py) from this skill directory. Read each eligible
