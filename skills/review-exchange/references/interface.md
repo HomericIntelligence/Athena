@@ -408,6 +408,10 @@ representation can encode the same canonical envelope; compressed bytes are not 
 The marker digest, envelope digest, carrier kind, visible-content digest, and provider body limit
 must agree. The marker and its payload fence must be a top-level final section. The visible content
 cannot leave a top-level fenced code block open at the carrier boundary.
+For a supported version 1 envelope, the reader checks the original canonical bytes and marker
+digest before it returns the normalized version 2 envelope. The original carrier does not change.
+Only the documented version conversion can change the state representation. All other wire state
+must already have canonical semantic order.
 The final payload fence must end with a line feed or at the end of input.
 No text, spaces, or extra blank lines can follow that fence. The reader preserves
 all input bytes for digest and size checks. The renderer continues to emit a final line feed.

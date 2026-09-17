@@ -1167,7 +1167,7 @@ def _upgrade_legacy_initial_state(value: object) -> dict[str, Any]:
     if upgraded["phase"] == "complete" and not go_eligible:
         expected_legacy["verdict"] = "CONDITIONAL GO"
         expected_legacy["next_action"] = "none"
-    if expected_legacy != legacy:
+    if canonical_json(expected_legacy) != canonical_json(legacy):
         raise ProtocolError(
             "The legacy state does not match its accepted-event replay."
         )
@@ -3401,12 +3401,26 @@ def extract_carrier(document: str) -> dict[str, Any]:
     if "\n" in encoded:
         raise ProtocolError("The carrier payload must use canonical one-line encoding.")
     decoded = _decode_carrier_payload(encoded, opening)
-    envelope = verify_envelope(parse_json_bytes(decoded))
-    if canonical_json(envelope).encode("utf-8") != decoded:
+    original = parse_json_bytes(decoded)
+    if canonical_json(original).encode("utf-8") != decoded:
+        raise ProtocolError("The carrier JSON is not canonical.")
+    envelope = verify_envelope(original)
+    legacy_upgrade = (
+        original["schema_version"] == LEGACY_ENVELOPE_SCHEMA_VERSION
+        and original["schema_id"] == STATE_SCHEMA_ID
+        and "go_eligible" in original["state"]
+    )
+    # The legacy upgrade already requires an exact replay of the original state.
+    # All other wire states must be normalized before version conversion.
+    normalized_wire = {**envelope, "schema_version": original["schema_version"]}
+    if (
+        not legacy_upgrade
+        and canonical_json(normalized_wire).encode("utf-8") != decoded
+    ):
         raise ProtocolError("The carrier JSON is not canonical.")
     if match.group(1) != _carrier_kind(envelope):
         raise ProtocolError("The carrier kind does not match the envelope.")
-    if match.group(2) != envelope["state_sha256"]:
+    if match.group(2) != original["state_sha256"]:
         raise ProtocolError("The carrier marker digest does not match the envelope.")
     expected_visible = envelope["state"]["artifact_binding"]["visible_content_sha256"]
     if sha256_text(visible) != expected_visible:
