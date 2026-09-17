@@ -119,6 +119,8 @@ The helper must reject a different returned target. `exit 2` means that there is
 
 The base OID records source and integration context at collection time. The exact head OID identifies
 the reviewed implementation. A later target-branch commit does not change that implementation.
+Freeze the unambiguous author-intent merge base for the assessment. Do not replace it only because
+the remote target branch changes.
 
 Do not fetch through an ambient checkout remote. Do not pull through an ambient checkout remote. Do
 not clone through an ambient checkout remote. Do not invoke a remote helper through an ambient

@@ -175,6 +175,9 @@ the comment:
 - a change to verified absence; or
 - no safe forge capability.
 
+Remote target-branch movement is not identity drift. It does not make an unchanged plan review
+stale. Repeat the review only if the issue requirements or canonical plan content changes.
+
 If the prepared identity changed before the write, report `stale`. For a foreign or multiple marker,
 or for a missing safe forge capability, report `withheld`.
 
