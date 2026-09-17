@@ -11,7 +11,7 @@ import time
 from collections.abc import Mapping, Sequence
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import IO, TYPE_CHECKING, Any
 
 import collect_evidence as evidence
 from pr_identity import require_commit_oid
@@ -28,6 +28,7 @@ LEGACY_SCHEMA = "athena.pr-review.historical-anchor-proof"
 MARKER = "<!-- HomericIntelligence:review-anchors:v1 -->"
 POLICY = "immutable-two-lens-v1"
 MAX_BYTES = 2 * 1024 * 1024
+MAX_DIFF_BYTES = 16 * 1024 * 1024
 MAX_FINDINGS = 100
 DIFF_ARGS = (
     "-c",
@@ -84,6 +85,44 @@ def exact_fields(value: object, fields: set[str], description: str) -> dict[str,
     return value
 
 
+class DiffDigestStream(evidence.ProviderStream):
+    """Hash bounded patch bytes without retaining the patch."""
+
+    def __init__(self, maximum_bytes: int) -> None:
+        super().__init__(maximum_bytes)
+        self.digest = sha256()
+        self.bytes_read = 0
+
+
+def drain_diff_digest(stream: IO[bytes], capture: DiffDigestStream) -> None:
+    """Require EOF within the byte limit before a complete digest is available."""
+    try:
+        while True:
+            read_size = min(
+                evidence.READ_CHUNK_SIZE, capture.maximum_bytes - capture.bytes_read + 1
+            )
+            if read_size <= 0:
+                capture.overflowed.set()
+                return
+            chunk = stream.read(read_size)
+            if not chunk:
+                return
+            if capture.bytes_read + len(chunk) > capture.maximum_bytes:
+                capture.overflowed.set()
+                return
+            capture.digest.update(chunk)
+            capture.bytes_read += len(chunk)
+    except (OSError, ValueError) as error:
+        capture.error = error
+    finally:
+        try:
+            stream.close()
+        except (OSError, ValueError):
+            # The process cleanup can close this pipe first.
+            pass
+        capture.completed.set()
+
+
 class GitSource:
     """Read complete immutable objects with one bounded lifetime and output budget."""
 
@@ -96,7 +135,21 @@ class GitSource:
             raise ValueError("The anchor source must be the repository root.")
 
     def git(self, *arguments: str) -> bytes:
-        """Reuse the collector's bounded stream and process cleanup machinery."""
+        """Retain the existing limit for byte-returning source reads."""
+        capture = evidence.ProviderStream(MAX_BYTES)
+        self._read(arguments, capture)
+        return bytes(capture.output)
+
+    def patch_digest(self, base: str, head: str) -> str:
+        """Hash the complete fixed-format patch within its separate byte limit."""
+        capture = DiffDigestStream(MAX_DIFF_BYTES)
+        self._read((*DIFF_ARGS, base, head, "--"), capture)
+        return capture.digest.hexdigest()
+
+    def _read(
+        self, arguments: tuple[str, ...], capture: evidence.ProviderStream
+    ) -> None:
+        """Keep both output modes within one deadline and process cleanup path."""
         timeout = self.deadline - time.monotonic()
         if timeout <= 0:
             raise ValueError("The anchor source proof exceeded its deadline.")
@@ -119,20 +172,29 @@ class GitSource:
             process.wait()
             raise ValueError("The anchor source proof has no output streams.")
         captures = (
-            evidence.ProviderStream(MAX_BYTES),
+            capture,
             evidence.ProviderStream(16 * 1024),
         )
-        readers = tuple(
+        readers = (
+            threading.Thread(
+                target=drain_diff_digest
+                if isinstance(capture, DiffDigestStream)
+                else evidence.drain_provider_stream,
+                args=(stdout, capture),
+                daemon=True,
+            ),
             threading.Thread(
                 target=evidence.drain_provider_stream,
-                args=(stream, capture),
+                args=(stderr, captures[1]),
                 daemon=True,
-            )
-            for stream, capture in zip((stdout, stderr), captures, strict=True)
+            ),
         )
         for reader in readers:
             reader.start()
         try:
+            timeout = self.deadline - time.monotonic()
+            if timeout <= 0:
+                raise ValueError("The anchor source proof exceeded its deadline.")
             code = evidence.provider_return_code(
                 process,
                 *captures,
@@ -143,14 +205,27 @@ class GitSource:
                 deadline_error="The anchor source proof exceeded its deadline.",
                 output_error="The anchor source output is incomplete.",
             )
+            for reader in readers:
+                reader.join(evidence.PROVIDER_READER_JOIN_SECONDS)
+            # A reader can fail after the provider checks flags but before completion.
+            if captures[0].overflowed.is_set():
+                raise RuntimeError("The anchor source exceeds its byte limit.")
+            if captures[1].overflowed.is_set():
+                raise RuntimeError(
+                    "The anchor source diagnostic exceeds its byte limit."
+                )
+            if any(
+                item.error is not None or not item.completed.is_set()
+                for item in captures
+            ):
+                raise RuntimeError("The anchor source output is incomplete.")
+            if time.monotonic() >= self.deadline:
+                raise ValueError("The anchor source proof exceeded its deadline.")
+            if code != 0:
+                raise ValueError("An immutable anchor source Git query failed.")
         except BaseException:
             evidence.reap_provider(process, (stdout, stderr), readers)
             raise
-        for reader in readers:
-            reader.join(evidence.PROVIDER_READER_JOIN_SECONDS)
-        if code != 0:
-            raise ValueError("An immutable anchor source Git query failed.")
-        return bytes(captures[0].output)
 
     def ranges(
         self, base: str, head: str, merge: str | None = None
@@ -165,7 +240,7 @@ class GitSource:
             raise ValueError("The anchor source merge base is missing or ambiguous.")
         merged = require_commit_oid(bases[0], "anchor merge base")
         hashes = {
-            name: sha256(self.git(*DIFF_ARGS, old, head, "--")).hexdigest()
+            name: self.patch_digest(old, head)
             for name, old in (("author_intent", merged), ("current_target", base))
         }
         return merged, hashes
