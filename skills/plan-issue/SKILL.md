@@ -118,6 +118,11 @@ sealed comments are removed, an authoritative person can replace the sealed body
 requirements and remove the obsolete marker. The next inspection then starts a new round-1 epoch.
 Do not use generated plan text or sealed provenance as the new requirements.
 
+Do not bind plan validity to a moving remote target branch. Before implementation, the plan can name
+the commit from which the worktree must start. After work starts, use the recorded worktree start
+commit as the local review base. Do not update the plan only because the remote target branch
+changes.
+
 For a material architecture decision, include or cite a
 [design record](../../docs/review/design-docs.md). Start the design record with the reason for the
 decision. Then, give the block diagram and high-level design before clear component details. Do not

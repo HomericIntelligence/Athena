@@ -120,6 +120,14 @@ output. A log, benchmark, result file, or prose assertion does not prove that it
 occurred. If the repository has an [evidence-integrity policy](../policies/evidence-integrity.md),
 follow it.
 
+For feature work, record the worktree start commit before the first change. Use that immutable
+commit as the local review base for the life of the work. Bind reviews and validation receipts to
+that base and to the exact candidate content. Movement of the remote target branch does not change
+this source binding and does not make unchanged evidence stale. Repeat a review only when the
+requirements or the reviewed candidate content changes. Inspect the current target branch only for
+integration and merge readiness. If integration changes the candidate content, bind a review to the
+changed content.
+
 Read-only Git metadata, object, tree, inventory, and hashing operations can establish an immutable
 source binding. They do not execute repository code. Keep these reads non-interactive and free of
 network access, credentials, replacement objects, ambient Git configuration, and mutable optional

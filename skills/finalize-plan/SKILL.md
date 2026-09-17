@@ -101,6 +101,9 @@ exactly. The review must have the exact `GO` verdict. It must not have an unreso
 `major`, or other `required` finding. Do not write if an artifact is conditional, partial,
 malformed, stale, foreign, duplicated, absent, or not verifiable.
 
+The remote repository target is not a sealed planning input. Movement of that target does not make
+an unchanged planning epoch stale.
+
 The helper records exactly one marker in the rendered body:
 `<!-- HomericIntelligence:finalize-plan R=<R> P=<P> V=<V> F=<F> -->`. It calculates `F` from the
 canonical final body with the literal `<F>` placeholder. Do not add, edit, or move the returned

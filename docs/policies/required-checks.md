@@ -75,6 +75,9 @@ Add each new gating job to `required-checks-gate`. Never represent an advisory j
 tracked `main` ruleset and the live `main` ruleset require `required-checks-gate` to pass against the
 current `main` base before merge.
 
+This merge-readiness rule does not change the frozen local review base. Movement of `main` does not
+invalidate a technical review of unchanged candidate content.
+
 ## Test tiers
 
 The `nightly` pytest marker identifies integration-heavy tests. These tests use Git repositories,
