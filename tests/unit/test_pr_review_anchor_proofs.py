@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -745,3 +746,188 @@ def test_manifest_cli_rejects_invalid_finding_inputs_without_proof(
         )
     assert error.value.code == 1
     assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize("target_diverges", [False, True])
+def test_complete_range_hashes_accept_large_patches(
+    source: tuple[Path, str, str], target_diverges: bool
+) -> None:
+    """Hash every patch byte when aggregate source exceeds the object-read limit."""
+    root, merge, _ = source
+    anchors = load_module().anchor_proofs
+    payload = "".join(f"{number:06}: {'x' * 42}\n" for number in range(23000))
+    for name in ("first.txt", "second.txt"):
+        (root / name).write_text(payload, encoding="utf-8")
+    git(root, "add", "first.txt", "second.txt")
+    git(root, "commit", "-qm", "add complete source fixtures")
+    head = git(root, "rev-parse", "HEAD")
+    base = merge
+    if target_diverges:
+        git(root, "checkout", "-qb", "changed-target", merge)
+        (root / "target.txt").write_text("target change\n", encoding="utf-8")
+        git(root, "add", "target.txt")
+        git(root, "commit", "-qm", "change target")
+        base = git(root, "rev-parse", "HEAD")
+    expected = {}
+    for name, old in (("author_intent", merge), ("current_target", base)):
+        patch = subprocess.run(
+            ["git", "-C", str(root), *anchors.DIFF_ARGS, old, head, "--"],
+            capture_output=True,
+            check=True,
+            timeout=20,
+        ).stdout
+        assert len(patch) > 2 * 1024 * 1024
+        expected[name] = hashlib.sha256(patch).hexdigest()
+    assert (expected["author_intent"] != expected["current_target"]) is target_diverges
+    manifest = anchors.prepare_manifest(root, base, head, [])
+    assert manifest["hunks_sha256"] == expected
+    assert manifest["merge_base_oid"] == merge
+
+
+@pytest.mark.parametrize("over_limit", [False, True])
+def test_range_hash_requires_complete_patch_within_its_limit(
+    source: tuple[Path, str, str], over_limit: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Accept exact-limit EOF and reject a one-byte excess."""
+    root, base, head = source
+    anchors = load_module().anchor_proofs
+    patch = subprocess.run(
+        ["git", "-C", str(root), *anchors.DIFF_ARGS, base, head, "--"],
+        capture_output=True,
+        check=True,
+        timeout=20,
+    ).stdout
+    monkeypatch.setattr(
+        anchors, "MAX_DIFF_BYTES", len(patch) - int(over_limit), raising=False
+    )
+    if over_limit:
+        with pytest.raises(RuntimeError, match="byte limit"):
+            anchors.prepare_manifest(root, base, head, [])
+    else:
+        manifest = anchors.prepare_manifest(root, base, head, [])
+        assert set(manifest["hunks_sha256"].values()) == {
+            hashlib.sha256(patch).hexdigest()
+        }
+
+
+def test_completed_patch_after_shared_deadline_cannot_grant_proof(
+    source: tuple[Path, str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Retain the original deadline across process startup and completed output."""
+    root, base, head = source
+    anchors = load_module().anchor_proofs
+    clock = [100.0]
+    original = anchors.subprocess.Popen
+    children = []
+
+    def start(arguments: list[str], **kwargs: Any) -> Any:
+        child = original(arguments, **kwargs)
+        if "diff" in arguments:
+            child.wait(timeout=10)
+            children.append(child)
+            if len(children) == 2:
+                clock[0] = 131.0
+        return child
+
+    monkeypatch.setattr(anchors.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(anchors.subprocess, "Popen", start)
+    with pytest.raises((RuntimeError, ValueError), match="deadline"):
+        anchors.prepare_manifest(root, base, head, [])
+    assert children
+    assert all(child.poll() is not None for child in children)
+    assert all(child.stdout.closed and child.stderr.closed for child in children)
+
+
+@pytest.mark.parametrize("failure", ["read-error", "overflow"])
+def test_late_stream_failure_cannot_grant_partial_digest(
+    source: tuple[Path, str, str], monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    """Reject a stream failure that arrives during the process completion check."""
+    root, base, head = source
+    anchors = load_module().anchor_proofs
+    original = anchors.evidence.provider_return_code
+
+    def finish(
+        process: Any, stdout: Any, stderr: Any, *args: Any, **kwargs: Any
+    ) -> int:
+        if not isinstance(stdout, anchors.DiffDigestStream):
+            return int(original(process, stdout, stderr, *args, **kwargs))
+        assert stdout.completed.wait(10)
+        assert stderr.completed.wait(10)
+        process.wait(timeout=10)
+        poll = process.poll
+
+        def late_failure() -> int | None:
+            if failure == "read-error":
+                stdout.error = OSError("fixture read failure")
+            else:
+                stdout.overflowed.set()
+            code = poll()
+            return None if code is None else int(code)
+
+        monkeypatch.setattr(process, "poll", late_failure)
+        return int(original(process, stdout, stderr, *args, **kwargs))
+
+    monkeypatch.setattr(anchors.evidence, "provider_return_code", finish)
+    with pytest.raises(RuntimeError, match="incomplete|byte limit"):
+        anchors.prepare_manifest(root, base, head, [])
+
+
+@pytest.mark.parametrize(
+    ("program", "message", "short_deadline"),
+    [
+        ("import sys; print('partial patch'); sys.exit(7)", "Git query failed", False),
+        (
+            "import sys; print('partial patch'); sys.stderr.write('x' * 16385)",
+            "diagnostic exceeds",
+            False,
+        ),
+        (
+            "import time; print('partial patch', flush=True); time.sleep(60)",
+            "deadline",
+            True,
+        ),
+    ],
+)
+def test_failed_patch_process_cannot_return_digest(
+    source: tuple[Path, str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    program: str,
+    message: str,
+    short_deadline: bool,
+) -> None:
+    """Reject failed or incomplete child output and close the child resources."""
+    root, base, head = source
+    anchors = load_module().anchor_proofs
+    reader = anchors.GitSource(root)
+    original = anchors.subprocess.Popen
+    children = []
+
+    def start(arguments: list[str], **kwargs: Any) -> Any:
+        assert "diff" in arguments
+        child = original([sys.executable, "-c", program], **kwargs)
+        children.append(child)
+        return child
+
+    monkeypatch.setattr(anchors.subprocess, "Popen", start)
+    if short_deadline:
+        reader.deadline = anchors.time.monotonic() + 0.1
+    with pytest.raises((RuntimeError, ValueError), match=message):
+        reader.patch_digest(base, head)
+    assert len(children) == 1
+    assert children[0].poll() is not None
+    assert children[0].stdout.closed and children[0].stderr.closed
+
+
+def test_larger_patch_budget_does_not_expand_object_reads(
+    source: tuple[Path, str, str],
+) -> None:
+    """Keep the object-read limit independent of the complete-patch limit."""
+    root, _, _ = source
+    anchors = load_module().anchor_proofs
+    (root / "large.txt").write_bytes(b"x" * (2 * 1024 * 1024 + 1))
+    git(root, "add", "large.txt")
+    git(root, "commit", "-qm", "add oversized object")
+    head = git(root, "rev-parse", "HEAD")
+    with pytest.raises(RuntimeError, match="byte limit"):
+        anchors.GitSource(root).git("show", f"{head}:large.txt")

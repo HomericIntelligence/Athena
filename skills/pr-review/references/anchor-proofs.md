@@ -31,7 +31,13 @@ limit; retain the unavailable classification until a supported source coordinate
 
 The helper reads Git objects. It does not execute repository code or contact the forge. It requires
 the repository root, complete history, both exact commits, and one merge base. It reads both author-intent and
-current-target ranges. Each query has a byte limit; each source operation has a 30-second deadline.
+current-target ranges.
+
+The helper hashes each complete patch as a stream, with a 16 MiB limit.
+It retains no complete patch in memory. Object reads and per-path diff reads keep their 2 MiB limit.
+Diagnostic output has a 16 KiB limit. All queries share one 30-second deadline for the source operation.
+A patch hash requires complete output, no stream error, and a successful Git exit before that deadline.
+
 An incomplete or unavailable source fails. It cannot establish that a line is outside the diff.
 
 The result has schema `athena.pr-review.anchor-manifest`, version `1`. It includes the base, head,
