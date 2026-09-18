@@ -114,6 +114,13 @@ until a separately reviewed verifier supports it. Do not rewrite a published rev
 format. The original carrier, review actor, edit state, head, and chronology must pass their existing
 checks before this proof is used.
 
+If verified migration changes a state digest, the proof still binds the original digest.
+The verifier retains the original envelope from that exact published review. After it verifies
+the complete normalized chain and publication order, it uses the original envelope for source
+geometry. Only the original digest of a verified published state can select a historical proof.
+Do not substitute the normalized digest. Migration does not change the proof or the published
+review. Duplicate or ambiguous carrier mappings remain invalid.
+
 The verifier regenerates both original ranges and verifies that the supplied IDs are exactly the
 factual summary set. Other source findings still require their original inline roots. A proof for
 a state outside the selected chain, a duplicate proof, or a proof combined with an annex for the

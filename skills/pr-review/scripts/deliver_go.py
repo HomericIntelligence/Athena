@@ -537,7 +537,7 @@ def verify_legacy_go(
 ) -> DeliveryResult:
     """Prove one unchanged completed legacy GO without a forge mutation."""
     snapshot = _snapshot(forge, binding)
-    states, author_records = _review_carriers(snapshot, binding)
+    states, author_records, _ = _review_carriers(snapshot, binding)
     if states or author_records:
         raise DeliveryError(
             "A version-1 carrier exists; legacy proof is not an available fallback."
@@ -1222,8 +1222,10 @@ def _review_carriers(
 ) -> tuple[
     dict[str, tuple[ReviewRecord, dict[str, Any]]],
     tuple[tuple[ReviewRecord, dict[str, Any]], ...],
+    dict[str, dict[str, Any]],
 ]:
     states: dict[str, tuple[ReviewRecord, dict[str, Any]]] = {}
+    original_states: dict[str, dict[str, Any]] = {}
     authors: list[tuple[ReviewRecord, dict[str, Any]]] = []
     source_states: dict[str, dict[str, Any]] = {}
     carrier_ids: set[str] = set()
@@ -1285,6 +1287,7 @@ def _review_carriers(
             if digest in states:
                 raise DeliveryError("A reviewer round has duplicate state carriers.")
             states[digest] = (review, envelope)
+            original_states[digest] = original
             source_states[original["state_sha256"]] = original
             source_states[digest] = envelope
         else:
@@ -1321,7 +1324,7 @@ def _review_carriers(
                 "A persisted author-event carrier has no reducer-derived predecessor."
             )
         pending = deferred
-    return states, tuple(normalized_authors)
+    return states, tuple(normalized_authors), original_states
 
 
 def _finding_event_fields(finding: Mapping[str, Any]) -> dict[str, Any]:
@@ -1495,6 +1498,7 @@ def _verify_carrier_review_roots(
     snapshot: PullRequestSnapshot,
     binding: ReviewBinding,
     states: Mapping[str, tuple[ReviewRecord, dict[str, Any]]],
+    original_states: Mapping[str, dict[str, Any]],
     verified_envelopes: Mapping[str, dict[str, Any]],
     verified_state_sha256s: set[str],
     selected_author_ids: set[str],
@@ -1552,7 +1556,7 @@ def _verify_carrier_review_roots(
         ]
         expected = _publication_anchors(
             binding,
-            envelope,
+            original_states[digest],
             _carrier_visible(review.body),
             introduced,
             anchor_source,
@@ -2080,7 +2084,7 @@ def _verify_state_chain(
         and terminal_state["accepted_events"][0]["event_type"] == "reframe"
         else None
     )
-    states, author_records = _review_carriers(
+    states, author_records, original_states = _review_carriers(
         snapshot, binding, cast(str | None, direct_supersession)
     )
     author_transitions, logical_envelopes = _derive_author_transitions(
@@ -2380,6 +2384,7 @@ def _verify_state_chain(
         snapshot,
         binding,
         states,
+        original_states,
         {digest: logical_envelopes[digest] for digest in verified_states},
         verified_states,
         used_author_ids,
@@ -2388,8 +2393,13 @@ def _verify_state_chain(
         historical_anchor_proofs,
         format_only_compatibility,
     )
+    verified_original_digests = {
+        original_states[digest]["state_sha256"]
+        for digest in verified_states
+        if digest in original_states
+    }
     if any(
-        proof.get("state_sha256") not in verified_states
+        proof.get("state_sha256") not in verified_original_digests
         for proof in historical_anchor_proofs
     ):
         raise DeliveryError(
