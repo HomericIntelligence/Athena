@@ -24,9 +24,10 @@ timeout.
     skill-local executable script.
   - It enforces Ruff, formatting, and strict mypy on repository scripts and skill-local scripts.
 
-  Pre-commit does not run pytest. Before a pull request is created, contributors must validate each
-  new or changed test with a focused local command. This focused result does not replace continuous
-  integration and continuous delivery (CI/CD) test tiers.
+  Pre-commit does not run pytest. Contributors can publish a pull request with pending validation.
+  Before completion or merge, each new or changed test must pass in a focused run on an approved
+  local or hosted runner. This result does not replace required continuous integration and
+  continuous delivery (CI/CD) test tiers.
 
 - `markdownlint` validates public documents and the shipped `skills/**/*.md` product corpus. It does
   not verify ASD-STE100 conformance. Review applicable prose under the

@@ -1,7 +1,7 @@
 ---
 name: systematic-debugging
 license: BSD-3-Clause
-description: Investigate root cause before you repair a bug or unexpected behavior. This skill requires the Mnemosyne knowledge backend through advise. Stop if the backend cannot be prepared.
+description: Investigate root cause before you repair a bug or unexpected behavior. Use available Mnemosyne advice; missing guidance does not stop otherwise authorized work.
 argument-hint: <description of the bug or failure>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 ---
@@ -48,8 +48,9 @@ principle definitions. Use these principles in this workflow:
 
 ## Before you start
 
-Run `advise` with the error description. If you cannot prepare the required knowledge backend,
-stop. Do not skip the prior-knowledge search.
+Run `advise` with the error description. If guidance is missing, stale, or not verifiable, report
+the limit and continue otherwise authorized investigation with source and failure evidence.
+Do not skip the best-effort retrieval attempt.
 
 ## Required sequence
 
