@@ -120,8 +120,9 @@ Do not use generated plan text or sealed provenance as the new requirements.
 
 Do not bind plan validity to a moving remote target branch. Before implementation, the plan can name
 the commit from which the worktree must start. After work starts, use the recorded worktree start
-commit as the local review base. Do not update the plan only because the remote target branch
-changes.
+commit as the initial local review base. Do not update the plan or require a rebase only because the
+remote target branch changes. If a permitted rebase or conflict resolution changes candidate
+content, update the affected review evidence.
 
 For a material architecture decision, include or cite a
 [design record](../../docs/review/design-docs.md). Start the design record with the reason for the

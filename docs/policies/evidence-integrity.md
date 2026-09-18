@@ -37,8 +37,12 @@ acceptable.**
 11. If the timestamp, revision, environment, or CI identity cannot be reconciled with the claim,
    reviewers must reject the evidence.
 12. For feature work, bind evidence to the recorded worktree start commit and the exact candidate
-    content. Do not replace this base with a later remote target commit.
-13. Remote target-branch movement does not invalidate evidence for unchanged candidate content.
-    Treat the current target state as separate integration and merge-readiness evidence.
+    content. Use that commit as the initial review base. Do not replace it only because the remote
+    target branch changes.
+13. Remote target-branch movement does not invalidate evidence for unchanged candidate content. Do
+    not require a rebase because the branch is behind. Treat the current target state as separate
+    integration and merge-readiness evidence.
+14. If a permitted rebase or conflict resolution changes candidate content, bind the changed
+    content and repeat the affected review and validation.
 
 The `repo-review` and `pr-review` skills enforce this policy.

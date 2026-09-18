@@ -170,12 +170,15 @@ Agents can do these actions:
 - Inspect GitHub without a write when this inspection is relevant.
 
 Always start feature work in an isolated Git worktree. Fetch `origin/main` before you make a change.
-Create the feature branch at that commit and record it as the worktree start commit and local review
-base. Do not make feature edits in the primary checkout. After work starts, do not rebase only
-because remote `main` changes. Do not bind an issue, plan, review, or test receipt to a later
-`main` commit. Review only the candidate changes from the recorded local review base. Inspect the
-current target branch separately for merge readiness and conflicts. If conflict resolution changes
-the candidate content, review that changed content.
+Create the feature branch at that commit and record it as the worktree start commit and initial
+local review base. Do not make feature edits in the primary checkout. After work starts, do not
+rebase because remote `main` changes or because the branch is behind. Rebase only when the work is
+blocked by required content from `main`, or after the work is complete when the forge reports a
+merge conflict that the agent must resolve. Do not bind an issue, plan, review, or test receipt to
+a later `main` commit only because `main` changed. Review the exact candidate content from the
+recorded initial base. Let the configured merge queue do normal target integration and merge-group
+validation. If an allowed rebase or conflict resolution changes candidate content, review that
+changed content.
 
 Agents can do constructive Git, GitHub CLI, and Hephaestus operations in the requested scope. These
 operations include:

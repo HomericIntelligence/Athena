@@ -477,8 +477,9 @@ change, bypass, or policy change.
    current target and exact head object identifiers, both diff lenses, scope digest, requirements
    digest, path manifest, effective pre-admission gates, required approvals, and queue route again.
 2. If the reviewed head or a stable binding changed, a binding is absent, or a gate failed or is
-   pending, withhold auto-merge. Treat target movement as integration context. If the current target
-   causes a merge conflict, withhold auto-merge.
+   pending, withhold auto-merge. Treat target movement as integration context. A branch that is
+   behind the target but has no reported merge conflict is eligible for normal merge-queue
+   admission. If the current target causes a merge conflict, withhold auto-merge.
 3. If the author or reviewer changed, a required thread is open, carrier publication is unverified,
    or terminal evidence conflicts, withhold auto-merge.
 4. Require an authenticated capability that binds the target and can enable normal auto-merge
@@ -486,7 +487,8 @@ change, bypass, or policy change.
 5. Use the one repository-supported method that the capability returns. Do not select, guess, or
    change the method.
 6. If the repository requires a merge queue, require a separate exact-head queue-admission
-   capability. Do not use normal auto-merge as a queue-admission proxy.
+   capability. Do not use normal auto-merge as a queue-admission proxy. The queue owns normal
+   target integration and merge-group validation.
 7. Invoke exactly one bound enable-auto-merge or queue-admission operation.
 8. Do not use an ambient target, generic command-line default, direct merge, or fallback mutation.
 9. Do not retry after a failed or uncertain result.

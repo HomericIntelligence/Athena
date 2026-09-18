@@ -9,6 +9,14 @@ or failure requirement to make text shorter.
 ## Git
 
 - `main` is protected. Send all changes through short-lived feature branches and pull requests.
+- Before you start feature work, fetch `origin/main`. Create the isolated worktree and feature
+  branch at that exact commit. Record the commit as the worktree start commit and initial review
+  base.
+- After work starts, do not rebase because `main` changes or because the branch is behind. Rebase
+  only when required content from `main` blocks the work, or after the work is complete when the
+  forge reports a merge conflict that the agent must resolve.
+- A configured merge queue owns normal target integration and merge-group validation. A branch that
+  is behind but has no reported merge conflict does not require an agent rebase.
 - Use Conventional Commit subjects.
 - Sign each commit cryptographically. Include a Developer Certificate of Origin (DCO)
   `Signed-off-by` trailer.
