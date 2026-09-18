@@ -1225,6 +1225,7 @@ def _review_carriers(
 ]:
     states: dict[str, tuple[ReviewRecord, dict[str, Any]]] = {}
     authors: list[tuple[ReviewRecord, dict[str, Any]]] = []
+    source_states: dict[str, dict[str, Any]] = {}
     carrier_ids: set[str] = set()
     recovered_review_id: str | None = None
     for review in snapshot.reviews:
@@ -1242,7 +1243,7 @@ def _review_carriers(
             raise DeliveryError("A review-exchange carrier identifier is duplicated.")
         carrier_ids.add(review.id)
         try:
-            envelope = review_exchange.extract_carrier(review.body)
+            original, envelope = review_exchange.extract_carrier_pair(review.body)
         except review_exchange.ProtocolError as error:
             recoverable = (
                 directly_superseded_state_sha256 is not None
@@ -1255,7 +1256,9 @@ def _review_carriers(
                     f"A pull-request carrier is invalid: {error}"
                 ) from error
             try:
-                envelope = review_exchange.extract_carrier(review.body[:-1])
+                original, envelope = review_exchange.extract_carrier_pair(
+                    review.body[:-1]
+                )
             except review_exchange.ProtocolError:
                 raise DeliveryError(
                     f"A pull-request carrier is invalid: {error}"
@@ -1282,9 +1285,43 @@ def _review_carriers(
             if digest in states:
                 raise DeliveryError("A reviewer round has duplicate state carriers.")
             states[digest] = (review, envelope)
+            source_states[original["state_sha256"]] = original
+            source_states[digest] = envelope
         else:
-            authors.append((review, envelope))
-    return states, tuple(authors)
+            authors.append((review, original))
+    normalized_authors: list[tuple[ReviewRecord, dict[str, Any]]] = []
+    pending = authors
+    while pending:
+        deferred: list[tuple[ReviewRecord, dict[str, Any]]] = []
+        for record, original in pending:
+            previous = source_states.get(original["state"]["prior_state_sha256"])
+            if previous is None:
+                deferred.append((record, original))
+                continue
+            try:
+                source_result, normalized_event = (
+                    review_exchange.normalize_author_transition(previous, original)
+                )
+                normalized_result = review_exchange.verify_envelope(source_result)
+            except review_exchange.ProtocolError as error:
+                raise DeliveryError(
+                    "A persisted author-event carrier is not reducer-derived."
+                ) from error
+            for result in (source_result, normalized_result):
+                digest = result["state_sha256"]
+                existing = source_states.get(digest)
+                if existing is not None and not _same_envelope(existing, result):
+                    raise DeliveryError(
+                        "An original author state has ambiguous content."
+                    )
+                source_states[digest] = result
+            normalized_authors.append((record, normalized_event))
+        if len(deferred) == len(pending):
+            raise DeliveryError(
+                "A persisted author-event carrier has no reducer-derived predecessor."
+            )
+        pending = deferred
+    return states, tuple(normalized_authors)
 
 
 def _finding_event_fields(finding: Mapping[str, Any]) -> dict[str, Any]:
@@ -2888,8 +2925,8 @@ def _same_compressed_carrier(left: str, right: str) -> bool:
         if marker is None or not body[marker.end() :].startswith(prefix):
             return False
     try:
-        left_envelope = review_exchange.extract_carrier(left)
-        right_envelope = review_exchange.extract_carrier(right)
+        left_envelope, _ = review_exchange.extract_carrier_pair(left)
+        right_envelope, _ = review_exchange.extract_carrier_pair(right)
     except review_exchange.ProtocolError:
         return False
     return _same_envelope(left_envelope, right_envelope) and _carrier_visible(

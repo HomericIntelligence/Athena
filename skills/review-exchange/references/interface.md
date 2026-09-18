@@ -224,8 +224,31 @@ Each envelope has exactly these fields:
 | `state_sha256` | Digest of canonical JSON for `state` |
 
 The verifier accepts a valid version 1 envelope and returns a version 2 envelope. For a version 1
-state that contains `go_eligible`, the automatic upgrade applies only to a fresh round-1 review.
-The verifier validates the old state digest and replays its accepted event before the upgrade.
+state that contains `go_eligible`, it first validates the original digest and the complete original
+accepted-event replay. Fresh round-1 compatibility remains available. Later states require an
+ordinary ledger of reviewer assessments and author responses, with `go_eligible: true` on each
+reviewer event. This migration does not support conditional histories, authority events, or
+reframes. Incomplete histories and invalid original digest links are rejected.
+
+The migration derives version 2 links only after it proves the original links and exact state
+fields, including JSON types. It preserves finding identities, closure conditions, evidence,
+requirements, scope, rounds, and event order. It does not reset the exchange or authorize a new
+verdict.
+
+`extract_carrier_pair(document)` returns the verified original envelope and its normalized envelope.
+It uses the same canonical JSON, marker, visible-content, framing, duplicate-key, and size checks as
+`extract_carrier`. The `extract` command still returns only the normalized envelope. Neither API
+changes the original document.
+
+`normalize_author_transition(previous, author)` verifies an original predecessor and a separate
+author-event envelope. It returns the derived source-state envelope and the normalized author-event
+envelope. For an old digest link, both inputs must use the supported version 1 history. The helper
+checks the target, requirements, exchange, phase, artifact, scope, answers, and original predecessor.
+It then verifies that the complete derived source state normalizes to the same current result.
+This permits consecutive legacy author refreshes. A version 2 author event must use the normalized
+predecessor. The delivery consumer retains the original forge records and uses one normalized
+graph for its existing ownership, order, fork, and complete-chain checks. A history conversion does
+not convert an authority record or a historical anchor proof.
 
 An author-event record has these fields:
 
