@@ -1,7 +1,7 @@
 ---
 name: myrmidon-swarm
 license: BSD-3-Clause
-description: Coordinate complex work with dependency-aware subagents in isolated worktrees. Use sequential work if the host cannot delegate. This skill requires the Mnemosyne knowledge backend through advise. Stop if the backend cannot be prepared.
+description: Coordinate complex work with dependency-aware subagents in isolated worktrees. Use sequential work if the host cannot delegate. Use available Mnemosyne advice; missing guidance does not stop otherwise authorized work.
 argument-hint: <task description>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 ---
@@ -76,7 +76,9 @@ establish safe isolation, stop delegation. In that case, use the sequential fall
 
 ## Workflow
 
-1. Use `advise` to apply relevant prior knowledge to the task description.
+1. Use `advise` to apply relevant prior knowledge to the task description. If guidance is missing,
+   stale, or not verifiable, report the limit and continue otherwise authorized work with project
+   evidence. Keep the same scope, isolation, and delegation boundaries.
 2. Read `AGENTS.md`, build metadata, task runners, and the files closest to the request.
 3. Divide the work into bounded work items.
 4. For each work item, record:

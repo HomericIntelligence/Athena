@@ -50,9 +50,9 @@ coverage policy. The daily nightly workflow and each release run use `just test`
    [`engineering principles catalog`](docs/principles/README.md).
 8. Apply the [ASD-STE100 technical-English policy](skills/TECHNICAL_ENGLISH.md) to all English
    technical prose.
-9. Before you open a pull request, run each new or changed test with a focused command. Confirm that
-   the command selects the test and that the test passes.
-10. Run the applicable local validation other than the complete pytest suite.
+9. Select focused commands for each new or changed test. Use an approved local or hosted runner.
+10. Run the applicable checks. You can open a pull request before validation finishes. Record
+    pending, failed, or unavailable checks and the remaining work.
 11. Commit with a signed Conventional Commit that includes a Developer Certificate of Origin (DCO)
    attestation.
 12. Open a pull request. Required CI runs the fast pytest tier. Nightly and release workflows run
@@ -120,7 +120,7 @@ update and deletion rejection, and publish the GitHub Release record.
 
 A change is done when:
 
-- Before the pull request was opened, each new or changed test passed in a focused local run that
+- Each new or changed test passed in a focused run on an approved local or hosted runner that
   selected that test.
 - Each completion claim has runnable evidence that follows the
   [evidence integrity policy](docs/policies/evidence-integrity.md).
@@ -132,15 +132,16 @@ A change is done when:
 
 Pre-commit does not run pytest. Continuous integration and continuous delivery (CI/CD) workflows
 own the automatic fast and complete pytest runs. A contributor can run `just test` or `just all`
-locally, but a complete local suite is not a condition for opening a pull request. Focused local
-validation of each new or changed test does not replace CI/CD validation.
+locally. Neither a complete local suite nor a focused local pass is a condition for publication.
+Focused validation of each new or changed test does not replace required CI/CD validation.
+Publication with pending validation does not establish completion or merge readiness.
 
 ## Rejection criteria
 
 Athena rejects a pull request that does one or more of these actions:
 
 - It introduces a duplicate skill tree.
-- It makes the knowledge backend optional.
+- It bypasses dependency identity checks for knowledge access or durable writes.
 - It silently uses a fallback after an invalid dependency override.
 - It fabricates evidence.
 - It bypasses checks.

@@ -60,10 +60,15 @@ A name-filtered command can pass when it selects no tests. Before you accept `py
 test. For CMake, also verify that a real build target includes the test source. Treat a successful
 command that runs no relevant test as a coverage failure.
 
-Before a contributor creates a pull request, each new or changed test must pass in a focused local
-run that selects that test. Pre-commit does not run pytest. Continuous integration and continuous
-delivery (CI/CD) workflows run the automatic fast and complete pytest tiers. The focused local
-result does not replace CI/CD validation.
+A contributor can publish a pull request while validation is pending or unavailable. Report the
+actual status, the missing capability, and the remaining checks. Publication does not establish
+completion or merge readiness. Each new or changed test must pass in a focused run that selects
+that test before completion or merge. Use an approved local or hosted runner. Preserve the required
+RED-GREEN sequence for executable behavior changes.
+
+Pre-commit does not run pytest. Continuous integration and continuous delivery (CI/CD) workflows
+run the automatic fast and complete pytest tiers. Focused results do not replace required CI/CD
+validation. Source-review verdicts remain independent of execution results.
 
 ## Planning and review rules
 

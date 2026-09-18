@@ -33,8 +33,10 @@ or failure requirement to make text shorter.
 
 - Target `main`.
 - Keep the scope aligned with one issue or one coherent maintenance objective.
-- Before you create a pull request, run each new or changed test with a focused local command.
-  Confirm that the command selects that test and that the test passes.
+- You can publish a pull request before validation finishes. Report pending, failed, and unavailable
+  checks accurately. Publication does not establish completion or merge readiness.
+- Run each new or changed test with a focused command on an approved local or hosted runner. Confirm
+  that the command selects that test. Require a successful result before completion or merge.
 - Continuous integration and continuous delivery (CI/CD) workflows, not pre-commit, run the
   automatic pytest tiers. Focused local validation does not replace CI/CD validation.
 - If an issue tracks the work, put `Closes #N` on its own line in the body.

@@ -1,7 +1,7 @@
 ---
 name: brainstorm
 license: BSD-3-Clause
-description: Use before complex creative work. Examine intent and requirements. Stop if `advise` cannot prepare Mnemosyne.
+description: Use before complex creative work. Examine intent and requirements. Use available Mnemosyne advice; missing guidance does not stop otherwise authorized work.
 argument-hint: <idea or feature description>
 allowed-tools: [Read, Write, Bash, Grep, Glob, Agent]
 ---
@@ -58,8 +58,8 @@ implementation, the design must show its assumptions and constraints.
 
 Complete in order:
 
-1. **Advise retrieval.** Run `advise` with the feature description to check the required knowledge
-   backend.
+1. **Advise retrieval.** Run `advise` with the feature description. If guidance is missing, stale,
+   or not verifiable, report the limit and continue otherwise authorized work with project evidence.
 2. **Project evidence.** Read applicable files, documents, and recent commits.
 3. **Clarification.** Ask one question in each message to identify the purpose, constraints, and
    success criteria.

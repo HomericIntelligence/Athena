@@ -157,8 +157,12 @@ validation command, require a host-enforced boundary with all these properties:
 
 Record the source binding, command-plan identity, argument vector (`argv`), and outcome. If one
 boundary property is absent, do not run the command. Continue a static assessment when its source
-binding is complete. Report `validation.status=unavailable` and make repair ineligible. Do not claim
-that validation succeeded or that Git metadata reads failed.
+binding is complete. Report `validation.status=unavailable` and the missing capability. Unavailable
+local execution does not prohibit source inspection or preparation of an otherwise authorized
+repair. Use an approved runner that satisfies the execution boundary for the required checks.
+Preserve behavior-first test ordering and each skill's approval and baseline requirements before
+implementation. Do not execute untrusted code outside the required boundary. Do not claim that
+validation succeeded, that a repair is verified, or that Git metadata reads failed.
 
 ## Principle application profiles
 
