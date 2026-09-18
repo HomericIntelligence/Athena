@@ -1,15 +1,18 @@
 ---
 name: tidy
 license: BSD-3-Clause
-description: Delegate repository branch and worktree cleanup to the dependency-locked Hephaestus tidy command. Use this skill for a tidy, cleanup, or rebase request. Stop if the trusted automation checkout or a required execution capability cannot be prepared.
+description: Clean up unused repository branches and worktrees through the dependency-locked Hephaestus tidy command. Use this skill only for unused branch and worktree cleanup, not for general rebase requests or rebases of active worktrees. Stop if the trusted automation checkout or a required execution capability cannot be prepared.
 argument-hint: "<optional: hephaestus-tidy arguments>"
 allowed-tools: [Bash, Read]
 ---
 
 # Tidy through Hephaestus
 
-Use this skill when the user asks to tidy, clean up, or rebase local repository branches or
-worktrees. Athena prepares the trusted automation dependency. Then, Athena delegates the complete
+Use this skill only when the user asks to clean up unused local repository branches or worktrees.
+Do not use this skill for a general rebase request or to rebase an active worktree. Rebases within
+the delegated cleanup workflow do not expand this scope.
+
+Athena prepares the trusted automation dependency. Then, Athena delegates the complete cleanup
 operation to `hephaestus-tidy`.
 
 `hephaestus-tidy` controls:
@@ -30,8 +33,8 @@ all prose that it produces.
 Use the [canonical engineering-principles catalog](../../docs/principles/README.md) for these
 workflow rules:
 
-- [P010 — Scope Fidelity](../../docs/principles/README.md#p010): Delegate only the requested tidy,
-  cleanup, or rebase operation. Do not add a different cleanup policy for Athena.
+- [P010 — Scope Fidelity](../../docs/principles/README.md#p010): Delegate only the requested cleanup
+  of unused branches and worktrees. Do not add a different cleanup policy for Athena.
 - [P031 — Propagate Rather Than Swallow](../../docs/principles/README.md#p031): Give the delegated
   command's output, signals, and nonzero result to the caller. Do not hide the failure. Do not
   automatically retry it.
