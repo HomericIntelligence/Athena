@@ -611,9 +611,21 @@ that the applicable delivery rule already permits.
 ### Compatibility and fallback
 
 Accept a valid version 1 envelope and return a version 2 envelope. If a version 1 state contains
-the retired `go_eligible` field, upgrade only a fresh round-1 review. Validate the old digest and
-replay the old accepted event before the upgrade. Reject a later legacy state because an automatic
-upgrade cannot prove its complete prior-state chain.
+the retired `go_eligible` field, validate its original digest and replay its complete original
+ledger before conversion. Keep fresh round-1 compatibility. For a later legacy state, accept only
+an ordinary history of reviewer assessments and author responses. Each reviewer event must have
+`go_eligible: true`. Reject incomplete histories, conditional histories, authority events, and
+reframes in this migration path.
+
+Prove each original predecessor digest before deriving the corresponding version 2 digest. Keep
+all findings, answers, closure conditions, requirements, rounds, and evidence. Do not replace the
+history with a new round-1 summary. For separate published author carriers, prove each original edge
+against its original predecessor before using the normalized chain. New version 2 author events
+must bind the normalized predecessor. Keep forge ownership, exact original bodies, publication
+order, duplicate detection, and complete persisted-chain checks. Conversion does not grant an
+approval or a finding closure. Compressed recovery can change encoding only; it must preserve the
+original envelope identity. Historical anchor proofs remain bound to their exact state identity;
+conversion does not authorize a proof alias or an authority-record rewrite.
 
 Preserve a valid finalized legacy issue epoch and an unchanged, fully delivered legacy pull-request
 GO. Re-review an active unversioned issue review as version 2 round 1 in its existing actor-owned

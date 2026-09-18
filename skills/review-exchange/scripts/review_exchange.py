@@ -1101,7 +1101,7 @@ def _validate_author_event_record(value: object) -> dict[str, Any]:
     }
 
 
-def _upgrade_legacy_initial_state(value: object) -> dict[str, Any]:
+def _upgrade_legacy_state(value: object) -> dict[str, Any]:
     legacy = _object(
         value,
         "legacy state",
@@ -1134,10 +1134,13 @@ def _upgrade_legacy_initial_state(value: object) -> dict[str, Any]:
     if legacy["surface"] == "issue" and not go_eligible:
         raise ProtocolError("A legacy issue review state must be eligible for GO.")
     raw_events = legacy["accepted_events"]
-    if not isinstance(raw_events, list) or len(raw_events) != 1:
-        raise ProtocolError(
-            "Only a round-1 legacy review state can be upgraded automatically."
-        )
+    if (
+        not isinstance(raw_events, list)
+        or not 1 <= len(raw_events) <= MAX_ACCEPTED_EVENTS
+    ):
+        raise ProtocolError("The legacy state must contain a bounded complete history.")
+    if len(raw_events) > 1 and not go_eligible:
+        raise ProtocolError("Conditional legacy histories cannot be upgraded.")
     raw_event = raw_events[0]
     if not isinstance(raw_event, dict):
         raise ProtocolError("The legacy accepted event must be an object.")
@@ -1167,6 +1170,47 @@ def _upgrade_legacy_initial_state(value: object) -> dict[str, Any]:
     if upgraded["phase"] == "complete" and not go_eligible:
         expected_legacy["verdict"] = "CONDITIONAL GO"
         expected_legacy["next_action"] = "none"
+    for raw_continued in raw_events[1:]:
+        if not isinstance(raw_continued, dict):
+            raise ProtocolError("Each legacy accepted event must be an object.")
+        if expected_legacy["phase"] in {"complete", "decision_required"}:
+            raise ProtocolError("The legacy history cannot continue from this phase.")
+        continued = dict(raw_continued)
+        event_type = continued.get("event_type")
+        if event_type == "reviewer_assessment":
+            if not _boolean(
+                continued.pop("go_eligible", None), "legacy reviewer GO eligibility"
+            ):
+                raise ProtocolError("Conditional legacy histories cannot be upgraded.")
+            checked = _continued_review_event(continued, upgraded["findings"])
+            original_event = {**checked, "go_eligible": True}
+        elif event_type == "author_response":
+            checked = _continued_author_event(continued)
+            original_event = checked
+        else:
+            raise ProtocolError(
+                "Legacy authority and reframe histories cannot be upgraded."
+            )
+        if (
+            checked["prior_state_sha256"] != sha256_json(expected_legacy)
+            or checked["exchange_id"] != expected_legacy["exchange_id"]
+        ):
+            raise ProtocolError("The legacy event does not bind its preceding state.")
+        normalized_event = {**checked, "prior_state_sha256": sha256_json(upgraded)}
+        if event_type == "author_response":
+            expected_legacy, _, _ = _author_reduce(
+                expected_legacy, original_event, _event_digest(original_event)
+            )
+            upgraded, _, _ = _author_reduce(
+                upgraded, normalized_event, _event_digest(normalized_event)
+            )
+        else:
+            expected_legacy, _ = _review_reduce(
+                expected_legacy, original_event, _event_digest(original_event)
+            )
+            upgraded, _ = _review_reduce(
+                upgraded, normalized_event, _event_digest(normalized_event)
+            )
     if canonical_json(expected_legacy) != canonical_json(legacy):
         raise ProtocolError(
             "The legacy state does not match its accepted-event replay."
@@ -1223,9 +1267,83 @@ def verify_envelope(value: object) -> dict[str, Any]:
         and isinstance(state, dict)
         and "go_eligible" in state
     ):
-        state = _upgrade_legacy_initial_state(state)
+        state = _upgrade_legacy_state(state)
     canonical = make_envelope(state, schema_id)
     return canonical
+
+
+def normalize_author_transition(
+    previous: object, author: object
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Prove one original author edge and return its source state and current event."""
+    normalized_previous = verify_envelope(previous)
+    normalized_author = verify_envelope(author)
+    if (
+        normalized_previous["schema_id"] != STATE_SCHEMA_ID
+        or normalized_author["schema_id"] != AUTHOR_EVENT_SCHEMA_ID
+    ):
+        raise ProtocolError(
+            "An author transition requires a state and an author event."
+        )
+    source = cast(dict[str, Any], previous)
+    source_author = cast(dict[str, Any], author)
+    event_record = normalized_author["state"]
+    if any(
+        event_record[key] != normalized_previous["state"][key]
+        for key in ("target", "requirements_sha256")
+    ):
+        raise ProtocolError("The author event changes its target or requirements.")
+    if canonical_json(
+        {**normalized_author, "schema_version": source_author["schema_version"]}
+    ) != canonical_json(source_author):
+        raise ProtocolError("The original author event is not canonical.")
+    legacy = (
+        source["schema_version"] == LEGACY_ENVELOPE_SCHEMA_VERSION
+        and "go_eligible" in source["state"]
+    )
+    if event_record["prior_state_sha256"] != source["state_sha256"]:
+        raise ProtocolError("The author event does not bind its original predecessor.")
+    if legacy and (
+        source_author["schema_version"] != LEGACY_ENVELOPE_SCHEMA_VERSION
+        or source["state"]["go_eligible"] is not True
+    ):
+        raise ProtocolError("Only an ordinary version-1 author edge can be migrated.")
+    event = {
+        key: value
+        for key, value in event_record.items()
+        if key not in {"target", "requirements_sha256"}
+    }
+    result = reduce_request(
+        {
+            "previous": normalized_previous,
+            "event": {
+                **event,
+                "prior_state_sha256": normalized_previous["state_sha256"],
+            },
+        }
+    )
+    if result["status"] != "accepted" or result["author_event"] is None:
+        raise ProtocolError("The author carrier does not supply a new accepted edge.")
+    if legacy:
+        original_event = _continued_author_event(event)
+        original_state, _, _ = _author_reduce(
+            source["state"], original_event, _event_digest(original_event)
+        )
+        source_result = {
+            "schema_id": STATE_SCHEMA_ID,
+            "schema_version": LEGACY_ENVELOPE_SCHEMA_VERSION,
+            "state": original_state,
+            "state_sha256": sha256_json(original_state),
+        }
+        if canonical_json(verify_envelope(source_result)) != canonical_json(
+            result["envelope"]
+        ):
+            raise ProtocolError(
+                "The author transition does not preserve its full state."
+            )
+    else:
+        source_result = result["envelope"]
+    return source_result, result["author_event"]
 
 
 def _initial_review_event(value: object) -> dict[str, Any]:
@@ -3358,6 +3476,11 @@ def render_carrier(visible_content: str, value: object, kind: str) -> str:
 
 def extract_carrier(document: str) -> dict[str, Any]:
     """Extract and verify one unique final review-exchange carrier."""
+    return extract_carrier_pair(document)[1]
+
+
+def extract_carrier_pair(document: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return the verified original envelope and its current representation."""
     if not isinstance(document, str):
         raise ProtocolError("The carrier document must be text.")
     try:
@@ -3428,7 +3551,7 @@ def extract_carrier(document: str) -> dict[str, Any]:
     provider = envelope["state"]["target"]["provider"]
     if len(encoded_document) > PROVIDER_BODY_LIMITS[provider]:
         raise ProtocolError(f"The document exceeds the {provider} body limit.")
-    return envelope
+    return original, envelope
 
 
 def _read_input(path: str) -> bytes:
