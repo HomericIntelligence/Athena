@@ -325,6 +325,18 @@ Normally, a continued author response applies to `awaiting_author`. For a pull r
 refresh a changed head in `awaiting_reviewer` or `awaiting_evidence`. A refresh must change `artifact_binding.revision`. A different artifact digest with
 the same revision is not sufficient.
 
+A pull-request author can also refresh `decision_required` before round 5 when the latest accepted
+reviewer assessment explicitly has `stop_reason=replacement_blocker`. The artifact revision must
+change. A reason that the reducer derives does not qualify. The exchange identity, requirements
+digest, and reviewer round must stay unchanged. The author must answer each active required finding
+and revalidate each terminal required finding. The refresh invalidates prior coverage and moves to
+`awaiting_reviewer` with `next_action=review_assessment`. Human-decision and reframe authority
+requirements stay unchanged.
+
+An older reducer cannot verify history that contains this transition. If a rollback is necessary,
+keep the accepted history and use a reducer that supports the transition. Do not remove accepted
+events to make an older reducer accept the history.
+
 On both review surfaces, each response that changes the artifact revision or digest must answer all
 active required findings and all required findings in `resolved`, `withdrawn`, or `accepted_risk`
 state. It uses the same finding identifiers. A terminal-finding response replaces the prior author

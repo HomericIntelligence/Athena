@@ -75,6 +75,11 @@ refresh before its next review
 must also bind a new head revision. Do not make a sixth reviewer assessment. Do not use a label,
 acknowledgment, or stale carrier as proof of closure.
 
+Before round 5, a pull-request author can also refresh a changed head from `decision_required` after
+an explicit `replacement_blocker` reviewer stop. Apply all conditions in the
+[author-response contract](references/interface.md). The refresh requires complete finding answers
+and invalidates prior coverage.
+
 A terminal GO does not accept an author refresh. The invoking pull-request workflow selects any
 new GitHub review through its
 [completed-history rule](../pr-review/references/delivery.md#verified-go-delivery). This helper does
