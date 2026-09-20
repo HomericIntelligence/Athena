@@ -20,6 +20,11 @@ Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 [language routing](../../docs/review/language-routing.md), and
 [behavior-first testing](../../docs/review/behavior-first-testing.md).
 
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
+recovery, resources, validation, and delivery.
+For authority receipts, prefer forge records. If unavailable, use explicit conversation authority
+with its actual log ID under that policy. Keep decisions and successful publication verifiable.
+
 ## Engineering principles
 
 Use the canonical [engineering-principles catalog](../../docs/principles/README.md) for these
@@ -136,7 +141,8 @@ if you did not run it. Do not create a prose-string test to make the plan appear
 
 1. Exhaust bounded provider pagination for issue comments. Normalize the current issue snapshot,
    set `comments_complete` to `true`, and run `issue_exchange.py inspect`.
-2. For a normal plan, stop unless `next_action` is `prepare_plan`.
+2. For a normal plan, use `prepare_plan`. If another transition is due, invoke its owning workflow
+   within existing task authority, then resume when planning is applicable.
 3. Declare the plan targets with the supported target kinds in the issue-planning contract.
 4. For a continuation, answer every active required finding with `fix`, `fix_with_tradeoff`,
    `contest`, or `risk_acceptance`. When the visible plan changes, also re-answer each required
@@ -149,20 +155,20 @@ if you did not run it. Do not create a prose-string test to make the plan appear
 9. Require the same precondition and exact operation. If they differ, withhold the update.
 10. Make only the returned comment create or update operation.
 11. Read the issue again and run `issue_exchange.py verify-publication`.
-12. After verified publication, stop for reviewer assessment.
+12. After verified publication, continue with reviewer assessment within task authority.
 13. If the write or readback result is indeterminate, report `unknown_outcome`. Preserve the
-    prepared operation and available receipt evidence. Do not retry.
+    prepared operation and available receipt evidence. Reconcile exact readback before a retry.
 
 For an explicit requirements reframe, require changed requirements, the exact retained v1 review
 state, and one live repository-authoritative receipt. The state can be in any phase,
 including `complete`. Call `prepare-plan` with the `reframe` event, that receipt, the old state, and
 the new target set. Update the same plan comment and verify its exact readback. This step prepares
-the new exchange. It does not complete the reframe or increment the old round. Stop for
+the new exchange. It does not complete the reframe or increment the old round. Continue to
 `issue-review`, which must verify the same old state, receipt, and target set before it updates the
 retained review comment.
 
 The retained plan and review must identify the same current logical state before this reframe. If
-the plan has a pending author event that the review has not accepted, stop. Complete and verify one
+the plan has a pending author event that the review has not accepted, first complete and verify one
 reviewer assessment before the requirements change. Do not overwrite the pending event or
 supersede the older persisted review state.
 
@@ -170,10 +176,10 @@ For one complete imported legacy exchange that has no plan author-event carrier,
 `legacy_reframe` event. Require the exact terminal review envelope and one live reframe authority
 receipt. For GitHub, require positive REST numeric identities for both retained comments. Require
 each identity to match its issue-comment URL. Publish only the returned plan update. Preserve the
-old review and authority comments. After verified publication, stop for `issue-review`.
+old review and authority comments. After verified publication, continue to `issue-review`.
 
-Do not call this skill again while reviewer assessment, finalization, or human action is due. Do not
-infer a response from old prose.
+Invoke the workflow for the next transition within task authority. Ask only when an actual human
+decision remains unresolved. Do not infer a response or approval from old prose.
 
 ## Failed approaches
 

@@ -1511,7 +1511,7 @@ class ReviewExchangeTests(unittest.TestCase):
                 self.assertEqual("awaiting_evidence", accepted["state"]["phase"])
                 self.assertEqual("NO-GO", accepted["state"]["verdict"])
 
-    def test_authority_can_close_escalated_risk_but_cannot_resume_round_five(
+    def test_authority_can_close_escalated_risk_and_select_round_five_closure(
         self,
     ) -> None:
         requested = self.answered_state("risk_acceptance")
@@ -1533,15 +1533,16 @@ class ReviewExchangeTests(unittest.TestCase):
                 self.review_event(answered, "still_present", round_number=round_number),
                 answered,
             )["envelope"]
-        with self.assertRaises(self.exchange.ProtocolError):
-            self.reduce(
-                self.human_event(
-                    state,
-                    "select_closure",
-                    closure_condition="A human-selected closure condition.",
-                ),
+        resumed = self.reduce(
+            self.human_event(
                 state,
-            )
+                "select_closure",
+                closure_condition="A human-selected closure condition.",
+            ),
+            state,
+        )["envelope"]
+        self.assertEqual("awaiting_author", resumed["state"]["phase"])
+        self.assertEqual(resumed, self.exchange.verify_envelope(resumed))
 
     def test_selected_closure_authority_persists_through_resolution(self) -> None:
         decision_required = self.reduce(

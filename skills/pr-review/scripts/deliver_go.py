@@ -14,7 +14,7 @@ from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, NoReturn, Protocol, cast
+from typing import TYPE_CHECKING, Any, BinaryIO, NoReturn, Protocol, cast
 from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -279,6 +279,8 @@ class ClosureManifest:
     summary_finding_ids: tuple[str, ...] = ()
     anchor_source: Path | None = None
     historical_anchor_proofs: tuple[dict[str, Any], ...] = ()
+    batch_manifest_path: Path | None = None
+    batch_manifest_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -293,6 +295,7 @@ class VerifiedStateChain:
     finding_origin_review_ids: Mapping[tuple[str, str], str]
     author_event_review_ids: Mapping[tuple[str, str], str]
     terminal_new_finding_ids: frozenset[str]
+    batch_terminal_sha256s: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -703,7 +706,7 @@ def closure_manifest_document(
     binding: ReviewBinding, manifest: ClosureManifest
 ) -> dict[str, Any]:
     """Return one canonical serializable v1 closure manifest."""
-    return {
+    document = {
         "schema_id": V1_MANIFEST_SCHEMA_ID,
         "schema_version": 1,
         "binding": _binding_dict(binding),
@@ -716,6 +719,12 @@ def closure_manifest_document(
         "comments": [_terminal_comment_dict(comment) for comment in manifest.comments],
         "summary_finding_ids": list(manifest.summary_finding_ids),
     }
+    if manifest.batch_manifest_path is not None:
+        document["batch_manifest"] = {
+            "path": str(manifest.batch_manifest_path),
+            "sha256": manifest.batch_manifest_sha256,
+        }
+    return document
 
 
 def _require_manifest_string(value: object, description: str) -> str:
@@ -1716,7 +1725,7 @@ def _infer_reviewer_event(
         for finding in current_state["findings"]
         if finding["id"] not in previous_ids
     ]
-    return {
+    event = {
         "event_type": "reviewer_assessment",
         "exchange_id": current_state["exchange_id"],
         "prior_state_sha256": previous["state_sha256"],
@@ -1728,6 +1737,10 @@ def _infer_reviewer_event(
         "new_findings": new_findings,
         "stop_reason": stop_reason,
     }
+    accepted = current_state["accepted_events"][-1]
+    if "reassessment" in accepted:
+        event["reassessment"] = accepted["reassessment"]
+    return event
 
 
 def _infer_reframe_event(
@@ -2060,6 +2073,64 @@ def _verify_carrier_publication_order(
         )
 
 
+class _BatchIndexReader:
+    """Retain only terminal identities while the batch verifier streams evidence."""
+
+    def __init__(self, stream: BinaryIO) -> None:
+        self.stream = stream
+        self.terminals: dict[str, str] = {}
+
+    def readline(self, size: int) -> bytes:
+        line = self.stream.readline(size)
+        if line:
+            value = review_exchange.parse_json_bytes(line)
+            if (
+                isinstance(value, dict)
+                and value.get("schema_id") == review_exchange.STATE_SCHEMA_ID
+            ):
+                self.terminals[value["state_sha256"]] = value["state"]["exchange_id"]
+        return line
+
+
+def _verified_batch_terminals(
+    path: Path | None, expected_digest: str | None, terminal: Mapping[str, Any]
+) -> dict[str, str]:
+    """Require a complete GO stream bound to the exact selected terminal artifact."""
+    if path is None:
+        if expected_digest is not None:
+            raise DeliveryError("The batch receipt has no stream path.")
+        return {}
+    if (
+        expected_digest is None
+        or re.fullmatch(r"[0-9a-f]{64}", expected_digest) is None
+    ):
+        raise DeliveryError("The batch manifest requires its exact stream digest.")
+    try:
+        with path.open("rb") as stream:
+            indexed = _BatchIndexReader(stream)
+            result = review_exchange.verify_batches(indexed)
+    except (OSError, KeyError, TypeError, review_exchange.ProtocolError) as error:
+        raise DeliveryError(f"The review batch stream is invalid: {error}") from error
+    state = terminal["state"]
+    expected_binding = {
+        key: state[key] for key in ("surface", "target", "requirements_sha256", "scope")
+    }
+    expected_binding["artifact_binding"] = {
+        key: state["artifact_binding"][key] for key in ("revision", "sha256")
+    }
+    if (
+        result["verdict"] != "GO"
+        or result["batches_sha256"] != expected_digest
+        or result["binding"] != expected_binding
+        or terminal["state_sha256"] not in indexed.terminals
+        or result["batch_count"] != len(indexed.terminals)
+    ):
+        raise DeliveryError(
+            "The review batch stream is incomplete or does not bind this terminal GO."
+        )
+    return indexed.terminals
+
+
 def _verify_state_chain(
     forge: Forge,
     terminal: Mapping[str, Any],
@@ -2070,9 +2141,14 @@ def _verify_state_chain(
     *,
     recover_direct_reframe: bool = False,
     format_only_compatibility: Mapping[str, Any] | None = None,
+    batch_manifest_path: Path | None = None,
+    batch_manifest_sha256: str | None = None,
 ) -> VerifiedStateChain:
     """Replay every persisted event that leads to one terminal reviewer state."""
     terminal_state = terminal["state"]
+    batch_terminals = _verified_batch_terminals(
+        batch_manifest_path, batch_manifest_sha256, terminal
+    )
     direct_supersession = (
         terminal_state["supersedes_state_sha256"]
         if recover_direct_reframe
@@ -2300,6 +2376,16 @@ def _verify_state_chain(
 
     author_map, selected_author_ids = verify(terminal)
     del author_map
+    for digest, exchange_id in batch_terminals.items():
+        if digest == terminal_digest:
+            continue
+        persisted = states.get(digest)
+        if persisted is None or persisted[1]["state"]["exchange_id"] != exchange_id:
+            raise DeliveryError(
+                "A terminal review batch has no exact published carrier."
+            )
+        _batch_author_map, batch_author_ids = verify(persisted[1])
+        selected_author_ids = selected_author_ids | batch_author_ids
     selected_state_sha256s = frozenset(memo)
     selected_envelopes = {
         digest: logical_envelopes[digest] for digest in selected_state_sha256s
@@ -2416,6 +2502,7 @@ def _verify_state_chain(
         terminal_new_finding_ids=new_finding_ids_by_state[
             cast(str, terminal["state_sha256"])
         ],
+        batch_terminal_sha256s=frozenset(batch_terminals),
     )
 
 
@@ -2538,6 +2625,8 @@ def validate_closure_manifest(
         manifest.anchor_source,
         manifest.historical_anchor_proofs,
         recover_direct_reframe=True,
+        batch_manifest_path=manifest.batch_manifest_path,
+        batch_manifest_sha256=manifest.batch_manifest_sha256,
     )
     terminal_digest = cast(str, manifest.state_envelope["state_sha256"])
     terminal_exchange_id = cast(str, manifest.state_envelope["state"]["exchange_id"])
@@ -2582,6 +2671,7 @@ def validate_closure_manifest(
         raise DeliveryError("The v1 closure manifest contains a duplicate identity.")
     closure_source_digests = {
         terminal_digest,
+        *chain.batch_terminal_sha256s,
         *chain.superseding_state_sha256s,
     }
     expected_native_findings = {
@@ -2604,8 +2694,9 @@ def validate_closure_manifest(
         raise DeliveryError(
             "The v1 closure manifest contains an unverified native finding."
         )
-    maximum_entries = review_exchange.MAX_FINDINGS * (
-        1 + len(chain.superseding_state_sha256s)
+    maximum_entries = sum(
+        len(chain.envelopes[digest]["state"]["findings"])
+        for digest in closure_source_digests
     )
     if len(manifest.entries) > maximum_entries:
         raise DeliveryError("The v1 closure manifest contains too many findings.")
@@ -2670,7 +2761,10 @@ def validate_closure_manifest(
             raise DeliveryError(
                 "The closure entry finding is absent from its selected state."
             )
-        historical = entry.finding_state_sha256 != terminal_digest
+        historical = (
+            entry.finding_state_sha256 != terminal_digest
+            and entry.finding_state_sha256 not in chain.batch_terminal_sha256s
+        )
         superseding_envelope: dict[str, Any] | None = None
         if historical:
             expected_superseding = chain.superseding_state_sha256s.get(
@@ -2842,7 +2936,7 @@ def validate_closure_manifest(
             raise DeliveryError("The v1 closure evidence is incomplete.")
         if not historical and entry.authority_receipt is not None:
             _verify_authority_receipt(
-                snapshot, entry.authority_receipt, manifest.state_envelope
+                snapshot, entry.authority_receipt, source_envelope
             )
         response_body = _closure_response_body(binding, manifest, entry)
         if (
@@ -2881,7 +2975,12 @@ def _closure_response_body(
             finding["id"]: finding
             for finding in manifest.state_envelope["state"]["findings"]
         }
-        finding = findings.get(entry.finding_id)
+        finding = (
+            findings.get(entry.finding_id)
+            if entry.finding_exchange_id
+            == manifest.state_envelope["state"]["exchange_id"]
+            else None
+        )
         reviewer = None if finding is None else finding["reviewer_response"]
         reviewer_answer = "terminal" if reviewer is None else reviewer["kind"]
         visible = (
@@ -3091,6 +3190,8 @@ def _verify_go_state_history(
         manifest.anchor_source,
         manifest.historical_anchor_proofs,
         recover_direct_reframe=True,
+        batch_manifest_path=manifest.batch_manifest_path,
+        batch_manifest_sha256=manifest.batch_manifest_sha256,
     )
     _validate_terminal_inline_comments(
         binding, manifest, set(chain.terminal_new_finding_ids)
@@ -4214,6 +4315,7 @@ def load_response_manifest(path: Path, binding: ReviewBinding) -> ClosureManifes
                     "comments",
                     "summary_finding_ids",
                 }
+                | ({"batch_manifest"} if "batch_manifest" in document else set())
             ),
             "top-level",
         )
@@ -4243,6 +4345,16 @@ def load_response_manifest(path: Path, binding: ReviewBinding) -> ClosureManifes
             raise DeliveryError(
                 "The v1 closure manifest must contain a summary finding list."
             )
+        batch_path: Path | None = None
+        batch_digest: str | None = None
+        if "batch_manifest" in v1:
+            batch = _require_manifest_fields(
+                v1["batch_manifest"], frozenset({"path", "sha256"}), "batch manifest"
+            )
+            batch_path = Path(_require_manifest_string(batch["path"], "batch path"))
+            if not batch_path.is_absolute():
+                batch_path = path.parent / batch_path
+            batch_digest = _require_manifest_string(batch["sha256"], "batch digest")
         return ClosureManifest(
             state_envelope=review_exchange.verify_envelope(v1["state"]),
             terminal_visible_content=_require_manifest_string(
@@ -4255,6 +4367,8 @@ def load_response_manifest(path: Path, binding: ReviewBinding) -> ClosureManifes
                 _require_manifest_string(item, "summary finding identifier")
                 for item in summary_value
             ),
+            batch_manifest_path=batch_path,
+            batch_manifest_sha256=batch_digest,
         )
     raise DeliveryError(
         "A new delivery requires a version-1 closure manifest. "

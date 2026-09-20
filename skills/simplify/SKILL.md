@@ -1,7 +1,7 @@
 ---
 name: simplify
 license: BSD-3-Clause
-description: Review a repository or target path for safe deletion, reuse, consolidation, or retention when subtraction may satisfy the current requirement with less code or less system complexity. Use this skill for read-only review. Stop if the repository root, revision, worktree overlay, or in-scope inventory cannot be bound.
+description: Review a repository or target path for safe deletion, reuse, consolidation, or retention when subtraction may satisfy the current requirement with less code or less system complexity. Use this skill for read-only review. Recover missing bindings and continue in batches. Report remaining coverage gaps with supported findings.
 argument-hint: "[TARGET]"
 allowed-tools: [Read, Bash, Grep, Glob, Agent]
 ---
@@ -16,13 +16,16 @@ all prose that it produces.
 Use the [shared review contract](../../docs/review/common.md) and the
 [review framework overview](../../docs/review/README.md).
 
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
+recovery, resources, validation, and delivery.
+
 ## When to use
 
 - The task asks if an existing module, abstraction, interface, dependency, configuration path, or
   state owner can be removed, reused, consolidated, simplified, or retained.
 - The task asks for a read-only review.
 - The host can bind the repository root, revision, worktree overlay, and in-scope inventory.
-- Stop if a required binding or capability is missing.
+- Recover missing bindings or capabilities; withhold only the dependent claim or action.
 
 ## Required inputs
 
@@ -103,8 +106,8 @@ structural change.
 7. If a candidate affects a published public API, identify the published surface, current
    consumers, required deprecation notice or compatibility bridge, migration path, supported
    version or removal window, and validation evidence.
-8. If the repository has no documented deprecation policy for that published public API, stop and
-   request maintainer direction.
+8. If no deprecation policy exists, infer a migration policy from consumers and release practice
+   within task authority. State the evidence and decision. Ask only about a material unresolved choice.
 9. Until the deprecation and compatibility conditions are complete, classify that published public
    API candidate as `retain` or limit it to deprecation and migration work.
 10. Give each supported candidate `category: simplification`. Classify its action as `delete`,
@@ -112,21 +115,17 @@ structural change.
 11. Give each candidate a stable ID.
 12. For each candidate, report scope, preserved behavior, the smaller alternative, dependencies and
     order, validation, rollback, and expected net reduction.
-13. If the repository changes during review, stop and report drift.
-14. After the read-only report, stop at a checkpoint. Offer one of these actions:
-   - stop;
-   - hand off compatible approved candidate IDs through an explicit `realign --apply` request; or
-   - hand off approved candidate IDs and deletion paths to `plan-issue` or another
-     write-authorized workflow outside `simplify`.
-15. `simplify` does not create issues, trackers, or any other forge write. If a write task is
-   needed, hand off to a separate workflow with explicit write authority.
-16. Candidate approval inside `simplify` authorizes only the specified handoff. The explicit
-    `realign --apply` request supplies bounded code-repair authority. Neither action authorizes a
-    dependency installation, forge write, published-API migration, or unrelated cleanup. The
-    receiving workflow must bind the repository again.
+13. If source changes during review, refresh affected bindings and findings. Preserve valid evidence.
+14. Deliver the read-only report. If the task also authorizes implementation, continue automatically
+    through `realign`, `plan-issue`, or the applicable workflow. Keep candidate IDs for tracking.
+15. `simplify` itself does not edit source or forge state. The receiving workflow owns authorized
+    writes and must bind the current source before each affected action.
+16. Do not require repeated candidate-ID approval or an explicit second skill invocation. Existing
+    authority applies to in-scope dependencies, migration, and delivery. Preserve architecture review.
+
 17. If no supported candidate exists, report that result and do not create an empty tracker.
-18. If a required capability is absent, use the documented safe fallback or stop with the missing
-    evidence. Do not guess.
+18. If a required capability is absent, use the documented safe fallback. If recovery fails, report
+    the missing evidence and withhold only the dependent action. Continue unaffected work. Do not guess.
 
 ## Review output
 
@@ -146,7 +145,7 @@ Report these items:
   validation succeeded;
 - published public API deprecation evidence, when applicable;
 - category result for simplification coverage: `finding`, `clear`, or `not applicable`;
-- the checkpoint action list;
+- the next workflow within task authority;
 - drift, if any; and
 - the unsupported evidence or capability gap, if any.
 
@@ -166,7 +165,7 @@ severity, disposition, location, impact, evidence, and remediation fields.
   current-head success claim.
 - Do not sample the bound scope when the full scope is available.
 - Do not guess a missing capability or invent a tracker when no supported candidate exists.
-- Do not continue after drift.
+- Do not use stale evidence after drift; refresh affected evidence and continue.
 - Do not modify files, issues, branches, or pull requests in the initial workflow.
 
 ## Attribution

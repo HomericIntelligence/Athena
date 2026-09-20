@@ -19,7 +19,10 @@ requirement remains unresolved.
 
 **DESIGN CHECKPOINT:** Before a complex implementation, present a design that has sufficient detail
 for the scope. Use this checkpoint to confirm shared understanding. It is not a permission gate.
-Stop only for an unresolved requirement or a filesystem-destructive action.
+Ask only for an unresolved requirement or an action outside existing task authority.
+
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
+recovery, resources, validation, and delivery.
 
 ## Engineering principles
 
@@ -73,7 +76,7 @@ Complete in order:
 10. **Design review.** Check the design for placeholders, contradictions, ambiguities, and scope
     errors.
 11. **Saved path.** If you saved a specification, report its path.
-12. **User review.** Ask the user to review a saved specification.
+12. **User review.** Make the saved specification available for review and continue authorized work.
 13. **Continuation.** Do not stop unless a requirement remains unresolved.
 14. **Implementation.** Start the requested implementation.
 15. **Complex work.** For a complex implementation, invoke `myrmidon-swarm`.
@@ -105,7 +108,7 @@ Complete in order:
 
 ### Present the design
 
-- Present the design in sections. Ask after each section if it is correct.
+- Present the design in sections. Ask only about material unresolved decisions.
 - Give each section sufficient detail for its complexity.
 - Include architecture, components, data flow, error handling, and the test strategy.
 - Use these principles to define component responsibilities and boundaries:

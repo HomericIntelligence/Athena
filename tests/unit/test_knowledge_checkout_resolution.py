@@ -252,10 +252,11 @@ def test_resolver_module_coverage_paths(
         checkout, "HomericIntelligence/Mnemosyne", "read-only"
     )
     assert outcome.refresh_state == "unavailable"
-    with pytest.raises(RuntimeError):
-        resolver.refresh_local_checkout(
-            checkout, "HomericIntelligence/Mnemosyne", "write"
-        )
+    outcome = resolver.refresh_local_checkout(
+        checkout, "HomericIntelligence/Mnemosyne", "write"
+    )
+    assert outcome.refresh_state == "unavailable"
+    assert outcome.revision == checkout.revision
 
     monkeypatch.setattr(
         "skills.advise.scripts.resolve_knowledge_checkout.shutil.which",
@@ -275,10 +276,11 @@ def test_resolver_module_coverage_paths(
         checkout, "HomericIntelligence/Mnemosyne", "read-only"
     )
     assert outcome.refresh_state == "unavailable"
-    with pytest.raises(RuntimeError):
-        resolver.refresh_local_checkout(
-            checkout, "HomericIntelligence/Mnemosyne", "write"
-        )
+    outcome = resolver.refresh_local_checkout(
+        checkout, "HomericIntelligence/Mnemosyne", "write"
+    )
+    assert outcome.refresh_state == "unavailable"
+    assert outcome.revision == checkout.revision
 
     responses = iter(
         [
@@ -649,7 +651,9 @@ def test_refresh_rejects_local_url_rewrite_configuration(tmp_path: Path) -> None
         "--json",
         env=build_env(tmp_path / "unsafe-write-config", include_gh=True),
     )
-    assert_failure(write_result, "unsafe local Git configuration")
+    payload = resolver_json(write_result)
+    assert payload["refresh_verified"] is False
+    assert "unsafe local Git configuration" in payload["limitations"][0]
 
 
 @pytest.mark.parametrize(
@@ -673,7 +677,7 @@ def test_refresh_rejects_local_configuration_with_execution_effects(
         resolver.require_safe_local_git_configuration(knowledge_root)
 
 
-def test_write_mode_rejects_a_local_revision_ahead_of_upstream(
+def test_write_mode_preserves_a_local_revision_ahead_of_upstream(
     tmp_path: Path,
 ) -> None:
     remote, knowledge_root, _revision = create_checkout(tmp_path)
@@ -704,7 +708,9 @@ def test_write_mode_rejects_a_local_revision_ahead_of_upstream(
         ),
     )
 
-    assert_failure(result, "not an ancestor of the upstream revision")
+    payload = resolver_json(result)
+    assert payload["refresh_verified"] is False
+    assert "not an ancestor of the upstream revision" in payload["limitations"][0]
     assert git(knowledge_root, "rev-parse", "HEAD") == local_revision
 
 
@@ -740,7 +746,7 @@ def test_skill_commands_use_the_installed_resolver_path() -> None:
         assert installed in content
 
 
-def test_write_mode_requires_refresh_and_fails_closed_on_missing_gh(
+def test_write_mode_prepares_locally_on_missing_gh(
     tmp_path: Path,
 ) -> None:
     _remote, knowledge_root, _revision = create_checkout(tmp_path)
@@ -754,10 +760,12 @@ def test_write_mode_requires_refresh_and_fails_closed_on_missing_gh(
         env=build_env(tmp_path / "write-missing-gh", include_gh=False),
     )
 
-    assert_failure(result, "gh")
+    payload = resolver_json(result)
+    assert payload["refresh_verified"] is False
+    assert "gh" in payload["limitations"][0]
 
 
-def test_write_mode_requires_refresh_and_fails_on_unauthenticated_gh(
+def test_write_mode_prepares_locally_on_unauthenticated_gh(
     tmp_path: Path,
 ) -> None:
     _remote, knowledge_root, _revision = create_checkout(tmp_path)
@@ -777,10 +785,12 @@ def test_write_mode_requires_refresh_and_fails_on_unauthenticated_gh(
         env=env,
     )
 
-    assert_failure(result, "authentication failed")
+    payload = resolver_json(result)
+    assert payload["refresh_verified"] is False
+    assert "authentication failed" in payload["limitations"][0]
 
 
-def test_write_mode_requires_refresh_and_fails_on_gh_timeout(
+def test_write_mode_prepares_locally_on_gh_timeout(
     tmp_path: Path,
 ) -> None:
     _remote, knowledge_root, _revision = create_checkout(tmp_path)
@@ -799,7 +809,9 @@ def test_write_mode_requires_refresh_and_fails_on_gh_timeout(
         env=env,
     )
 
-    assert_failure(result, "timed out")
+    payload = resolver_json(result)
+    assert payload["refresh_verified"] is False
+    assert "timed out" in payload["limitations"][0]
 
 
 def test_write_mode_requires_refresh_and_uses_the_updated_revision(

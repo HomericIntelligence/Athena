@@ -165,13 +165,12 @@ def _mount_tmpfs(source: Path, maximum_bytes: int) -> bool:
 
 
 def _create_quota_volume(root: Path, maximum_bytes: int) -> Path | None:
-    """Return a bounded source directory, or None for the Linux bounded fallback.
+    """Return a quota source directory when the host supports it.
 
     On macOS, attach a sparse HFS+ volume whose total capacity is the quota.
     On Linux, mount a tmpfs when the host has the required authority. Otherwise,
-    return None so the caller can materialize the snapshot inside a bounded user
-    and mount namespace. On other systems, fail closed because the host cannot
-    enforce the snapshot size limit.
+    return None so the caller can use native acquisition. On other systems,
+    report that the optional quota capability is unavailable.
     """
     maximum_kibibytes = maximum_bytes // 1024
     if maximum_kibibytes < 1:
@@ -646,17 +645,17 @@ def materialize_snapshot(
             raise RuntimeError(
                 "The immutable pull-request snapshot has no usable disk space."
             )
-        source = _create_quota_volume(root, maximum_snapshot_bytes)
+        try:
+            source = _create_quota_volume(root, maximum_snapshot_bytes)
+        except RuntimeError as error:
+            if str(error) != QUOTA_ERROR:
+                raise
+            source = None
         if source is None:
-            return _bounded_materialize(
-                root,
-                maximum_snapshot_bytes,
-                repository=canonical_repository,
-                number=number,
-                base_ref=canonical_base_ref,
-                base_oid=canonical_base,
-                head_oid=canonical_head,
-            )
+            # Native host permissions are sufficient for source acquisition.
+            # Keep immutable identity checks, command deadlines, available-disk
+            # checks, and managed-root cleanup on this path.
+            source = root / "source"
         merge_base, tree_oid = _acquire_into(
             source,
             repository_url=canonical_repository_url(canonical_repository),

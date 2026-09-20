@@ -40,3 +40,4 @@ skills/_drafts/
 
 # Ignore local plugin-scanner output. The scanner writes output in this directory.
 .scanner-out/
+.worktrees/

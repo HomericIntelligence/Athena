@@ -15,7 +15,9 @@ During normal resolution for a write or automation execution, Athena does these 
 2. It synchronizes an exact checkout.
 3. It binds use to the reported revision.
 
-A trust, authentication, checkout, or update failure stops that write or automation execution.
+Recover trust, authentication, checkout, and update failures under the
+[autonomous workflow policy](policies/autonomous-workflows.md). Withhold only actions that still
+require an unresolved identity or authority. Continue safe local preparation.
 
 All read-only Mnemosyne paths validate the local checkout first. If `gh`, authentication, and
 network access are available, Athena then tries a best-effort refresh. If the refresh cannot run
@@ -26,11 +28,11 @@ must do these actions:
 - report the current `HEAD` or the refreshed revision;
 - report the freshness and trust limits;
 - never substitute a different repository; and
-- never make a durable write from that checked state.
+- distinguish safe local preparation from verified remote publication.
 
 If local knowledge is unavailable, stop only knowledge retrieval. Continue the primary task. The
-`learn` skill can classify a candidate, but it must complete normal resolution and duplicate checks
-before a durable write.
+`learn` skill can classify and prepare a candidate. Complete required duplicate and target checks
+before remote publication; report pending checks accurately.
 
 ```mermaid
 flowchart LR
@@ -114,7 +116,9 @@ interface (API) output. Quote each derived value. Resolve these values:
 
 The fork can contain modified content after all automatic trust gates pass. If the same-owner
 candidate is missing or not eligible, use the canonical upstream repository. If an API or
-authentication error prevents a trustworthy decision, treat the error as fatal and stop.
+authentication error prevents fork verification, retain the canonical identity or an explicit
+verified override. Continue local preparation with the identity and freshness limits recorded.
+Do not execute an unverified dependency.
 
 An explicit owner override is an explicit trust decision. It can select custom fork content without
 the organization and viewer-permission gate. Before you use a resolved dependency, report this
@@ -140,14 +144,16 @@ capabilities:
 - `git`; and
 - network access.
 
-Create `$HOME/.agent_brain` when it is necessary. If the checkout is absent, clone the resolved
-repository. For an existing checkout, do these checks and actions:
+Preserve existing checkouts, including those at legacy locations. Create new or additional clones
+under the primary project’s ignored `.worktrees/` directory. If an existing checkout has an
+unexpected origin or conflicting local state, preserve it and prepare the expected repository
+separately. For the selected checkout, do these checks and actions:
 
 - Require `origin` to identify the resolved `owner/repository`.
 - Do not overwrite local changes or silently change the remote.
 - Fetch `origin`.
 - Resolve the default branch of `origin`.
-- Fast-forward that branch.
+- Fast-forward only when this preserves local work; otherwise use an isolated checkout.
 - Report the resolved repository and commit SHA.
 
 For an automatically selected same-owner fork, repeat the trust checks immediately before use. Do
@@ -161,8 +167,9 @@ this before you write knowledge or execute automation. Re-query these values:
 - the tip SHA.
 
 Require these values to agree with the reported trust decision. Require the checked-out commit to
-agree with the re-queried tip SHA. Stop if a value does not agree. This check closes the race between
-resolution and use.
+agree with the recorded source. If identity changed, resolve it again before dependent use. If
+only source content changed, refresh affected evidence. Remote target movement alone does not
+invalidate a previously bound feature branch.
 
 ### Read-only knowledge access
 
@@ -181,23 +188,17 @@ Report this information:
 - the trust basis or trust uncertainty; and
 - the freshness limit.
 
-If the checkout is missing or inspection fails, stop the dependent knowledge retrieval. Continue the
-primary task. `learn` can classify an undelivered candidate, but it cannot make a duplicate decision
-or publish a write until normal resolution succeeds.
+If the checkout is missing or inspection fails, report unavailable knowledge and continue the primary
+task. Attempt scoped helper recovery. For delivery, prepare safe local changes from available
+verified source and record pending freshness, duplicate, or authority checks.
 
-For Hephaestus execution and the `learn` delivery boundary, these conditions are fatal:
+Authentication, fetch, clone, or fast-forward failures are recovery inputs, not whole-task stops.
+Preserve unexpected repositories and conflicting local work. Never silently retarget a checkout.
+Withhold dependency execution if its identity or necessary execution contract cannot be established.
+When network access remains unavailable, provide exact validation, push, and PR-publication commands.
+A prepared local lesson is not a claim of remote delivery.
 
-- an authentication failure;
-- a missing repository;
-- a fork relationship that is not valid;
-- an unexpected `origin`;
-- conflicting local state;
-- a clone failure;
-- a fetch failure; or
-- a fast-forward failure.
-
-Read-only local access never permits pull-request creation before upstream synchronization.
-
-Mnemosyne writes use isolated worktrees and always end in a pull request. Athena reads or executes
+Mnemosyne changes use isolated worktrees and target pull-request delivery. If publication is
+unavailable, preserve the prepared change and provide exact manual commands. Athena reads or executes
 Hephaestus from its canonical checkout. Athena never edits Hephaestus unless the user explicitly asks
 for a Hephaestus change.

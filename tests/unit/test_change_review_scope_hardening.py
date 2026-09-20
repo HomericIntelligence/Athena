@@ -459,6 +459,74 @@ class ChangeReviewScopeHardeningTests(unittest.TestCase):
         finally:
             sys.modules.pop(module_name, None)
 
+    def test_scope_batches_cover_paths_beyond_one_operation(self) -> None:
+        module_name = "test_change_review_scope_batches"
+        module = load_resolver(module_name)
+        original_cwd = Path.cwd()
+        try:
+            with tempfile.TemporaryDirectory() as temp:
+                repository = Path(temp) / "repo"
+                initialize_repository(repository)
+                for name in ("first.txt", "second.txt", "third.txt"):
+                    (repository / name).write_text("new work\n", encoding="utf-8")
+                os.chdir(repository)
+                with patch.object(module, "MAX_WORKTREE_CANDIDATES", 2):
+                    batches = list(
+                        module.resolve_scope_batches("worktree", None, (), 2)
+                    )
+                self.assertTrue(batches[-1]["complete"])
+                selected = {
+                    path
+                    for batch in batches[:-1]
+                    for path in batch["manifest"]["paths"]
+                }
+                self.assertEqual({"first.txt", "second.txt", "third.txt"}, selected)
+                self.assertEqual(2, batches[-1]["batches"])
+        finally:
+            os.chdir(original_cwd)
+            sys.modules.pop(module_name, None)
+
+    def test_scope_batches_detect_new_paths_before_completion(self) -> None:
+        module_name = "test_change_review_batch_path_drift"
+        module = load_resolver(module_name)
+        original_cwd = Path.cwd()
+        try:
+            with tempfile.TemporaryDirectory() as temp:
+                repository = Path(temp) / "repo"
+                initialize_repository(repository)
+                os.chdir(repository)
+                batches = iter(module.resolve_scope_batches("worktree", None, (), 1))
+                self.assertFalse(next(batches)["complete"])
+                (repository / "later.txt").write_text("later work\n", encoding="utf-8")
+                with self.assertRaisesRegex(RuntimeError, "path inventory changed"):
+                    list(batches)
+        finally:
+            os.chdir(original_cwd)
+            sys.modules.pop(module_name, None)
+
+    def test_scope_batches_recheck_earlier_mutable_content(self) -> None:
+        for scope in ("worktree", "staged"):
+            module_name = f"test_change_review_batch_content_{scope}"
+            module = load_resolver(module_name)
+            original_cwd = Path.cwd()
+            try:
+                with tempfile.TemporaryDirectory() as temp:
+                    repository = Path(temp) / "repo"
+                    initialize_repository(repository)
+                    os.chdir(repository)
+                    batches = iter(module.resolve_scope_batches(scope, None, (), 1))
+                    self.assertFalse(next(batches)["complete"])
+                    (repository / "tracked.txt").write_text(
+                        "later content\n", encoding="utf-8"
+                    )
+                    if scope == "staged":
+                        git(repository, "add", "tracked.txt")
+                    with self.assertRaisesRegex(RuntimeError, "scope batch 1 changed"):
+                        list(batches)
+            finally:
+                os.chdir(original_cwd)
+                sys.modules.pop(module_name, None)
+
     def test_untracked_path_list_fails_closed_at_the_candidate_cap(self) -> None:
         module_name = "test_change_review_untracked_candidate_cap"
         module = load_resolver(module_name)

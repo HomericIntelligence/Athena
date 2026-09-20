@@ -7,11 +7,13 @@ import hashlib
 import importlib.util
 import json
 import os
+import sqlite3
 import stat
 import subprocess
 import sys
 import tempfile
 from collections.abc import Callable, Iterable, Sequence
+from contextlib import closing
 from dataclasses import dataclass
 from hashlib import sha256
 from operator import index
@@ -1246,6 +1248,115 @@ def resolve_scope(
     }
 
 
+def resolve_scope_batches(
+    scope: str, range_value: str | None, selected_paths: Sequence[str], batch_size: int
+) -> Iterable[dict[str, object]]:
+    """Spool complete path discovery and resolve each bounded path batch."""
+    if not 1 <= batch_size <= MAX_WORKTREE_CANDIDATES:
+        raise RuntimeError("The path batch size must fit the operation path limit.")
+    root = Path(git_text("rev-parse", "--show-toplevel")).resolve()
+    paths = normalized_paths(root, selected_paths)
+    if scope == "range":
+        if range_value is None:
+            raise RuntimeError("The range scope requires 'BASE..HEAD'.")
+        base, head = range_revisions(range_value, root)
+        bound_range: str | None = f"{base}..{head}"
+    else:
+        head = verified_commit("HEAD", root)
+        bound_range = None
+    with (
+        tempfile.TemporaryDirectory(prefix="athena-scope-batches-") as directory,
+        closing(sqlite3.connect(str(Path(directory) / "paths.sqlite"))) as database,
+    ):
+        database.execute("PRAGMA temp_store=FILE")
+        database.execute("PRAGMA cache_size=-1024")
+        database.execute("CREATE TABLE paths (path BLOB PRIMARY KEY)")
+        database.execute(
+            "CREATE TABLE batches (number INTEGER PRIMARY KEY, paths TEXT, digest TEXT)"
+        )
+
+        def record(path: bytes) -> None:
+            database.execute("INSERT OR IGNORE INTO paths VALUES (?)", (path,))
+
+        if scope == "range":
+            commands = [
+                [
+                    "diff",
+                    "--name-only",
+                    "--no-ext-diff",
+                    "--no-textconv",
+                    "--no-renames",
+                    "-z",
+                    base,
+                    head,
+                ]
+            ]
+        else:
+            commands = [
+                ["ls-tree", "-r", "--name-only", "-z", head],
+                ["ls-files", "--cached", "-z"],
+            ]
+            if scope == "worktree":
+                commands.append(["ls-files", "--others", "--exclude-standard", "-z"])
+        for command in commands:
+            consume_git_nul_records(pathspec_arguments(command, paths), root, record)
+        database.commit()
+        cursor = database.execute("SELECT path FROM paths ORDER BY path")
+        batch_number = 0
+        manifests = sha256()
+        while records := cursor.fetchmany(batch_size):
+            if scope != "range" and verified_commit("HEAD", root) != head:
+                raise RuntimeError("HEAD changed during batched scope resolution.")
+            selected = [os.fsdecode(row[0]) for row in records]
+            manifest = resolve_scope(scope, bound_range, selected)
+            batch_number += 1
+            manifests.update(str(manifest["scope_digest"]).encode("ascii"))
+            database.execute(
+                "INSERT INTO batches VALUES (?, ?, ?)",
+                (batch_number, json.dumps(selected), manifest["scope_digest"]),
+            )
+            database.commit()
+            yield {"batch": batch_number, "complete": False, "manifest": manifest}
+        if scope != "range":
+            for number, selected_json, expected_digest in database.execute(
+                "SELECT number, paths, digest FROM batches ORDER BY number"
+            ):
+                refreshed = resolve_scope(scope, bound_range, json.loads(selected_json))
+                if refreshed["scope_digest"] != expected_digest:
+                    raise RuntimeError(
+                        f"The content of scope batch {number} changed during collection."
+                    )
+            database.execute("CREATE TABLE final_paths (path BLOB PRIMARY KEY)")
+
+            def final_record(path: bytes) -> None:
+                database.execute(
+                    "INSERT OR IGNORE INTO final_paths VALUES (?)", (path,)
+                )
+
+            for command in commands:
+                consume_git_nul_records(
+                    pathspec_arguments(command, paths), root, final_record
+                )
+            added = database.execute(
+                "SELECT path FROM final_paths EXCEPT SELECT path FROM paths LIMIT 1"
+            ).fetchone()
+            removed = database.execute(
+                "SELECT path FROM paths EXCEPT SELECT path FROM final_paths LIMIT 1"
+            ).fetchone()
+            if added is not None or removed is not None:
+                raise RuntimeError(
+                    "The path inventory changed during batched scope resolution."
+                )
+            if verified_commit("HEAD", root) != head:
+                raise RuntimeError("HEAD changed during batched scope resolution.")
+        yield {
+            "complete": True,
+            "batches": batch_number,
+            "batch_digests_sha256": manifests.hexdigest(),
+            "head": head,
+        }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Parse the requested review scope and return its JSON manifest."""
     parser = argument_parser(description=__doc__)
@@ -1254,6 +1365,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     scope_group.add_argument("--staged", action="store_true")
     scope_group.add_argument("--range", dest="range_value", metavar="BASE..HEAD")
     parser.add_argument("paths", metavar="PATH", nargs="*")
+    parser.add_argument("--batch-size", type=int, metavar="COUNT")
     arguments = parser.parse_args(argv)
     scope = (
         "range"
@@ -1263,13 +1375,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         else "worktree"
     )
     try:
+        if arguments.batch_size is not None:
+            for batch in resolve_scope_batches(
+                scope, arguments.range_value, arguments.paths, arguments.batch_size
+            ):
+                print(json.dumps(batch, sort_keys=True), flush=True)
+            return 0
         print(
             json.dumps(
                 resolve_scope(scope, arguments.range_value, arguments.paths),
                 sort_keys=True,
             )
         )
-    except (OSError, RuntimeError) as error:
+    except (OSError, RuntimeError, sqlite3.Error) as error:
         print(error, file=sys.stderr)
         return 1
     return 0

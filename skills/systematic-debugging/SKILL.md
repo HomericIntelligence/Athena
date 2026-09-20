@@ -8,6 +8,9 @@ allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 
 # Systematic debugging
 
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
+recovery, resources, validation, and delivery.
+
 ## Overview
 
 A repair without evidence wastes time and can create a new bug. A repair of only the symptom can
@@ -201,7 +204,7 @@ Review the evidence for these conditions:
 - A repair requires a large refactor.
 - Each repair creates a new symptom in another component.
 
-Before another repair attempt, discuss the collected evidence with the user. If the evidence shows
+Before another repair attempt, reassess the collected evidence and select a viable approach. If the evidence shows
 an incorrect hypothesis, return to phase 1. Propose an architecture change only if the evidence
 supports it.
 
@@ -214,7 +217,7 @@ Stop if one of these conditions applies:
 - You plan to make multiple changes before a test.
 - You select a probable cause without evidence.
 - You do not understand the issue but plan a repair.
-- You plan another repair after two failed repairs.
+- You plan another repair without reassessing failed attempts.
 - Each repair reveals a new problem in a different component.
 
 After you stop, return to phase 1.

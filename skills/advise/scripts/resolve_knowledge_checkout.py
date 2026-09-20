@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, cast
 from urllib.parse import urlparse
+from uuid import uuid4
 
 
 class _CliModule(Protocol):
@@ -70,6 +71,15 @@ SAFE_LOCAL_CONFIG_KEYS = frozenset(
         "core.repositoryformatversion",
         "remote.origin.fetch",
         "remote.origin.url",
+        "user.name",
+        "user.email",
+        "user.signingkey",
+        "commit.gpgsign",
+        "tag.gpgsign",
+        "gpg.format",
+        "gpg.program",
+        "gpg.ssh.program",
+        "gpg.ssh.allowedsignersfile",
     }
 )
 SAFE_BRANCH_CONFIG_PATTERN = re.compile(r"^branch\..+\.(?:merge|remote)$")
@@ -78,6 +88,16 @@ SAFE_LOCAL_GIT_OVERRIDES = (
     f"core.hooksPath={os.devnull}",
     "-c",
     "core.fsmonitor=false",
+    "-c",
+    "commit.gpgsign=false",
+    "-c",
+    "merge.gpgsign=false",
+    "-c",
+    "merge.verifySignatures=false",
+    "-c",
+    "maintenance.auto=false",
+    "-c",
+    "gc.auto=0",
 )
 
 
@@ -326,9 +346,8 @@ def unavailable_refresh(
     *,
     cause: BaseException | None = None,
 ) -> RefreshOutcome:
-    """Apply the read-only fallback or the write-mode failure policy."""
-    if mode == "write":
-        raise RuntimeError(reason) from cause
+    """Keep the local revision available when refresh fails."""
+    del mode, cause
     limitations.append(reason)
     return RefreshOutcome(
         revision=checkout.revision,
@@ -472,9 +491,71 @@ def refresh_local_checkout(
     )
 
 
+def prepare_separate_checkout(expected: str) -> Path:
+    """Prepare the expected dependency without changes to another checkout."""
+    helper_path = (
+        Path(__file__).resolve().parents[2]
+        / "git-worktrees/scripts/prepare_worktree.py"
+    )
+    spec = importlib.util.spec_from_file_location("athena_worktree_helper", helper_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("The installed worktree helper is unavailable.")
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+    primary = Path(helper.primary_project_root(Path.cwd()))
+    owner, repository = expected.split("/")
+    target = primary / ".worktrees" / f"{owner}-{repository}"
+    helper.reject_symlinks_below(primary, target)
+    helper.ensure_ignored(primary, target)
+    if target.exists():
+        try:
+            existing = validate_local_checkout(target)
+            if existing.repository.casefold() == expected.casefold():
+                return target
+        except RuntimeError:
+            pass
+        target = target.with_name(f"{target.name}-{uuid4().hex}")
+    if not target.exists():
+        result = run_git(
+            primary,
+            "clone",
+            "--",
+            f"https://github.com/{expected}.git",
+            str(target),
+            timeout=60.0,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or "The dependency clone failed.")
+    return target
+
+
 def resolve_knowledge_checkout(knowledge_root: Path, mode: str) -> dict[str, Any]:
     """Resolve the local checkout and report its revision and limits."""
     expected = expected_repository()
+    requested_root = knowledge_root
+    if mode == "write":
+        origin_result = (
+            run_git(knowledge_root, "config", "--get", "remote.origin.url")
+            if knowledge_root.is_dir()
+            else None
+        )
+        origin_matches = False
+        if origin_result is not None and origin_result.returncode == 0:
+            try:
+                origin_matches = (
+                    repository_from_origin(origin_result.stdout.strip()).casefold()
+                    == expected.casefold()
+                )
+            except RuntimeError:
+                pass
+        needs_separate_checkout = not origin_matches
+        if origin_matches:
+            status = git_text(
+                knowledge_root, "status", "--porcelain=v1", "--untracked-files=all"
+            )
+            needs_separate_checkout = bool(status)
+        if needs_separate_checkout:
+            knowledge_root = prepare_separate_checkout(expected)
     checkout = validate_local_checkout(knowledge_root)
     if checkout.repository.casefold() != expected.casefold():
         raise RuntimeError(
@@ -482,6 +563,11 @@ def resolve_knowledge_checkout(knowledge_root: Path, mode: str) -> dict[str, Any
             f"'{checkout.origin}'."
         )
     refresh = refresh_local_checkout(checkout, expected, mode)
+    if knowledge_root != requested_root:
+        refresh.limitations.append(
+            f"The requested checkout was preserved: '{requested_root}'. "
+            f"The expected dependency was selected separately: '{knowledge_root}'."
+        )
     return {
         "branch": checkout.branch,
         "checkout": str(checkout.root),
@@ -494,6 +580,7 @@ def resolve_knowledge_checkout(knowledge_root: Path, mode: str) -> dict[str, Any
         "repository": checkout.repository,
         "revision": refresh.revision,
         "trust_basis": "validated local checkout",
+        "refresh_verified": refresh.refresh_state == "updated",
     }
 
 
@@ -522,7 +609,13 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("Specify --json.")
     try:
         result = resolve_knowledge_checkout(arguments.knowledge_root, arguments.mode)
-    except (json.JSONDecodeError, RuntimeError, TypeError, ValueError) as error:
+    except (
+        OSError,
+        json.JSONDecodeError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ) as error:
         print(error, file=sys.stderr)
         return 1
     print(json.dumps(result, sort_keys=True))
