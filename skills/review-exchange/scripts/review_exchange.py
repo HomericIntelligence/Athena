@@ -2052,6 +2052,24 @@ def _reframe_reduce(
     return state, reason
 
 
+def _decision_required_author_refresh(
+    previous: Mapping[str, Any], event: Mapping[str, Any]
+) -> bool:
+    if not (
+        event["event_type"] == "author_response"
+        and previous["phase"] == "decision_required"
+        and previous["surface"] == "pull_request"
+        and previous["round"] < ROUND_LIMIT
+        and event["artifact_binding"]["revision"]
+        != previous["artifact_binding"]["revision"]
+    ):
+        return False
+    for accepted in reversed(previous["accepted_events"]):
+        if accepted["event_type"] in {"reviewer_assessment", "reframe"}:
+            return bool(accepted["stop_reason"] == "replacement_blocker")
+    return False
+
+
 def _author_reduce(
     previous: dict[str, Any], event: dict[str, Any], event_digest: str
 ) -> tuple[dict[str, Any], dict[str, Any], str]:
@@ -2066,7 +2084,7 @@ def _author_reduce(
         previous["surface"] == "pull_request"
         and changed_revision
         and previous["phase"] in {"awaiting_reviewer", "awaiting_evidence"}
-    )
+    ) or _decision_required_author_refresh(previous, event)
     if previous["phase"] != "awaiting_author" and not artifact_refresh:
         raise ProtocolError("The exchange is not awaiting an author response.")
     active = _active_required(previous["findings"])
@@ -2525,9 +2543,11 @@ def _verify_state_history(expected: Mapping[str, Any]) -> None:
             )
         if current["phase"] == "complete":
             raise ProtocolError("State history continues after a terminal review.")
-        if current["phase"] == "decision_required" and event_type not in {
-            "human_decision",
-        }:
+        if (
+            current["phase"] == "decision_required"
+            and event_type != "human_decision"
+            and not _decision_required_author_refresh(current, event)
+        ):
             raise ProtocolError(
                 "Decision-required history must continue with a human decision."
             )
@@ -2626,10 +2646,11 @@ def reduce_request(value: object) -> dict[str, Any]:
         previous = cast(dict[str, Any], previous_envelope["state"])
         if previous["phase"] == "complete" and event_type != "reframe":
             raise ProtocolError("A terminal review state cannot accept another event.")
-        if previous["phase"] == "decision_required" and event_type not in {
-            "human_decision",
-            "reframe",
-        }:
+        if (
+            previous["phase"] == "decision_required"
+            and event_type not in {"human_decision", "reframe"}
+            and not _decision_required_author_refresh(previous, event)
+        ):
             raise ProtocolError(
                 "A decision-required state accepts only an authoritative decision or reframe."
             )

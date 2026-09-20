@@ -424,6 +424,174 @@ class ReviewExchangeTests(unittest.TestCase):
                 self.assertEqual("awaiting_reviewer", state["phase"])
                 self.assertIsNotNone(result["author_event"])
 
+    def decision_required_state(self, terminal: str = "resolved") -> dict[str, Any]:
+        initial = self.reduce(
+            self.initial_event(findings=[self.finding(), self.finding("F-002")])
+        )["envelope"]
+        answer = self.author_event(
+            initial, "risk_acceptance" if terminal == "accepted_risk" else "fix"
+        )
+        answer["responses"].append(
+            {
+                **answer["responses"][0],
+                "finding_id": "F-002",
+                "kind": "fix",
+                "tradeoff": None,
+            }
+        )
+        answered = self.reduce(answer, initial)["envelope"]
+        if terminal == "accepted_risk":
+            answered = self.reduce(self.human_event(answered, "accept_risk"), answered)[
+                "envelope"
+            ]
+        review = self.review_event(
+            answered,
+            "resolve" if terminal == "resolved" else "withdraw",
+            stop_reason="replacement_blocker",
+        )
+        if terminal == "accepted_risk":
+            review["responses"] = []
+        review["responses"].append(
+            {
+                "finding_id": "F-002",
+                "kind": "still_present",
+                "evidence": ["The second defect remains."],
+                "closure_condition": None,
+            }
+        )
+        return cast(dict[str, Any], self.reduce(review, answered)["envelope"])
+
+    def decision_required_refresh(self, prior: dict[str, Any]) -> dict[str, Any]:
+        event = self.author_event(prior, "fix", revision="corrected-head")
+        event["responses"].append({**event["responses"][0], "finding_id": "F-002"})
+        return event
+
+    def test_decision_required_author_refresh_accepts_changed_head(self) -> None:
+        for terminal in ("resolved", "withdrawn", "accepted_risk"):
+            with self.subTest(terminal=terminal):
+                prior = self.decision_required_state(terminal)
+                self.assertEqual(terminal, prior["state"]["findings"][0]["state"])
+                result = self.reduce(self.decision_required_refresh(prior), prior)
+                state = result["envelope"]["state"]
+                for key in (
+                    "exchange_id",
+                    "requirements_sha256",
+                    "round",
+                    "scope",
+                    "progress",
+                ):
+                    self.assertEqual(prior["state"][key], state[key])
+                self.assertEqual("awaiting_reviewer", state["phase"])
+                self.assertEqual("review_assessment", state["next_action"])
+                self.assertFalse(state["coverage_complete"])
+                self.assertEqual(
+                    prior["state"]["artifact_binding"]["sha256"],
+                    state["artifact_binding"]["sha256"],
+                )
+                self.assertTrue(
+                    all(f["state"] == "answered_fix" for f in state["findings"])
+                )
+                self.assertIsNone(state["findings"][0]["authority_receipt"])
+
+    def test_decision_required_author_refresh_rejects_same_head(self) -> None:
+        prior = self.decision_required_state()
+        for kind, digest in (("fix", HEX_B), ("fix", HEX_C), ("contest", HEX_B)):
+            with self.subTest(kind=kind, digest=digest):
+                event = self.decision_required_refresh(prior)
+                event["artifact_binding"] = {
+                    **prior["state"]["artifact_binding"],
+                    "sha256": digest,
+                }
+                for response in event["responses"]:
+                    response["kind"] = kind
+                with self.assertRaises(self.exchange.ProtocolError):
+                    self.reduce(event, prior)
+
+    def test_decision_required_author_refresh_requires_active_answers(self) -> None:
+        prior = self.decision_required_state()
+        event = self.decision_required_refresh(prior)
+        event["responses"] = event["responses"][:1]
+        with self.assertRaisesRegex(
+            self.exchange.ProtocolError, "cover every required finding"
+        ):
+            self.reduce(event, prior)
+
+    def test_decision_required_author_refresh_requires_terminal_revalidation(
+        self,
+    ) -> None:
+        for terminal in ("resolved", "withdrawn", "accepted_risk"):
+            with self.subTest(terminal=terminal):
+                prior = self.decision_required_state(terminal)
+                event = self.decision_required_refresh(prior)
+                event["responses"] = event["responses"][1:]
+                with self.assertRaisesRegex(
+                    self.exchange.ProtocolError, "cover every required finding"
+                ):
+                    self.reduce(event, prior)
+
+    def test_decision_required_author_refresh_checks_eligibility(self) -> None:
+        cases = (
+            ("round-four", "pull_request", 4, "replacement_blocker", False, True),
+            ("round-five", "pull_request", 5, "replacement_blocker", False, False),
+            ("issue", "issue", 2, "replacement_blocker", False, False),
+            ("other-reason", "pull_request", 2, "no_consensus", False, False),
+            ("derived-reason", "pull_request", 2, None, True, False),
+        )
+        for label, surface, stop_round, reason, derived, allowed in cases:
+            with self.subTest(case=label):
+                initial = self.initial_event()
+                initial["surface"] = surface
+                prior = self.reduce(initial)["envelope"]
+                for round_number in range(2, stop_round + 1):
+                    answer = self.author_event(prior, "fix")
+                    prior = self.reduce(answer, prior)["envelope"]
+                    review = self.review_event(
+                        prior,
+                        "still_present",
+                        round_number=round_number,
+                        stop_reason=reason if round_number == stop_round else None,
+                    )
+                    if derived:
+                        review["new_findings"] = [
+                            self.finding(
+                                "F-002", introduction="introduced_by_correction"
+                            )
+                        ]
+                        review["new_findings"][0]["location"] = "src/other.py:9"
+                    prior = self.reduce(review, prior)["envelope"]
+                self.assertEqual("decision_required", prior["state"]["phase"])
+                event = self.author_event(prior, "fix", revision="corrected-head")
+                if derived:
+                    event["responses"].append(
+                        {**event["responses"][0], "finding_id": "F-002"}
+                    )
+                if allowed:
+                    result = self.reduce(event, prior)["envelope"]
+                    self.assertEqual(4, result["state"]["round"])
+                    self.assertEqual("awaiting_reviewer", result["state"]["phase"])
+                    self.exchange.verify_envelope(result)
+                else:
+                    with self.assertRaises(self.exchange.ProtocolError):
+                        self.reduce(event, prior)
+
+    def test_decision_required_author_refresh_preserves_binding(self) -> None:
+        prior = self.decision_required_state()
+        for field, value in (("exchange_id", "foreign"), ("prior_state_sha256", HEX_A)):
+            with self.subTest(field=field):
+                event = self.decision_required_refresh(prior)
+                event[field] = value
+                with self.assertRaises(self.exchange.ProtocolError):
+                    self.reduce(event, prior)
+
+    def test_decision_required_author_refresh_replays(self) -> None:
+        prior = self.decision_required_state()
+        event = self.decision_required_refresh(prior)
+        result = self.reduce(event, prior)
+        self.exchange.verify_envelope(result["envelope"])
+        replay = self.reduce(event, result["envelope"])
+        self.assertEqual("replayed", replay["status"])
+        self.assertEqual(result["envelope"], replay["envelope"])
+
     def test_pull_request_author_can_reanswer_on_a_new_head(self) -> None:
         initial = self.initial_state()
         first = self.reduce(self.author_event(initial, "fix"), initial)["envelope"]
