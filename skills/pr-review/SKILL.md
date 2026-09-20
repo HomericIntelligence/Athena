@@ -114,6 +114,11 @@ applicable, cite it. Do not cite a principle that is not applicable.
 | `--prevalidated` | Review only the immutable snapshot and structured evidence that the host attests. Do not run commands, queries, delegation, or a local helper. | Emit only the structured audit for the caller. Do not publish. Do not make a merge-readiness claim. |
 | `--report-only` | Keep the selected review boundary. | Return findings or a ready-to-publish batch. Do not write to the forge. |
 
+Source review and CI/CD are independent validation methods that can proceed in parallel.
+Do not let CI/CD delay source inspection, findings, review publication, GO, or NO-GO.
+Pending, failed, skipped, successful, and absent CI/CD results cannot change the source-review
+score or verdict.
+
 Use `--author-response` only by itself or with `--report-only`. It is incompatible with
 `--prevalidated` and `--enable-auto-merge-on-go`. The invocation owns author-event preparation,
 publication, and readback. A reviewer-round invocation must not create or publish an author event.
@@ -319,7 +324,7 @@ workflow in the same invocation.
 12. Read each changed file in its full context.
 13. Record each excluded route as N/A.
 14. Give the classifier reason for each excluded route.
-15. Review issue intent, behavior, tests, safety, source history, and applicable validation evidence.
+15. Review issue intent, behavior, test source, safety, source history, and applicable source evidence.
 16. Use both immutable diff lenses.
     For new reviewer carriers, prepare the [publication-anchor proof](references/anchor-proofs.md).
     It binds inline and factual summary locations to the original immutable source. Historical

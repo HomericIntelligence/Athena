@@ -1331,7 +1331,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
 
     def conditional_go_proof(self) -> tuple[Any, Any]:
         exchange = self.delivery.review_exchange
-        visible = "The review is clean, but CI evidence is not available."
+        visible = "Source coverage is complete, and no required finding remains."
         envelope = exchange.reduce_request(
             {
                 "previous": None,

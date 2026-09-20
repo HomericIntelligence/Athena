@@ -50,11 +50,15 @@ verdict. This skill must not enable GitLab auto-merge.
 | **GO** | Require grade A (93–100), architecture alignment or an evidenced intentional change, zero active findings with critical or major severity, zero active required findings, complete applicable source coverage, an exact current-head artifact binding, and only terminal finding states. Keep each `accepted_risk` finding in the report with its verified authority receipt. A delivered GO also requires the verified delivery postconditions below. |
 | **NO-GO** | Use it for a score below B, an active required finding, a material architecture violation, an incomplete source review, or an invalid or stale binding. For direct normal GitHub delivery, make the NO-GO label exclusive after verified carrier publication. |
 
+Neither GO nor NO-GO depends on CI/CD. Do not use CI/CD status to calculate the score or verdict.
+Do not wait for CI/CD before findings, review publication, or verdict delivery.
+
 ### Merge readiness
 
-Report forge approval and required-gate state as a separate **Merge readiness** fact only when the
-caller requests it. GO is a review verdict. It is not an approval, merge
-authorization, or claim that each branch-protection rule passed.
+Report CI/CD status, forge approval, and required-gate state as separate information only when the
+caller requests it. Put **Merge readiness** after the source-review verdict. This information must
+not change the verdict or delay review publication. GO is a review verdict. It is not an approval,
+merge authorization, or claim that each branch-protection rule passed.
 
 `--report-only` can report that evidence is GO-eligible. It must record
 `delivery: withheld (read-only)` and `auto_merge: withheld (read-only)`. Without
@@ -501,15 +505,16 @@ Return these items in order:
 
 1. Artifact identity, forge, base, head, immutable scope, and path bindings.
 2. Behind count, files reviewed, linked issue, and acceptance criteria.
-3. Each unbound check as a coverage gap.
+3. Each missing or unbound item of applicable source-review evidence as a coverage gap.
 4. Architecture decision, language routes, surface routes, and not-applicable reasons.
 5. Findings from `critical` through `FYI`, with disposition, identity, location, impact, evidence,
    closure condition, and proportionate remediation. Keep each accepted risk and its verified
    authority receipt in this list.
 6. Exchange ID, round, required-finding progress, state digest, carrier URL, and readback evidence.
 7. Six-dimension scorecard, weighted grade, and verdict.
-8. Commands and their pass or fail state.
-9. Coverage gaps and merge readiness.
+8. Source collection, binding, and delivery commands with their pass or fail state.
+9. Source-review coverage gaps. Include separate CI/CD status and merge readiness only when the
+   caller requests them. These facts cannot change the verdict or delay review publication.
 10. Exact `delivered`, `already_delivered`, `withheld`, or `partial` state; terminal review identity;
     closure thread identities; exclusive implementation-state label; and auto-merge state.
 11. Brief strengths.
