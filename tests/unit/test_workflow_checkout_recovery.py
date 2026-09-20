@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -172,3 +174,106 @@ def test_dirty_expected_checkout_is_preserved_during_write_preparation(
     )
     assert dirty_file.read_text(encoding="utf-8") == "unfinished user work\n"
     assert any(str(original) in item for item in result["limitations"])
+
+
+@pytest.fixture
+def worktree_helper() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("athena_worktree_behavior", SCRIPT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("ignored", [False, True])
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_explicit_local_directory_keeps_its_ignore_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    worktree_helper: ModuleType,
+    ignored: bool,
+    dry_run: bool,
+) -> None:
+    _, primary, _ = create_checkout(tmp_path)
+    exclude = primary / ".git/info/exclude"
+    if ignored:
+        with exclude.open("a", encoding="utf-8") as stream:
+            stream.write("\n/custom-worktrees/\n")
+    original_exclude = exclude.read_bytes()
+    target = primary / "custom-worktrees" / "explicit-feature"
+    arguments = [
+        str(SCRIPT),
+        "explicit-feature",
+        "--directory",
+        "custom-worktrees",
+        "--start-point",
+        "HEAD",
+    ]
+    if dry_run:
+        arguments.append("--dry-run")
+    monkeypatch.chdir(primary)
+    monkeypatch.setattr(sys, "argv", arguments)
+
+    status = worktree_helper.main()
+    output = capsys.readouterr()
+
+    assert exclude.read_bytes() == original_exclude
+    assert target.exists() is (ignored and not dry_run)
+    if ignored:
+        assert status == 0, output.err
+        document = json.loads(output.out)
+        assert document["path"] == str(target)
+        assert document["created"] is not dry_run
+    else:
+        assert status == 1
+        assert "Git did not confirm" in output.err
+        assert not output.out
+        assert git(primary, "branch", "--list", "explicit-feature") == ""
+
+
+def test_default_creation_keeps_existing_ignore_rule(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    worktree_helper: ModuleType,
+) -> None:
+    _, primary, revision = create_checkout(tmp_path)
+    exclude = primary / ".git/info/exclude"
+    with exclude.open("a", encoding="utf-8") as stream:
+        stream.write("\n/.worktrees/\n")
+    original_exclude = exclude.read_bytes()
+    monkeypatch.chdir(primary)
+    monkeypatch.setattr(
+        sys, "argv", [str(SCRIPT), "feature", "--start-point", revision]
+    )
+
+    assert worktree_helper.main() == 0
+    document = json.loads(capsys.readouterr().out)
+    target = primary / ".worktrees" / "feature"
+    assert document["path"] == str(target)
+    assert document["created"] is True
+    assert git(target, "rev-parse", "HEAD") == revision
+    assert exclude.read_bytes() == original_exclude
+
+
+def test_existing_worktree_destination_is_preserved(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    worktree_helper: ModuleType,
+) -> None:
+    _, primary, _ = create_checkout(tmp_path)
+    target = primary / ".worktrees" / "occupied"
+    target.mkdir(parents=True)
+    marker = target / "user-work.txt"
+    marker.write_text("keep this work\n", encoding="utf-8")
+    monkeypatch.chdir(primary)
+    monkeypatch.setattr(sys, "argv", [str(SCRIPT), "occupied", "--start-point", "HEAD"])
+
+    assert worktree_helper.main() == 1
+    output = capsys.readouterr()
+    assert "path already exists" in output.err
+    assert not output.out
+    assert marker.read_text(encoding="utf-8") == "keep this work\n"
+    assert git(primary, "branch", "--list", "occupied") == ""
