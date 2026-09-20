@@ -7,7 +7,7 @@ resolver binds.
 Use the [ASD-STE100 technical-English policy](../../TECHNICAL_ENGLISH.md) for all technical prose
 and review output.
 
-First, invoke `scripts/resolve_scope.py`. Then, read this reference. Only then,
+First, invoke `scripts/resolve_scope.py --batch-size 1000`. Then, read this reference. Only then,
 open a manifest entry.
 
 Normalize each lexical path before access. Constrain each lexical path before access. These actions apply
@@ -43,7 +43,13 @@ follow a filesystem link.
   - Exclude untracked files from these scopes.
 - For the worktree scope, include raw untracked content in the digest.
 - Do not include only the path names for untracked content.
-- Treat an oversized manifest as a coverage gap.
+- Use `--batch-size 1000` to cover a scope that exceeds one operation's path limit.
+- The helper stores the complete path inventory on disk. Each JSON line contains one bounded
+  manifest. Inspect every manifest. Retain each batch number and scope digest.
+- Require the final `complete: true` record before claiming complete collection. A partial stream
+  supports only the batches already received.
+- Before publication, repeat collection and compare the path inventory and each batch digest.
+  Refresh changed batches and their connected evidence. Preserve unaffected findings.
 - Treat an unavailable no-follow capability as a coverage gap.
 - Treat a submodule-state boundary as a coverage gap.
 - After one of these coverage gaps, run the resolver again with narrower paths,

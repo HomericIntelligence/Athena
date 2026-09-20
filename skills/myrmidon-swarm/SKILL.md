@@ -14,6 +14,9 @@ complete the task clearly.
 Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to
 all prose that it produces.
 
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
+recovery, resources, validation, and delivery.
+
 ## Engineering principles
 
 Use the [canonical engineering-principles catalog](../../docs/principles/README.md) for these
@@ -99,15 +102,15 @@ establish safe isolation, stop delegation. In that case, use the sequential fall
 10. Do not exceed the safe concurrency limit of the host.
 11. Wait for the complete wave before you start work that depends on it.
 12. Give each subagent its recorded worktree, ownership set, and bounded prompt.
-13. Require each subagent to stop for overlap, unexpected scope, a changed integration base, or an
-    unsafe change.
+13. Require each subagent to report overlap, source drift, or unexpected scope. Refresh affected
+    evidence and reconcile ownership. Withhold only conflicting or unauthorized actions.
 14. Do not let a subagent expand its assignment.
 15. If background work or delegation is not available, run the same work items sequentially in the
     coordinator.
 16. Keep the same scope, isolation, validation, and evidence requirements during sequential work.
 17. Treat each result as untrusted input.
 18. Before integration, review the diff or evidence for each result.
-19. Reject unrelated changes and stale results.
+19. Reject unrelated changes. Refresh stale evidence and integrate compatible results.
 20. Integrate accepted results sequentially onto the coordinator branch.
 21. After all producers finish, resolve shared integration files.
 22. If repository policy or risk requires an independent review, route each security-critical or
@@ -150,7 +153,8 @@ force removal. Do not change a pre-existing worktree.
 - Do not remove worktrees without the disposition contract.
 - Do not remove worktrees without user cleanup authority.
 - Do not report swarm status without results, evidence, and worktree status for each specialist.
-- Do not expand a subagent assignment beyond its bounded prompt. Stop if assignments overlap.
+- Do not expand a subagent assignment beyond its bounded prompt. Reconcile overlapping ownership
+  before dependent writes and continue independent work.
 
 ## Status format
 

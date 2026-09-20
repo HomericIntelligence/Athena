@@ -5,12 +5,17 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import re
+import shutil
+import sqlite3
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections.abc import Sequence
+from contextlib import closing
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
@@ -921,6 +926,282 @@ def paginated_issue_comments(
     )
 
 
+@dataclass(frozen=True)
+class CommentBatch:
+    """One bounded comment batch and its next provider page."""
+
+    comments: tuple[dict[str, Any], ...]
+    next_page: int | None
+
+
+def issue_comment_batch(
+    repository: str,
+    number: int,
+    start_page: int = 1,
+    *,
+    deadline: float | None = None,
+) -> CommentBatch:
+    """Read one bounded batch; return a cursor instead of rejecting later pages."""
+    if start_page < 1:
+        raise ValueError("The comment page must be positive.")
+    comments: list[dict[str, Any]] = []
+    remaining = MAX_LINKED_ISSUE_COMMENT_BYTES
+    page = start_page
+    for _ in range(MAX_LINKED_ISSUE_COMMENT_PAGES):
+        if deadline is not None and time.monotonic() >= deadline:
+            raise LinkedRequirementsCoverageGap(
+                "The comment job reached its operation deadline."
+            )
+        # Leave enough space for one complete provider response. A fresh batch
+        # can continue at this exact page without duplicate reads.
+        if remaining < MAX_LINKED_ISSUE_COMMENT_PAGE_BYTES and comments:
+            break
+        response = bounded_gh_output(
+            (
+                "api",
+                "--hostname",
+                "github.com",
+                "--method",
+                "GET",
+                (
+                    f"repos/{repository}/issues/{number}/comments?"
+                    f"per_page={LINKED_ISSUE_COMMENT_PAGE_SIZE}&page={page}"
+                ),
+            ),
+            maximum_bytes=min(MAX_LINKED_ISSUE_COMMENT_PAGE_BYTES, remaining),
+            limit_error=f"The comment page {page} exceeds the response byte limit.",
+        )
+        values = json.loads(response)
+        if not isinstance(values, list) or not all(isinstance(v, dict) for v in values):
+            raise RuntimeError("GitHub returned a comment page that is not valid.")
+        if len(values) > LINKED_ISSUE_COMMENT_PAGE_SIZE:
+            raise RuntimeError("GitHub returned more comments than the requested page.")
+        comments.extend(values)
+        remaining -= len(response)
+        page += 1
+        if len(values) < LINKED_ISSUE_COMMENT_PAGE_SIZE:
+            return CommentBatch(tuple(comments), None)
+    if not comments:
+        raise LinkedRequirementsCoverageGap("The comment batch has no usable capacity.")
+    return CommentBatch(tuple(comments), page)
+
+
+class CommentDigestCheckpoint(LinkedRequirementsCoverageGap):
+    """A bounded collection stopped with source-bound progress available on disk."""
+
+    def __init__(
+        self,
+        reason: str,
+        checkpoint_path: Path,
+        next_page: int | None,
+        *,
+        continuable: bool = False,
+    ) -> None:
+        self.reason = reason
+        self.checkpoint_path = checkpoint_path
+        self.next_page = next_page
+        self.continuable = continuable
+        super().__init__(
+            f"{reason} Resume comment page {next_page} with checkpoint '{checkpoint_path}'."
+        )
+
+
+def issue_content_digest(
+    repository: str,
+    number: int,
+    issue: dict[str, Any],
+    *,
+    checkpoint_path: Path | None = None,
+    maximum_batches: int = 24,
+    completed_checkpoint_path: Path | None = None,
+    restart_completed: bool = False,
+    deadline: float | None = None,
+) -> str:
+    """Hash bounded comment batches; retain a resumable checkpoint on interruption."""
+    if maximum_batches < 1:
+        raise ValueError("The comment operation must permit at least one batch.")
+    scope = canonical_json(
+        {
+            "repository": repository,
+            "number": number,
+            "issue": {key: issue.get(key) for key in ("body", "state", "title")},
+        },
+        "comment checkpoint scope",
+    )
+    digest = sha256()
+    with (
+        tempfile.TemporaryDirectory(prefix="athena-issue-comments-") as directory,
+        closing(sqlite3.connect(str(Path(directory) / "comments.sqlite"))) as database,
+    ):
+        database.execute("PRAGMA temp_store=FILE")
+        database.execute("PRAGMA cache_size=-1024")
+        database.execute(
+            "CREATE TABLE comments (identity TEXT PRIMARY KEY, document TEXT NOT NULL)"
+        )
+        database.execute(
+            "CREATE TABLE progress (scope TEXT NOT NULL, next_page INTEGER)"
+        )
+        page: int | None = 1
+        if checkpoint_path is not None and checkpoint_path.exists():
+            with closing(
+                sqlite3.connect(checkpoint_path.as_uri() + "?mode=ro", uri=True)
+            ) as saved:
+                rows = saved.execute("SELECT scope, next_page FROM progress").fetchmany(
+                    2
+                )
+                if len(rows) != 1 or rows[0][0] != scope:
+                    raise RuntimeError(
+                        "The comment checkpoint does not match the issue binding."
+                    )
+                page = rows[0][1]
+                if page is not None and (type(page) is not int or page < 1):
+                    raise RuntimeError("The comment checkpoint cursor is malformed.")
+                # A new final-verification invocation must observe the whole
+                # history again. A saved partial prefix can have changed too.
+                if restart_completed:
+                    page = 1
+                else:
+                    database.executemany(
+                        "INSERT INTO comments VALUES (?, ?)",
+                        saved.execute("SELECT identity, document FROM comments"),
+                    )
+        database.execute("INSERT INTO progress VALUES (?, ?)", (scope, page))
+        database.commit()
+        continuable = False
+        try:
+            for _ in range(maximum_batches):
+                if page is None:
+                    break
+                batch = issue_comment_batch(repository, number, page, deadline=deadline)
+                if batch.next_page is not None and batch.next_page <= page:
+                    raise LinkedRequirementsCoverageGap(
+                        "The comment cursor made no progress."
+                    )
+                for comment in batch.comments:
+                    identity = comment.get("id")
+                    if isinstance(identity, bool) or not isinstance(
+                        identity, (int, str)
+                    ):
+                        raise TypeError("A comment has no stable provider identity.")
+                    try:
+                        database.execute(
+                            "INSERT INTO comments VALUES (?, ?)",
+                            (
+                                str(identity),
+                                canonical_json(comment, "linked issue comment"),
+                            ),
+                        )
+                    except sqlite3.IntegrityError as error:
+                        raise LinkedRequirementsCoverageGap(
+                            "The provider repeated a comment identity; collection made no reliable progress."
+                        ) from error
+                database.execute(
+                    "UPDATE progress SET next_page = ?", (batch.next_page,)
+                )
+                database.commit()
+                page = batch.next_page
+            if page is not None:
+                continuable = True
+                raise LinkedRequirementsCoverageGap(
+                    "The bounded comment operation reached its checkpoint."
+                )
+        except (
+            LinkedRequirementsCoverageGap,
+            sqlite3.Error,
+            KeyboardInterrupt,
+        ) as error:
+            database.rollback()
+            with tempfile.NamedTemporaryFile(
+                prefix="athena-comment-checkpoint-", suffix=".sqlite", delete=False
+            ) as checkpoint:
+                saved_path = Path(checkpoint.name)
+            with closing(sqlite3.connect(saved_path)) as saved:
+                database.backup(saved)
+            raise CommentDigestCheckpoint(
+                str(error) or "Comment collection was canceled.",
+                saved_path,
+                page,
+                continuable=continuable,
+            ) from error
+        if completed_checkpoint_path is not None:
+            with closing(sqlite3.connect(completed_checkpoint_path)) as saved:
+                database.backup(saved)
+        digest.update(b'{"body":')
+        digest.update(canonical_json(issue.get("body"), "issue body").encode("utf-8"))
+        digest.update(b',"comments":[')
+        separator = b""
+        for (document,) in database.execute(
+            "SELECT document FROM comments ORDER BY document"
+        ):
+            digest.update(separator)
+            digest.update(document.encode("utf-8"))
+            separator = b","
+        digest.update(b'],"state":')
+        digest.update(canonical_json(issue["state"], "issue state").encode("utf-8"))
+        digest.update(b',"title":')
+        digest.update(canonical_json(issue["title"], "issue title").encode("utf-8"))
+        digest.update(b"}")
+    return digest.hexdigest()
+
+
+def positive_comment_operation_seconds(value: str | float) -> float:
+    """Require a finite positive job deadline of at most one hour."""
+    seconds = float(value)
+    if not math.isfinite(seconds) or not 0 < seconds <= 3600:
+        raise ValueError(
+            "Comment operation seconds must be more than zero and at most 3600."
+        )
+    return seconds
+
+
+def complete_issue_content_digest(
+    repository: str,
+    number: int,
+    issue: dict[str, Any],
+    *,
+    checkpoint_path: Path | None = None,
+    restart_completed: bool = False,
+    operation_seconds: float = 600.0,
+    maximum_batches: int = 24,
+) -> str:
+    """Continue bounded batches until completion, cancellation, or the job deadline."""
+    deadline = time.monotonic() + positive_comment_operation_seconds(operation_seconds)
+    current = checkpoint_path
+    owned: Path | None = None
+    while True:
+        try:
+            result = issue_content_digest(
+                repository,
+                number,
+                issue,
+                checkpoint_path=current,
+                completed_checkpoint_path=checkpoint_path,
+                restart_completed=restart_completed,
+                maximum_batches=maximum_batches,
+                deadline=deadline,
+            )
+        except CommentDigestCheckpoint as error:
+            if owned is not None:
+                owned.unlink(missing_ok=True)
+            if checkpoint_path is not None:
+                shutil.move(str(error.checkpoint_path), checkpoint_path)
+                error.checkpoint_path = checkpoint_path
+                error.args = (
+                    f"{error.reason} Comment progress is saved at '{checkpoint_path}'. Run the collector again with the same checkpoint directory.",
+                )
+                current = checkpoint_path
+            else:
+                owned = error.checkpoint_path
+                current = owned
+            if not error.continuable or time.monotonic() >= deadline:
+                raise
+            restart_completed = False
+        else:
+            if owned is not None:
+                owned.unlink(missing_ok=True)
+            return result
+
+
 def structured_error(error: str, details: str) -> None:
     """Emit a machine-readable, fail-closed evidence error."""
     print(json.dumps({"error": error, "details": details}, sort_keys=True))
@@ -988,8 +1269,15 @@ def linked_requirements(
     metadata: dict[str, Any],
     budget: LinkedRequirementBudget | None = None,
     requirement_issues: Sequence[str] = (),
+    *,
+    checkpoint_directory: Path | None = None,
+    restart_completed: bool = False,
+    comment_operation_seconds: float = 600.0,
 ) -> LinkedRequirements:
     """Bind every linked issue's requirement content and complete comment history."""
+    comment_operation_seconds = positive_comment_operation_seconds(
+        comment_operation_seconds
+    )
     references = metadata.get("closingIssuesReferences")
     if not isinstance(references, list):
         raise TypeError("GitHub returned incomplete linked issue references.")
@@ -1026,27 +1314,27 @@ def linked_requirements(
             or not isinstance(issue_data.get("state"), str)
         ):
             raise RuntimeError("GitHub returned incomplete linked issue requirements.")
-        comments = sorted(
-            canonical_json(comment, "linked issue comment")
-            for comment in paginated_issue_comments(
-                repository, number, collection_budget
+        checkpoint_path = None
+        if checkpoint_directory is not None:
+            checkpoint_directory.mkdir(parents=True, exist_ok=True)
+            checkpoint_path = checkpoint_directory / (
+                sha256(f"{repository}/{number}".encode()).hexdigest() + ".sqlite"
             )
+        content_digest = complete_issue_content_digest(
+            repository,
+            number,
+            issue_data,
+            checkpoint_path=checkpoint_path,
+            restart_completed=restart_completed,
+            operation_seconds=comment_operation_seconds,
         )
-        content = {
-            "body": body,
-            "comments": [json.loads(comment) for comment in comments],
-            "state": issue_data["state"],
-            "title": issue_data["title"],
-        }
         items.append(
             LinkedRequirement(
                 id=issue_id,
                 repository=repository,
                 number=number,
                 url=expected_url,
-                content_sha256=sha256(
-                    canonical_json(content, "linked issue requirements").encode("utf-8")
-                ).hexdigest(),
+                content_sha256=content_digest,
             )
         )
     items.sort(key=lambda item: (item.id, item.repository, item.number, item.url))
@@ -1303,12 +1591,18 @@ def collect_requirements_binding(
     target: ExpectedReviewTarget,
     expected: tuple[str, str],
     requirement_issues: Sequence[str] = (),
+    *,
+    checkpoint_directory: Path | None = None,
+    comment_operation_seconds: float = 600.0,
 ) -> ReviewRequirementsBinding:
     """Collect and double-read one live pull-request requirements binding."""
+    comment_operation_seconds = positive_comment_operation_seconds(
+        comment_operation_seconds
+    )
     selected_urls = canonical_requirement_issue_urls(requirement_issues)
     budget = LinkedRequirementBudget()
     observed: list[ReviewRequirementsBinding] = []
-    for _ in range(2):
+    for phase in range(2):
         metadata = pr_metadata(pull_request, target)
         problem = metadata_error(metadata, require_immutable_identity=True)
         if problem is not None:
@@ -1319,7 +1613,18 @@ def collect_requirements_binding(
         ensure_expected_identity(identity, expected)
         ensure_expected_target(identity, target)
         scope = review_scope(metadata)
-        requirements = linked_requirements(metadata, budget, selected_urls)
+        requirements = linked_requirements(
+            metadata,
+            budget,
+            selected_urls,
+            checkpoint_directory=(
+                checkpoint_directory / str(phase)
+                if checkpoint_directory is not None
+                else None
+            ),
+            restart_completed=phase == 1,
+            comment_operation_seconds=comment_operation_seconds,
+        )
         observed.append(
             ReviewRequirementsBinding(
                 reviewed_scope_sha256=scope.sha256,
@@ -1377,7 +1682,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         metavar="ISSUE_URL",
         help="Bind another GitHub issue. Use this option for each non-closing requirement.",
     )
+    parser.add_argument(
+        "--comment-checkpoint-directory",
+        type=Path,
+        metavar="DIRECTORY",
+        help="Save and resume issue-comment progress separately for both verification phases.",
+    )
+    parser.add_argument(
+        "--comment-operation-seconds",
+        type=positive_comment_operation_seconds,
+        default=600.0,
+        metavar="SECONDS",
+        help="Set a comment-verification deadline of more than zero and at most 3600 seconds.",
+    )
     arguments = parser.parse_args(argv)
+    if arguments.comment_checkpoint_directory is not None:
+        arguments.comment_checkpoint_directory = (
+            arguments.comment_checkpoint_directory.resolve()
+        )
     pull_request = arguments.pull_request
     expected = expected_identity(
         parser, arguments.expected_base_oid, arguments.expected_head_oid
@@ -1451,7 +1773,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         reviewed_linked_requirements = (
             linked_requirements(
-                metadata, linked_requirement_budget, arguments.requirement_issue
+                metadata,
+                linked_requirement_budget,
+                arguments.requirement_issue,
+                checkpoint_directory=(
+                    arguments.comment_checkpoint_directory / "initial"
+                    if arguments.comment_checkpoint_directory is not None
+                    else None
+                ),
+                comment_operation_seconds=arguments.comment_operation_seconds,
             )
             if expected is not None
             else None
@@ -1503,7 +1833,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise RuntimeError("The review scope changed during evidence collection.")
         final_linked_requirements = (
             linked_requirements(
-                final_metadata, linked_requirement_budget, arguments.requirement_issue
+                final_metadata,
+                linked_requirement_budget,
+                arguments.requirement_issue,
+                checkpoint_directory=(
+                    arguments.comment_checkpoint_directory / "final"
+                    if arguments.comment_checkpoint_directory is not None
+                    else None
+                ),
+                restart_completed=True,
+                comment_operation_seconds=arguments.comment_operation_seconds,
             )
             if expected is not None
             else None
@@ -1518,7 +1857,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     except LinkedRequirementsCoverageGap as error:
         structured_error("linked issue requirements coverage gap", str(error))
         return 1
-    except (RuntimeError, TypeError, json.JSONDecodeError) as error:
+    except (
+        OSError,
+        RuntimeError,
+        TypeError,
+        sqlite3.Error,
+        json.JSONDecodeError,
+    ) as error:
         print(error, file=sys.stderr)
         return 1
     evidence: dict[str, object] = {

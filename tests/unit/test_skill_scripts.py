@@ -1992,7 +1992,9 @@ class WorktreeScriptTests(unittest.TestCase):
             json.loads(result.stdout)["path"],
         )
 
-    def test_prepare_worktree_fails_when_local_directory_is_not_ignored(self) -> None:
+    def test_prepare_worktree_plans_default_directory_without_ignore_change(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             repository = Path(temporary_directory) / "repo"
             initialize_repository(repository)
@@ -2008,7 +2010,11 @@ class WorktreeScriptTests(unittest.TestCase):
             )
             self.assertFalse(target.exists())
 
-        assert_cli_failure(self, result, 1, "worktrees")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            str((repository / ".worktrees" / "feature-two").resolve()),
+            json.loads(result.stdout)["path"],
+        )
 
     def test_prepare_worktree_rejects_symlinked_local_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

@@ -16,7 +16,8 @@ Canonical JSON has sorted object keys, no insignificant space, and no ASCII subs
 characters. A JSON-list order is significant unless this reference identifies the list as a set.
 The helper sorts each scope set and rejects duplicate values.
 
-The maximum input size is 1 MiB. One exchange can contain a maximum of 100 findings. The maximum
+A single operation accepts up to 1 MiB and one batch contains up to 100 findings. Use the streaming
+batch commands below for larger tasks. These bounds do not limit the complete review. The maximum
 carrier body size is 65,536 UTF-8 bytes for `github` and 1,000,000 UTF-8 bytes for `gitlab`.
 
 Each command has this form:
@@ -160,20 +161,20 @@ A stored finding contains all finding-input fields and these fields:
 | Field | Type and value |
 | --- | --- |
 | `closure_revision` | Integer of at least 0 |
-| `introduced_round` | Integer from 1 through 5 |
+| `introduced_round` | Integer of at least 1 |
 | `state` | `open`, `answered_fix`, `answered_tradeoff`, `contested`, `partial`, `still_present`, `countered`, `resolved`, `withdrawn`, `accepted_risk`, `escalated`, or `nonblocking` |
 | `author_response` | `null`, or an object with `kind`, `evidence`, `tradeoff`, and `artifact_revision` |
 | `reviewer_response` | `null`, or an object with `kind`, `evidence`, `closure_condition`, and `round` |
 | `authority_receipt` | `null` or an authority receipt |
 
 The stored author and reviewer records use the response values in this reference. They omit
-`finding_id`. `artifact_revision` is a nonempty string. `round` is an integer from 1 through 5.
+`finding_id`. `artifact_revision` is a nonempty string. `round` is an integer of at least 1.
 
 A progress record has these fields:
 
 | Field | Type and value |
 | --- | --- |
-| `round` | Consecutive integer from 1 through 5 |
+| `round` | Consecutive integer of at least 1 |
 | `artifact_revision` | Nonempty string |
 | `scope` | Sorted, nonempty list of unique target strings |
 | `scope_size` | Integer equal to the number of values in `scope` |
@@ -188,8 +189,8 @@ A state record has these fields:
 | `surface` | `issue` or `pull_request` |
 | `target` | Review target |
 | `requirements_sha256` | Requirements digest |
-| `round` | Current reviewer round, from 1 through 5 |
-| `round_limit` | Integer `5` |
+| `round` | Current reviewer round, at least 1 |
+| `round_limit` | Integer `5`, the reassessment interval retained for wire compatibility |
 | `phase` | `awaiting_author`, `awaiting_reviewer`, `awaiting_evidence`, `complete`, or `decision_required` |
 | `artifact_binding` | Artifact binding |
 | `scope` | Sorted, nonempty list of unique target strings |
@@ -379,7 +380,7 @@ An authoritative human event has these fields:
 
 A terminal GO cannot accept an author response or a reviewer assessment. A reframe remains valid.
 
-At round 5, `select_closure` is invalid because it would require round 6. A requirements reframe is
+An authorized `select_closure` can continue after round 5. A requirements reframe is
 the only event that can change the exchange identity.
 
 The result has these fields:
@@ -395,7 +396,7 @@ The result has these fields:
 
 The decision record has `phase`, `reason`, `next_role`, `review_round`, `rounds_remaining`, and
 `required_remaining`. `next_role` is `author`, `reviewer`, `human`, or `null`. The last three count
-fields are nonnegative integers, except that `review_round` is from 1 through 5.
+fields are nonnegative integers, except that `review_round` is at least 1.
 
 ### `verify`
 
@@ -659,8 +660,10 @@ The input is one issue snapshot. The result has these fields:
 | `diagnostics` | List of diagnostic records |
 
 The command does not infer answers from unversioned prose. It returns `withheld` for a malformed,
-duplicate, foreign, stale, or conflicting canonical artifact. A valid finalized issue returns
-`finalized` and `next_action=none`.
+duplicate, stale, or conflicting selected canonical artifact. Actor-owned artifacts take precedence
+over foreign marker comments. A foreign selected artifact requires the explicit finalization
+authority extension for an issue-body update. A valid finalized issue returns `finalized` and
+`next_action=none`.
 
 One historical exception applies only in the issue adapter. The generic carrier parser stays
 strict. The issue adapter can read at most one actor-owned carrier that has exactly one additional
@@ -895,7 +898,7 @@ A ready or verified finalization result has these fields:
 | `diagnostics` | Empty list |
 
 `sources.R` is the requirements digest. `sources.P` and `sources.V` each have `token`, `comment_id`,
-and `body_sha256`. The source token is the digest of canonical JSON with `comment_id` and
+and `body_sha256`. An authorized foreign source also has its exact `author_id`. The source token is the digest of canonical JSON with `comment_id` and
 `body_sha256`.
 
 The issue-body replacement operation has `action`, `expected_issue_body_sha256`, `body`,
@@ -933,3 +936,107 @@ response, it must equal the initial plan event that the first assessment binds. 
 not make a review assessment. Readback verifies each live action-bound authority record again before
 it returns `verified`. A verified result authorizes cleanup only for `deletion_allowlist`. After an
 unknown outcome, do not retry the body replacement.
+
+
+## Bounded task batches
+
+Use `prepare-batches` when the findings or input exceed one operation. Its input is UTF-8 JSON
+lines. The first line is `{"event": <initial-reviewer-event>}` with no findings and no supersession.
+Each subsequent line is one finding input. The helper retains at most one batch, assigns local
+consecutive finding IDs, and suffixes the initial exchange ID with `-1`, `-2`, and so on. Identify a
+finding by its exchange ID and local finding ID together. Native thread identities remain unchanged.
+
+The output contains one complete envelope per line and one final `athena.review-exchange.batch-end`
+receipt. The receipt has `schema_version: 1`, `batch_count`, and `batches_sha256`. The digest covers
+the canonical envelope lines, including each line feed, in order. A partial output has no completion
+receipt. Do not deliver GO from a partial output.
+
+Use `verify-batches` to consume this output. It reads and verifies one bounded line at a time. Each
+batch must bind the same surface, target, requirements, source revision, source digest, and scope.
+The helper rejects missing or repeated batch identities, changed source bindings, an incorrect end
+receipt, and data after the receipt. Its aggregate result gives the total findings, required findings,
+batch count, digest, completion status, and verdict. GO requires the receipt and complete GO ledgers
+for all batches. An interrupted stream returns NO-GO with its completed count and digest.
+
+Render each envelope with the existing `render` command. Publish the bounded carriers separately.
+Keep the batch receipt with the task record. Use the aggregate verdict before task-wide delivery;
+a GO for one batch is not approval of the full task. If a provider body is too small for a batch,
+prepare smaller batches. Keep actual provider limits. Refresh affected batches when the source
+changes and verify the complete set again before delivery.
+
+## Reassessment and continuation
+
+A corrective reviewer event can include the optional `reassessment` string. It records the evidence
+for a viable next step. At each fifth review round, include this field to continue after the
+reassessment. Without this evidence the result requests intervention. Explicit stop reasons and
+unresolved architecture findings retain their existing effect. Rounds remain consecutive, and the
+accepted-event digest and replay include reassessment text. Existing events without this field
+remain valid. The `round_limit` wire field remains five for compatibility; it now gives the interval
+between reassessments.
+
+When another actor has comments with canonical markers, preserve them. A unique actor-owned
+artifact takes precedence for updates and cleanup. Conflicting actor-owned artifacts still require
+reconciliation from source evidence.
+
+
+## Conversation authority provenance
+
+When forge authority cannot be retrieved, `conversation_authority_record` can prepare an authority
+body from an explicit user decision. Its optional `conversation` object contains the actual
+`log_id`, `message_id`, `decision_sha256`, and `forge_unavailable_reason`. The decision digest binds
+the exact decision text. The host must verify the user identity, decision, target, and scope from
+the referenced conversation. Never invent a log or message identifier.
+
+The existing action-bound fields remain mandatory. The receipt digest includes conversation
+provenance. Publish the prepared body to the forge when available. The delivery adapters retain
+repository-authority checks on the published record. An offline body is preparation evidence; it
+is not a forge publication receipt or a delivered result.
+
+
+## Authorized foreign-source finalization
+
+The `verify-finalize` preparation request can include `source_authority_receipt`. This extension
+permits an issue-body update from foreign source comments only after a live repository-authoritative
+record authorizes the exact update. Without that record, the existing source-ownership check applies.
+
+The authority body is canonical JSON with `schema_id: athena.issue-exchange.finalize-authority`,
+`schema_version: 1`, and `action: finalize_foreign_sources`. It binds `target`, `actor_id`, `plan`,
+`review`, `issue_body_sha256`, and `candidate_body_sha256`. Each source summary contains `id`,
+`author_id`, and `body_sha256`. The candidate digest covers the candidate body after trailing white
+space is removed. The issue digest covers the exact body before the update. Use the existing receipt
+fields `reference` and `sha256` to identify this authority comment.
+
+The helper preserves foreign source authors in the prepared source records and in the precondition.
+It excludes their comments from the deletion allowlist. Readback verifies the source records and
+live authority again, using the recorded pre-update issue digest. A changed actor, source, candidate,
+authority record, or repository-authority status prevents cleanup. A sealed finalized issue does not
+require deletion of retained foreign comments.
+
+
+### Batch delivery manifest
+
+A pull-request closure manifest can include `batch_manifest: {"path": "batches.jsonl", "sha256":
+"<digest>"}`. The path identifies the terminal NDJSON envelopes and complete receipt. Relative paths
+resolve from the closure manifest directory. The digest is the verified `batches_sha256`, which
+covers the canonical envelope lines and excludes the final receipt.
+
+All batches must have the same exact source, target, requirements, and scope, and all must have GO.
+All terminal batch carriers except the selected carrier must already be published and verified.
+The selected terminal carrier is the final publication. Each delivery read checks the stream and
+its digest again. Existing thread, evidence, and repository-authority checks remain applicable.
+
+
+Publish earlier batch carriers as COMMENT state records. Do not run GO finalization or change GO
+labels for an individual batch. Invoke delivery once for the selected final terminal carrier with
+the complete batch manifest and closure entries from all batches. The adapter verifies all published
+carriers and closure identities before it changes the task's implementation label.
+
+### Verified format recovery
+
+For an actor-owned issue carrier with exactly one additional final line feed, the coordinator can
+prepare and publish the existing scoped recovery authority record under the task's existing
+authority. It need not request the same permission again. The helper verifies the canonical envelope,
+state digest, original source body, and action-bound recovery receipt before it continues. Preserve
+the receipt and reconcile publication through readback. If the authority record cannot be published,
+continue unaffected work and provide the prepared record and exact publication command. Do not
+infer state from broader corruption or claim that an unverified publication succeeded.

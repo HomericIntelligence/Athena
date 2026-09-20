@@ -8,6 +8,11 @@ allowed-tools: [Read, Bash, Grep, Glob, Agent, WebFetch]
 
 # Pull/merge-request review
 
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
+recovery, resources, validation, and delivery.
+For authority receipts, prefer forge records. If unavailable, use explicit conversation authority
+with its actual log ID under that policy. Keep decisions and successful publication verifiable.
+
 ## Why
 
 Protect the product from a review that appears correct but examines the wrong change. First, bind
@@ -108,13 +113,14 @@ applicable, cite it. Do not cite a principle that is not applicable.
 | Mode | Review boundary | Delivery boundary |
 | --- | --- | --- |
 | Source review | Resolve the configured forge target. Use exact-head source only. Do not run, request, wait for, or score local validation or CI/CD. | Publish one exact-head `COMMENT` carrier per reviewer round. After verified non-GO publication, make the NO-GO label exclusive. For a terminal GO, complete verified terminal-carrier, thread, and GO-label delivery. |
-| `--author-response` | Resolve one retained exchange and its complete pending author-event chain. Normally, require `phase=awaiting_author` and `next_action=author_response`. For a pull-request head refresh, also permit the specified non-author phases below only when the head revision changed. Bind the logical prior state and the exact current artifact. Do not make a reviewer assessment, calculate a score, query CI/CD systems, or inspect the implementation. | Prepare or publish one exact-head author-event carrier. For GitHub, use one `COMMENT` review with an empty inline-comments array. For GitLab, use one immutable author-event note. Verify the complete readback. Do not change a label or thread. Stop before reviewer assessment. |
+| `--author-response` | Resolve one retained exchange and its complete pending author-event chain. Normally, require `phase=awaiting_author` and `next_action=author_response`. For a pull-request head refresh, also permit the specified non-author phases below only when the head revision changed. Bind the logical prior state and the exact current artifact. Do not make a reviewer assessment, calculate a score, query CI/CD systems, or inspect the implementation. | Prepare or publish one exact-head author-event carrier. For GitHub, use one `COMMENT` review with an empty inline-comments array. For GitLab, use one immutable author-event note. Verify the complete readback. Do not change a label or thread. Complete this transition, then continue through a separate reviewer assessment within task authority. |
 | Explicit `human_decision` event | Bind one current logical state and one exact live authority record. Apply only the supplied event. | Prepare one state carrier with no inline comments. Use the result's normal delivery path. |
 | Explicit `reframe` event | Bind one current logical state and one exact live authority record. Start round 1 of a new exchange. | Prepare one state carrier with the normal round-1 inline finding batch. Use the result's normal delivery path. |
 | `--prevalidated` | Review only the immutable snapshot and structured evidence that the host attests. Do not run commands, queries, delegation, or a local helper. | Emit only the structured audit for the caller. Do not publish. Do not make a merge-readiness claim. |
 | `--report-only` | Keep the selected review boundary. | Return findings or a ready-to-publish batch. Do not write to the forge. |
 
-Use `--author-response` only by itself or with `--report-only`. It is incompatible with
+Use `--author-response` as a distinct transition, by itself or with `--report-only`. The coordinator
+can invoke it automatically from current repair evidence within task authority. It is incompatible with
 `--prevalidated` and `--enable-auto-merge-on-go`. The invocation owns author-event preparation,
 publication, and readback. A reviewer-round invocation must not create or publish an author event.
 
@@ -186,7 +192,7 @@ invocation.
    `next_action=author_response`. For a pull-request head refresh, also accept
    `phase=awaiting_reviewer`, `phase=awaiting_evidence`, or a pre-round-5 complete
    `GO`, but only when the current head revision differs from the logical state revision.
-5. Require the caller to supply one explicit `fix`, `fix_with_tradeoff`, `contest`, or
+5. Prepare from current repair evidence or the caller’s explicit instructions one `fix`, `fix_with_tradeoff`, `contest`, or
    `risk_acceptance` answer for each active required finding. When the head changed, also require one
    answer for each required finding in `resolved`, `withdrawn`, or `accepted_risk` state. Keep its
    identifier. Replace its prior answer and reviewer reply. Clear a prior accepted-risk authority
@@ -223,15 +229,16 @@ invocation.
     exact body bytes, final author-event carrier, carrier digest, prior-state digest, and provider
     order after its exact predecessor carrier. For GitHub, also require `COMMENT` or `COMMENTED`
     state.
-13. If publication or readback fails or is uncertain, stop. Do not retry, publish a replacement,
-    change a label, respond to a thread, or resolve a thread.
-14. Report the verified author-event identity and derived phase. Stop before source review,
-    validation, scoring, a reviewer event, or a round-count change.
+13. If publication or readback fails or is uncertain, reconcile exact target state before a retry.
+    Withhold dependent labels or thread changes until publication is verified.
+14. Report the verified author-event identity and derived phase. Continue with the next reviewer
+    assessment as a distinct transition when the task authorizes it.
 
 ## Authority-transition workflow
 
-Use this workflow only when the caller supplies exactly one explicit `human_decision` or `reframe`
-event and its authority receipt. A human decision does not use a profile flag. A reframe uses the
+Use this workflow for exactly one explicit `human_decision` or `reframe` event with an applicable
+authority receipt. The coordinator can construct the event from existing explicit task authority;
+it must not invent a human decision. A human decision does not use a profile flag. A reframe uses the
 source-review profile. Do not continue to the normal review
 workflow in the same invocation.
 
@@ -297,16 +304,15 @@ workflow in the same invocation.
     withhold publication. When the action has no new finding discussion, publish one immutable state
     note. Require the equivalent exact publication readback and terminal or nonterminal
     postconditions.
-15. If publication, delivery, or readback fails or is uncertain, stop. Do not retry, publish a
-    replacement, reduce a reviewer assessment, change a label, respond to a thread, or resolve a
-    thread through a second path.
+15. If publication, delivery, or readback fails or is uncertain, reconcile exact target state before
+    retrying. Use one delivery owner and preserve verified partial progress.
 
 ## Review workflow
 
 1. Resolve exactly one open pull request or merge request.
 2. If the user supplies a number or URL, preserve it.
-3. If there is no target and branch discovery is empty or ambiguous, stop.
-4. Do not guess a target.
+3. If the target is omitted, select it from the strongest branch and task evidence.
+4. State that selection. Ask only if a material ambiguity remains after discovery.
 5. Establish the immutable identity, scope, linked-requirement bindings, and changed-path bindings
    that the selected profile requires.
 6. Treat a missing, stale, ambiguous, malformed, or mismatched binding as a coverage failure.
@@ -341,11 +347,12 @@ workflow in the same invocation.
     no new author event. If the head
     changed, require a separate `--author-response` refresh before reviewer assessment. Reject a
     missing predecessor, stale event, repeated event, fork, or ambiguous carrier chain.
-20. If the logical state has `next_action=author_response`, stop. Require a separate
-    `--author-response` invocation. If it has `next_action=human_decision`, stop and require a later
-    invocation with an explicit authority event. Do not reduce another reviewer round in either
-    case. A requirements reframe also requires a separate authority-transition invocation. If the
-    logical state is complete, do not continue it automatically.
+20. If the logical state needs an author response, perform that transition from current repair
+    evidence, verify publication, then resume review. If it needs a human decision, use an existing
+    explicit applicable decision or ask for the unresolved decision. Keep authority transitions
+    distinct. At each fifth corrective round, include a nonempty `reassessment` with the viable
+    continuation. If no viable approach remains, request intervention.
+
     Target-branch movement alone does not change the reviewed head or start a new exchange.
     During terminal GitHub GO delivery only, the delivery adapter can recover one Athena-owned
     directly superseded state carrier that has exactly one additional final line feed. Require the
@@ -415,7 +422,7 @@ reason for each N/A criterion. Do not give unsupported credit for an applicable 
 
 If a maintainer explicitly declares the first supported release, you can mark compatibility,
 migration, and version criteria N/A. State this product-maturity assumption. Do not infer
-compatibility.
+compatibility without consumer and release evidence.
 
 For source-review reports, present these items in order:
 
@@ -435,8 +442,8 @@ For the prevalidated profile, use only its structured-audit override.
 ## Failed approaches
 
 - Do not review commits beyond the bound pull-request diff.
-- Do not guess a target if branch discovery is empty or ambiguous.
-- Do not approve a verdict without runnable evidence.
+- Resolve target ambiguity from task and branch evidence; ask only for a remaining material choice.
+- Do not claim runnable validation without its receipt. Keep source-review and merge evidence distinct.
 - Do not award score credit across a coverage gap.
 - Do not copy one finding into multiple score sections.
 - Do not treat a sampled dimension as complete.

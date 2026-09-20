@@ -471,7 +471,9 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "symbolic link"):
             helper.guidance_snapshot_manifest(self.repository, binding, ["link.txt"])
 
-    def test_symbolic_link_targets_count_toward_the_aggregate_limit(self) -> None:
+    def test_symbolic_link_targets_are_metadata_not_aggregate_source_bytes(
+        self,
+    ) -> None:
         helper = load_helper()
         limits = cast(Any, helper)
         os.symlink("abcd", self.repository / "link.txt")
@@ -485,8 +487,19 @@ class RealignAssessmentManifestTests(unittest.TestCase):
                 self.assertEqual("abcd", inventory["entries"][0]["target"])
 
         limits.MAX_TOTAL_BYTES = 3
-        with self.assertRaisesRegex(RuntimeError, "aggregate byte limit"):
-            helper._worktree_inventory(self.repository, "0" * 40, ".")
+        inventory = helper._worktree_inventory(self.repository, "0" * 40, ".")
+        self.assertEqual("abcd", inventory["entries"][0]["target"])
+
+    def test_fingerprint_worker_retains_long_symlink_protocol_output(self) -> None:
+        helper = load_helper()
+        target = "x" * 4095
+        try:
+            os.symlink(target, self.repository / "long-link")
+        except OSError:
+            self.skipTest("The host does not permit a 4095-byte symbolic-link target.")
+        with self.assertRaises(helper.SourcePathSymlinkError) as error:
+            helper._worktree_fingerprint_entry(self.repository, "long-link")
+        self.assertEqual(target.encode(), error.exception.target)
 
     def test_symbolic_link_capture_honors_the_worker_deadline(self) -> None:
         helper = load_helper()
@@ -635,6 +648,18 @@ class RealignAssessmentManifestTests(unittest.TestCase):
                 approved_report_digest=helper.assessment_report_digest(incomplete),
             )
 
+    def test_inventory_fingerprints_source_above_eight_mib(self) -> None:
+        helper = load_helper()
+        commit_file(self.repository, "base.txt", "base\n", "base")
+        content = b"large source\n" * (1024 * 1024)
+        (self.repository / "large.txt").write_bytes(content)
+        with patch.object(helper, "MAX_FILE_BYTES", 1024):
+            binding = helper.resolve_source_binding(self.repository, target="large.txt")
+            inventory = helper.inventory_manifest(self.repository, binding)
+        entry = inventory["entries"][0]
+        self.assertGreater(entry["byte_length"], 8 * 1024 * 1024)
+        self.assertEqual(hashlib.sha256(content).hexdigest(), entry["content_sha256"])
+
     def test_inventory_enforces_path_count_and_file_byte_limits(self) -> None:
         helper = load_helper()
         limits = cast(Any, helper)
@@ -663,8 +688,9 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         limits.MAX_FILE_BYTES = 3
         helper.resolve_source_binding(self.repository)
         limits.MAX_FILE_BYTES = 2
+        helper.resolve_source_binding(self.repository)
         with self.assertRaisesRegex(RuntimeError, "file byte limit"):
-            helper.resolve_source_binding(self.repository)
+            helper._worktree_snapshot_entry(self.repository, "two.txt")
 
         limits.MAX_FILE_BYTES = original_file_limit
         limits.MAX_TOTAL_BYTES = 6
@@ -672,8 +698,7 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         limits.MAX_TOTAL_BYTES = 5
         helper.resolve_source_binding(self.repository)
         limits.MAX_TOTAL_BYTES = 4
-        with self.assertRaisesRegex(RuntimeError, "aggregate byte limit"):
-            helper.resolve_source_binding(self.repository)
+        helper.resolve_source_binding(self.repository)
 
         limits.MAX_TOTAL_BYTES = original_total_limit
         root_output = limits._git_bytes(self.repository, "rev-parse", "--show-toplevel")
@@ -1268,6 +1293,40 @@ class RealignAssessmentManifestTests(unittest.TestCase):
                 approved_report_digest=helper.assessment_report_digest(stale_resolved),
             )
 
+    def test_task_authority_preserves_dirty_evidence_and_validation_limits(
+        self,
+    ) -> None:
+        helper = load_helper()
+        commit_file(self.repository, "source.txt", "base\n", "base")
+        (self.repository / "source.txt").write_text("existing work\n", encoding="utf-8")
+        source = helper.resolve_source_binding(self.repository, target="source.txt")
+        report, _ = valid_report(helper, self.repository, source, "source.txt")
+        report["validation"] = helper.validation_manifest(
+            status="not_run",
+            source_digest=source["source_digest"],
+            reason="The host cannot run validation.",
+        )
+        result = helper.repair_preflight(
+            self.repository,
+            report,
+            ["RLG-001"],
+            task_authorized=True,
+        )
+        self.assertEqual("eligible", result["status"])
+        self.assertEqual("not_run", report["validation"]["status"])
+        self.assertFalse(report["validation"]["repair_eligibility"])
+        self.assertEqual(
+            "existing work\n", (self.repository / "source.txt").read_text()
+        )
+        (self.repository / "source.txt").write_text("later work\n", encoding="utf-8")
+        with self.assertRaises(RuntimeError):
+            helper.repair_preflight(
+                self.repository,
+                report,
+                ["RLG-001"],
+                task_authorized=True,
+            )
+
     def test_repair_preflight_requires_the_supported_report_schema(self) -> None:
         helper = load_helper()
         selected = commit_file(self.repository, "source.txt", "base\n", "base")
@@ -1397,7 +1456,9 @@ class RealignAssessmentManifestTests(unittest.TestCase):
                     ),
                 )
 
-    def test_repair_preflight_enforces_aggregate_candidate_bytes(self) -> None:
+    def test_repair_preflight_hashes_each_candidate_without_aggregate_buffer(
+        self,
+    ) -> None:
         helper = load_helper()
         limits = cast(Any, helper)
         commit_file(self.repository, "one.txt", "11\n", "one")
@@ -1426,7 +1487,15 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         )
         self.assertEqual("eligible", eligible["status"])
         limits.MAX_TOTAL_BYTES = 5
-        with self.assertRaisesRegex(RuntimeError, "aggregate byte limit"):
+        eligible = helper.repair_preflight(
+            self.repository,
+            report,
+            ["RLG-001", "RLG-002"],
+            approved_report_digest=helper.assessment_report_digest(report),
+        )
+        self.assertEqual("eligible", eligible["status"])
+        report["candidates"][1]["evidence"][0]["content_sha256"] = "0" * 64
+        with self.assertRaisesRegex(RuntimeError, "stale content evidence"):
             helper.repair_preflight(
                 self.repository,
                 report,

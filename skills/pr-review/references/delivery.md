@@ -96,7 +96,8 @@ different generic clean review.
 
 Verify the returned review and fetched comments against the target, `COMMENT` or `COMMENTED` state,
 reviewed commit, complete body carrier, and each expected path, side, line, finding ID, and body. If
-verification fails or is uncertain, make no additional write. Do not retry. Do not substitute a
+verification fails or is uncertain, reconcile the exact readback before another write. Retry only
+when the readback proves absence and the current preconditions permit the same operation. Do not substitute a
 prose-only comment or `gh pr review --comment`.
 
 If a bound value changes, withhold the complete set. When the pull-request head changes and the
@@ -159,7 +160,8 @@ create one immutable state note through the applicable normal delivery path.
 Require exact readback of the target, actor, head, body bytes, carrier digest, accepted-event digest,
 authority receipt, and provider order after the exact logical predecessor. Then, apply the normal
 nonterminal or terminal delivery conditions without a new reviewer assessment. On an uncertain
-write or readback, stop without a retry or a second delivery path.
+write or readback, reconcile the result through readback before another mutation. Keep one delivery
+owner and do not publish a duplicate.
 
 ## Author-event carrier
 
@@ -205,7 +207,8 @@ atomic review with the current head as `commit_id`,
 array. Read the review and target again. Require the exact body bytes, actor, target, current head,
 carrier digest, prior-state digest, and publication order after the exact predecessor carrier. Also
 require `COMMENT` or `COMMENTED` state for GitHub. If publication or readback fails or is uncertain,
-stop without a retry or a second write. After verified readback, report the derived phase and stop.
+reconcile the exact readback before another write. After verified readback, report the derived
+phase and invoke the next authorized role.
 Do not assess the implementation or increase the reviewer round in the same invocation.
 
 ## Exclusive NO-GO delivery
@@ -456,7 +459,7 @@ terminal carrier exists after an interrupted run, validate the same manifest and
 remaining generated responses, resolutions, or label operation. Do not publish the terminal carrier
 again.
 
-If a read, publication, response, resolution, label change, or readback fails or is uncertain, stop.
+If a read or mutation fails, reconcile the exact target before another dependent mutation.
 Do not retry blindly, unresolve a thread, or make a compensating label change. Report the known
 partial state and withhold terminal GO.
 
@@ -491,7 +494,8 @@ change, bypass, or policy change.
    target integration and merge-group validation.
 7. Invoke exactly one bound enable-auto-merge or queue-admission operation.
 8. Do not use an ambient target, generic command-line default, direct merge, or fallback mutation.
-9. Do not retry after a failed or uncertain result.
+9. Reconcile failed or uncertain results through exact readback. Retry only a proven absent
+   operation whose current preconditions still hold.
 10. Fetch the pull request again. Report `enabled` or `queue-enqueued` only when the result binds the
     same target and reviewed head. Do not report the pull request as merged.
 
@@ -545,8 +549,8 @@ When a reviewer action has one or more new finding discussions, publish all disc
 state note through one supported atomic draft or batch. If the host or forge cannot provide this
 capability, return the prepared batch and withhold publication. Do not start a sequential fallback.
 When the action has no new finding discussion, publish one immutable state or author-event note.
-Stop if a bound value changes or a write or readback result is uncertain. Report the known result.
-Do not retry it.
+Refresh changed bindings and reconcile uncertain writes through exact readback. Report the known result.
+Read back its result before any retry. Retry only a proven absent operation with valid preconditions.
 
 After verified non-GO state-note readback, make the NO-GO label exclusive through one authenticated,
 target-scoped capability. For terminal GO, the terminal delivery owner creates the state note once,
@@ -556,3 +560,20 @@ and withhold a favorable delivered result.
 
 Report review or discussion URLs, publication failures, residual risks, and unverified assumptions
 accurately. Forge policy controls approval and merge. Review prose does not.
+
+## Autonomous continuation
+
+Apply the [autonomous workflow policy](../../../docs/policies/autonomous-workflows.md).
+A role transition is not a new permission request. The coordinator can invoke the author and
+reviewer roles in order within the active task. At five assessments, record a reassessment and
+continue when there is a viable path. Keep architecture, source, target, and actual forge merge
+requirements. Use bounded batches for large evidence and findings, and verify every batch before
+a complete result. A partial review can deliver supported findings with explicit coverage gaps.
+
+Prefer forge authority. When it is unavailable, document an explicit conversation decision with
+its actual log ID, message ID, and digest. Publish that provenance with an action-bound authority
+record when possible. Offline preparation does not claim forge delivery.
+
+For aggregate review delivery, use the closure manifest `batch_manifest` field documented in the
+[exchange interface](../../review-exchange/references/interface.md). Bind the complete stream by
+path and SHA-256. The terminal delivery verifies all named batch states before the aggregate GO.

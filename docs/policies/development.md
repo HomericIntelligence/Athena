@@ -6,6 +6,8 @@ Apply the [ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.m
 prose in this document. Do not remove or weaken a technical, safety, security, evidence, permission,
 or failure requirement to make text shorter.
 
+Use the [autonomous workflow policy](autonomous-workflows.md) for recovery and continuation.
+
 ## Git
 
 - `main` is protected. Send all changes through short-lived feature branches and pull requests.
@@ -31,7 +33,8 @@ or failure requirement to make text shorter.
 
 ## Pull requests
 
-- Target `main`.
+- Target `main` by default. For dependent knowledge changes, use a documented PR stack that
+  preserves each existing change.
 - Keep the scope aligned with one issue or one coherent maintenance objective.
 - You can publish a pull request before validation finishes. Report pending, failed, and unavailable
   checks accurately. Publication does not establish completion or merge readiness.
@@ -44,14 +47,16 @@ or failure requirement to make text shorter.
   not incorrectly skipped.
 - Do not say that a check passed in the PR description unless the description can cite the current
   head receipt that supports the claim.
-- Before auto-merge or merge, get an independent strict review.
+- Before auto-merge or merge, get an independent strict review. If review is unavailable, complete
+  preparation and withhold only auto-merge or merge.
 - Use a merge method that the repository supports. Do not guess or impose an organization-wide
   fallback.
 
 ## Safety
 
 - Never commit credentials, tokens, `.env` files, private keys, or personal data.
-- Get explicit user authority before a filesystem-destructive command or before you discard changes.
+- Use existing explicit cleanup authority for verified merged branches and clean worktrees with no
+  unique work. Get authority before other destructive actions or before you discard changes.
 - Never use `git reset --hard`.
 - You can use constructive Git, GitHub command-line interface (CLI), and Hephaestus operations when
   both conditions are true:
@@ -60,7 +65,7 @@ or failure requirement to make text shorter.
   - The repository contract permits the operation.
 
 - For branch and worktree cleanup, prefer guarded Hephaestus tools.
-- Preserve unrelated worktree changes. If safe isolation is not possible, stop.
+- Preserve unrelated worktree changes. Integrate compatible edits; withhold only conflicting writes.
 - Never bypass a failed validation, security, review, or policy gate.
 - Apply the canonical [engineering principles](../principles/README.md) as decision rules. Select only
   the principles that apply to the change. For routine Athena development, use these groups:

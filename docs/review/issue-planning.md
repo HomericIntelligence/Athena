@@ -2,7 +2,8 @@
 
 **Why:** Use one current plan that the authenticated actor owns. This prevents a stale, foreign, or
 ambiguous issue comment from controlling implementation. The issue remains the requirements source.
-A plan proposes work. It does not authorize implementation, merge, or another forge change.
+A plan proposes work. Use the active task to determine authority for implementation and delivery.
+Do not request the same authority again at a workflow transition.
 
 Use the [ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.md) for all technical prose and review
 output.
@@ -55,7 +56,7 @@ In an ownership conflict:
 - Do not adopt or overwrite foreign content.
 - Do not publish from ambiguous content.
 - Preserve issue bodies and comments from other authors.
-- Request human direction.
+- Recover the intended identity from task and forge evidence. Ask only if a conflict remains.
 
 ### Shared marker migration
 
@@ -131,8 +132,9 @@ conditions occurs:
 
 Failure actions:
 
-1. Stop the write.
-2. Return the prepared draft or review.
+1. Refresh the affected identity and evidence.
+2. Prepare the updated operation and continue within task authority.
+3. If recovery is not possible, return the prepared draft and the specific unresolved gap.
 
 The repository target branch is not part of the canonical plan identity. Before implementation,
 the plan can name the commit from which a worktree must start. After implementation starts, use the
@@ -148,9 +150,9 @@ state-transition mechanism. Normalize one current issue snapshot and run `inspec
 carrier.
 
 The snapshot producer must exhaust the provider's bounded comment pagination. It must include all
-top-level comments and set `comments_complete` to `true`. If the host cannot prove complete comment
-coverage, withhold plan preparation, review preparation, publication verification, and
-finalization.
+top-level comments and set `comments_complete` to `true`. Continue pagination in bounded batches. If some comments remain inaccessible, prepare useful
+local analysis and state its coverage. Withhold only a publication whose identity or authority
+depends on the missing comments.
 
 The plan comment contains visible plan content and exactly one final `author-event` carrier. The
 review comment contains visible review content and exactly one final `state` carrier. The visible
@@ -166,11 +168,12 @@ For each plan or review publication:
 4. Require the same precondition and exact operation.
 5. Make only the returned `create` or `update` operation.
 6. Read the issue again and run `verify-publication`.
-7. If the result is `verified`, stop for the next action.
-8. If the write or readback result is indeterminate, report `unknown_outcome`. Do not retry.
+7. If the result is `verified`, invoke the next authorized role or finalization step.
+8. If the result is indeterminate, record `unknown_outcome` and reconcile through readback.
+9. Retry only when the readback proves that the intended write did not occur and its preconditions
+   still hold. Do not duplicate an operation whose result remains unknown.
 
-Preserve the prepared operation and available receipt evidence for an `unknown_outcome`. Do not
-invoke the other logical role recursively.
+Preserve the prepared operation and available receipt evidence for an `unknown_outcome`. Keep role-specific inputs and receipts separate while the coordinator invokes the next role.
 
 ## Plan content
 
@@ -245,18 +248,18 @@ role.
 
 The author must answer every active required finding. The reviewer must reconcile every prior
 finding before it adds a finding. One reviewer assessment increments the round count. An author
-response does not. After round 5, an unresolved exchange requires a human decision. Do not make a
-sixth reviewer assessment.
+response does not. At round 5, reassess the unresolved findings and the next corrective approach. Record a viable
+continuation before another assessment. If no viable path exists, request intervention.
 
-Each role must stop when `inspect.next_action` names the other role, finalization, or a human
-decision. A verified plan update stops for reviewer assessment. A verified review update stops for
-an author response, finalization, or a human decision. Do not call the other skill automatically.
+Use `inspect.next_action` to select the next role. A verified plan update proceeds to reviewer
+assessment. A verified review update proceeds to the authorized author response or finalization.
+Ask for a human decision only when the necessary decision is not already in the task authority.
 
 An authoritative decision uses `prepare-review` with a `human_decision` event. The authority receipt
 must resolve to one exact live noncanonical issue comment whose normalized author has repository
 authority. The helper binds the decision to the current state and finding. It does not increase the
 review round. A risk decision can accept only a recorded `risk_acceptance` request. A closure
-selection can change only an active closure condition, and it cannot start round 6.
+selection can change only an active closure condition, without erasing prior findings or evidence.
 
 A requirements reframe is a two-step exchange on the retained comments. First, `plan-issue` uses
 `prepare-plan` with a `reframe` event, the exact old retained state, a live authority
@@ -265,8 +268,8 @@ receipt, and the new declared targets. It updates the same plan comment. After e
 updates the same review comment with round 1 of the new exchange. The new state stores
 `supersession_authority_receipt`, cites the old state digest, and starts with a new exchange and
 requirements identity. Revalidate the receipt in both preparation steps, after publication, during
-inspection, and before finalization. If either write has an uncertain result, stop. Do not create a
-replacement comment or continue the second step. A reframe can supersede any retained
+inspection, and before finalization. If either write has an uncertain result, reconcile its exact readback before proceeding. Do not
+create a duplicate replacement comment. A reframe can supersede any retained
 phase, including `complete`. Normal events cannot continue a complete exchange.
 
 For legacy adoption, give the helper only the exact current unversioned plan and optional review in
@@ -285,8 +288,8 @@ Use only `issue_exchange.py verify-finalize` to parse terminal state and calcula
 `R/P/V/F`. Finalization does not run `inspect`, `prepare-plan`, `prepare-review`, or
 `verify-publication`. It does not perform another review.
 
-Accept exactly one current plan and one current review. The authenticated actor must own both
-artifacts. The plan and review must be different comments. `P` and `V` must identify different
+Accept exactly one current plan and one current review. Verify the provenance and review binding of both artifacts. Ownership determines eligibility
+for cleanup; foreign ownership alone does not prevent an authorized issue-body update. The plan and review must be different comments. `P` and `V` must identify different
 comment IDs. Bind both artifacts to the same issue-requirements identity. Require an exact `GO`.
 Reject an unresolved `critical`, `major`, or other `required` finding.
 
@@ -299,7 +302,7 @@ Before you draft the finalized body, record these values:
 The review must bind the issue, `R`, plan-comment ID, exact visible-plan digest, and `P`. The current
 plan author-event must equal the last accepted author response in the terminal ledger. For a
 round-1 `GO`, it must equal the initial plan event that the first assessment binds. Reject an input
-that is missing, foreign, repeated, malformed, stale, mismatched, unverified, conditional, or
+that is missing, repeated, malformed, stale, mismatched, unverified, conditional, or
 `NO-GO`. Fail closed. Do not create or adopt replacement comments.
 
 Give `verify-finalize` candidate content without a finalization marker. Accept only a `ready` result
@@ -332,9 +335,9 @@ again and call the readback form of `verify-finalize` with the snapshot and prep
 `verified` result supplies a deletion allowlist. Only after successful readback, re-read the exact actor-owned plan
 and review comments recorded in `P` and `V`. Verify each comment's ID, actor, marker, and digest. Only
 then, delete only the listed comments. If a value changes, do not delete the comment. If a timeout, indeterminate
-response, or body readback mismatch occurs, treat the outcome as unknown. Do not retry. If a deletion
-result is uncertain, leave the finalized body in place. Report partial cleanup. Do not retry or
-compensate.
+response, or body readback mismatch occurs, treat the outcome as unknown. Read back the issue before another mutation. If deletion is uncertain, leave the finalized body
+in place and reconcile the comment. Preserve foreign or changed comments and report residual
+cleanup. Never delete a comment outside the verified allowlist.
 
 For read-only migration, an exact legacy
 `<!-- athena:finalize-plan R=<R> P=<P> V=<V> F=<F> -->` marker identifies an existing sealed epoch.
@@ -344,7 +347,16 @@ body.
 If an intact marker has a valid `F`, valid source identities, and no sealed comments, treat a second
 finalization as idempotent. Report `no_change`. Do not duplicate the content. If a sealed comment
 remains, report `partial_cleanup`. Do not delete it again. A later material edit does not by itself
-authorize a new exchange when it keeps a stale finalization marker. After cleanup, an authoritative
-person can replace the sealed body with clean new requirements and remove the obsolete marker. The
+authorize a new exchange when it keeps a stale finalization marker. When the active task authorizes revised requirements, replace the sealed body with those
+requirements and remove the obsolete marker after the normal identity checks. The
 next inspection then starts a new round-1 epoch. Do not treat generated plan text or sealed
 provenance as a new requirement.
+
+## Recovery and conversation authority
+
+Apply the [autonomous workflow policy](../policies/autonomous-workflows.md). Prefer a live forge
+authority record. If the decision maker cannot use the forge, record the explicit conversation
+decision with its real log ID, message ID, decision digest, and the reason for the fallback.
+Publish this provenance with the scoped authority record when possible. While offline, prepare
+the record and publication command; do not claim a delivered decision. Preserve source, target,
+state, and decision bindings when recovering a malformed carrier from verifiable records.

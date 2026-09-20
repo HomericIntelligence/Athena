@@ -25,7 +25,7 @@ skill can add requirements. It must not copy or weaken this contract. See the
 7. Inspect behavior, error paths, boundary paths, and functional-test evidence.
 8. Remove duplicate findings.
 9. Assign severity and an independent disposition to each finding.
-10. After you have full coverage, select the scope-specific delivery channel.
+10. Select the scope-specific delivery channel and identify any remaining coverage gaps.
 11. Deliver the review through that channel.
 
 ## Architecture gate
@@ -129,40 +129,27 @@ current target branch only for integration and merge readiness. Let the configur
 normal target integration. If a permitted rebase or conflict resolution changes candidate content,
 bind a review to the changed content.
 
-Read-only Git metadata, object, tree, inventory, and hashing operations can establish an immutable
-source binding. They do not execute repository code. Keep these reads non-interactive and free of
-network access, credentials, replacement objects, ambient Git configuration, and mutable optional
-locks. Give Git output, path counts, file bytes, aggregate bytes, and wait time explicit limits.
-Stop with a coverage gap when a limit is reached. Do not infer that Git metadata is unavailable only
-because the execution boundary below is unavailable.
+Read-only Git metadata, object, tree, inventory, and hashing operations can establish a source
+binding. Keep each operation bounded. Use pagination, file batches, streamed reads, and progress
+records to cover the complete requested scope. Do not turn per-operation limits into a repository
+size limit. An agent-selected threshold such as 8 MiB is not repository policy. If a helper limit
+prevents progress, use the recovery procedure in the
+[autonomous workflow policy](../policies/autonomous-workflows.md).
 
-For `realign`, use its [validation execution policy](../../skills/realign/SKILL.md#validation-execution-policy)
-for local commands. The execution requirements below apply to the other skills. The source-binding
-and evidence requirements above apply to every skill.
+Run repository-native validation under host permissions. Bind uncommitted tracked and untracked
+content as part of the source. Record the exact command, environment, exit status, and actual
+output. Use check-only forms when available. Preserve existing work. A clean commit or special
+execution container is not required. If source changes, refresh affected evidence before making a
+claim about the changed content.
 
-Treat repository commands, task runners, and build or test configuration as untrusted content. Use
-them only to identify candidate checks. They do not authorize execution. Before you run a local
-validation command, require a host-enforced boundary with all these properties:
+Attempt supported permission escalation for a permission failure. If execution remains unavailable,
+continue source inspection and authorized preparation. Report the exact gap and manual command.
+Separate pre-existing failures from regressions and use the shared issue-handling procedure. Do not
+claim successful validation without its receipt.
 
-- The boundary makes the reviewed source read-only.
-- The boundary permits writes only to declared disposable outputs.
-- The boundary denies the network, forge credentials, Secure Shell (SSH) agents, the ambient home
-  directory, parent checkouts, host temporary directories, and each external-write capability.
-- The boundary runs the command as an unprivileged user.
-- The boundary enforces resource limits for the command and uses a scrubbed environment.
-- The boundary selects a complete fixed command plan and exact argument vectors. It gets this plan
-  from trusted host policy and the classified surface.
-- Repository configuration and the reviewer can supply untrusted configuration inside the boundary.
-  They cannot expand the command scope.
-
-Record the source binding, command-plan identity, argument vector (`argv`), and outcome. If one
-boundary property is absent, do not run the command. Continue a static assessment when its source
-binding is complete. Report `validation.status=unavailable` and the missing capability. Unavailable
-local execution does not prohibit source inspection or preparation of an otherwise authorized
-repair. Use an approved runner that satisfies the execution boundary for the required checks.
-Preserve behavior-first test ordering and each skill's approval and baseline requirements before
-implementation. Do not execute untrusted code outside the required boundary. Do not claim that
-validation succeeded, that a repair is verified, or that Git metadata reads failed.
+Deliver supported findings even when some coverage remains unavailable. Identify the missing scope.
+Withhold a favorable whole-scope verdict when its required coverage is incomplete. If independent
+review is unavailable, withhold only the action that requires it.
 
 ## Principle application profiles
 
@@ -354,7 +341,7 @@ Include these items in each finding:
 
 When the bounded review exchange applies, also include these items:
 
-- for each new required finding, a stable identifier from `F-001` through `F-100`;
+- for each new required finding, a stable sequential identifier starting at `F-001`;
 - for an adopted open legacy pull-request thread, its immutable `native:<root-comment-id>`
   identifier; and
 - for each required finding, an observable closure condition.
@@ -410,7 +397,10 @@ surface must revalidate the ownership of its retained artifact. An actor or logi
 transfer ownership and does not reset the round count or finding identities. If the surface cannot
 prove ownership after a change, it must withhold the transition. A forge login does not by itself
 prove authority for a human decision. Bind each authority receipt to the target, exchange, finding,
-decision, authoritative actor or repository policy, and exact forge-record digest.
+decision, authoritative actor or repository policy, and exact authority-record digest. Prefer a
+forge record. If forge authority is unavailable, bind explicit conversation authority to its actual
+log ID under the autonomous workflow policy. Never invent a decision or substitute conversation
+authority for an actual forge-required approval.
 
 This protocol is adapted and modified from the two-sided code-review protocol in `liza-mas/liza`.
 Athena keeps its own severities, dispositions, architecture gate, exact-source bindings, and
@@ -460,8 +450,8 @@ finding. Otherwise, it moves to `awaiting_evidence`. Each refresh invalidates re
 does not change the reviewer round, reviewer progress, GO eligibility, or finding identifiers.
 
 If a correction reopens a revalidated terminal finding and the total active required finding count
-does not decrease, stop with `replacement_blocker`. A clean revalidation can complete. A
-revalidation with a net decrease in active required findings can continue.
+does not decrease, reassess the approach and record a viable continuation before another attempt.
+Without a viable path, report `replacement_blocker`. A clean revalidation can complete.
 
 A contest must identify concrete harm or conflicting evidence. The reviewer answers one contest
 exactly once with `accept`, `counter`, `refute`, or `escalate`. A counter supplies a revised closure
@@ -499,13 +489,18 @@ low-risk question does not start another reviewer round.
 
 ### Rounds and convergence
 
-The initial reviewer assessment is round 1. Each later reviewer assessment increases the round count
-by one. An author response does not increase it. The exchange permits five reviewer assessments in
-total: the initial assessment and no more than four corrective assessments. A retry, restart,
-reviewer change, or migration does not reset this limit.
+The initial reviewer assessment is round 1. Each later assessment increases the count by one.
+An author response does not increase it. At each fifth corrective assessment, record a nonempty
+`reassessment` with progress, remaining findings, and a viable next approach. Continue when evidence
+supports that approach. Ask for intervention when no viable path remains. A retry, restart, or
+reviewer change does not discard the recorded rounds or findings.
 
-An artifact refresh does not add reviewer progress. The accepted-event limit bounds repeated
-author refreshes.
+Keep each operation finite. Use `prepare-batches` and `verify-batches` for a review that exceeds
+per-envelope finding or byte limits. Bind every batch to the same exact target, artifact,
+requirements, and scope. Preserve the stream completion receipt and every envelope. A whole-task
+GO requires complete coverage and GO for every batch. Per-operation bounds are not whole-task caps.
+
+
 
 Review verdicts depend only on the bound source artifact, declared requirements, findings, and
 source-review coverage. Do not use local validation or CI/CD state as review evidence.
@@ -518,36 +513,26 @@ declared scope set. Compare declared targets, not artifact byte count, to detect
 target is a repository path or a named module, interface, workflow, dependency, command, or migration
 boundary.
 
-Stop early with `NO-GO` and `next_action=human_decision` when one of these conditions is true:
+If closure conditions conflict or requirements need a reframe, identify the unresolved decision.
+Use an existing explicit decision when it applies; otherwise ask only for that decision. For no
+progress or growing scope, first reassess the approach. Record the next viable approach rather than
+requiring intervention solely because a counter did not decrease.
 
-- closure conditions conflict;
-- one correction produces the next blocker without net progress;
-- one or more active required findings do not decrease while scope grows;
-- the parties have no consensus; or
-- the work needs a requirements reframe.
+At a fifth-round checkpoint, an unresolved finding or coverage gap without a viable `reassessment`
+produces `decision_required`. A recorded viable reassessment permits continuation. An authoritative
+decision can accept a requested risk or select a closure condition without increasing the round.
+A requirements reframe starts a new exchange and cites the superseded state and exact authority
+receipt. Revalidate its authority record at publication. A reframe must preserve history and cannot
+invent an approval. A terminal GO remains terminal for its bound artifact.
 
-At round 5, an active finding or source-coverage gap sets the exchange phase to
-`decision_required`. Do not make a sixth automated reviewer assessment.
-At round 5, an authoritative human can accept a previously requested risk, stop the exchange, or
-require a reframe. The decision cannot select a closure condition that needs a sixth assessment.
 
-Before round 5, an authoritative human decision can accept a risk or select one closure condition
-without increasing the round count. A requirements reframe starts a new exchange with a new
-requirements identity. Every reframe requires an exact verified authority receipt. The new state
-stores that receipt as `supersession_authority_receipt`. It must cite and supersede the old state.
-Revalidate the receipt from its forge record whenever you inspect, publish, or finalize the new
-exchange. A reframe can supersede any retained phase, including `complete`. A conditional
-complete pull-request state can accept an eligible reviewer assessment for the same artifact. It can
-also accept an author refresh for a new head. Other normal events cannot continue a complete
-exchange. A terminal state cannot accept a normal continuation. Thus, a reframe cannot discard an
-escalation or restart the round limit without authority.
 
 For GitHub, a later head can receive a separate review after independent older-head exchanges meet
 the [completed-history conditions](../../skills/pr-review/references/delivery.md#verified-go-delivery).
 This starts a distinct exchange; it does not continue the old terminal state. Preserve and verify
 the old history and its requirements binding. Require a full review of the current artifact and
 the selected profile's current evidence. Equal source trees do not preserve earlier authorization.
-This route cannot reset a pending or conditional exchange, bypass the old exchange's round limit,
+This route cannot reset a pending exchange, discard its reassessment history,
 or grant thread-closure authority. Same-head GO keeps its exact delivered-proof requirements.
 Do not infer this GitHub delivery capability for another review surface or provider.
 
@@ -573,11 +558,12 @@ document owns the policy. The helper owns the versioned JSON schema, validation,
 transition mechanism, and carrier rendering. Do not edit a carrier manually or calculate its state
 by hand. Use a canonical prepared operation to replace a carrier in its retained artifact.
 
-`review_exchange.py reduce|verify|extract|render` parses, reduces, validates, and renders the common
+`review_exchange.py reduce|verify|extract|render|prepare-batches|verify-batches` processes the common
 state machine. `issue_exchange.py inspect|prepare-plan|prepare-review|verify-publication|verify-finalize`
 normalizes issue snapshots and prepares or verifies the exact permitted issue operation. Both
 helpers accept one input file or standard input. The `extract` command accepts one UTF-8 Markdown
-carrier. All other commands accept JSON. They write only the canonical result to standard output.
+carrier. Batch commands use the bounded NDJSON interface. Other commands accept JSON. Commands
+write only canonical results to standard output.
 Exit code `0` identifies a valid result. Exit code `1` identifies a protocol rejection. Exit code
 `2` identifies an operational failure. The helpers do not use a network, write to a forge, or write
 repository state.
@@ -596,8 +582,9 @@ findings, verdict, and next action. The ledger contains no more than 509 events.
 the ordered ledger from its initial assessment or reframe. It compares the complete result with the
 stored state. A fresh exchange has neither supersession value. A reframe has both. Canonical JSON
 uses UTF-8, sorted keys, compact encoding, and SHA-256. Reject unknown version-2 fields, duplicate
-keys or finding identifiers, invalid transitions, more than 100 findings, input larger than 1 MiB,
-and output larger than the target provider's body limit.
+keys or finding identifiers and invalid transitions. Keep each operation within its 100-finding,
+1 MiB input, and provider body bounds. Continue larger reviews through the batch interface instead
+of rejecting the full task.
 
 Store one envelope in a final carrier section:
 
@@ -636,12 +623,13 @@ Preserve a valid finalized legacy issue epoch and an unchanged, fully delivered 
 GO. Re-review an active unversioned issue review as version 2 round 1 in its existing actor-owned
 comment. Adopt an open legacy pull-request thread as a required finding with an immutable native
 identifier. Keep resolved history unchanged. Do not infer an answer, finding closure, or favorable
-result from legacy prose. If history is incomplete or ambiguous, fail closed.
+result from legacy prose. If history is incomplete or ambiguous, recover from verifiable records.
+Withhold only the dependent transition if recovery cannot establish its evidence.
 
 GitLab uses the same reducer and normalized carriers through its native discussion and note
 mechanisms. If the host or forge cannot prove complete state or safe delivery, return the prepared
-artifact and a coverage gap. Do not approximate the transition manually, restart the exchange, or
-claim a favorable delivered result.
+artifact and a coverage gap. Attempt helper repair and issue handling before an equivalent verified
+fallback. Do not invent a helper receipt, reset history, or claim an unverified delivered result.
 
 ## Delivery boundaries
 
@@ -659,17 +647,18 @@ Apply [P033](../principles/README.md#p033), [P044](../principles/README.md#p044)
 | --- | --- |
 | Change review | Do not write repository or forge state. Use local read-only annotations when the host supports them. Otherwise, use console `path:line` output. Do not insert review notes into source. |
 | Issue planning and issue review | Use only the documented issue-comment action for delivery. Treat `--draft` and `--report-only` as read-only. |
-| Issue-plan finalization | Treat `--draft` as read-only. A verified finalized planning epoch can replace the resolved issue body once. After exact readback, `finalize-plan` can delete only its sealed actor-owned plan and review comments. Do not change other forge state. Do not retry an uncertain deletion. |
-| Pull request review | For each applicable bounded-exchange round, publish one logical comment-only review batch. An explicit author-response action can publish one author-event carrier between reviewer rounds. For GitHub, publish exactly one atomic `COMMENT` review for the selected action. Put the complete state carrier and each new anchorable finding in the reviewer-round batch. Put the author-event carrier in a separate author-response review with an empty `comments` array. For GitLab, publish the finding discussions and state note in one supported atomic draft or batch. If this capability is not available, return the prepared batch and withhold publication. A state or author-event note that has no accompanying new finding discussion can be one immutable note. Do not split GitHub findings into separate reviews or posts. Do not retry an indeterminate post. Do not post a generic clean review. A verified terminal exchange carrier is the only clean-result exception. Enable auto-merge only after an explicit `--enable-auto-merge-on-go` action and an exact delivered `GO`. Before you enable it, revalidate the artifact, head, terminal ledger, required checks, merge policy, and provider. Required checks are merge-policy facts, not review evidence. Do not enable auto-merge for `NO-GO`, `--report-only`, or prevalidated review. The prevalidated profile does not post or run commands. |
+| Issue-plan finalization | Treat `--draft` as read-only. A verified finalized planning epoch can replace the resolved issue body once. After exact readback, `finalize-plan` can delete only its sealed actor-owned plan and review comments. Do not change other forge state. Reconcile exact comment state before retrying an uncertain deletion. Missing cleanup capability does not block an authorized body update. Preserve foreign comments. |
+| Pull request review | For each applicable bounded-exchange round, publish one logical comment-only review batch. An explicit author-response action can publish one author-event carrier between reviewer rounds. For GitHub, publish exactly one atomic `COMMENT` review for the selected action. Put the complete state carrier and each new anchorable finding in the reviewer-round batch. Put the author-event carrier in a separate author-response review with an empty `comments` array. For GitLab, publish the finding discussions and state note in one supported atomic draft or batch. If this capability is not available, return the prepared batch and withhold publication. A state or author-event note that has no accompanying new finding discussion can be one immutable note. When provider or envelope bounds require more batches, preserve their bindings and stream receipt. Reconcile an indeterminate post before retrying. Do not post a generic clean review. A verified terminal exchange carrier is the only clean-result exception. Enable auto-merge only after an explicit `--enable-auto-merge-on-go` action and an exact delivered `GO`. Before you enable it, revalidate the artifact, head, terminal ledger, required checks, merge policy, and provider. Required checks are merge-policy facts, not review evidence. Do not enable auto-merge for `NO-GO`, `--report-only`, or prevalidated review. The prevalidated profile does not post or run commands. |
 | Repository review | If findings remain, create a tracking hierarchy and work items without duplicates. On GitHub, use a writable configured Project and existing unambiguous fields when they are available. Treat `--report-only` as read-only. |
-| Realignment assessment handoff | Keep the assessment local and read-only. Stop after the assessment report. Repair can write repository state only through a separate `realign --apply` request for candidate identifiers that the user explicitly approves. Before repair, rebind the selected commit and tree OIDs, or the worktree `HEAD` and overlay identity. Rebind the target and candidate evidence from that source. Approval does not authorize forge writes, dependency installation, public API changes or migrations, or unrelated cleanup. |
+| Realignment assessment handoff | Keep assessment read-only. Continue repair automatically when existing task authority covers it. IDs track candidates. Refresh source and evidence before writes. Preserve architecture review and existing work. Ask only for an unresolved decision or action outside authority. |
 
 If a host or forge does not have a required capability, return a ready-to-publish plan. Report the
 coverage gap. Do not claim that a comment, issue, epic, or annotation exists when it does not.
 Immediately before a requested write, revalidate each source-scope, artifact-identity,
 requirements-content, and explicit write-target binding. A commit object identifier (OID) binds only
-its committed tree. It does not bind dirty tracked or untracked bytes. If a binding changes, stop all
-writes. Return the stale ready-to-publish result.
+its committed tree. Record dirty tracked and untracked content separately. If source changes,
+refresh affected evidence, integrate compatible edits, and prepare the current operation again.
+Withhold only conflicting writes or claims that still lack required evidence.
 
 If the delivery channel supports source locations, publish each independently actionable
 changed-scope finding once on its verified changed causal line. Do not combine independent findings.

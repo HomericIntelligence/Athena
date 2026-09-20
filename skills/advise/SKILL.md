@@ -14,6 +14,9 @@ for the primary task.
 Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to all
 prose that it produces.
 
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
+recovery, resources, validation, and delivery.
+
 ## Engineering principles
 
 Use the [canonical engineering-principles catalog](../../docs/principles/README.md) to make these
@@ -80,8 +83,8 @@ task. Do not substitute a different repository.
 10. Use local Git history as provenance when it is available.
 11. Rank candidates by intended outcome, constraints, and failure mode. Do not rank them first by
    title or wording.
-12. Read no more than five selected entries in full. Give preference to newer and better-verified
-   guidance.
+12. Read selected entries in bounded batches. Start with the most relevant entries. Continue when
+    another entry can change the recommendation. Prefer better-verified guidance.
 13. For each result, state its version and verification when the entry supplies them. Also state
     its concrete relevance, non-relevance boundary, contradictions, and applicable failed
     approaches. Clearly identify missing or unverified provenance.

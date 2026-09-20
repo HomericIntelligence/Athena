@@ -16,7 +16,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 from typing import Any, cast
@@ -48,6 +48,7 @@ CANDIDATE_ID = re.compile(r"[A-Z][A-Z0-9_-]{2,63}\Z")
 REALIGN_CANDIDATE_ID = re.compile(r"RLG-[0-9]{3}\Z")
 MAX_GIT_OUTPUT_BYTES = 64 * 1024 * 1024
 MAX_FILE_BYTES = 64 * 1024 * 1024
+# Compatibility name only. Fingerprint reads retain one chunk, not total source bytes.
 MAX_TOTAL_BYTES = 512 * 1024 * 1024
 MAX_PATH_COUNT = 250_000
 GIT_TIMEOUT_SECONDS = 30.0
@@ -93,6 +94,7 @@ def _run_bounded_process(
     output_limit: int,
     deadline: float | None,
     operation: str,
+    stdout_consumer: Callable[[bytes], None] | None = None,
 ) -> bytes:
     """Run one contained process with bounded output, time, and cleanup."""
     if os.name != "posix":
@@ -200,6 +202,9 @@ def _run_bounded_process(
                 continue
             assert kind == "data" and isinstance(payload, bytes)
             content = payload
+            if name == "stdout" and stdout_consumer is not None:
+                stdout_consumer(content)
+                continue
             byte_count += len(content)
             if byte_count > output_limit:
                 raise RuntimeError(f"The {operation} exceeded its output limit.")
@@ -255,7 +260,10 @@ def _run_bounded_process(
 
 
 def _git_bytes(
-    repository_root: Path, *arguments: str, deadline: float | None = None
+    repository_root: Path,
+    *arguments: str,
+    deadline: float | None = None,
+    stdout_consumer: Callable[[bytes], None] | None = None,
 ) -> bytes:
     """Run one sanitized read-only Git command and return raw output."""
     command = [
@@ -273,6 +281,7 @@ def _git_bytes(
         output_limit=MAX_GIT_OUTPUT_BYTES,
         deadline=deadline,
         operation="read-only Git command",
+        stdout_consumer=stdout_consumer,
     )
 
 
@@ -490,7 +499,11 @@ def _write_all(descriptor: int, document: bytes) -> None:
 
 
 def _internal_read_bound_file(
-    repository_root: Path, relative_path: str, byte_limit: int
+    repository_root: Path,
+    relative_path: str,
+    byte_limit: int,
+    *,
+    fingerprint: bool = False,
 ) -> int:
     """Read one confined file or symbolic-link target inside a killable worker."""
     try:
@@ -524,21 +537,52 @@ def _internal_read_bound_file(
             return 21
         raise
     try:
-        opened_mode = os.fstat(descriptor).st_mode
+        initial_stat = os.fstat(descriptor)
+        opened_mode = initial_stat.st_mode
         if not stat.S_ISREG(opened_mode):
             print(INTERNAL_FILE_BOUNDARY, file=sys.stderr)
             return 22
         _write_all(1, f"{stat.S_IMODE(opened_mode):04o}\n".encode("ascii"))
         byte_count = 0
+        digest = hashlib.sha256()
         while chunk := os.read(descriptor, 1024 * 1024):
             byte_count += len(chunk)
-            if byte_count > byte_limit:
+            if not fingerprint and byte_count > byte_limit:
                 print(
                     "The source file exceeded the file byte limit.",
                     file=sys.stderr,
                 )
                 return 23
-            _write_all(1, chunk)
+            if fingerprint:
+                digest.update(chunk)
+            else:
+                _write_all(1, chunk)
+        if fingerprint:
+            final_stat = os.fstat(descriptor)
+            fields = (
+                "st_dev",
+                "st_ino",
+                "st_mode",
+                "st_size",
+                "st_mtime_ns",
+                "st_ctime_ns",
+            )
+            if byte_count != initial_stat.st_size or any(
+                getattr(initial_stat, field) != getattr(final_stat, field)
+                for field in fields
+            ):
+                raise RuntimeError(
+                    "The source file changed during its fingerprint read."
+                )
+            _write_all(
+                1,
+                json.dumps(
+                    {
+                        "byte_length": byte_count,
+                        "content_sha256": digest.hexdigest(),
+                    }
+                ).encode("ascii"),
+            )
     finally:
         os.close(descriptor)
     return 0
@@ -550,6 +594,7 @@ def _bounded_file_snapshot(
     *,
     deadline: float | None = None,
     byte_limit: int | None = None,
+    fingerprint: bool = False,
 ) -> SnapshotFileEntry:
     """Read one confined regular file through a contained worker process."""
     limit = MAX_FILE_BYTES if byte_limit is None else byte_limit
@@ -562,11 +607,13 @@ def _bounded_file_snapshot(
         relative_path,
         str(limit),
     ]
+    if fingerprint:
+        command.append("--fingerprint")
     try:
         document = _run_bounded_process(
             command,
             environment=_isolated_python_environment(),
-            output_limit=limit + 1024,
+            output_limit=8192 if fingerprint else limit + 1024,
             deadline=deadline,
             operation="bounded source-file read",
         )
@@ -620,6 +667,29 @@ def _worktree_snapshot_entry(
         deadline=deadline,
         byte_limit=MAX_FILE_BYTES,
     )
+
+
+def _worktree_fingerprint_entry(
+    repository_root: Path, relative_path: str, *, deadline: float | None = None
+) -> dict[str, Any]:
+    """Hash a confined file in chunks; retain only its size, mode, and digest."""
+    snapshot = _bounded_file_snapshot(
+        repository_root,
+        relative_path,
+        deadline=deadline,
+        fingerprint=True,
+    )
+    identity = json.loads(snapshot.content)
+    if (
+        not isinstance(identity, dict)
+        or set(identity) != {"byte_length", "content_sha256"}
+        or type(identity["byte_length"]) is not int
+        or identity["byte_length"] < 0
+        or not isinstance(identity["content_sha256"], str)
+        or re.fullmatch(r"[0-9a-f]{64}", identity["content_sha256"]) is None
+    ):
+        raise RuntimeError("The source-file fingerprint is malformed.")
+    return {**identity, "mode": snapshot.mode}
 
 
 def _worktree_paths(
@@ -676,10 +746,9 @@ def _worktree_inventory(
     scopes = tuple(dict.fromkeys((target, *evidence_paths)))
     paths = _worktree_paths(repository_root, scopes, deadline=deadline)
     entries: list[dict[str, Any]] = []
-    total_bytes = 0
     for path in paths:
         try:
-            snapshot = _worktree_snapshot_entry(
+            snapshot = _worktree_fingerprint_entry(
                 repository_root, path, deadline=deadline
             )
         except SourcePathAbsentError:
@@ -706,9 +775,6 @@ def _worktree_inventory(
                     "head_oid": head_oid,
                 }
             )
-            total_bytes += len(error.target)
-            if total_bytes > MAX_TOTAL_BYTES:
-                raise RuntimeError("The assessment exceeded its aggregate byte limit.")
             continue
         except SourcePathBoundaryError:
             entries.append(
@@ -724,16 +790,13 @@ def _worktree_inventory(
             {
                 "path": path,
                 "kind": "file",
-                "mode": snapshot.mode,
-                "byte_length": len(snapshot.content),
-                "content_sha256": hashlib.sha256(snapshot.content).hexdigest(),
+                "mode": snapshot["mode"],
+                "byte_length": snapshot["byte_length"],
+                "content_sha256": snapshot["content_sha256"],
                 "source_kind": "worktree_overlay",
                 "head_oid": head_oid,
             }
         )
-        total_bytes += len(snapshot.content)
-        if total_bytes > MAX_TOTAL_BYTES:
-            raise RuntimeError("The assessment exceeded its aggregate byte limit.")
     pathspecs = (
         ()
         if "." in scopes
@@ -935,6 +998,7 @@ def snapshot_file_entry(
     raw_path: str,
     *,
     deadline: float | None = None,
+    stdout_consumer: Callable[[bytes], None] | None = None,
 ) -> SnapshotFileEntry:
     """Read one selected-commit blob without reading checkout bytes."""
     root = _repository_root(repository_root, deadline=deadline)
@@ -967,12 +1031,28 @@ def snapshot_file_entry(
     byte_length = int(
         _git_text(root, "cat-file", "-s", record["object_id"], deadline=deadline)
     )
-    if byte_length > MAX_FILE_BYTES:
+    if stdout_consumer is None and byte_length > MAX_FILE_BYTES:
         raise RuntimeError(f"The source file exceeded the file byte limit: '{path}'.")
+    consumed = 0
+
+    def consume(chunk: bytes) -> None:
+        nonlocal consumed
+        consumed += len(chunk)
+        if consumed > byte_length:
+            raise RuntimeError(f"The selected source file changed size: '{path}'.")
+        assert stdout_consumer is not None
+        stdout_consumer(chunk)
+
     content = _git_bytes(
-        root, "cat-file", "blob", record["object_id"], deadline=deadline
+        root,
+        "cat-file",
+        "blob",
+        record["object_id"],
+        deadline=deadline,
+        stdout_consumer=consume if stdout_consumer is not None else None,
     )
-    if len(content) != byte_length:
+    actual_length = consumed if stdout_consumer is not None else len(content)
+    if actual_length != byte_length:
         raise RuntimeError(f"The selected source file changed size: '{path}'.")
     return SnapshotFileEntry(
         path=path,
@@ -981,6 +1061,38 @@ def snapshot_file_entry(
         object_id=record["object_id"],
         mode=record["mode"],
     )
+
+
+def source_file_fingerprint(
+    repository_root: Path,
+    binding: Mapping[str, Any],
+    path: str,
+    *,
+    deadline: float | None = None,
+) -> dict[str, Any]:
+    """Return complete source identity without retaining file bytes."""
+    if binding.get("source_kind") == "worktree_overlay":
+        return _worktree_fingerprint_entry(repository_root, path, deadline=deadline)
+    digest = hashlib.sha256()
+    byte_length = 0
+
+    def consume(chunk: bytes) -> None:
+        nonlocal byte_length
+        digest.update(chunk)
+        byte_length += len(chunk)
+
+    entry = snapshot_file_entry(
+        repository_root,
+        binding,
+        path,
+        deadline=deadline,
+        stdout_consumer=consume,
+    )
+    return {
+        "mode": entry.mode,
+        "byte_length": byte_length,
+        "content_sha256": digest.hexdigest(),
+    }
 
 
 def inventory_manifest(
@@ -1037,16 +1149,15 @@ def guidance_snapshot_manifest(
     if source_kind == "worktree_overlay":
         _verify_worktree_binding(root, binding)
     manifest: list[dict[str, Any]] = []
-    total_bytes = 0
     for path in normalized_paths:
         if source_kind == "selected_commit_tree":
-            entry = snapshot_file_entry(root, binding, path)
+            entry = source_file_fingerprint(root, binding, path)
             identity = {
                 "commit_oid": binding["commit_oid"],
                 "tree_oid": binding["tree_oid"],
             }
         elif source_kind == "worktree_overlay":
-            entry = _worktree_snapshot_entry(root, path)
+            entry = source_file_fingerprint(root, binding, path)
             identity = {
                 "head_oid": binding["head_oid"],
                 "overlay_digest": binding["overlay_digest"],
@@ -1058,13 +1169,10 @@ def guidance_snapshot_manifest(
                 "path": path,
                 "source_kind": source_kind,
                 **identity,
-                "byte_length": len(entry.content),
-                "content_sha256": hashlib.sha256(entry.content).hexdigest(),
+                "byte_length": entry["byte_length"],
+                "content_sha256": entry["content_sha256"],
             }
         )
-        total_bytes += len(entry.content)
-        if total_bytes > MAX_TOTAL_BYTES:
-            raise RuntimeError("The assessment exceeded its aggregate byte limit.")
     if source_kind == "worktree_overlay":
         _verify_worktree_binding(root, binding)
     return manifest
@@ -1289,7 +1397,6 @@ def _verify_candidate_evidence(
     source_kind = source.get("source_kind")
     if source_kind == "worktree_overlay":
         _verify_worktree_binding(repository_root, source, deadline=deadline)
-    total_bytes = 0
     for candidate in candidates:
         paths = [normalize_repo_tree_path(path) for path in candidate["paths"]]
         if any(not _path_is_in_scope(path, scopes) for path in paths):
@@ -1313,25 +1420,22 @@ def _verify_candidate_evidence(
         if set(evidence) != set(paths):
             raise RuntimeError("A repair candidate does not bind each affected path.")
         for path in paths:
-            if source_kind == "selected_commit_tree":
-                content = snapshot_file_entry(
-                    repository_root, source, path, deadline=deadline
-                ).content
-            else:
-                content = _worktree_snapshot_entry(
-                    repository_root, path, deadline=deadline
-                ).content
-            total_bytes += len(content)
-            if total_bytes > MAX_TOTAL_BYTES:
-                raise RuntimeError("The assessment exceeded its aggregate byte limit.")
-            if hashlib.sha256(content).hexdigest() != evidence[path]:
+            identity = source_file_fingerprint(
+                repository_root,
+                source,
+                path,
+                deadline=deadline,
+            )
+            if identity["content_sha256"] != evidence[path]:
                 raise RuntimeError("A repair candidate has stale content evidence.")
     if source_kind == "worktree_overlay":
         _verify_worktree_binding(repository_root, source, deadline=deadline)
 
 
-def _verify_validation_manifest(validation: Any, source_digest: str) -> None:
-    """Require complete successful receipts for the exact assessment source."""
+def _verify_validation_manifest(
+    validation: Any, source_digest: str, *, task_authorized: bool = False
+) -> None:
+    """Verify exact-source receipts; preserve unavailable or failed task validation."""
     if not isinstance(validation, Mapping):
         raise TypeError("The assessment report is not repair-eligible.")
     receipts = validation.get("receipts")
@@ -1343,7 +1447,9 @@ def _verify_validation_manifest(validation: Any, source_digest: str) -> None:
         reason=cast(str | None, validation.get("reason")),
         receipts=receipts,
     )
-    if dict(validation) != rebuilt or not rebuilt["repair_eligibility"]:
+    if dict(validation) != rebuilt or (
+        not task_authorized and not rebuilt["repair_eligibility"]
+    ):
         raise RuntimeError("The assessment report is not repair-eligible.")
 
 
@@ -1373,6 +1479,7 @@ def repair_preflight(
     candidate_ids: Sequence[str],
     *,
     approved_report_digest: str | None = None,
+    task_authorized: bool = False,
     _deadline: float | None = None,
 ) -> dict[str, Any]:
     """Rebind a report and reject stale evidence or overlapping user work."""
@@ -1388,9 +1495,10 @@ def repair_preflight(
     source = report.get("source")
     if not isinstance(source, Mapping):
         raise TypeError("The assessment report source binding is malformed.")
-    if not isinstance(
-        approved_report_digest, str
-    ) or approved_report_digest != assessment_report_digest(report):
+    if not (task_authorized and approved_report_digest is None) and (
+        not isinstance(approved_report_digest, str)
+        or approved_report_digest != assessment_report_digest(report)
+    ):
         raise RuntimeError(
             "The approved assessment report binding is missing or stale."
         )
@@ -1398,7 +1506,9 @@ def repair_preflight(
     source_digest = source.get("source_digest")
     if not isinstance(source_digest, str):
         raise TypeError("The assessment source digest is malformed.")
-    _verify_validation_manifest(report.get("validation"), source_digest)
+    _verify_validation_manifest(
+        report.get("validation"), source_digest, task_authorized=task_authorized
+    )
     source_kind = source.get("source_kind")
     isolated_start: str | None = None
     if source_kind == "selected_commit_tree":
@@ -1408,7 +1518,11 @@ def repair_preflight(
     else:
         raise RuntimeError("The assessment report source kind is not valid.")
     _verify_candidate_evidence(root, source, candidates, deadline=deadline)
-    if _candidate_overlap(root, paths, deadline=deadline):
+    # A verified overlay already binds the existing edits and candidate bytes.
+    # A selected commit does not bind mutable checkout state.
+    if _candidate_overlap(root, paths, deadline=deadline) and not (
+        task_authorized and source_kind == "worktree_overlay"
+    ):
         raise RuntimeError("A repair candidate path overlaps existing work.")
     return {
         "status": "eligible",
@@ -1443,13 +1557,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     raw_arguments = list(sys.argv[1:] if argv is None else argv)
     if raw_arguments[:1] == [INTERNAL_FILE_READ_COMMAND]:
         try:
-            if len(raw_arguments) != 4:
+            if len(raw_arguments) not in (4, 5) or (
+                len(raw_arguments) == 5 and raw_arguments[4] != "--fingerprint"
+            ):
                 raise RuntimeError("The bounded source-file request is malformed.")
             byte_limit = int(raw_arguments[3])
             if byte_limit < 0:
                 raise RuntimeError("The bounded source-file limit is not valid.")
             return _internal_read_bound_file(
-                Path(raw_arguments[1]), raw_arguments[2], byte_limit
+                Path(raw_arguments[1]),
+                raw_arguments[2],
+                byte_limit,
+                **({"fingerprint": True} if len(raw_arguments) == 5 else {}),
             )
         except (OSError, RuntimeError, ValueError) as error:
             print(f"error: {error}", file=sys.stderr)
@@ -1469,7 +1588,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     preflight_parser.add_argument(
         "--candidate", action="append", required=True, dest="candidate_ids"
     )
-    preflight_parser.add_argument("--approved-report-digest", required=True)
+    preflight_parser.add_argument("--approved-report-digest")
+    preflight_parser.add_argument(
+        "--task-authorized",
+        action="store_true",
+        help="Use existing task authority; retain all source and receipt checks.",
+    )
     arguments = parser.parse_args(raw_arguments)
     try:
         deadline = (
@@ -1506,6 +1630,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 _read_report(arguments.report, deadline=deadline),
                 arguments.candidate_ids,
                 approved_report_digest=arguments.approved_report_digest,
+                **({"task_authorized": True} if arguments.task_authorized else {}),
                 _deadline=deadline,
             )
     except (
