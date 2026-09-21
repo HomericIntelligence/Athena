@@ -357,6 +357,9 @@ class Forge(Protocol):
     def resolve(self, thread_id: str) -> None:
         """Resolve one retained review thread."""
 
+    def edit_comment(self, comment_id: str, body: str) -> None:
+        """Replace one reviewer-owned inline comment with exact text."""
+
     def set_implementation_go(self) -> None:
         """Apply the exclusive implementation GO state label."""
 
@@ -785,6 +788,33 @@ _FORMAT_ONLY_REFERENCE_FIELDS = frozenset(
         "root_database_id",
     }
 )
+_FORMAT_ONLY_DYNAMIC_RECOVERY_FIELDS = frozenset(
+    {
+        "schema_id",
+        "schema_version",
+        "binding",
+        "state_sha256",
+        "exchange_id",
+        "finding_id",
+        "review_id",
+        "review_head_oid",
+        "root_id",
+        "root_database_id",
+        "path",
+        "side",
+        "original_line",
+        "author",
+        "author_association",
+        "review_submitted_at",
+        "original_published_at",
+        "original_last_edited_at",
+        "canonical_last_edited_at",
+        "original_body",
+        "original_body_sha256",
+        "canonical_body",
+        "canonical_body_sha256",
+    }
+)
 
 
 def _format_only_compatibility_document() -> dict[str, Any]:
@@ -909,15 +939,128 @@ def _validated_format_only_recovery_reference(
     return reference, compatibility
 
 
+def _format_only_inline_root_canonical_body(original_body: str) -> str:
+    """Return the only body that moves one final inline marker to a new line."""
+    matches = tuple(FINDING_MARKER.finditer(original_body))
+    if (
+        len(matches) != 1
+        or matches[0].start() == 0
+        or matches[0].end() != len(original_body)
+        or original_body[matches[0].start() - 1] == "\n"
+        or not original_body[: matches[0].start()].strip()
+    ):
+        raise DeliveryError("The format-only recovery body is not one inline marker.")
+    return (
+        original_body[: matches[0].start()] + "\n" + original_body[matches[0].start() :]
+    )
+
+
+def _canonical_format_only_inline_root_body(
+    original_body: str, canonical_body: str
+) -> tuple[str, str]:
+    """Require the canonical body to add one newline before one final marker."""
+    expected = _format_only_inline_root_canonical_body(original_body)
+    if canonical_body != expected:
+        raise DeliveryError(
+            "The format-only recovery body changes more than marker placement."
+        )
+    marker = _finding_marker(
+        ReviewComment(id="format-only", body=canonical_body, author="reviewer")
+    )
+    if marker is None:
+        raise DeliveryError("The format-only recovery body has no final marker.")
+    return marker
+
+
+def _validated_dynamic_format_only_recovery_reference(
+    value: Mapping[str, Any], binding: ReviewBinding
+) -> dict[str, Any]:
+    """Validate one receipt from a completed one-line marker repair."""
+    recovery = _require_manifest_fields(
+        value, _FORMAT_ONLY_DYNAMIC_RECOVERY_FIELDS, "format-only recovery reference"
+    )
+    if (
+        recovery["schema_id"] != FORMAT_ONLY_INLINE_ROOT_RECOVERY_SCHEMA_ID
+        or type(recovery["schema_version"]) is not int
+        or recovery["schema_version"] != 2
+        or not _format_only_binding_matches(recovery["binding"], _binding_dict(binding))
+        or type(recovery["root_database_id"]) is not int
+        or recovery["root_database_id"] < 1
+        or type(recovery["original_line"]) is not int
+        or recovery["original_line"] < 1
+        or recovery["original_last_edited_at"] is not None
+        or recovery["side"] not in {"LEFT", "RIGHT"}
+    ):
+        raise DeliveryError("The format-only recovery reference is invalid.")
+    for field in (
+        "state_sha256",
+        "exchange_id",
+        "finding_id",
+        "review_id",
+        "review_head_oid",
+        "root_id",
+        "path",
+        "author",
+        "author_association",
+        "review_submitted_at",
+        "original_published_at",
+        "canonical_last_edited_at",
+        "original_body",
+        "original_body_sha256",
+        "canonical_body",
+        "canonical_body_sha256",
+    ):
+        if not isinstance(recovery[field], str) or not recovery[field]:
+            raise DeliveryError("The format-only recovery reference is invalid.")
+    if (
+        re.fullmatch(r"[0-9a-f]{64}", recovery["state_sha256"]) is None
+        or re.fullmatch(r"[0-9a-f]{40}", recovery["review_head_oid"]) is None
+    ):
+        raise DeliveryError("The format-only recovery reference is invalid.")
+    for digest_field, body_field in (
+        ("original_body_sha256", "original_body"),
+        ("canonical_body_sha256", "canonical_body"),
+    ):
+        digest = recovery[digest_field]
+        if (
+            re.fullmatch(r"[0-9a-f]{64}", digest) is None
+            or sha256(recovery[body_field].encode("utf-8")).hexdigest() != digest
+        ):
+            raise DeliveryError("The format-only recovery reference is invalid.")
+    exchange_id, finding_id = _canonical_format_only_inline_root_body(
+        recovery["original_body"], recovery["canonical_body"]
+    )
+    if exchange_id != recovery["exchange_id"] or finding_id != recovery["finding_id"]:
+        raise DeliveryError("The format-only recovery reference is invalid.")
+    return recovery
+
+
+def _load_format_only_recovery_reference(
+    value: Mapping[str, Any], binding: ReviewBinding
+) -> dict[str, Any]:
+    """Load either the fixed historical record or a current repair receipt."""
+    if (
+        value.get("schema_id") == FORMAT_ONLY_INLINE_ROOT_RECOVERY_SCHEMA_ID
+        and value.get("schema_version") == 2
+    ):
+        return _validated_dynamic_format_only_recovery_reference(value, binding)
+    _reference, compatibility = _validated_format_only_recovery_reference(
+        value, binding
+    )
+    return compatibility
+
+
 def _validate_format_only_recovery_reference(
     value: Mapping[str, Any] | None,
     binding: ReviewBinding,
     envelope: Mapping[str, Any],
 ) -> dict[str, Any] | None:
-    """Accept the sole source-selected recovery reference for its exact state."""
+    """Accept one exact historical record or current repair receipt."""
     if value is None:
         return None
-    _, compatibility = _validated_format_only_recovery_reference(value, binding)
+    compatibility = _load_format_only_recovery_reference(value, binding)
+    if compatibility.get("schema_version") == 2:
+        return compatibility
     state = envelope["state"]
     if (
         envelope["state_sha256"] != compatibility["state_sha256"]
@@ -1506,6 +1649,7 @@ def _verify_carrier_review_roots(
     anchor_source: Path | None = None,
     historical_anchor_proofs: tuple[dict[str, Any], ...] = (),
     format_only_compatibility: Mapping[str, Any] | None = None,
+    format_only_recovered_thread_ids: frozenset[str] = frozenset(),
 ) -> None:
     """Bind each selected carrier review to its complete atomic inline batch."""
     roots_by_review: dict[str, list[tuple[ReviewComment, ReviewThread]]] = {}
@@ -1574,6 +1718,8 @@ def _verify_carrier_review_roots(
             anchor = expected.get(finding_id)
             recovered_root = (
                 format_only_compatibility is not None
+                and envelope["state_sha256"]
+                == format_only_compatibility["state_sha256"]
                 and root.id == format_only_compatibility["root_id"]
                 and root.full_database_id
                 == str(format_only_compatibility["root_database_id"])
@@ -1583,7 +1729,8 @@ def _verify_carrier_review_roots(
                 == format_only_compatibility["author_association"]
                 and root.viewer_did_author
                 and root.review_id == format_only_compatibility["review_id"]
-                and root.review_head_oid == binding.head_oid
+                and root.review_head_oid
+                == format_only_compatibility.get("review_head_oid", binding.head_oid)
                 and root.path == format_only_compatibility["path"]
                 and root.side == format_only_compatibility["side"]
                 and root.line == format_only_compatibility["original_line"]
@@ -1593,7 +1740,8 @@ def _verify_carrier_review_roots(
                 and root.last_edited_at
                 == format_only_compatibility["canonical_last_edited_at"]
                 and review.id == format_only_compatibility["review_id"]
-                and review.head_oid == binding.head_oid
+                and review.head_oid
+                == format_only_compatibility.get("review_head_oid", binding.head_oid)
                 and review.author == format_only_compatibility["author"]
                 and review.author_association
                 == format_only_compatibility["author_association"]
@@ -1605,7 +1753,10 @@ def _verify_carrier_review_roots(
                 == format_only_compatibility["review_submitted_at"]
                 and exchange_id == format_only_compatibility["exchange_id"]
                 and finding_id == format_only_compatibility["finding_id"]
-                and len(thread.comments) == 1
+                and (
+                    len(thread.comments) == 1
+                    or thread.id in format_only_recovered_thread_ids
+                )
             )
             if (
                 exchange_id != state["exchange_id"]
@@ -2070,6 +2221,7 @@ def _verify_state_chain(
     *,
     recover_direct_reframe: bool = False,
     format_only_compatibility: Mapping[str, Any] | None = None,
+    format_only_recovered_thread_ids: frozenset[str] = frozenset(),
 ) -> VerifiedStateChain:
     """Replay every persisted event that leads to one terminal reviewer state."""
     terminal_state = terminal["state"]
@@ -2392,6 +2544,7 @@ def _verify_state_chain(
         anchor_source,
         historical_anchor_proofs,
         format_only_compatibility,
+        format_only_recovered_thread_ids,
     )
     verified_original_digests = {
         original_states[digest]["state_sha256"]
@@ -2527,9 +2680,21 @@ def validate_closure_manifest(
     binding: ReviewBinding,
     manifest: ClosureManifest,
     snapshot: PullRequestSnapshot,
+    *,
+    format_only_inline_root_recovery: Mapping[str, Any] | None = None,
 ) -> dict[str, ThreadClosure]:
     """Validate one complete v1 closure ledger before any forge mutation."""
     _terminal_state(binding, manifest)
+    format_only_compatibility = _validate_format_only_recovery_reference(
+        format_only_inline_root_recovery, binding, manifest.state_envelope
+    )
+    if (
+        format_only_compatibility is not None
+        and format_only_compatibility["schema_version"] != 2
+    ):
+        raise DeliveryError(
+            "The historical format-only recovery is valid only for NO-GO."
+        )
     chain = _verify_state_chain(
         forge,
         manifest.state_envelope,
@@ -2538,6 +2703,12 @@ def validate_closure_manifest(
         manifest.anchor_source,
         manifest.historical_anchor_proofs,
         recover_direct_reframe=True,
+        format_only_compatibility=format_only_compatibility,
+        format_only_recovered_thread_ids=(
+            frozenset()
+            if format_only_compatibility is None
+            else _format_only_recovered_thread_ids(snapshot, binding, manifest)
+        ),
     )
     terminal_digest = cast(str, manifest.state_envelope["state_sha256"])
     terminal_exchange_id = cast(str, manifest.state_envelope["state"]["exchange_id"])
@@ -3082,7 +3253,23 @@ def _verify_go_state_history(
     binding: ReviewBinding,
     manifest: ClosureManifest,
     body: str,
+    format_only_inline_root_recovery: Mapping[str, Any] | None = None,
 ) -> VerifiedStateChain:
+    format_only_compatibility = _validate_format_only_recovery_reference(
+        format_only_inline_root_recovery, binding, manifest.state_envelope
+    )
+    if (
+        format_only_compatibility is not None
+        and format_only_compatibility["schema_version"] != 2
+    ):
+        raise DeliveryError(
+            "The historical format-only recovery is valid only for NO-GO."
+        )
+    recovered_thread_ids = (
+        frozenset()
+        if format_only_compatibility is None
+        else _format_only_recovered_thread_ids(snapshot, binding, manifest)
+    )
     chain = _verify_state_chain(
         forge,
         manifest.state_envelope,
@@ -3091,6 +3278,8 @@ def _verify_go_state_history(
         manifest.anchor_source,
         manifest.historical_anchor_proofs,
         recover_direct_reframe=True,
+        format_only_compatibility=format_only_compatibility,
+        format_only_recovered_thread_ids=recovered_thread_ids,
     )
     _validate_terminal_inline_comments(
         binding, manifest, set(chain.terminal_new_finding_ids)
@@ -3143,6 +3332,22 @@ def _closure_reply_recovered(
         viewer_can_resolve=thread.viewer_can_resolve,
     )
     return conversation_sha256(prior) == entry.conversation_sha256
+
+
+def _format_only_recovered_thread_ids(
+    snapshot: PullRequestSnapshot,
+    binding: ReviewBinding,
+    manifest: ClosureManifest,
+) -> frozenset[str]:
+    """Return repaired-root threads with one exact verified closure reply."""
+    return frozenset(
+        entry.thread_id
+        for entry in manifest.entries
+        if any(thread.id == entry.thread_id for thread in snapshot.threads)
+        and _closure_reply_recovered(
+            _thread(snapshot, entry.thread_id), binding, manifest, entry, snapshot
+        )
+    )
 
 
 def _require_closed_manifest_threads(
@@ -3270,7 +3475,11 @@ def _manifest_with_terminal_threads(
 
 
 def deliver_go_v1(
-    forge: Forge, binding: ReviewBinding, manifest: ClosureManifest
+    forge: Forge,
+    binding: ReviewBinding,
+    manifest: ClosureManifest,
+    *,
+    format_only_inline_root_recovery: Mapping[str, Any] | None = None,
 ) -> DeliveryResult:
     """Deliver one current-head v1 terminal record, closures, and GO label."""
     initial = _snapshot(forge, binding)
@@ -3281,14 +3490,27 @@ def deliver_go_v1(
     )
     if len(matching) == 1:
         body = matching[0].body
-    initial_history = _verify_go_state_history(forge, initial, binding, manifest, body)
+    initial_history = _verify_go_state_history(
+        forge,
+        initial,
+        binding,
+        manifest,
+        body,
+        format_only_inline_root_recovery,
+    )
     if len(matching) > 1:
         raise DeliveryError("The current-head terminal COMMENT evidence is ambiguous.")
     if matching:
         manifest = _manifest_with_terminal_threads(
             initial, binding, manifest, matching[0].id
         )
-    by_thread = validate_closure_manifest(forge, binding, manifest, initial)
+    by_thread = validate_closure_manifest(
+        forge,
+        binding,
+        manifest,
+        initial,
+        format_only_inline_root_recovery=format_only_inline_root_recovery,
+    )
     _verify_live_requirements(forge, manifest.requirements_binding)
     open_threads = [thread for thread in initial.threads if not thread.is_resolved]
     terminal_review_id = matching[0].id if matching else None
@@ -3363,7 +3585,14 @@ def deliver_go_v1(
                     return result("already_delivered")
                 write("implementation label", forge.set_implementation_go)
                 recovered = read()
-                _verify_go_state_history(forge, recovered, binding, manifest, body)
+                _verify_go_state_history(
+                    forge,
+                    recovered,
+                    binding,
+                    manifest,
+                    body,
+                    format_only_inline_root_recovery,
+                )
                 if (
                     GO_LABEL not in recovered.labels
                     or NO_GO_LABEL in recovered.labels
@@ -3398,7 +3627,14 @@ def deliver_go_v1(
             terminal_matches = _matching_terminal_reviews(
                 after_terminal, body, binding.head_oid
             )
-            _verify_go_state_history(forge, after_terminal, binding, manifest, body)
+            _verify_go_state_history(
+                forge,
+                after_terminal,
+                binding,
+                manifest,
+                body,
+                format_only_inline_root_recovery,
+            )
             if len(terminal_matches) != 1:
                 raise DeliveryError(
                     "The exact current-head terminal COMMENT was not verified."
@@ -3408,7 +3644,11 @@ def deliver_go_v1(
                 after_terminal, binding, manifest, terminal_review_id
             )
             by_thread = validate_closure_manifest(
-                forge, binding, manifest, after_terminal
+                forge,
+                binding,
+                manifest,
+                after_terminal,
+                format_only_inline_root_recovery=format_only_inline_root_recovery,
             )
             responded = [
                 thread_id
@@ -3492,7 +3732,14 @@ def deliver_go_v1(
                 "An unresolved review thread remains before terminal delivery."
             )
         _require_closed_manifest_threads(current, binding, manifest, by_thread)
-        _verify_go_state_history(forge, current, binding, manifest, body)
+        _verify_go_state_history(
+            forge,
+            current,
+            binding,
+            manifest,
+            body,
+            format_only_inline_root_recovery,
+        )
         if len(_matching_terminal_reviews(current, body, binding.head_oid)) != 1:
             raise DeliveryError(
                 "The terminal COMMENT changed before GO label delivery."
@@ -3501,7 +3748,14 @@ def deliver_go_v1(
         final = read()
         if GO_LABEL not in final.labels or NO_GO_LABEL in final.labels:
             raise DeliveryError("The implementation state labels are not exclusive.")
-        _verify_go_state_history(forge, final, binding, manifest, body)
+        _verify_go_state_history(
+            forge,
+            final,
+            binding,
+            manifest,
+            body,
+            format_only_inline_root_recovery,
+        )
         if len(_matching_terminal_reviews(final, body, binding.head_oid)) != 1:
             raise DeliveryError("The terminal COMMENT changed after GO label delivery.")
         if any(not thread.is_resolved for thread in final.threads):
@@ -4119,6 +4373,16 @@ class GitHubForge:
         """
         self._graphql(query, threadId=thread_id)
 
+    def edit_comment(self, comment_id: str, body: str) -> None:
+        query = """
+        mutation($commentId:ID!, $body:String!) {
+          updatePullRequestReviewComment(
+            input:{pullRequestReviewCommentId:$commentId, body:$body}
+          ) { pullRequestReviewComment { id body } }
+        }
+        """
+        self._graphql(query, commentId=comment_id, body=body)
+
     def set_implementation_go(self) -> None:
         snapshot = self.snapshot()
         _require_binding(snapshot, self.binding)
@@ -4338,17 +4602,211 @@ def load_no_go_proof(path: Path, binding: ReviewBinding) -> NoGoProof:
 def load_format_only_inline_root_recovery(
     path: Path, binding: ReviewBinding
 ) -> dict[str, Any]:
-    """Load the sole canonical reference for the historical marker repair."""
+    """Load one canonical historical reference or repair receipt."""
     document = _read_json_document(
         path, "format-only inline-root recovery reference", canonical=True
     )
-    reference = _require_manifest_fields(
-        document,
-        _FORMAT_ONLY_REFERENCE_FIELDS,
-        "format-only recovery reference",
+    if not isinstance(document, dict):
+        raise DeliveryError("The format-only recovery reference is not an object.")
+    _load_format_only_recovery_reference(document, binding)
+    return document
+
+
+def _format_only_inline_root(
+    snapshot: PullRequestSnapshot, root_id: str
+) -> tuple[ReviewThread, ReviewComment]:
+    """Return one exact inline root selected for a marker-only repair."""
+    matches = [
+        (thread, thread.comments[0])
+        for thread in snapshot.threads
+        if thread.comments and thread.comments[0].id == root_id
+    ]
+    if len(matches) != 1:
+        raise DeliveryError("The format-only repair root is absent or ambiguous.")
+    return matches[0]
+
+
+def _format_only_inline_root_context(
+    snapshot: PullRequestSnapshot,
+    binding: ReviewBinding,
+    root_id: str,
+    body: str,
+    last_edited_at: str | None,
+    exchange_id: str,
+    finding_id: str,
+) -> tuple[ReviewThread, ReviewComment, ReviewRecord, dict[str, Any]]:
+    """Bind one format-only repair root to its immutable state carrier."""
+    thread, root = _format_only_inline_root(snapshot, root_id)
+    if (
+        root.body != body
+        or root.last_edited_at != last_edited_at
+        or len(thread.comments) != 1
+        or not root.viewer_did_author
+        or root.review_id is None
+        or root.review_head_oid is None
+        or root.path is None
+        or root.side not in {"LEFT", "RIGHT"}
+        or type(root.line) is not int
+        or type(root.original_line) is not int
+        or root.line < 1
+        or root.original_line < 1
+        or root.line != root.original_line
+        or not root.author
+        or not root.author_association
+        or not root.published_at
+        or root.full_database_id is None
+    ):
+        raise DeliveryError("The format-only repair root is not immutable evidence.")
+    _database_comment_id(root.full_database_id)
+    states, _authors, _originals = _review_carriers(snapshot, binding)
+    carrier_matches = [
+        (review, envelope)
+        for review, envelope in states.values()
+        if review.id == root.review_id
+    ]
+    if len(carrier_matches) != 1:
+        raise DeliveryError("The format-only repair root has no unique state carrier.")
+    review, envelope = carrier_matches[0]
+    if (
+        review.head_oid != root.review_head_oid
+        or review.author != root.author
+        or review.author_association != root.author_association
+        or not review.viewer_did_author
+        or review.includes_created_edit
+        or review.last_edited_at is not None
+        or review.state not in {"COMMENT", "COMMENTED"}
+        or not review.submitted_at
+    ):
+        raise DeliveryError("The format-only repair carrier is not immutable evidence.")
+    state = envelope["state"]
+    matches = [finding for finding in state["findings"] if finding["id"] == finding_id]
+    anchor = None if len(matches) != 1 else _finding_anchor(matches[0]["location"])
+    if (
+        state["exchange_id"] != exchange_id
+        or anchor is None
+        or root.path != anchor[0]
+        or root.original_line != anchor[1]
+    ):
+        raise DeliveryError("The format-only repair root does not match its finding.")
+    return thread, root, review, envelope
+
+
+def _format_only_recovery_document(
+    binding: ReviewBinding,
+    root: ReviewComment,
+    review: ReviewRecord,
+    envelope: Mapping[str, Any],
+    original_body: str,
+    canonical_body: str,
+    canonical_last_edited_at: str,
+    exchange_id: str,
+    finding_id: str,
+) -> dict[str, Any]:
+    """Create one receipt for an otherwise immutable marker-only repair."""
+    if (
+        root.full_database_id is None
+        or root.path is None
+        or root.side is None
+        or root.original_line is None
+        or root.published_at is None
+        or review.submitted_at is None
+    ):
+        raise DeliveryError("The format-only repair evidence is incomplete.")
+    return {
+        "schema_id": FORMAT_ONLY_INLINE_ROOT_RECOVERY_SCHEMA_ID,
+        "schema_version": 2,
+        "binding": _binding_dict(binding),
+        "state_sha256": envelope["state_sha256"],
+        "exchange_id": exchange_id,
+        "finding_id": finding_id,
+        "review_id": review.id,
+        "review_head_oid": review.head_oid,
+        "root_id": root.id,
+        "root_database_id": int(_database_comment_id(root.full_database_id)),
+        "path": root.path,
+        "side": root.side,
+        "original_line": root.original_line,
+        "author": root.author,
+        "author_association": root.author_association,
+        "review_submitted_at": review.submitted_at,
+        "original_published_at": root.published_at,
+        "original_last_edited_at": None,
+        "canonical_last_edited_at": canonical_last_edited_at,
+        "original_body": original_body,
+        "original_body_sha256": sha256(original_body.encode("utf-8")).hexdigest(),
+        "canonical_body": canonical_body,
+        "canonical_body_sha256": sha256(canonical_body.encode("utf-8")).hexdigest(),
+    }
+
+
+def repair_format_only_inline_root(
+    forge: Forge, binding: ReviewBinding, root_id: str
+) -> dict[str, Any]:
+    """Move one owned final finding marker to its own line and return a receipt."""
+    if not isinstance(root_id, str) or not root_id:
+        raise DeliveryError("The format-only repair root ID is invalid.")
+    initial = _snapshot(forge, binding)
+    _thread, root = _format_only_inline_root(initial, root_id)
+    canonical_body = _format_only_inline_root_canonical_body(root.body)
+    marker = _canonical_format_only_inline_root_body(root.body, canonical_body)
+    exchange_id, finding_id = marker
+    _thread, root, review, envelope = _format_only_inline_root_context(
+        initial,
+        binding,
+        root_id,
+        root.body,
+        None,
+        exchange_id,
+        finding_id,
     )
-    _validated_format_only_recovery_reference(reference, binding)
-    return reference
+    before = _format_only_recovery_document(
+        binding,
+        root,
+        review,
+        envelope,
+        root.body,
+        canonical_body,
+        "pending",
+        exchange_id,
+        finding_id,
+    )
+    _call_write(
+        "format-only inline-root repair", forge.edit_comment, root_id, canonical_body
+    )
+    final = _snapshot(forge, binding)
+    _thread, repaired_root = _format_only_inline_root(final, root_id)
+    repaired_marker = _finding_marker(repaired_root)
+    repaired_last_edited_at = repaired_root.last_edited_at
+    if repaired_marker != marker or not isinstance(repaired_last_edited_at, str):
+        raise DeliveryError("The format-only repair was not verified by readback.")
+    _thread, repaired_root, repaired_review, repaired_envelope = (
+        _format_only_inline_root_context(
+            final,
+            binding,
+            root_id,
+            canonical_body,
+            repaired_last_edited_at,
+            exchange_id,
+            finding_id,
+        )
+    )
+    receipt = _format_only_recovery_document(
+        binding,
+        repaired_root,
+        repaired_review,
+        repaired_envelope,
+        root.body,
+        canonical_body,
+        repaired_last_edited_at,
+        exchange_id,
+        finding_id,
+    )
+    expected = dict(before)
+    expected["canonical_last_edited_at"] = receipt["canonical_last_edited_at"]
+    if receipt != expected:
+        raise DeliveryError("The format-only repair changed before readback.")
+    _validated_dynamic_format_only_recovery_reference(receipt, binding)
+    return receipt
 
 
 def prepare_response_manifest(
@@ -4482,6 +4940,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     delivery_input.add_argument("--prepare-manifest", action="store_true")
     delivery_input.add_argument("--verify-legacy-go", type=Path)
     delivery_input.add_argument("--deliver-no-go", action="store_true")
+    delivery_input.add_argument("--repair-format-only-inline-root", metavar="ROOT_ID")
     parser.add_argument("--state-carrier-file", type=Path)
     parser.add_argument("--format-only-inline-root-recovery", type=Path)
     parser.add_argument("--anchor-source", type=Path)
@@ -4516,7 +4975,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             historical = tuple(document)
         if (args.anchor_source is not None or historical) and (
-            args.prepare_manifest or args.verify_legacy_go is not None
+            args.prepare_manifest
+            or args.verify_legacy_go is not None
+            or args.repair_format_only_inline_root is not None
         ):
             raise DeliveryError("Anchor source inputs require version-1 delivery.")
         if args.prepare_manifest:
@@ -4526,7 +4987,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             if args.format_only_inline_root_recovery is not None:
                 raise DeliveryError(
-                    "A format-only recovery reference is valid only for NO-GO delivery."
+                    "A format-only recovery reference is valid only for final delivery."
                 )
             print(
                 review_exchange.canonical_json(
@@ -4535,6 +4996,27 @@ def main(argv: Sequence[str] | None = None) -> int:
                         binding,
                         schema_version=args.schema_version,
                         requirement_issue_urls=args.requirement_issue,
+                    )
+                )
+            )
+            return 0
+        if args.repair_format_only_inline_root is not None:
+            if args.requirement_issue:
+                raise DeliveryError(
+                    "Requirement issue inputs are valid only during manifest preparation."
+                )
+            if args.state_carrier_file is not None:
+                raise DeliveryError(
+                    "A state-carrier file is valid only for NO-GO delivery."
+                )
+            if args.format_only_inline_root_recovery is not None:
+                raise DeliveryError(
+                    "A repair cannot use an earlier format-only recovery reference."
+                )
+            print(
+                review_exchange.canonical_json(
+                    repair_format_only_inline_root(
+                        forge, binding, args.repair_format_only_inline_root
                     )
                 )
             )
@@ -4593,20 +5075,31 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise DeliveryError(
                     "A state-carrier file is valid only for NO-GO delivery."
                 )
-            if args.format_only_inline_root_recovery is not None:
-                raise DeliveryError(
-                    "A format-only recovery reference is valid only for NO-GO delivery."
-                )
             if args.response_manifest is None:
                 raise DeliveryError("The response manifest path is missing.")
             manifest = load_response_manifest(args.response_manifest, binding)
+            recovery = (
+                None
+                if args.format_only_inline_root_recovery is None
+                else load_format_only_inline_root_recovery(
+                    args.format_only_inline_root_recovery, binding
+                )
+            )
             if args.anchor_source is not None:
                 manifest = replace(
                     manifest,
                     anchor_source=args.anchor_source,
                     historical_anchor_proofs=historical,
                 )
-            result = deliver_go_v1(forge, binding, manifest)
+            if recovery is None:
+                result = deliver_go_v1(forge, binding, manifest)
+            else:
+                result = deliver_go_v1(
+                    forge,
+                    binding,
+                    manifest,
+                    format_only_inline_root_recovery=recovery,
+                )
     except (DeliveryError, RuntimeError, TypeError, ValueError) as error:
         if isinstance(error, DeliveryError) and error.report is not None:
             print(

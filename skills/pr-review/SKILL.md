@@ -360,7 +360,7 @@ workflow in the same invocation.
     A continued assessment preserves the exact logical-state artifact revision
     and artifact digest. An initial assessment binds the exact current artifact. Use the
     visible-content digest for the new reviewer carrier. Render the complete state carrier. Add this
-    compact marker to each new anchorable inline finding:
+    compact marker on its own final top-level line in each new anchorable inline finding:
     `<!-- HomericIntelligence:review-finding:v1 exchange=<exchange-id> id=F-NNN -->`.
 23. For `--report-only`, return the prepared state, carrier, and logical review batch. Do not publish
     a review, respond to or resolve a thread, or change a label.

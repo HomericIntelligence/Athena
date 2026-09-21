@@ -84,7 +84,7 @@ before rendering the carrier. Keep a factual source location outside both origin
 the summary. Syntax alone does not establish inline eligibility.
 
 Put only one verified changed `path`, `side`, causal `line`, and finding body in each comment entry.
-Append this marker to each new inline finding:
+Put this marker on its own final top-level line in each new inline finding:
 
 ```text
 <!-- HomericIntelligence:review-finding:v1 exchange=<exchange-id> id=F-NNN -->
@@ -248,6 +248,23 @@ binding digests. Require `state:implementation-no-go` to be
 present and `state:implementation-go` to be absent.
 `already_delivered` is an idempotent success only for that exact label state on the unchanged head.
 A write or readback failure is partial. Do not claim delivery or make a blind retry.
+
+### Format-only inline-root repair
+
+Use `--repair-format-only-inline-root <root-id>` only when an Athena-owned inline root has one
+final finding marker on the same line as the finding text. The operation reads the retained target,
+checks the unedited root, its immutable state carrier, its source anchor, and its ownership. It then
+adds exactly one newline before that final marker and verifies the fetched result.
+
+The command prints one canonical JSON recovery receipt. Retain that receipt. Supply it through
+`--format-only-inline-root-recovery <file>` during later version-1 GO or NO-GO delivery. The helper
+accepts the receipt only when the binding, carrier, root, source anchor, body digests, marker,
+ownership, and edit timestamp match exactly. It accepts no other root edit.
+
+The repair requires a root with no replies. A later reply is valid only when the helper verifies the
+exact Athena closure response after the exact terminal carrier. A foreign, changed, repeated, or
+ambiguous comment blocks repair and delivery. If the write or readback is uncertain, stop. Do not
+run the repair again without the retained receipt and new evidence.
 
 ### One historical inline-root recovery
 
