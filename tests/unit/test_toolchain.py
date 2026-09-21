@@ -1,6 +1,7 @@
 """Repository-toolchain security contracts."""
 
 import re
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -10,8 +11,8 @@ import yaml
 class ToolchainPolicyTests(unittest.TestCase):
     """Verify the repository-tooling interpreter contract."""
 
-    def test_default_python_pin_is_a_remediated_supported_release(self) -> None:
-        """Require the pinned interpreter to stay in the fixed 3.13 line."""
+    def test_default_python_pin_is_the_fixed_supported_release(self) -> None:
+        """Require the pinned interpreter to be the supported fixed release."""
         root = Path(__file__).resolve().parents[2]
         parts = (
             (root / ".python-version").read_text(encoding="utf-8").strip().split(".")
@@ -19,8 +20,9 @@ class ToolchainPolicyTests(unittest.TestCase):
 
         self.assertEqual(3, len(parts))
         version = tuple(int(part) for part in parts)
-        self.assertGreaterEqual(version, (3, 13, 15))
-        self.assertLess(version, (3, 14, 0))
+        self.assertEqual((3, 14, 7), version)
+        project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+        self.assertEqual(">=3.14.7,<3.15", project["project"]["requires-python"])
 
     def test_container_stages_use_the_pinned_python_version(self) -> None:
         """Require every CI image stage to use the pinned Python version."""
