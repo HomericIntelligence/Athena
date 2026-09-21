@@ -23,6 +23,9 @@ dev = [
 package = false
 default-groups = ["dev"]
 
+[tool.coverage.run]
+core = "ctrace"
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 markers = [

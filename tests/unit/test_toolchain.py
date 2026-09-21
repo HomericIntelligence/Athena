@@ -53,6 +53,13 @@ class ToolchainPolicyTests(unittest.TestCase):
             )
         )
 
+    def test_coverage_uses_the_compatible_measurement_core(self) -> None:
+        """Require a stable branch-coverage core on the supported Python runtime."""
+        root = Path(__file__).resolve().parents[2]
+        project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+
+        self.assertEqual("ctrace", project["tool"]["coverage"]["run"]["core"])
+
     def test_workflow_jobs_use_python_capable_uv_before_sync(self) -> None:
         """Require host jobs to use uv that can install the repository Python pin."""
         root = Path(__file__).resolve().parents[2]
