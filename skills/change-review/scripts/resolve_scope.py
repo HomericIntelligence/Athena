@@ -491,7 +491,7 @@ def nofollow_parent_descriptor(
                 close_descriptor_quietly(child_descriptor)
                 raise
             descriptor = child_descriptor
-    except (OSError, RuntimeError):
+    except OSError, RuntimeError:
         if descriptor is not None:
             close_descriptor_quietly(descriptor)
         raise
@@ -505,7 +505,7 @@ def worktree_path_entry(repository_root: Path, relative_path: str) -> PathEntry:
         parent_descriptor, filename = nofollow_parent_descriptor(
             repository_root, relative_path
         )
-    except (FileNotFoundError, NotADirectoryError):
+    except FileNotFoundError, NotADirectoryError:
         return PathEntry(relative_path, "absent")
     try:
         try:

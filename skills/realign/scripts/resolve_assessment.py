@@ -175,7 +175,7 @@ def _run_bounded_process(
             try:
                 os.killpg(pid, signal.SIGKILL)
                 return
-            except (PermissionError, ProcessLookupError):
+            except PermissionError, ProcessLookupError:
                 pass
         if process.poll() is None:
             process.kill()
