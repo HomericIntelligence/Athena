@@ -1,6 +1,6 @@
 {
   "name": "athena",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "description": "Athena provides agent-host plugins and skills for Claude Code, Codex, opencode, and Pi.",
   "author": {
     "name": "HomericIntelligence",
