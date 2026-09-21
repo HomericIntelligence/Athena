@@ -10,8 +10,9 @@ allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 
 Purpose: Preserve one concise reusable rule. Do not preserve many copies that have the same intent.
 First, determine if the source contains an evidence-backed change that can help future work. Then
-put current guidance, history, and supporting notes in their specified artifacts. A direct
-`$athena:learn` invocation is a durable-learning request: after discovery, deliver an eligible
+put current guidance and supporting notes in their specified artifacts. Use Git for prior versions
+and provenance. A direct `$athena:learn` invocation is a durable-learning request: after discovery,
+deliver an eligible
 `create`, `amend`, or `consolidate` disposition through a pull request (PR) from an isolated
 worktree. Do not require a second write-confirmation message.
 
@@ -97,8 +98,9 @@ This phase is read-only.
 8. If neither selector can list the corpus, continue source classification without a duplicate
    decision. Before a durable write, repeat this step and require a bounded corpus list.
 9. Group only the selected main-skill paths by intent.
-10. Inspect each selected candidate, its `.history`, its applicable `.notes.md`, and available Git
-   history.
+10. Inspect each selected candidate, its applicable `.notes.md`, and available Git history.
+    Read legacy `.history` files only when they help establish provenance. Their absence or
+    incomplete snapshots do not block a lesson.
 11. Use this inspection to find provenance and prior consolidation.
 12. During read-only discovery, inspect open PRs when the remote capability is available. Report a
     failure as a limit. Before a durable write, enumerate the changed flat `skills/*.md` artifacts
@@ -162,12 +164,13 @@ the active mode.
 
 ## Keep retrieval bounded
 
-Store each lesson in three artifact types. Do not use the main skill as an append-only record.
+Store current guidance in the main skill and optional supporting notes. Use Git commits for prior
+versions and provenance. Do not use the main skill as an append-only record.
 
 | Artifact | Contains | Excludes |
 | --- | --- | --- |
 | `skills/<name>.md` | Current reusable triggers, decision rules, workflow, failures, parameters, and zero to three short examples. Each example must materially change a decision. | Prior versions, changelog text, session history, transcripts, and repeated project cases. |
-| `skills/<name>.history` | Privacy-safe superseded main-skill versions, eligible privacy-redaction records, and append-only records for version, change, and provenance. | Active instructions that exist only in this file. |
+| Git history | Prior versions, change summaries, and provenance from the reviewed commits. | New copies of sensitive source material. |
 | `skills/<name>.notes.md` | Source details that pass privacy checks, long examples, commands, measurements, verification reports, and useful supporting evidence. | Rules that the skill requires for operation. |
 
 For each amendment, rewrite the main entry around the smallest reusable change. Do not append the
@@ -177,30 +180,21 @@ shows. A repository name, issue narrative, transcript, or another instance of an
 is evidence. It is not a new main-skill example. A specific case that exposes a new decision branch
 is not a repeated instance. Preserve its reusable decision value in the rule or in one short example.
 
-Before you replace a main entry, inspect the complete prior retrievable content against the private
-and proprietary information rules. If `.history` contains the version, require either a complete
-privacy-safe snapshot or an eligible privacy-redaction record for that version. Do not append a
-duplicate record. If the existing record does not satisfy either requirement, select `blocked`.
+Before you replace a main entry, inspect its complete current content against the private and
+proprietary information rules. Bind the prior content to the delivery base commit. Inspect relevant
+Git commits to establish provenance and prior consolidation. If a shallow checkout lacks necessary
+history, fetch the relevant history or report the evidence limit. Do not invent provenance.
 
-If `.history` does not contain the version and the prior content passes the privacy rules, archive
-the complete content.
+Do not create, repair, or require companion `.history` files, snapshots, or privacy-redaction
+records. A legacy archive repair is not a prerequisite for a learning amendment.
+Keep existing legacy files unchanged unless their migration or removal is separately in scope.
+Record the change and its privacy-safe rationale in the commit and PR. Put useful supporting
+evidence in `.notes.md`. Do not copy sensitive prior content or publish retrieval pointers to it.
+The incident stop condition below still applies. Git provenance does not authorize a history
+rewrite, purge, or disclosure.
 
-If `.history` does not contain the version and the prior content already contained prohibited
-private or proprietary information at the bound source revision, do not copy it. If the incident
-stop condition does not apply and the reusable rule can be generalized safely, write a legacy
-privacy-redaction record instead. Record only the prior version, the archive status
-`privacy-redacted`, a generalized reason, a generalized change summary, and privacy-safe provenance.
-State that the exact snapshot was intentionally omitted. Do not reproduce or quote the prohibited
-content. Do not add a path, link, object identifier, or other retrieval pointer to it. This exception
-does not apply to prohibited content that the current operation introduced. Privacy takes precedence
-over exact archival only for this legacy case.
-
-After the archive action, add the new version and provenance record to `.history`. Put useful
-detailed evidence for the current rule in `.notes.md`. Do not move prohibited sensitive content to
-another artifact.
-
-Keep only the schema-required current version identifier in the main-file frontmatter. Put prior
-versions, change summaries, provenance, and other version-control information in `.history`. Obey
+Keep only the schema-required current version identifier in the main-file frontmatter. Use Git for
+prior versions, change summaries, provenance, and other version-control information. Obey
 the main-skill size limit of the resolved repository. For Mnemosyne, a new or changed retrievable main
 file must not be more than 30,000 bytes. Keep notes and history outside normal retrieval.
 
@@ -321,9 +315,9 @@ Do not use this fallback to reconstruct an Existing-PR worktree.
 
    | Disposition | Allowed paths |
    | --- | --- |
-   | `amend` | The canonical `.md`, its `.history`, and its `.notes.md` if supporting detail exists. |
-   | `create` | One new `.md`, its initial `.history`, and its `.notes.md` if supporting detail exists. |
-   | `consolidate` | The three canonical artifacts, each named duplicate for retirement, and each verified active consumer that must migrate. |
+   | `amend` | The canonical `.md` and its `.notes.md` if supporting detail exists. |
+   | `create` | One new `.md` and its `.notes.md` if supporting detail exists. |
+   | `consolidate` | The canonical main and optional notes, each named duplicate for retirement, and each verified active consumer that must migrate. |
 
 15. Name each companion and retirement in the list.
 16. Do not add write paths after an edit starts.
@@ -336,17 +330,13 @@ Do not use this fallback to reconstruct an Existing-PR worktree.
 19. For `create`, use the required section structure.
 20. For `create`, keep searchable intent, generalized use, workflow, applicable failed approaches,
     and parameters in the main entry.
-21. For `create`, make the initial version-and-provenance record in `.history`.
+21. For `create`, record the initial change and privacy-safe provenance in the commit and PR.
 22. For `create`, put useful supporting details in `.notes.md`.
 23. Apply the selected disposition only to paths in its allowlist.
-24. For `amend` or `consolidate`, inspect each superseded canonical version and its existing history
-    record before you rewrite the main entry. Use an existing valid record without duplication. If
-    an existing record is invalid, select `blocked`. If no record exists, archive the complete
-    content when it passes the privacy rules. Otherwise, write an eligible legacy privacy-redaction
-    record or stop under the incident rule.
-25. Except for a required privacy-safe historical snapshot, do not copy content between artifact
-    types. A privacy-redaction record must not copy or locate prohibited content.
-26. Give current rules, history records, and notes evidence one owner each.
+24. For `amend` or `consolidate`, inspect the prior content and relevant Git history before you
+    rewrite the main entry. Apply the privacy and incident rules. Do not require an archive repair.
+25. Do not duplicate content between artifact types or copy prohibited content into provenance.
+26. Give current rules, Git provenance, and notes evidence one owner each.
 27. During consolidation, migrate verified active consumers.
 28. After the consumer migration, retire each named duplicate.
 29. Before you commit, review each proposed artifact and delivery text against the private and
@@ -362,8 +352,7 @@ Do not use this fallback to reconstruct an Existing-PR worktree.
     - notes and history are not in normal retrieval;
     - there is no duplicate intent;
     - there is no version history in the main entry; and
-    - each required prior version has either a complete privacy-safe snapshot or an eligible
-      privacy-redaction record; and
+    - existing prior content is bound to a Git commit, and the change rationale is recorded; and
     - there is no stale consolidated name.
 
 35. Create a signed commit with a Developer Certificate of Origin (DCO) attestation.
@@ -377,7 +366,7 @@ Do not use this fallback to reconstruct an Existing-PR worktree.
     - disposition;
     - bound or new PR URL;
     - main-file byte size;
-    - archived version and archive result (`complete snapshot` or `privacy-redaction record`);
+    - delivery base and change commit identifiers, when safe to disclose;
     - companion files;
     - retired entries, if any; and
     - exact validation evidence.
@@ -406,6 +395,6 @@ discard changes. Do not force removal. Do not change a pre-existing worktree.
   checkout.
 - Do not bypass the private and proprietary information rules. Do not invent a public equivalent if
   safe generalization is not possible.
-- Do not put prior versions in the main entry. Store a complete privacy-safe snapshot or, only for
-  an eligible legacy version, a privacy-redaction record in `.history`.
+- Do not put prior versions in the main entry or recreate companion `.history` files. Use Git
+  provenance. Do not block a lesson only because a legacy snapshot is missing or incomplete.
 - If an open PR targets the selected canonical entry, do not create a competing PR.
