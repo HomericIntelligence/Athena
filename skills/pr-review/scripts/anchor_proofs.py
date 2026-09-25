@@ -117,7 +117,7 @@ def drain_diff_digest(stream: IO[bytes], capture: DiffDigestStream) -> None:
     finally:
         try:
             stream.close()
-        except (OSError, ValueError):
+        except OSError, ValueError:
             # The process cleanup can close this pipe first.
             pass
         capture.completed.set()

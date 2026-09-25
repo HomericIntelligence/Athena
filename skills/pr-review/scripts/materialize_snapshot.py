@@ -159,7 +159,7 @@ def _mount_tmpfs(source: Path, maximum_bytes: int) -> bool:
             text=True,
             check=False,
         )
-    except (OSError, RuntimeError, subprocess.SubprocessError):
+    except OSError, RuntimeError, subprocess.SubprocessError:
         return False
     return result.returncode == 0 and source.is_mount()
 
@@ -669,7 +669,7 @@ def materialize_snapshot(
             maximum_bytes=maximum_snapshot_bytes,
         )
         _make_read_only(root)
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError, subprocess.TimeoutExpired:
         remove_snapshot(root)
         raise RuntimeError(MATERIALIZE_ERROR) from None
     except BaseException:

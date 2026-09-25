@@ -686,7 +686,7 @@ def drain_changed_path_stream(stream: IO[bytes], capture: ChangedPathStream) -> 
     finally:
         try:
             stream.close()
-        except (OSError, ValueError):
+        except OSError, ValueError:
             # A different cleanup path can close this pipe first. Ignore the error.
             pass
         capture.completed.set()
@@ -703,7 +703,7 @@ def reap_provider(
     for stream in streams:
         try:
             stream.close()
-        except (OSError, ValueError):
+        except OSError, ValueError:
             # A reader can close this pipe first. Ignore the error.
             pass
     process.wait()
