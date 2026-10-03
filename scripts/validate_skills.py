@@ -15,6 +15,8 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts.policies.agent_contract import validate_agent_contract
+from scripts.policies.repo_review import evaluate_scorecard
+from scripts.policies.ruleset import evaluate_ruleset
 from scripts.semver import SEMVER_PATTERN
 from skills._cli import argument_parser
 
@@ -31,21 +33,6 @@ ECOSYSTEM_REPOSITORY = re.compile(
 )
 ALLOWED_ECOSYSTEM_REPOSITORY_KEYS = {
     repository.casefold() for repository in ALLOWED_ECOSYSTEM_REPOSITORIES
-}
-REPO_REVIEW_SECTION = re.compile(
-    r"^(?P<number>[1-9][0-9]*)\. \*\*(?P<name>[^*:]+):", re.MULTILINE
-)
-REPO_REVIEW_WEIGHT = re.compile(
-    r"(?P<name>[A-Za-z][A-Za-z/ ]*?) (?P<weight>[1-9][0-9]?)%"
-)
-APPROVED_MERGE_QUEUE_PARAMETERS: dict[str, object] = {
-    "check_response_timeout_minutes": 60,
-    "grouping_strategy": "ALLGREEN",
-    "max_entries_to_build": 10,
-    "max_entries_to_merge": 5,
-    "merge_method": "SQUASH",
-    "min_entries_to_merge": 1,
-    "min_entries_to_merge_wait_minutes": 5,
 }
 PI_PACKAGE_NAME = "@homericintelligence/athena"
 PI_SKILL_ROOT = ["./skills"]
@@ -543,58 +530,10 @@ def _validate_repo_review_scorecard(
                 f"The operation returned this diagnostic.\n{error}",
             )
         ]
-    sections = [match.group("name") for match in REPO_REVIEW_SECTION.finditer(criteria)]
-    expected_numbers = list(range(1, 16))
-    numbers = [
-        int(match.group("number")) for match in REPO_REVIEW_SECTION.finditer(criteria)
+    return [
+        ValidationError("repo-review", message)
+        for message in evaluate_scorecard(criteria, skill)
     ]
-    if numbers != expected_numbers or len(set(sections)) != len(sections):
-        return [
-            ValidationError(
-                "repo-review",
-                "The criteria must define each of the 15 uniquely numbered sections.",
-            )
-        ]
-    weight_line = re.search(r"^Weights: (?P<weights>.+)$", skill, re.MULTILINE)
-    if weight_line is None:
-        return [ValidationError("repo-review", "The scorecard weights are missing.")]
-    weights = [
-        (match.group("name"), int(match.group("weight")))
-        for match in REPO_REVIEW_WEIGHT.finditer(weight_line.group("weights"))
-    ]
-    errors: list[ValidationError] = []
-    if len(weights) != 15 or len({name for name, _ in weights}) != len(weights):
-        errors.append(
-            ValidationError(
-                "repo-review",
-                "The scorecard must assign one weight to each of 15 sections.",
-            )
-        )
-    for name, _ in weights:
-        if name not in sections:
-            errors.append(
-                ValidationError(
-                    "repo-review",
-                    f"The weight has no matching criteria section: '{name}'.",
-                )
-            )
-    missing_sections = sorted(set(sections).difference(name for name, _ in weights))
-    if missing_sections:
-        errors.append(
-            ValidationError(
-                "repo-review",
-                "The scorecard does not assign a weight to these criteria sections: "
-                + ", ".join(f"'{name}'" for name in missing_sections)
-                + ".",
-            )
-        )
-    if sum(weight for _, weight in weights) != 100:
-        errors.append(
-            ValidationError(
-                "repo-review", "The scorecard weights must total 100 percent."
-            )
-        )
-    return errors
 
 
 def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
@@ -603,81 +542,7 @@ def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationErro
     document, errors = _read_json(path, "ruleset", repo_root)
     if document is None:
         return errors
-    rules = document.get("rules")
-    if not isinstance(rules, list):
-        return [
-            *errors,
-            ValidationError("ruleset", "The ruleset must contain a rules list."),
-        ]
-    status_check_rules = [
-        rule
-        for rule in rules
-        if isinstance(rule, dict) and rule.get("type") == "required_status_checks"
-    ]
-    if len(status_check_rules) != 1:
-        return [
-            *errors,
-            ValidationError(
-                "ruleset", "The ruleset must contain exactly one status-check policy."
-            ),
-        ]
-    status_checks = status_check_rules[0]
-    if not isinstance(status_checks.get("parameters"), dict):
-        return [
-            *errors,
-            ValidationError("ruleset", "The required status-check policy is invalid."),
-        ]
-    parameters = status_checks["parameters"]
-    if parameters.get("strict_required_status_checks_policy") is not False:
-        errors.append(
-            ValidationError(
-                "ruleset",
-                "The ruleset must not require up-to-date branches. The merge queue "
-                "manages freshness.",
-            )
-        )
-    checks = parameters.get("required_status_checks")
-    if checks != [{"context": "required-checks-gate", "integration_id": 15368}]:
-        errors.append(
-            ValidationError(
-                "ruleset",
-                "The ruleset must require only 'required-checks-gate' from the "
-                "GitHub Actions integration.",
-            )
-        )
-    pull_request = next(
-        (
-            rule
-            for rule in rules
-            if isinstance(rule, dict) and rule.get("type") == "pull_request"
-        ),
-        None,
-    )
-    if not isinstance(pull_request, dict) or not isinstance(
-        pull_request.get("parameters"), dict
-    ):
-        errors.append(ValidationError("ruleset", "The pull-request policy is missing."))
-    elif pull_request["parameters"].get("allowed_merge_methods") != ["squash"]:
-        errors.append(
-            ValidationError("ruleset", "Pull requests must merge by squash only.")
-        )
-    merge_queues = [
-        rule
-        for rule in rules
-        if isinstance(rule, dict) and rule.get("type") == "merge_queue"
-    ]
-    if not merge_queues:
-        errors.append(ValidationError("ruleset", "The merge queue policy is missing."))
-    elif (
-        len(merge_queues) != 1
-        or merge_queues[0].get("parameters") != APPROVED_MERGE_QUEUE_PARAMETERS
-    ):
-        errors.append(
-            ValidationError(
-                "ruleset", "The merge queue policy does not match issue #28."
-            )
-        )
-    return errors
+    return [ValidationError("ruleset", message) for message in evaluate_ruleset(document)]
 
 
 def validate_repository(repo_root: Path) -> list[ValidationError]:

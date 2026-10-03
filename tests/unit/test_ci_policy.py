@@ -9,8 +9,13 @@ import unittest
 from hashlib import sha256
 from pathlib import Path
 from unittest.mock import patch
+import shutil
 
 from scripts import ci_policy
+from scripts.policies.repo_review import evaluate_scorecard
+from scripts.policies.ruleset import evaluate_ruleset
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def write_checksum(artifact: Path) -> None:
@@ -267,6 +272,194 @@ class PullRequestPolicyTests(unittest.TestCase):
                 body="", author="dependabot[bot]", commits=[commit]
             ),
         )
+
+
+class RepoReviewPolicyTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.fixture = Path(self.temporary_directory.name) / "Athena"
+        shutil.copytree(
+            ROOT,
+            self.fixture,
+            ignore=shutil.ignore_patterns(
+                ".git",
+                ".venv",
+                "dist",
+                "build",
+                "__pycache__",
+                "*.pyc",
+                ".coverage*",
+            ),
+        )
+
+    def test_evaluate_scorecard_rejects_section_and_weight_shape_errors(self) -> None:
+        criteria = (self.fixture / "docs" / "review" / "repository-scorecard.md").read_text(
+            encoding="utf-8"
+        )
+        skill = (self.fixture / "skills" / "repo-review" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+
+        cases = (
+            (
+                "non-contiguous section numbers",
+                criteria.replace("2. **Documentation:**", "16. **Documentation:**", 1),
+                skill,
+                ["The criteria must define each of the 15 uniquely numbered sections."],
+            ),
+            (
+                "duplicate section numbers",
+                criteria.replace("2. **Documentation:**", "1. **Documentation:**", 1),
+                skill,
+                ["The criteria must define each of the 15 uniquely numbered sections."],
+            ),
+            (
+                "missing weights line",
+                criteria,
+                skill.replace("Weights: ", "Weight: ", 1),
+                ["The scorecard weights are missing."],
+            ),
+            (
+                "wrong weight count and missing section weight",
+                criteria,
+                skill.replace("Structure 2%", "Structure 2 percent", 1),
+                [
+                    "The scorecard must assign one weight to each of 15 sections.",
+                    "The scorecard does not assign a weight to these criteria sections: 'Structure'.",
+                    "The scorecard weights must total 100 percent.",
+                ],
+            ),
+            (
+                "unknown weight name",
+                criteria,
+                skill.replace("Structure 2%", "Unknown 2%", 1),
+                [
+                    "The weight has no matching criteria section: 'Unknown'.",
+                    "The scorecard does not assign a weight to these criteria sections: 'Structure'.",
+                ],
+            ),
+            (
+                "weights do not sum to 100",
+                criteria,
+                skill.replace("Governance 1%", "Governance 2%", 1),
+                ["The scorecard weights must total 100 percent."],
+            ),
+        )
+
+        for case, criteria_text, skill_text, expected in cases:
+            with self.subTest(case=case):
+                self.assertEqual(expected, evaluate_scorecard(criteria_text, skill_text))
+
+
+class RulesetPolicyTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.fixture = Path(self.temporary_directory.name) / "Athena"
+        shutil.copytree(
+            ROOT,
+            self.fixture,
+            ignore=shutil.ignore_patterns(
+                ".git",
+                ".venv",
+                "dist",
+                "build",
+                "__pycache__",
+                "*.pyc",
+                ".coverage*",
+            ),
+        )
+
+    def _document(self) -> dict[str, object]:
+        path = self.fixture / ".github" / "rulesets" / "homeric-main-baseline.json"
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def test_evaluate_ruleset_rejects_invalid_shapes(self) -> None:
+        cases = (
+            (
+                "non-object document",
+                [],
+                ["The ruleset must be a JSON object."],
+            ),
+            (
+                "rules must be a list",
+                {"rules": {}},
+                ["The ruleset must contain a rules list."],
+            ),
+            (
+                "missing required status checks policy",
+                {"rules": []},
+                ["The ruleset must contain exactly one status-check policy."],
+            ),
+            (
+                "missing parameters",
+                {
+                    "rules": [
+                        {"type": "required_status_checks"},
+                    ]
+                },
+                ["The required status-check policy is invalid."],
+            ),
+        )
+        for case, document, expected in cases:
+            with self.subTest(case=case):
+                self.assertEqual(expected, evaluate_ruleset(document))
+
+    def test_evaluate_ruleset_rejects_policy_mismatches(self) -> None:
+        document = self._document()
+
+        status_checks = next(
+            rule for rule in document["rules"] if rule["type"] == "required_status_checks"
+        )
+        status_checks["parameters"]["strict_required_status_checks_policy"] = True
+        self.assertEqual(
+            [
+                "The ruleset must not require up-to-date branches. The merge queue manages freshness.",
+            ],
+            evaluate_ruleset(document),
+        )
+
+        document = self._document()
+        status_checks = next(
+            rule for rule in document["rules"] if rule["type"] == "required_status_checks"
+        )
+        status_checks["parameters"]["required_status_checks"] = []
+        self.assertEqual(
+            [
+                "The ruleset must require only 'required-checks-gate' from the GitHub Actions integration.",
+            ],
+            evaluate_ruleset(document),
+        )
+
+        document = self._document()
+        pull_request = next(
+            rule for rule in document["rules"] if rule["type"] == "pull_request"
+        )
+        pull_request["parameters"]["allowed_merge_methods"] = ["merge", "squash"]
+        self.assertEqual(
+            ["Pull requests must merge by squash only."],
+            evaluate_ruleset(document),
+        )
+
+        document = self._document()
+        merge_queue = next(
+            rule for rule in document["rules"] if rule["type"] == "merge_queue"
+        )
+        merge_queue["parameters"]["merge_method"] = "MERGE"
+        self.assertEqual(
+            ["The merge queue merge method must be SQUASH."],
+            evaluate_ruleset(document),
+        )
+
+    def test_evaluate_ruleset_treats_merge_queue_tuning_as_valid(self) -> None:
+        document = self._document()
+        merge_queue = next(
+            rule for rule in document["rules"] if rule["type"] == "merge_queue"
+        )
+        merge_queue["parameters"]["max_entries_to_build"] = 7
+
+        self.assertEqual([], evaluate_ruleset(document))
 
 
 class RequiredJobsTests(unittest.TestCase):

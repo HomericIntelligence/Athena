@@ -620,7 +620,20 @@ class DistributionTests(unittest.TestCase):
         merge_queue["parameters"]["merge_method"] = "MERGE"
         path.write_text(json.dumps(document), encoding="utf-8")
 
-        self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
+        self.assert_validation_errors(
+            validator._validate_ruleset_policy,
+            "ruleset",
+            literal="The merge queue merge method must be SQUASH.",
+        )
+
+        document = json.loads(original)
+        merge_queue = next(
+            rule for rule in document["rules"] if rule.get("type") == "merge_queue"
+        )
+        merge_queue["parameters"]["max_entries_to_build"] = 7
+        path.write_text(json.dumps(document), encoding="utf-8")
+
+        self.assertEqual(validator._validate_ruleset_policy(self.fixture), [])
 
     def test_obsolete_distribution_path_fails(self) -> None:
         (self.fixture / "athena").mkdir()
