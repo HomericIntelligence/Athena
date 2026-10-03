@@ -56,6 +56,47 @@ Report forge approval and required-gate state as a separate **Merge readiness** 
 caller requests it. GO is a review verdict. It is not an approval, merge
 authorization, or claim that each branch-protection rule passed.
 
+### Reviewer independence
+
+Independence is a property of the review context, not of the authenticated account. A review is
+independent when it runs in an agent session with a fresh context window that neither authored nor
+author-responded to the reviewed artifact. The account that authenticated the session is irrelevant,
+so a single account may produce several independent reviews.
+
+A session that already reviewed an artifact is not independent for a later round on that same
+artifact. A further round must run in a fresh context; do not reuse the earlier context, because it
+carries the previous round's findings and cannot surface a correction it has already settled.
+
+A delivered GO requires an independent reviewer. The author of a change does not satisfy this for
+their own artifact, even when the reviewing session is the same account that pushed it.
+
+### Coordinated multi-review batches
+
+A coordinator may dispatch N independent reviews, one per artifact or one per review dimension. Each
+review runs in its own fresh context and produces a separately bindable result. Independence is
+established per review by [reviewer independence](#reviewer-independence), not by the number of
+accounts involved.
+
+Exactly one delivery owner acts per artifact. The coordinator owns every forge effect: carrier
+publication, inline comments, label changes, thread resolution, and auto-merge. A delegated review is
+report-only and never writes. Do not start a second write path from a delegated review, and do not let
+two owners act on the same artifact.
+
+A batch does not produce a verdict that none of its members reached. Withhold the GO when:
+
+- any member reports an active `required` finding, or a finding of critical or major severity;
+- any member withholds GO or returns a non-terminal result;
+- the members disagree, and the disagreement is unresolved;
+- a member's result is unbound, stale, or drifted from the reviewed head; or
+- the set is partial, because a member did not run, was skipped, or returned incomplete coverage.
+
+Do not synthesise GO by taking the most favourable member, averaging the grades, or treating a
+missing member as consent. Report the split, name the disagreeing members, and withhold.
+
+After a coordinated batch, the coordinator applies the normal delivery postconditions for the single
+owner: the current-head terminal carrier, zero open threads, the exclusive label, and every required
+repository-policy gate. The other delivery boundaries are unchanged by batching.
+
 `--report-only` can report that evidence is GO-eligible. It must record
 `delivery: withheld (read-only)` and `auto_merge: withheld (read-only)`. Without
 `--enable-auto-merge-on-go`, a delivered GO records `auto_merge: withheld (not requested)`. For
