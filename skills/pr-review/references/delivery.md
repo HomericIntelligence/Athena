@@ -221,8 +221,9 @@ array. For GitLab, use one immutable author-event note in
 Thread prose can give context, but it is not the author answer and cannot replace the carrier.
 
 A normal response starts from `phase=awaiting_author`. A pull-request head refresh can also start
-from `phase=awaiting_reviewer`, `phase=awaiting_evidence`, or a pre-round-5 complete
-`GO`, but the revision must change. Each changed-head response covers every active
+from `phase=awaiting_reviewer`, `phase=awaiting_evidence`, a pre-round-5 complete
+`GO`, or `phase=decision_required` with an explicit replacement-blocker record and no
+intervening authoritative event; but the revision must change. Each changed-head response covers every active
 required finding. It also covers each required finding in `resolved`, `withdrawn`, or
 `accepted_risk` state. It uses the same identifiers, replaces the prior answers, and clears the
 prior reviewer replies. It also clears a prior accepted-risk authority receipt. A new risk request

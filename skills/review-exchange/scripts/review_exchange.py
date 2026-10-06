@@ -2143,6 +2143,8 @@ def _decision_required_author_refresh(
     ):
         return False
     for accepted in reversed(previous["accepted_events"]):
+        if accepted["event_type"] == "human_decision":
+            return False
         if accepted["event_type"] in {"reviewer_assessment", "reframe"}:
             return bool(accepted["stop_reason"] == "replacement_blocker")
     return False

@@ -445,8 +445,10 @@ For a pull request, the author can publish a new response when the head changes 
 reviewer assessment. This refresh is valid in these states:
 
 - `awaiting_reviewer`;
-- `awaiting_evidence`; or
-- `complete` with `verdict=GO` when no active required finding or source-coverage gap remains.
+- `awaiting_evidence`;
+- `complete` with `verdict=GO` when no active required finding or source-coverage gap remains; or
+- `decision_required`, only when no authoritative event follows the qualifying replacement-blocker
+  assessment and the round stays below the limit.
 
 The refresh must bind a new head revision. A different artifact digest at the same head is not
 sufficient. On both review surfaces, each author response that changes the artifact revision or
