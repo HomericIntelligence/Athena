@@ -56,6 +56,12 @@ Report forge approval and required-gate state as a separate **Merge readiness** 
 caller requests it. GO is a review verdict. It is not an approval, merge
 authorization, or claim that each branch-protection rule passed.
 
+`--report-only` can report that evidence is GO-eligible. It must record
+`delivery: withheld (read-only)` and `auto_merge: withheld (read-only)`. Without
+`--enable-auto-merge-on-go`, a delivered GO records `auto_merge: withheld (not requested)`. For
+NO-GO, prevalidated, and GitLab, record `auto_merge: not-eligible` with the
+blocker.
+
 ### Reviewer independence
 
 Independence is a property of the review context, not of the authenticated account. A review is
@@ -73,7 +79,9 @@ their own artifact, even when the reviewing session is the same account that pus
 ### Coordinated multi-review batches
 
 A coordinator may dispatch N independent reviews, one per artifact or one per review dimension. Each
-review runs in its own fresh context and produces a separately bindable result. Independence is
+review runs in its own fresh context and returns one report-only evidence record. The coordinator
+reduces the member records into a single bound exchange round for the artifact: one exchange, one
+requirements binding, one reviewer-round carrier, and one shared findings ledger. Independence is
 established per review by [reviewer independence](#reviewer-independence), not by the number of
 accounts involved.
 
@@ -90,18 +98,12 @@ A batch does not produce a verdict that none of its members reached. Withhold th
 - a member's result is unbound, stale, or drifted from the reviewed head; or
 - the set is partial, because a member did not run, was skipped, or returned incomplete coverage.
 
-Do not synthesise GO by taking the most favourable member, averaging the grades, or treating a
+Do not synthesize GO by taking the most favorable member, averaging the grades, or treating a
 missing member as consent. Report the split, name the disagreeing members, and withhold.
 
 After a coordinated batch, the coordinator applies the normal delivery postconditions for the single
 owner: the current-head terminal carrier, zero open threads, the exclusive label, and every required
 repository-policy gate. The other delivery boundaries are unchanged by batching.
-
-`--report-only` can report that evidence is GO-eligible. It must record
-`delivery: withheld (read-only)` and `auto_merge: withheld (read-only)`. Without
-`--enable-auto-merge-on-go`, a delivered GO records `auto_merge: withheld (not requested)`. For
-NO-GO, prevalidated, and GitLab, record `auto_merge: not-eligible` with the
-blocker.
 
 ## Reviewer-round carrier
 
