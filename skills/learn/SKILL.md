@@ -152,10 +152,14 @@ Use `blocked` only for the affected action when a material conflict or missing a
 after recovery. Prepare safe work independently of that action. Do not create a near-duplicate to
 avoid consolidation.
 
-If one open PR changes the canonical entry, prefer that PR when its source is writable. If several
-PRs overlap, examine their changes and arrange them into a dependency-ordered stack. Preserve each
-change. Record each base and dependent PR; do not overwrite a foreign branch. When a source is not
-writable, prepare the dependent change on an owned branch and document its integration path.
+Select `blocked` if one of these conditions applies:
+
+- provenance required for a write remains uncertain after delivery checks;
+- more than one open PR targets the selected canonical entry;
+- the selected PR is not safe to write; or
+- the selected canonical artifact set, or any prior version bound to the delivery base commit, contains a secret, credential, regulated record, or material
+  that is subject to an erasure request; or
+- retirement is unsafe.
 
 Protected material does not block preparation of a safe generalized lesson. Withhold only actions
 that would copy, expose, or require unauthorized alteration of that material.
@@ -181,9 +185,12 @@ blocker. If a lesson grows, improve its structure without splitting one retrieva
 pass a byte count.
 
 Before you replace a main entry, inspect its complete current content against the private and
-proprietary information rules. Bind the prior content to the delivery base commit. Inspect relevant
+proprietary information rules, and also screen the complete prior content you retrieve from Git
+history for the same rules. Bind the prior content to the delivery base commit. Inspect relevant
 Git commits to establish provenance and prior consolidation. If a shallow checkout lacks necessary
-history, fetch the relevant history or report the evidence limit. Do not invent provenance.
+history, use the bounded, trusted knowledge-checkout helper as a read-only check and report the
+evidence limit when it reports one. Do not run an unqualified `git fetch` from the writable
+checkout. Do not invent provenance.
 
 Do not create, repair, or require companion `.history` files, snapshots, or privacy-redaction
 records. A legacy archive repair is not a prerequisite for a learning amendment.
@@ -212,10 +219,11 @@ in a main skill, notes, history, filename, frontmatter, example, commit, or PR d
 - proprietary source, configuration, prompts, logs, data, metrics, or operational details; or
 - secrets, credentials, tokens, or other access material.
 
-If the selected artifact set contains protected material, do not copy it into guidance, notes,
-provenance, commits, or delivery text. Continue safe generalized lesson preparation. Report only a
-safe summary and route remediation to an authorized process. `learn` does not authorize a Git-history
-rewrite or purge.
+If the selected canonical artifact set, or any prior version bound to the delivery base commit,
+contains a secret, credential, regulated record, or material that is subject to an erasure request,
+select `blocked` before a durable write. Do not copy it into guidance, notes, provenance, commits, or
+delivery text. Report only a safe summary and route the material to an authorized
+incident-remediation process. `learn` does not authorize a Git-history rewrite or purge.
 
 Replace sensitive details with a correct general pattern. For example, use "an isolated checkout"
 instead of a local path. If public information gives an equivalent example, cite or describe it. Do
@@ -318,7 +326,7 @@ Do not use this fallback to reconstruct an Existing-PR worktree.
    | --- | --- |
    | `amend` | The canonical `.md` and its `.notes.md` if supporting detail exists. |
    | `create` | One new `.md` and its `.notes.md` if supporting detail exists. |
-   | `consolidate` | The canonical main and optional notes, each named duplicate for retirement, and each verified active consumer that must migrate. |
+   | `consolidate` | The canonical `.md`, its `.notes.md`, each named duplicate `.md` and `.notes.md` for retirement, and each verified active consumer that must migrate. |
 
 15. Name each companion and retirement in the list.
 16. Update the path allowlist when a necessary in-scope dependency is found. Record the reason.
