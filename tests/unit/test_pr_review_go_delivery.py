@@ -9529,5 +9529,175 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                 self.assertEqual(before, path.read_bytes())
 
 
+class AuthorTransitionDuplicateStateTests(unittest.TestCase):
+    """A duplicate persisted state carrier must not block one author event."""
+
+    delivery: ModuleType
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.delivery = load_module()
+
+    def setUp(self) -> None:
+        self.sequence = 0
+        self.exchange = self.delivery.review_exchange
+
+    def carrier_record(
+        self, identifier: str, envelope: dict[str, Any], visible: str
+    ) -> Any:
+        kind = (
+            "state"
+            if envelope["schema_id"] == self.exchange.STATE_SCHEMA_ID
+            else "author-event"
+        )
+        self.sequence += 1
+        return self.delivery.ReviewRecord(
+            id=identifier,
+            body=self.exchange.render_carrier(visible, envelope, kind),
+            head_oid=envelope["state"]["artifact_binding"]["revision"],
+            author="reviewer",
+            viewer_did_author=True,
+            includes_created_edit=False,
+            state="COMMENTED",
+            author_association="NONE",
+            submitted_at=f"2026-01-01T00:00:{self.sequence:02d}Z",
+        )
+
+    def states_and_author(
+        self,
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+        initial = self.exchange.reduce_request(
+            {
+                "previous": None,
+                "event": {
+                    "event_type": "reviewer_assessment",
+                    "exchange_id": "exchange-7",
+                    "prior_state_sha256": None,
+                    "round": 1,
+                    "surface": "pull_request",
+                    "target": {
+                        "provider": "github",
+                        "repository": "owner/repository",
+                        "number": 7,
+                        "url": "https://github.com/owner/repository/pull/7",
+                    },
+                    "requirements_sha256": "c" * 64,
+                    "supersedes_state_sha256": None,
+                    "artifact_binding": {
+                        "revision": "b" * 40,
+                        "sha256": "a" * 64,
+                        "visible_content_sha256": self.exchange.sha256_text("Round 1."),
+                    },
+                    "scope": ["path:src/example.py"],
+                    "coverage_complete": True,
+                    "responses": [],
+                    "new_findings": [
+                        {
+                            "id": "F-001",
+                            "category": None,
+                            "severity": "major",
+                            "disposition": "required",
+                            "material_architecture": False,
+                            "location": "src/example.py:7",
+                            "impact": "The result can be incorrect.",
+                            "evidence": ["The failing case returns 0."],
+                            "closure_condition": "The failing case returns 1.",
+                            "introduction": "initial",
+                        }
+                    ],
+                    "stop_reason": None,
+                },
+            }
+        )["envelope"]
+        author_result = self.exchange.reduce_request(
+            {
+                "previous": initial,
+                "event": {
+                    "event_type": "author_response",
+                    "exchange_id": "exchange-7",
+                    "prior_state_sha256": initial["state_sha256"],
+                    "artifact_binding": {
+                        "revision": "d" * 40,
+                        "sha256": "a" * 64,
+                        "visible_content_sha256": self.exchange.sha256_text("Answer."),
+                    },
+                    "scope": ["path:src/example.py"],
+                    "scope_change_reason": None,
+                    "responses": [
+                        {
+                            "finding_id": "F-001",
+                            "kind": "fix",
+                            "evidence": ["The author supplied the correction."],
+                            "tradeoff": None,
+                        }
+                    ],
+                },
+            }
+        )
+        return initial, author_result["envelope"], author_result["author_event"]
+
+    def test_identical_persisted_state_carrier_is_adopted(self) -> None:
+        """One author event and one identical state carrier must both apply."""
+        initial, _author_state, author_event = self.states_and_author()
+        derived = self.exchange.reduce_request(
+            {
+                "previous": initial,
+                "event": self.delivery._author_event_input(author_event),
+            }
+        )["envelope"]
+        states = {
+            initial["state_sha256"]: (
+                self.carrier_record("review-1", initial, "Round 1."),
+                initial,
+            ),
+            derived["state_sha256"]: (
+                self.carrier_record("review-2", derived, "Answer."),
+                derived,
+            ),
+        }
+        authors = (
+            (self.carrier_record("review-3", author_event, "Answer."), author_event),
+        )
+        transitions, envelopes = self.delivery._derive_author_transitions(
+            states, authors
+        )
+        self.assertIn(derived["state_sha256"], transitions)
+        self.assertEqual(
+            envelopes[derived["state_sha256"]]["state_sha256"],
+            derived["state_sha256"],
+        )
+
+    def test_differing_persisted_state_carrier_is_rejected(self) -> None:
+        """A state carrier with other content must stop delivery."""
+        initial, _author_state, author_event = self.states_and_author()
+        derived = self.exchange.reduce_request(
+            {
+                "previous": initial,
+                "event": self.delivery._author_event_input(author_event),
+            }
+        )["envelope"]
+        conflicting = json.loads(json.dumps(derived))
+        conflicting["state"]["scope"] = ["path:src/other.py"]
+        states = {
+            initial["state_sha256"]: (
+                self.carrier_record("review-1", initial, "Round 1."),
+                initial,
+            ),
+            derived["state_sha256"]: (
+                self.carrier_record("review-2", derived, "Answer."),
+                conflicting,
+            ),
+        }
+        authors = (
+            (self.carrier_record("review-3", author_event, "Answer."), author_event),
+        )
+        with self.assertRaises(self.delivery.DeliveryError) as error:
+            self.delivery._derive_author_transitions(states, authors)
+        self.assertIn(
+            "produce different states for the same result digest",
+            str(error.exception),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
