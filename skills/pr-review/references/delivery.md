@@ -517,17 +517,21 @@ supersede an old finding, transfer a risk acceptance, or authorize a historical 
 Preserve all original-root, ownership, chronology, current-head, and delivery checks. Do not use it
 to abandon a pending or conditional exchange.
 
-A GO label retained from this verified completed history is not current-head proof.
-After full current-artifact validation, continue with publication of the new terminal
+A GO label from this verified completed history is proof on its own. It does not depend on the
+current head. After full current-artifact validation, continue with publication of the new terminal
 carrier and normal readback before final label verification. Keep a GO label without
-a matching current-head terminal record or verified completed history as a delivery
+a matching current-head terminal record and without verified completed history as a delivery
 failure. Do not remove the retained label as a preparatory workaround.
 
-Treat the exact same-head terminal record, zero open threads, and exclusive GO label as
-`already_delivered`. A label without the matching current-head terminal ledger is not proof. If the
+Treat the exclusive GO label, zero open threads, and verified completed history as
+`already_delivered`. The label does not lapse when a later commit changes the head. If the
 terminal carrier exists after an interrupted run, validate the same manifest and resume only the
 remaining generated responses, resolutions, or label operation. Do not publish the terminal carrier
 again.
+
+A delivered GO label is independent of the forge status. A rebase, a merge of the base branch, or a
+later bug fix does not remove it. Re-review is the author's judgement. The label lapses only when a
+reviewer delivers `state:implementation-no-go` or when the target carries no state label.
 
 If a read or mutation fails, reconcile the exact target before another dependent mutation.
 Do not retry blindly, unresolve a thread, or make a compensating label change. Report the known

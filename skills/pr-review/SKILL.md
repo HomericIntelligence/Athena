@@ -408,8 +408,8 @@ workflow in the same invocation.
     only authorized threads, and makes `state:implementation-go` exclusive. It revalidates the
     retained scope and requirements before each write and after final readback. Preserve resolved
     history. An unrelated, foreign, or ambiguous open thread withholds GO.
-27. Treat `already_delivered` as success only for the exact same-head terminal record, zero open
-    threads, and the exclusive GO label.
+27. Treat `already_delivered` as success for the exclusive GO label, zero open threads, and
+    verified completed history. A later head change does not remove a delivered GO label.
 28. Emit terminal GO only after the helper, or the declared single delivery owner, verifies the
     unchanged head, terminal ledger, zero open threads, and exclusive GO label.
 29. Deliver the result only through the channel for the selected scope.
@@ -475,9 +475,10 @@ For the prevalidated profile, use only its structured-audit override.
   derives the current logical state.
 - Do not reuse or replace a finding ID for an earlier cause.
 - Do not use schema 0 as a fallback for a version-1 exchange.
-- Do not treat a GO label without a matching current-head terminal ledger as proof.
+- Do not treat a delivered GO label as lapsed because a later commit changed the head.
 - Do not resolve a foreign thread or a thread without a terminal-ledger disposition.
-- After exact same-head `already_delivered`, do not make another assessment for that exchange.
+- After `already_delivered`, do not make another assessment for that exchange. A later head change
+  does not reopen it.
 - Do not resolve a thread before its exact reviewed-head response is visible.
 - Outside the requested task scope, do not:
   - rebase;
