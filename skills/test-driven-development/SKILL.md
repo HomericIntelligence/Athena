@@ -1,7 +1,7 @@
 ---
 name: test-driven-development
 license: BSD-3-Clause
-description: Use this skill before you write implementation code for a feature or bug fix. Follow the RED-GREEN-REFACTOR cycle. Do not write production code until a verified test fails for the expected missing behavior. If the test has an error, correct the test before GREEN.
+description: Use this skill before you write implementation code for a feature or bug fix. Use RED-GREEN-REFACTOR as the strong default. Record justified exceptions and alternative verification. Preserve good implementation that predates a test.
 argument-hint: <feature or bugfix description>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
 ---
@@ -17,6 +17,9 @@ all prose that it produces.
 Use Athena's shared [behavior-first testing guidance](../../docs/review/behavior-first-testing.md)
 for test criteria, determinism, and false-pass checks. Test observable product behavior and core
 contracts. Do not test wording, documentation layout, or a private implementation arrangement.
+
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
+recovery, resources, validation, and delivery.
 
 ## Engineering principles
 
@@ -46,24 +49,15 @@ principle definitions. Use these principles in this workflow:
 
 ## Working rules
 
-Use TDD for features, bug fixes, and behavior changes. For a pure refactor that preserves behavior,
-first establish a verified green characterization baseline. Then, start at REFACTOR. Do not create
-an artificial RED result.
+Use TDD as the strong default for features, bug fixes, and behavior changes. For a pure refactor,
+establish the available behavior baseline and start at REFACTOR. Do not create an artificial RED.
+Record pre-existing failures separately and follow the shared issue-handling procedure.
 
-If the work introduces or changes observable behavior, start with RED. Before you exempt a
-throwaway prototype, generated code, configuration-only work, or documentation-only change, ask the
-human partner. In a swarm, the test specialist must complete the applicable RED or green
-characterization baseline before implementation starts.
-
-```text
-START A BEHAVIOR CHANGE WITH A FOCUSED FAILING TEST
-START A PURE REFACTOR FROM A VERIFIED GREEN BASELINE
-```
-
-If you wrote an in-scope implementation that changes behavior before RED, remove only the work that
-you added. Then, start with RED. If a pure refactor started without a verified baseline, stop.
-Establish a verified baseline before you continue. Preserve existing work and work that the user
-authored. If the source or scope of the work is not clear, ask for direction.
+When test-first ordering is not useful or feasible, record a concrete reason and the alternative
+verification. Examples include documentation, generated code, configuration, and an existing
+implementation. No additional permission is required for a justified exception within task scope.
+Never delete good implementation solely to recreate test-first ordering. Add proportionate
+regression coverage to existing implementation and state what the evidence proves.
 
 ## RED-GREEN-REFACTOR
 
@@ -103,7 +97,7 @@ step 5. If the intended work changes the observable contract, return to RED.
 
 4. **Verify GREEN:** Run the applicable test suite that you found in the repository.
 
-   - The new and existing tests must pass without errors or warnings.
+   - Require the changed behavior tests to pass. Classify and report unrelated existing failures.
    - Correct the code. Do not weaken a test.
 
 5. **REFACTOR:** After GREEN, improve the structure without new behavior.
@@ -144,8 +138,8 @@ use `learn`. The scope and delivery rules of `learn` determine if it publishes a
 
 ## Failed approaches
 
-- Do not write production code before RED.
-- Do not keep in-scope implementation that you wrote before the test.
+- Do not skip test-first ordering without a concrete reason and alternative verification.
+- Do not delete good implementation merely because it preceded the test.
 - Do not accept a test error as RED. Correct the setup. Then, run the test until it fails for the
   expected missing behavior.
 - Do not weaken a test to reach GREEN. Correct the code.

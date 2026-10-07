@@ -563,10 +563,14 @@ class IssueReviewExchangeTests(unittest.TestCase):
                     {"prepared": prepared, "snapshot": conflicted}
                 )
 
-                self.assertEqual("unknown_outcome", result["status"])
-                self.assertEqual(
-                    "publication_identity_conflict", result["diagnostics"][0]["code"]
-                )
+                if author["id"] == "U_foreign":
+                    self.assertEqual("verified", result["status"])
+                else:
+                    self.assertEqual("unknown_outcome", result["status"])
+                    self.assertEqual(
+                        "publication_identity_conflict",
+                        result["diagnostics"][0]["code"],
+                    )
 
     def test_publication_rejects_a_tampered_prepared_record(self) -> None:
         source = self.snapshot()
@@ -2837,6 +2841,25 @@ class IssueReviewExchangeTests(unittest.TestCase):
             {"snapshot": drifted, "prepared": prepared}
         )
         self.assertEqual("unknown_outcome", withheld["status"])
+
+    def test_foreign_marker_comments_do_not_block_owned_finalization(self) -> None:
+        snapshot = self.go_snapshot()
+        foreign = self.comment(
+            "foreign-plan", "<!-- HomericIntelligence:plan-issue -->\n\nOther plan."
+        )
+        foreign["author"]["id"] = "U_foreign"
+        snapshot["comments"].append(foreign)
+        prepared = self.adapter.verify_finalize(
+            {"snapshot": snapshot, "candidate_body": "# Final plan"}
+        )
+        self.assertEqual("ready", prepared["status"])
+        self.assertNotIn("foreign-plan", prepared["deletion_allowlist"])
+        snapshot["issue"]["body"] = prepared["operation"]["body"]
+        verified = self.adapter.verify_finalize(
+            {"snapshot": snapshot, "prepared": prepared}
+        )
+        self.assertEqual("verified", verified["status"])
+        self.assertEqual(foreign, snapshot["comments"][-1])
 
     def test_finalized_epoch_reports_partial_cleanup_for_retained_sources(self) -> None:
         terminal = self.go_snapshot()

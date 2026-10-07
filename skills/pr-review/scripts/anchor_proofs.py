@@ -86,32 +86,34 @@ def exact_fields(value: object, fields: set[str], description: str) -> dict[str,
 
 
 class DiffDigestStream(evidence.ProviderStream):
-    """Hash bounded patch bytes without retaining the patch."""
+    """Hash complete patch bytes in bounded batches without retaining the patch."""
 
     def __init__(self, maximum_bytes: int) -> None:
         super().__init__(maximum_bytes)
+        if maximum_bytes < 1:
+            raise ValueError("The patch batch size must be positive.")
         self.digest = sha256()
         self.bytes_read = 0
+        self.batch_bytes = 0
+        self.batches_completed = 0
 
 
 def drain_diff_digest(stream: IO[bytes], capture: DiffDigestStream) -> None:
-    """Require EOF within the byte limit before a complete digest is available."""
+    """Hash bounded batches; require EOF before a complete digest is available."""
     try:
         while True:
             read_size = min(
-                evidence.READ_CHUNK_SIZE, capture.maximum_bytes - capture.bytes_read + 1
+                evidence.READ_CHUNK_SIZE, capture.maximum_bytes - capture.batch_bytes
             )
-            if read_size <= 0:
-                capture.overflowed.set()
-                return
             chunk = stream.read(read_size)
             if not chunk:
                 return
-            if capture.bytes_read + len(chunk) > capture.maximum_bytes:
-                capture.overflowed.set()
-                return
             capture.digest.update(chunk)
             capture.bytes_read += len(chunk)
+            capture.batch_bytes += len(chunk)
+            if capture.batch_bytes == capture.maximum_bytes:
+                capture.batches_completed += 1
+                capture.batch_bytes = 0
     except (OSError, ValueError) as error:
         capture.error = error
     finally:

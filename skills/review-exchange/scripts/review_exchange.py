@@ -12,6 +12,7 @@ import re
 import sys
 import zlib
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import nullcontext
 from hashlib import sha256
 from html.parser import HTMLParser
 from pathlib import Path
@@ -1525,6 +1526,12 @@ def _continued_author_event(value: object) -> dict[str, Any]:
 def _continued_review_event(
     value: object, existing_findings: Sequence[Mapping[str, Any]]
 ) -> dict[str, Any]:
+    reassessment = value.get("reassessment") if isinstance(value, dict) else None
+    fields = (
+        {"reassessment"}
+        if isinstance(value, dict) and "reassessment" in value
+        else set()
+    )
     event = _object(
         value,
         "corrective reviewer assessment",
@@ -1541,6 +1548,7 @@ def _continued_review_event(
                 "new_findings",
                 "stop_reason",
             }
+            | fields
         ),
     )
     if event["event_type"] != "reviewer_assessment":
@@ -1550,7 +1558,7 @@ def _continued_review_event(
     round_number = _integer(
         event["round"], "reviewer round", minimum=1, maximum=ROUND_LIMIT
     )
-    return {
+    result = {
         "event_type": "reviewer_assessment",
         "exchange_id": _string(event["exchange_id"], "reviewer exchange ID"),
         "prior_state_sha256": prior,
@@ -1576,6 +1584,9 @@ def _continued_review_event(
             else _enum(event["stop_reason"], "reviewer stop reason", STOP_REASONS)
         ),
     }
+    if fields:
+        result["reassessment"] = _string(reassessment, "reviewer reassessment")
+    return result
 
 
 def _human_event(value: object) -> dict[str, Any]:
@@ -1621,6 +1632,10 @@ def _event_digest(event: Mapping[str, Any]) -> str:
 
 
 def _authority_record(value: object, name: str) -> dict[str, Any]:
+    conversation = None
+    if isinstance(value, dict) and "conversation" in value:
+        conversation = _conversation_provenance(value["conversation"])
+        value = {key: item for key, item in value.items() if key != "conversation"}
     record = _object(
         value,
         name,
@@ -1677,7 +1692,7 @@ def _authority_record(value: object, name: str) -> dict[str, Any]:
         )
     requirements = _digest(record["requirements_sha256"], f"{name}.requirements_sha256")
     assert requirements is not None
-    return {
+    normalized = {
         "schema_id": AUTHORITY_SCHEMA_ID,
         "schema_version": SCHEMA_VERSION,
         "action": action,
@@ -1688,6 +1703,63 @@ def _authority_record(value: object, name: str) -> dict[str, Any]:
         "supersedes_state_sha256": supersedes,
         "decisions": decisions,
     }
+
+    if conversation is not None:
+        normalized["conversation"] = conversation
+    return normalized
+
+
+def _conversation_provenance(value: object) -> dict[str, str]:
+    """Validate references supplied by the host after it verifies the user's decision."""
+    raw = _object(
+        value,
+        "conversation provenance",
+        frozenset(
+            {"log_id", "message_id", "decision_sha256", "forge_unavailable_reason"}
+        ),
+    )
+    digest = _digest(raw["decision_sha256"], "conversation decision digest")
+    assert digest is not None
+    return {
+        "log_id": _string(raw["log_id"], "conversation log ID"),
+        "message_id": _string(raw["message_id"], "conversation message ID"),
+        "decision_sha256": digest,
+        "forge_unavailable_reason": _string(
+            raw["forge_unavailable_reason"], "forge authority unavailability reason"
+        ),
+    }
+
+
+def conversation_authority_record(
+    context: object,
+    *,
+    log_id: str,
+    message_id: str,
+    decision_text: str,
+    forge_unavailable_reason: str,
+) -> dict[str, Any]:
+    """Prepare publishable provenance; this does not authenticate a log or a forge write.
+
+    The invoking host must verify the explicit user decision in the named message.
+    The normal forge publication and repository-authority checks still apply. Keep
+    decision text out of the published provenance; its digest permits later validation.
+    """
+    record = _authority_record(context, "conversation authority context")
+    if "conversation" in record:
+        raise ProtocolError(
+            "The authority context already has conversation provenance."
+        )
+    record["conversation"] = _conversation_provenance(
+        {
+            "log_id": log_id,
+            "message_id": message_id,
+            "decision_sha256": sha256_text(
+                _string(decision_text, "conversation decision")
+            ),
+            "forge_unavailable_reason": forge_unavailable_reason,
+        }
+    )
+    return record
 
 
 def parse_authority_record(body: str) -> dict[str, Any]:
@@ -1726,9 +1798,15 @@ def verify_authority_record(
     if sha256_text(body) != authority["sha256"]:
         raise ProtocolError("The authority receipt digest does not match its body.")
     normalized_expected = _authority_record(expected, "expected authority context")
-    actual_context = {key: value for key, value in actual.items() if key != "decisions"}
+    actual_context = {
+        key: value
+        for key, value in actual.items()
+        if key not in {"decisions", "conversation"}
+    }
     expected_context = {
-        key: value for key, value in normalized_expected.items() if key != "decisions"
+        key: value
+        for key, value in normalized_expected.items()
+        if key not in {"decisions", "conversation"}
     }
     if actual_context != expected_context:
         raise ProtocolError("The authority record does not match its action context.")
@@ -3583,17 +3661,188 @@ def _parse_render_request(value: object) -> tuple[str, dict[str, Any], str]:
     return visible, verify_envelope(request["envelope"]), kind
 
 
+def verify_batches(stream: Any) -> dict[str, Any]:
+    """Verify a finite stream while retaining only one bounded review batch."""
+    digest = sha256()
+    count = 0
+    finding_count = 0
+    required_remaining = 0
+    binding: dict[str, Any] | None = None
+    prefix: str | None = None
+    all_go = True
+    complete = False
+    while line := stream.readline(MAX_INPUT_BYTES + 1):
+        value = parse_json_bytes(line)
+        if complete:
+            raise ProtocolError("Data follows the completed batch receipt.")
+        if (
+            isinstance(value, dict)
+            and value.get("schema_id") == "athena.review-exchange.batch-end"
+        ):
+            end = _object(
+                value,
+                "batch receipt",
+                frozenset(
+                    {"schema_id", "schema_version", "batch_count", "batches_sha256"}
+                ),
+            )
+            if (
+                type(end["schema_version"]) is not int
+                or end["schema_version"] != 1
+                or type(end["batch_count"]) is not int
+                or end["batch_count"] != count
+                or count == 0
+                or end["batches_sha256"] != digest.hexdigest()
+            ):
+                raise ProtocolError(
+                    "The complete batch receipt does not match the stream."
+                )
+            complete = True
+            continue
+        envelope = verify_envelope(value)
+        if envelope["schema_id"] != STATE_SCHEMA_ID:
+            raise ProtocolError(
+                "A review batch must contain a reviewer state envelope."
+            )
+        state = envelope["state"]
+        current = {
+            key: state[key]
+            for key in ("surface", "target", "requirements_sha256", "scope")
+        }
+        current["artifact_binding"] = {
+            key: state["artifact_binding"][key] for key in ("revision", "sha256")
+        }
+        if binding is None:
+            binding = current
+            prefix, separator, suffix = state["exchange_id"].rpartition("-")
+            if not prefix or not separator or suffix != "1":
+                raise ProtocolError("The first batch exchange ID must end with '-1'.")
+        if current != binding:
+            raise ProtocolError("A review batch changed the task binding.")
+        count += 1
+        if state["exchange_id"] != f"{prefix}-{count}":
+            raise ProtocolError("Review batch exchange IDs must be consecutive.")
+        digest.update(canonical_json(envelope).encode("utf-8") + b"\n")
+        finding_count += len(state["findings"])
+        required_remaining += len(_active_required(state["findings"]))
+        all_go = (
+            all_go
+            and state["phase"] == "complete"
+            and state["verdict"] == "GO"
+            and state["coverage_complete"]
+        )
+    return {
+        "schema_id": "athena.review-exchange.batch-result",
+        "schema_version": 1,
+        "binding": binding,
+        "batch_count": count,
+        "finding_count": finding_count,
+        "required_remaining": required_remaining,
+        "batches_sha256": digest.hexdigest(),
+        "complete": complete,
+        "verdict": "GO" if complete and all_go else "NO-GO",
+    }
+
+
+def prepare_batches(stream: Any, output: Any) -> None:
+    """Build bounded ledgers from a header and one finding per input line."""
+    header = parse_json_bytes(stream.readline(MAX_INPUT_BYTES + 1))
+    request = _object(header, "batch preparation", frozenset({"event"}))
+    template = _initial_review_event(request["event"])
+    if template["new_findings"] or template["supersedes_state_sha256"] is not None:
+        raise ProtocolError("Batch preparation needs a new empty initial review event.")
+    findings: list[dict[str, Any]] = []
+    finding_bytes = 0
+    count = 0
+    digest = sha256()
+
+    def publish() -> None:
+        nonlocal count, findings, finding_bytes
+        count += 1
+        event = {
+            **template,
+            "exchange_id": f"{template['exchange_id']}-{count}",
+            "new_findings": findings,
+        }
+        envelope = reduce_request({"previous": None, "event": event})["envelope"]
+        encoded = canonical_json(envelope).encode("utf-8") + b"\n"
+        if len(encoded) > MAX_INPUT_BYTES:
+            raise ProtocolError(
+                "One finding or the shared binding exceeds a batch operation; split its evidence before preparation."
+            )
+        output.write(encoded)
+        digest.update(encoded)
+        findings = []
+        finding_bytes = 0
+
+    while line := stream.readline(MAX_INPUT_BYTES + 1):
+        finding = parse_json_bytes(line)
+        if (
+            isinstance(finding, dict)
+            and isinstance(finding.get("id"), str)
+            and re.fullmatch(r"F-0*[1-9][0-9]*", finding["id"]) is not None
+        ):
+            finding = {**finding, "id": "F-001"}
+        _finding_input(finding, "batch finding")
+        size = len(canonical_json(finding).encode("utf-8"))
+        if findings and (
+            len(findings) == MAX_FINDINGS or finding_bytes + size > MAX_INPUT_BYTES // 4
+        ):
+            publish()
+        if not finding["id"].startswith("native:"):
+            next_id = (
+                sum(FINDING_ID.fullmatch(item["id"]) is not None for item in findings)
+                + 1
+            )
+            finding = {**finding, "id": f"F-{next_id:03d}"}
+        findings.append(finding)
+        finding_bytes += size
+    if findings or count == 0:
+        publish()
+    output.write(
+        (
+            canonical_json(
+                {
+                    "schema_id": "athena.review-exchange.batch-end",
+                    "schema_version": 1,
+                    "batch_count": count,
+                    "batches_sha256": digest.hexdigest(),
+                }
+            )
+            + "\n"
+        ).encode("utf-8")
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run one pure review-exchange operation."""
     parser = argument_parser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
-    for command in ("reduce", "verify", "extract", "render"):
+    for command in (
+        "reduce",
+        "verify",
+        "extract",
+        "render",
+        "prepare-batches",
+        "verify-batches",
+    ):
         subparser = subparsers.add_parser(command)
         subparser.add_argument(
             "input", help="A JSON or Markdown file, or '-' for stdin."
         )
     arguments = parser.parse_args(argv)
     try:
+        if arguments.command in {"prepare-batches", "verify-batches"}:
+            with (
+                nullcontext(sys.stdin.buffer)
+                if arguments.input == "-"
+                else Path(arguments.input).open("rb")
+            ) as stream:
+                if arguments.command == "prepare-batches":
+                    prepare_batches(stream, sys.stdout.buffer)
+                else:
+                    write_utf8_stdout(canonical_json(verify_batches(stream)) + "\n")
+            return 0
         content = _read_input(arguments.input)
         if arguments.command == "extract":
             try:
@@ -3614,7 +3863,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ProtocolError as error:
         print(_single_line_diagnostic(error), file=sys.stderr)
         return 1
-    except OperationalError as error:
+    except (OperationalError, OSError) as error:
         print(_single_line_diagnostic(error), file=sys.stderr)
         return 2
     return 0

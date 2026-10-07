@@ -16,7 +16,7 @@ acceptable.**
 4. Bind each claim to this information:
 
    - a reproducible command;
-   - an immutable revision;
+   - an immutable revision and the recorded content identity of any uncommitted changes;
    - the relevant environment;
    - the exit status; and
    - the unedited output.

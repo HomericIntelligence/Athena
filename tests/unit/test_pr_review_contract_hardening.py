@@ -650,6 +650,52 @@ class SnapshotMaterializationTests(unittest.TestCase):
             sum(path.stat().st_size for path in source.iterdir()), maximum_bytes
         )
 
+    def test_snapshot_without_quota_support_uses_the_bounded_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "snapshot"
+            root.mkdir()
+            bounded = self.snapshot.MaterializedSnapshot(
+                root=root,
+                source_path=root / "source",
+                merge_base="a" * 40,
+                tree_oid="c" * 40,
+            )
+            free_bytes = 100 * 1024 * 1024
+            usage = shutil.disk_usage(directory)._replace(free=free_bytes)
+            with (
+                patch.object(self.snapshot.tempfile, "mkdtemp", return_value=str(root)),
+                patch.object(self.snapshot, "_create_quota_volume", return_value=None),
+                patch.object(self.snapshot, "_require_base_ref", return_value="main"),
+                patch.object(
+                    self.snapshot.shutil,
+                    "disk_usage",
+                    return_value=usage,
+                ),
+                patch.object(
+                    self.snapshot, "_bounded_materialize", return_value=bounded
+                ) as fallback,
+            ):
+                result = self.snapshot.materialize_snapshot(
+                    repository="owner/repository",
+                    number=9,
+                    base_ref="main",
+                    base_oid="a" * 40,
+                    head_oid="b" * 40,
+                )
+            self.assertIs(bounded, result)
+            self.assertEqual(root, fallback.call_args.args[0])
+            self.assertEqual((free_bytes * 9) // 10, fallback.call_args.args[1])
+            self.assertEqual(
+                {
+                    "repository": "owner/repository",
+                    "number": 9,
+                    "base_ref": "main",
+                    "base_oid": "a" * 40,
+                    "head_oid": "b" * 40,
+                },
+                fallback.call_args.kwargs,
+            )
+
     def test_rejects_snapshot_acquisition_failure_modes(self) -> None:
         cases = (
             "ambiguous merge base",
@@ -2260,68 +2306,6 @@ class BoundedLinkedCommentReaderTests(unittest.TestCase):
                 limit_error="must not overflow",
             )
 
-    def test_rejects_malformed_linked_comment_pages(self) -> None:
-        cases = (
-            (b"not json", RuntimeError),
-            (b'{"id": 1}', TypeError),
-            (b"[1]", RuntimeError),
-        )
-        for response, error_type in cases:
-            with (
-                self.subTest(response=response),
-                patch.object(
-                    self.collector, "bounded_gh_output", return_value=response
-                ),
-                self.assertRaises(error_type),
-            ):
-                self.collector.paginated_issue_comments("owner/requirements", 10)
-
-    def test_fails_closed_before_reading_when_comment_bytes_are_exhausted(self) -> None:
-        with (
-            patch.object(self.collector, "MAX_LINKED_ISSUE_COMMENT_BYTES", 0),
-            patch.object(
-                self.collector,
-                "bounded_gh_output",
-                side_effect=AssertionError("reader must not run"),
-            ),
-            self.assertRaises(self.collector.LinkedRequirementsCoverageGap),
-        ):
-            self.collector.paginated_issue_comments("owner/requirements", 10)
-
-    def test_fails_closed_when_the_next_nonempty_page_exceeds_the_page_budget(
-        self,
-    ) -> None:
-        with (
-            patch.object(self.collector, "LINKED_ISSUE_COMMENT_PAGE_SIZE", 1),
-            patch.object(self.collector, "MAX_LINKED_ISSUE_COMMENT_PAGES", 1),
-            patch.object(
-                self.collector,
-                "bounded_gh_output",
-                side_effect=(b"[{}]", b"[{}]"),
-            ),
-            self.assertRaises(self.collector.LinkedRequirementsCoverageGap),
-        ):
-            self.collector.paginated_issue_comments("owner/requirements", 10)
-
-    def test_fails_closed_when_comment_count_exceeds_the_budget(self) -> None:
-        with (
-            patch.object(self.collector, "MAX_LINKED_ISSUE_COMMENTS", 0),
-            patch.object(self.collector, "bounded_gh_output", return_value=b"[{}]"),
-            self.assertRaises(self.collector.LinkedRequirementsCoverageGap),
-        ):
-            self.collector.paginated_issue_comments("owner/requirements", 10)
-
-    def test_shared_budget_bounds_aggregate_comment_pages(self) -> None:
-        budget = self.collector.LinkedRequirementBudget()
-
-        with (
-            patch.object(self.collector, "MAX_LINKED_REQUIREMENT_PAGES", 1),
-            patch.object(self.collector, "bounded_gh_output", return_value=b"[]"),
-            self.assertRaises(self.collector.LinkedRequirementsCoverageGap),
-        ):
-            self.collector.paginated_issue_comments("owner/requirements", 10, budget)
-            self.collector.paginated_issue_comments("owner/requirements", 11, budget)
-
     def test_shared_budget_bounds_aggregate_requests(self) -> None:
         budget = self.collector.LinkedRequirementBudget()
 
@@ -2331,28 +2315,6 @@ class BoundedLinkedCommentReaderTests(unittest.TestCase):
         ):
             budget.reserve_request()
             budget.reserve_request()
-
-    def test_shared_budget_bounds_aggregate_comment_count(self) -> None:
-        budget = self.collector.LinkedRequirementBudget()
-
-        with (
-            patch.object(self.collector, "MAX_LINKED_REQUIREMENT_COMMENTS", 1),
-            patch.object(self.collector, "bounded_gh_output", return_value=b"[{}]"),
-            self.assertRaises(self.collector.LinkedRequirementsCoverageGap),
-        ):
-            self.collector.paginated_issue_comments("owner/requirements", 10, budget)
-            self.collector.paginated_issue_comments("owner/requirements", 11, budget)
-
-    def test_shared_budget_bounds_aggregate_comment_bytes(self) -> None:
-        budget = self.collector.LinkedRequirementBudget()
-
-        with (
-            patch.object(self.collector, "MAX_LINKED_REQUIREMENT_BYTES", 2),
-            patch.object(self.collector, "bounded_gh_output", return_value=b"[]"),
-            self.assertRaises(self.collector.LinkedRequirementsCoverageGap),
-        ):
-            self.collector.paginated_issue_comments("owner/requirements", 10, budget)
-            self.collector.paginated_issue_comments("owner/requirements", 11, budget)
 
 
 class BoundedChangedPathReaderTests(unittest.TestCase):
@@ -3164,22 +3126,25 @@ class ImmutableEvidenceTests(unittest.TestCase):
                 self.assertEqual(1, calls)
                 self.assertEqual("", result.stdout)
 
-    def test_explicit_requirement_preserves_comment_page_limit(self) -> None:
+    def test_explicit_requirement_continues_comment_batches(self) -> None:
         _, requirement = linked_requirement_fixture()
+        pages = [
+            [{"id": page * 25 + i, "body": "Plan"} for i in range(25)]
+            for page in range(11)
+        ] + [[]]
         result, calls, _, _ = self.run_collector(
-            [pull_request()],
+            [pull_request()] * 2,
             requirement_issues=[str(requirement["url"])],
-            linked_issue_sequence=[requirement],
-            linked_comment_sequence=[[{"id": i, "body": "Plan"} for i in range(100)]]
-            * 11,
+            linked_issue_sequence=[requirement] * 2,
+            linked_comment_sequence=list[object](pages) * 2,
         )
-        self.assertEqual(1, result.returncode)
-        self.assertEqual(1, calls)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(2, calls)
         self.assertEqual(
-            "linked issue requirements coverage gap", json.loads(result.stdout)["error"]
+            1, json.loads(result.stdout)["reviewed_linked_requirements"]["count"]
         )
 
-    def test_explicit_requirements_share_final_collection_budget(self) -> None:
+    def test_explicit_requirements_revalidate_each_complete_issue(self) -> None:
         fixtures = [linked_requirement_fixture(n, f"I_{n}") for n in range(10, 23)]
         first_reference = fixtures[0][0]
         requirements = [requirement for _, requirement in fixtures]
@@ -3191,10 +3156,10 @@ class ImmutableEvidenceTests(unittest.TestCase):
             linked_issue_sequence=requirements * 2,
             linked_comment_sequence=[[]] * 26,
         )
-        self.assertEqual(1, result.returncode)
+        self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(2, calls)
         self.assertEqual(
-            "linked issue requirements coverage gap", json.loads(result.stdout)["error"]
+            13, json.loads(result.stdout)["reviewed_linked_requirements"]["count"]
         )
 
     def test_emits_a_stable_linked_requirements_binding(self) -> None:
@@ -3270,26 +3235,37 @@ class ImmutableEvidenceTests(unittest.TestCase):
         self.assertEqual(1, result.returncode)
         self.assertEqual(2, call_count)
 
-    def test_bounds_linked_issue_comment_pages_as_a_structured_coverage_gap(
-        self,
-    ) -> None:
+    def test_complete_comment_pages_continue_through_final_revalidation(self) -> None:
         reference, requirement = linked_requirement_fixture()
-        page = [{"id": index, "body": "Comment"} for index in range(100)]
-
+        pages = [
+            [{"id": page * 25 + i, "body": "Comment"} for i in range(25)]
+            for page in range(11)
+        ] + [[]]
         result, call_count, _, _ = self.run_collector(
-            [pull_request(closing_issues=[reference])],
-            linked_issue_sequence=[requirement],
-            linked_comment_sequence=[page] * 10,
+            [pull_request(closing_issues=[reference])] * 2,
+            linked_issue_sequence=[requirement] * 2,
+            linked_comment_sequence=list[object](pages) * 2,
         )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(2, call_count)
+        content = {key: requirement[key] for key in ("body", "state", "title")}
+        comments = [comment for page in pages for comment in page]
+        content["comments"] = [
+            json.loads(value)
+            for value in sorted(
+                json.dumps(comment, sort_keys=True, separators=(",", ":"))
+                for comment in comments
+            )
+        ]
+        expected = sha256(
+            json.dumps(content, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        actual = json.loads(result.stdout)["reviewed_linked_requirements"]["items"][0][
+            "content_sha256"
+        ]
+        self.assertEqual(expected, actual)
 
-        self.assertEqual(1, result.returncode)
-        self.assertEqual(1, call_count)
-        error = json.loads(result.stdout)
-        self.assertEqual("linked issue requirements coverage gap", error["error"])
-        self.assertTrue(error["details"])
-        self.assertEqual("", result.stderr)
-
-    def test_bounds_linked_issue_comment_count_as_a_structured_coverage_gap(
+    def test_rejects_provider_page_larger_than_requested_count(
         self,
     ) -> None:
         reference, requirement = linked_requirement_fixture()
@@ -3304,7 +3280,7 @@ class ImmutableEvidenceTests(unittest.TestCase):
         self.assertEqual(1, call_count)
         error = json.loads(result.stdout)
         self.assertEqual("linked issue requirements coverage gap", error["error"])
-        self.assertTrue(error["details"])
+        self.assertIn("more comments than the requested page", error["details"])
         self.assertEqual("", result.stderr)
 
     def test_bounds_linked_issue_comment_bytes_as_a_structured_coverage_gap(
@@ -3358,7 +3334,7 @@ class ImmutableEvidenceTests(unittest.TestCase):
                 self.assertEqual("", result.stdout)
                 self.assertTrue(result.stderr)
 
-    def test_bounds_linked_requirements_across_final_revalidation(self) -> None:
+    def test_binds_all_linked_requirements_across_final_revalidation(self) -> None:
         fixtures = [
             linked_requirement_fixture(number, f"I_{index:02d}")
             for index, number in enumerate(range(10, 23))
@@ -3375,11 +3351,11 @@ class ImmutableEvidenceTests(unittest.TestCase):
             linked_comment_sequence=[[]] * 26,
         )
 
-        self.assertEqual(1, result.returncode)
+        self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(2, call_count)
-        error = json.loads(result.stdout)
-        self.assertEqual("linked issue requirements coverage gap", error["error"])
-        self.assertTrue(error["details"])
+        self.assertEqual(
+            13, json.loads(result.stdout)["reviewed_linked_requirements"]["count"]
+        )
         self.assertEqual("", result.stderr)
 
     def test_reports_final_partial_pr_metadata_as_a_structured_error(self) -> None:

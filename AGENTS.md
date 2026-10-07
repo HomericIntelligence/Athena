@@ -158,6 +158,14 @@ The marked block is a generated mirror of the canonical
 - Use frontmatter tool names to describe required capabilities. Each skill must document a safe
   failure or fallback when a host does not have a required capability.
 
+## Autonomous completion
+
+Follow [autonomous workflow policy](docs/policies/autonomous-workflows.md). Use existing task
+authority. Recover and continue useful work; stop only the affected action for an unresolved
+decision or actual constraint. Record pre-existing failures separately and continue authorized work.
+Create new worktrees and additional project clones under the primary project's ignored `.worktrees/`
+directory. Existing checkouts elsewhere remain valid.
+
 ## Permitted actions
 
 Agents can do these actions:
@@ -192,8 +200,9 @@ operations include:
 - safe force-with-lease updates.
 
 These operations do not need an additional approval prompt. External-write scope and repository
-policy still apply. Filesystem-destructive commands require explicit authority. An agent also needs
-explicit authority to discard a change.
+policy still apply. An explicit cleanup request authorizes removal of verified merged branches and clean worktrees
+with no unique work. Preserve ambiguous or unique work. Other destructive actions and discarding
+changes require explicit authority.
 
 ## Prohibited actions
 
@@ -275,14 +284,11 @@ Continuous integration and continuous delivery (CI/CD), not pre-commit, own auto
 
 ## Escalation
 
-Stop and request human direction in these conditions:
-
-- Requirements conflict.
-- The next step is unsafe or destructive.
-- A workflow or required-check policy change is outside the requested scope.
-- You cannot preserve user work.
-- A hard-dependency override is invalid.
-- A proposal weakens a security control or an evidence control.
+First attempt recovery under the autonomous workflow policy. Request direction only for a specific
+unresolved requirement, conflict that prevents preservation of user work, or action outside existing
+authority. Continue independent work. Permission failures use supported host escalation first.
+Do not treat a resource batch, pre-existing failure, missing helper, or review round as a reason to
+stop the whole task.
 
 ## Task entry points
 

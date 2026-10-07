@@ -56,7 +56,7 @@ forge owns repository acceptance and merging.
   verification.
 - Compare proposed follow-ups with the backlog.
 - If work is genuinely outside the scope, recommend a linked follow-up.
-- Do not create the follow-up without separate authority.
+- Use existing task authority for the follow-up. Do not ask again when that authority is sufficient.
 
 ## Integration and hygiene
 

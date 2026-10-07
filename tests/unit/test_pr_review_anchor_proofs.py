@@ -785,10 +785,10 @@ def test_complete_range_hashes_accept_large_patches(
 
 
 @pytest.mark.parametrize("over_limit", [False, True])
-def test_range_hash_requires_complete_patch_within_its_limit(
+def test_range_hash_continues_across_complete_patch_batches(
     source: tuple[Path, str, str], over_limit: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Accept exact-limit EOF and reject a one-byte excess."""
+    """Hash all bytes across exact and exceeded batch boundaries."""
     root, base, head = source
     anchors = load_module().anchor_proofs
     patch = subprocess.run(
@@ -800,14 +800,8 @@ def test_range_hash_requires_complete_patch_within_its_limit(
     monkeypatch.setattr(
         anchors, "MAX_DIFF_BYTES", len(patch) - int(over_limit), raising=False
     )
-    if over_limit:
-        with pytest.raises(RuntimeError, match="byte limit"):
-            anchors.prepare_manifest(root, base, head, [])
-    else:
-        manifest = anchors.prepare_manifest(root, base, head, [])
-        assert set(manifest["hunks_sha256"].values()) == {
-            hashlib.sha256(patch).hexdigest()
-        }
+    manifest = anchors.prepare_manifest(root, base, head, [])
+    assert set(manifest["hunks_sha256"].values()) == {hashlib.sha256(patch).hexdigest()}
 
 
 def test_completed_patch_after_shared_deadline_cannot_grant_proof(

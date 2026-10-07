@@ -341,7 +341,14 @@ def _role_comments(
         ):
             if line in marker_set:
                 matches.append(comment)
-    return matches
+    owned = [
+        comment
+        for comment in matches
+        if comment["author"]["id"] == snapshot["actor"]["id"]
+    ]
+    # Foreign comments remain unchanged. A unique actor-owned artifact is the
+    # publication target when other actors use the same workflow marker.
+    return owned or matches
 
 
 def _extract_issue_carrier(
@@ -621,7 +628,9 @@ def _pending_reframe(
     return True
 
 
-def inspect_snapshot(value: object) -> dict[str, Any]:
+def inspect_snapshot(
+    value: object, *, allow_foreign_sources: bool = False
+) -> dict[str, Any]:
     """Normalize one issue snapshot and select the next protocol action."""
     snapshot = _snapshot(value)
     requirements_sha256 = _requirements_sha256(snapshot)
@@ -668,7 +677,7 @@ def inspect_snapshot(value: object) -> dict[str, Any]:
             "marker_conflict",
             "The issue contains multiple canonical planning markers.",
         )
-    if any(
+    if not allow_foreign_sources and any(
         comment["author"]["id"] != actor_id
         for comment in (*plan_comments, *review_comments)
     ):
@@ -1768,6 +1777,7 @@ def prepare_review(value: object) -> dict[str, Any]:
                 "legacy_import",
                 "scope",
             }
+            | ({"reassessment"} if "reassessment" in raw_event else set())
         ),
     )
     if event["event_type"] != "reviewer_assessment":
@@ -1916,6 +1926,10 @@ def prepare_review(value: object) -> dict[str, Any]:
             "new_findings": event["new_findings"],
             "stop_reason": event["stop_reason"],
         }
+    if "reassessment" in event:
+        if previous is None:
+            raise ProtocolError("Reassessment requires a prior reviewer round.")
+        reviewer_event["reassessment"] = event["reassessment"]
     reduced = review_exchange.reduce_request(
         {"previous": previous, "event": reviewer_event}
     )
@@ -2672,7 +2686,12 @@ def _unknown_finalize(
 
 
 def _prepared_source(value: object, name: str) -> dict[str, str]:
-    source = _object(value, name, frozenset({"token", "comment_id", "body_sha256"}))
+    fields = (
+        {"author_id"} if isinstance(value, dict) and "author_id" in value else set()
+    )
+    source = _object(
+        value, name, frozenset({"token", "comment_id", "body_sha256"} | fields)
+    )
     token = _digest(source["token"], f"{name}.token")
     body = _digest(source["body_sha256"], f"{name}.body_sha256")
     assert token is not None and body is not None
@@ -2681,7 +2700,10 @@ def _prepared_source(value: object, name: str) -> dict[str, str]:
         {"comment_id": comment_id, "body_sha256": body}
     ):
         raise ProtocolError(f"{name} token does not match its source.")
-    return {"token": token, "comment_id": comment_id, "body_sha256": body}
+    result = {"token": token, "comment_id": comment_id, "body_sha256": body}
+    if fields:
+        result["author_id"] = _string(source["author_id"], f"{name}.author_id")
+    return result
 
 
 def _prepared_finalize_operation(
@@ -2769,7 +2791,41 @@ def _finalize_precondition_sha256(
     )
 
 
+def _verify_finalize_source_authority(
+    snapshot: Mapping[str, Any],
+    receipt: object,
+    *,
+    plan: Mapping[str, Any],
+    review: Mapping[str, Any],
+    issue_body_sha256: str,
+    candidate_body: str,
+) -> dict[str, str]:
+    """Authorize one issue-body update from exact foreign source records."""
+    authority, body = _authority_comment(snapshot, receipt)
+    expected = {
+        "schema_id": "athena.issue-exchange.finalize-authority",
+        "schema_version": 1,
+        "action": "finalize_foreign_sources",
+        "target": _core_target(snapshot),
+        "actor_id": snapshot["actor"]["id"],
+        "plan": _artifact_summary(plan),
+        "review": _artifact_summary(review),
+        "issue_body_sha256": issue_body_sha256,
+        "candidate_body_sha256": _body_sha256(candidate_body.rstrip()),
+    }
+    if body != review_exchange.canonical_json(expected):
+        raise ProtocolError(
+            "The finalization source authority does not bind this exact update."
+        )
+    return authority
+
+
 def _validate_prepared_finalize(value: object) -> dict[str, Any]:
+    extra = (
+        {"source_authority_receipt"}
+        if isinstance(value, dict) and "source_authority_receipt" in value
+        else set()
+    )
     prepared = _object(
         value,
         "prepared finalization",
@@ -2791,6 +2847,7 @@ def _validate_prepared_finalize(value: object) -> dict[str, Any]:
                 "remaining_comment_ids",
                 "diagnostics",
             }
+            | extra
         ),
     )
     if (
@@ -2862,12 +2919,12 @@ def _validate_prepared_finalize(value: object) -> dict[str, Any]:
         state_sha256=state_sha256,
         plan={
             "id": sources["P"]["comment_id"],
-            "author_id": actor_id,
+            "author_id": sources["P"].get("author_id", actor_id),
             "body_sha256": sources["P"]["body_sha256"],
         },
         review={
             "id": sources["V"]["comment_id"],
-            "author_id": actor_id,
+            "author_id": sources["V"].get("author_id", actor_id),
             "body_sha256": sources["V"]["body_sha256"],
         },
         expected_issue_body_sha256=operation["expected_issue_body_sha256"],
@@ -2875,10 +2932,14 @@ def _validate_prepared_finalize(value: object) -> dict[str, Any]:
     if precondition != expected_precondition:
         raise ProtocolError("The prepared finalization precondition does not match.")
     allowlist = prepared["deletion_allowlist"]
-    expected_allowlist = [sources["P"]["comment_id"], sources["V"]["comment_id"]]
+    expected_allowlist = [
+        sources[role]["comment_id"]
+        for role in ("P", "V")
+        if sources[role].get("author_id", actor_id) == actor_id
+    ]
     if allowlist != expected_allowlist:
         raise ProtocolError("The prepared deletion allowlist does not match P and V.")
-    return {
+    result = {
         "schema_id": FINALIZE_SCHEMA_ID,
         "schema_version": SCHEMA_VERSION,
         "status": "ready",
@@ -2895,6 +2956,17 @@ def _validate_prepared_finalize(value: object) -> dict[str, Any]:
         "remaining_comment_ids": [],
         "diagnostics": [],
     }
+    if extra:
+        result["source_authority_receipt"] = _authority_record(
+            prepared["source_authority_receipt"], "finalization source authority"
+        )
+    elif any(
+        sources[role].get("author_id", actor_id) != actor_id for role in ("P", "V")
+    ):
+        raise ProtocolError(
+            "Foreign finalization sources require explicit action-bound authority."
+        )
+    return result
 
 
 def _verify_finalize_readback(
@@ -2940,7 +3012,7 @@ def _verify_finalize_readback(
         source = sources[role]
         if (
             comment["id"] != source["comment_id"]
-            or comment["author"]["id"] != prepared["actor_id"]
+            or comment["author"]["id"] != source.get("author_id", prepared["actor_id"])
             or _body_sha256(comment["body"]) != source["body_sha256"]
         ):
             return _unknown_finalize(
@@ -2949,6 +3021,17 @@ def _verify_finalize_readback(
                 "A sealed plan or review source changed before cleanup.",
             )
     try:
+        if "source_authority_receipt" in prepared:
+            _verify_finalize_source_authority(
+                snapshot,
+                prepared["source_authority_receipt"],
+                plan=selected["P"],
+                review=selected["V"],
+                issue_body_sha256=operation["expected_issue_body_sha256"],
+                candidate_body=operation["body"].rsplit(
+                    "\n\n<!-- HomericIntelligence:finalize-plan ", 1
+                )[0],
+            )
         _verify_issue_source_chain(
             snapshot,
             prepared["state"],
@@ -2965,10 +3048,7 @@ def _verify_finalize_readback(
         )
     result = copy.deepcopy(dict(prepared))
     result["status"] = "verified"
-    result["deletion_allowlist"] = [
-        sources["P"]["comment_id"],
-        sources["V"]["comment_id"],
-    ]
+    result["deletion_allowlist"] = list(prepared["deletion_allowlist"])
     result["diagnostics"] = []
     return result
 
@@ -2984,7 +3064,14 @@ def verify_finalize(value: object) -> dict[str, Any]:
     request = _object(
         value,
         "finalization request",
-        frozenset({"snapshot", "candidate_body"}),
+        frozenset(
+            {"snapshot", "candidate_body"}
+            | (
+                {"source_authority_receipt"}
+                if "source_authority_receipt" in value
+                else set()
+            )
+        ),
     )
     snapshot = _snapshot(request["snapshot"])
     candidate = _string(request["candidate_body"], "finalized candidate body")
@@ -2994,7 +3081,23 @@ def verify_finalize(value: object) -> dict[str, Any]:
             "candidate_marker",
             "The candidate body already contains a finalization marker.",
         )
-    inspection = inspect_snapshot(snapshot)
+    source_authority = None
+    if "source_authority_receipt" in request:
+        plans = _role_comments(snapshot, PLAN_MARKERS)
+        reviews = _role_comments(snapshot, REVIEW_MARKERS)
+        if len(plans) != 1 or len(reviews) != 1:
+            raise ProtocolError("Source authority requires one exact plan and review.")
+        source_authority = _verify_finalize_source_authority(
+            snapshot,
+            request["source_authority_receipt"],
+            plan=plans[0],
+            review=reviews[0],
+            issue_body_sha256=_body_sha256(snapshot["issue"]["body"]),
+            candidate_body=candidate,
+        )
+    inspection = inspect_snapshot(
+        snapshot, allow_foreign_sources=source_authority is not None
+    )
     if inspection["status"] == "finalized":
         marker_status, marker = _finalized_marker(snapshot["issue"]["body"])
         assert marker_status == "valid" and marker is not None
@@ -3007,8 +3110,7 @@ def verify_finalize(value: object) -> dict[str, Any]:
             matches = [
                 comment
                 for comment in comments
-                if comment["author"]["id"] == snapshot["actor"]["id"]
-                and _source_token(comment)["token"] == marker[role]
+                if _source_token(comment)["token"] == marker[role]
             ]
             if len(comments) != 1 or len(matches) != 1:
                 return _withheld_finalize(
@@ -3016,7 +3118,8 @@ def verify_finalize(value: object) -> dict[str, Any]:
                     "finalized_source_mismatch",
                     "A retained finalized source does not match its sealed identity.",
                 )
-            remaining.append(matches[0]["id"])
+            if matches[0]["author"]["id"] == snapshot["actor"]["id"]:
+                remaining.append(matches[0]["id"])
         try:
             if plan_comments and review_comments:
                 retained_review = _extract_issue_carrier(
@@ -3091,6 +3194,9 @@ def verify_finalize(value: object) -> dict[str, Any]:
         )
     p_source = _source_token(plan)
     v_source = _source_token(review)
+    for source, comment in ((p_source, plan), (v_source, review)):
+        if comment["author"]["id"] != snapshot["actor"]["id"]:
+            source["author_id"] = comment["author"]["id"]
     requirements = inspection["requirements_sha256"]
     marker_template = (
         "<!-- HomericIntelligence:finalize-plan "
@@ -3133,7 +3239,7 @@ def verify_finalize(value: object) -> dict[str, Any]:
     plan_summary = _artifact_summary(plan)
     review_summary = _artifact_summary(review)
     assert plan_summary is not None and review_summary is not None
-    return {
+    result = {
         "schema_id": FINALIZE_SCHEMA_ID,
         "schema_version": SCHEMA_VERSION,
         "status": "ready",
@@ -3155,10 +3261,17 @@ def verify_finalize(value: object) -> dict[str, Any]:
         "state_sha256": inspection["state_sha256"],
         "sources": {"R": requirements, "P": p_source, "V": v_source},
         "operation": operation,
-        "deletion_allowlist": [plan["id"], review["id"]],
+        "deletion_allowlist": [
+            comment["id"]
+            for comment in (plan, review)
+            if comment["author"]["id"] == snapshot["actor"]["id"]
+        ],
         "remaining_comment_ids": [],
         "diagnostics": [],
     }
+    if source_authority is not None:
+        result["source_authority_receipt"] = source_authority
+    return result
 
 
 def main(argv: Sequence[str] | None = None) -> int:

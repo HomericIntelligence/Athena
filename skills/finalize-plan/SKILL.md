@@ -1,7 +1,7 @@
 ---
 name: finalize-plan
 license: BSD-3-Clause
-description: Create an issue body after `plan-issue` and `issue-review` approve one exact actor-owned epoch with `GO`. `--draft` is read-only. Stop if an input is missing, foreign, stale, ambiguous, or not verifiable.
+description: Create an issue body after `plan-issue` and `issue-review` approve one exact actor-owned epoch with `GO`. `--draft` is read-only. Recover missing or stale inputs. Preserve foreign comments. Missing cleanup capability does not block an authorized body update.
 argument-hint: "[--draft] ISSUE_NUMBER_OR_URL"
 allowed-tools: [Read, Bash, Grep, Glob]
 ---
@@ -20,6 +20,11 @@ Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 [design-document structure](../../docs/review/design-docs.md),
 [language routing](../../docs/review/language-routing.md), and
 [behavior-first testing](../../docs/review/behavior-first-testing.md).
+
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
+recovery, resources, validation, and delivery.
+For authority receipts, prefer forge records. If unavailable, use explicit conversation authority
+with its actual log ID under that policy. Keep decisions and successful publication verifiable.
 
 ## Engineering principles
 
@@ -42,7 +47,7 @@ finalization decisions:
 - [P083 Irreversible Actions Last](../../docs/principles/README.md#p083): Do not remove an applicable
   comment before you verify the body update.
 - [P031 Propagate Rather Than Swallow](../../docs/principles/README.md#p031): Report each partial or
-  unknown outcome. Do not report a different outcome. Do not automatically retry the update.
+  unknown outcome. Reconcile exact readback before retrying an uncertain update.
 
 ## Scope and delivery
 
@@ -68,13 +73,15 @@ Use the forge's native issue-body mechanism. The host must have these capabiliti
 
 - authenticate the actor;
 - enumerate exact comments;
-- delete exact comments;
+- delete exact owned comments, only when cleanup is available and authorized;
 - read the issue body;
 - compare identities;
 - make one exact body update; and
 - read back that body update.
 
-If one capability is not available, return a ready-to-publish draft. Identify the capability gap.
+If a body-write capability remains unavailable after recovery, return a ready-to-publish draft and
+exact manual command. Missing comment deletion does not block the body update. Preserve foreign
+comments and report pending cleanup.
 Do not create plan or review comments to make finalization possible. Do not adopt plan or review
 comments for this purpose. Do not edit plan or review comments for this purpose. Do not replace plan
 or review comments for this purpose.
@@ -83,7 +90,8 @@ or review comments for this purpose.
 
 Call only `issue_exchange.py verify-finalize`. Do not call `inspect`, `prepare-plan`,
 `prepare-review`, or `verify-publication`. Do not perform another review. Do not parse carrier prose
-or calculate `R/P/V/F` in this skill. The helper is the only parser and calculator for these values.
+or invent `R/P/V/F` values. Prefer the tested helper. If it fails, attempt repair and issue handling
+before an equivalent verified fallback. Record its actual method; never fabricate a helper receipt.
 
 A planning epoch is one set of these sealed source identities:
 
@@ -99,7 +107,8 @@ A planning epoch is one set of these sealed source identities:
 The review must contain the same issue, `R`, plan-comment ID, and `P`. These values must match
 exactly. The review must have the exact `GO` verdict. It must not have an unresolved `critical`,
 `major`, or other `required` finding. Do not write if an artifact is conditional, partial,
-malformed, stale, foreign, duplicated, absent, or not verifiable.
+malformed, stale, duplicated, absent, or not verifiable until recovery establishes the exact epoch.
+Foreign comments remain unchanged and do not block an otherwise authorized body update.
 
 The remote repository target is not a sealed planning input. Movement of that target does not make
 an unchanged planning epoch stale.
@@ -158,14 +167,15 @@ both marker versions.
     [P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061).
 22. Get a fresh snapshot and call the same preflight form again. Require the same state,
     precondition, and operation.
-23. If an input changed, return the ready-to-publish body with the `stale` status. Do not write.
+23. If an input changed, refresh the affected evidence and prepare the body again. Preserve all
+    still-valid decisions. Do not publish stale content.
 24. Under [P044 Atomicity Where Possible](../../docs/principles/README.md#p044), publish exactly one
     issue-body replacement.
 25. Immediately read the issue again. Call the readback form of `verify-finalize` with the snapshot
     and prepared result.
 26. Continue only when the helper returns `verified`. Use only its deletion allowlist.
 27. If a timeout, indeterminate response, or readback mismatch occurs, report `unknown_outcome`.
-    Do not retry or make another mutation.
+    Reconcile the exact body readback before any retry or dependent mutation.
 28. Only after verified body readback, use
     [P083 Irreversible Actions Last](../../docs/principles/README.md#p083) to read each sealed comment
     again.
@@ -174,8 +184,8 @@ both marker versions.
     replacement, changed, or unlisted comment.
 31. If deletion fails, times out, or has an indeterminate result, report `partial_cleanup` and the
     identities of the comments that remain.
-32. After a deletion failure, timeout, or indeterminate result, do not retry, compensate, or remove
-    the finalized body.
+32. Preserve the finalized body. Reconcile comment state before retrying an authorized deletion.
+    Missing cleanup capability leaves comments intact and does not undo body publication.
 
 If the final material contains architecture, test, error, or security decisions, preserve the
 reviewed use of these principles:
@@ -191,7 +201,7 @@ Finalization does not reopen these decisions. Do not make new decisions.
 
 If the live body verifies its finalized marker exactly and both sealed comments are absent, a second
 run returns a documented `no_change` result. If a sealed comment remains, report
-`partial_cleanup`. Its presence does not authorize another deletion attempt. If the marker is
+`partial_cleanup`. Reconcile current comment state before an authorized cleanup retry. If the marker is
 absent, malformed, foreign, or has a canonical `F` mismatch, do not use the epoch as evidence. A
 later edit that keeps a stale finalization marker does not authorize a new exchange. After the
 sealed comments are removed, an authoritative person can replace the sealed body with clean new
@@ -222,9 +232,8 @@ headings, paragraph counts, or an example issue body.
   a person.
 - Do not replace behavior-first verification with wording checks. Do not invent files, commands, or
   validation evidence during synthesis.
-- After a timeout or readback mismatch, do not retry. Report `unknown_outcome`.
-- After an indeterminate deletion, do not retry. Report `partial_cleanup`. State that the deletion
-  result is unknown.
+- After a timeout or readback mismatch, reconcile exact target state before retrying.
+- After an indeterminate deletion, report `partial_cleanup` and reconcile the result before retrying.
 
 ## Result
 

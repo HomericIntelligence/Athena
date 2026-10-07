@@ -1,7 +1,7 @@
 ---
 name: tidy
 license: BSD-3-Clause
-description: Clean up unused repository branches and worktrees through the dependency-locked Hephaestus tidy command. Use this skill only for unused branch and worktree cleanup, not for general rebase requests or rebases of active worktrees. Stop if the trusted automation checkout or a required execution capability cannot be prepared.
+description: Clean up unused repository branches and worktrees through the dependency-locked Hephaestus tidy command. Use this skill only for unused branch and worktree cleanup, not for general rebase requests or rebases of active worktrees. Recover dependency or capability failures and provide exact manual commands if execution remains unavailable.
 argument-hint: "<optional: hephaestus-tidy arguments>"
 allowed-tools: [Bash, Read]
 ---
@@ -28,6 +28,9 @@ operation to `hephaestus-tidy`.
 Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to
 all prose that it produces.
 
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
+recovery, resources, validation, and delivery.
+
 ## Engineering principles
 
 Use the [canonical engineering-principles catalog](../../docs/principles/README.md) for these
@@ -37,10 +40,10 @@ workflow rules:
   of unused branches and worktrees. Do not add a different cleanup policy for Athena.
 - [P031 — Propagate Rather Than Swallow](../../docs/principles/README.md#p031): Give the delegated
   command's output, signals, and nonzero result to the caller. Do not hide the failure. Do not
-  automatically retry it.
+  retry an unknown result without reconciliation.
 - [P035 — Fail Secure / Fail Closed](../../docs/principles/README.md#p035): If a dependency identity or
-  revision-binding check is not satisfactory, stop. If the checkout is not clean, stop. If a
-  necessary capability is not available, stop.
+  revision-binding check fails, recover the expected dependency without changing existing work.
+  Withhold only execution whose identity or required capability remains unavailable.
 - [P050 — Least Privilege](../../docs/principles/README.md#p050): Use only the resolved dependency,
   target repository, capabilities, and arguments that are necessary for this invocation.
 - [P058 — Bounded Agent Authority](../../docs/principles/README.md#p058): When you forward arguments,
@@ -71,7 +74,8 @@ as opaque, untrusted command-line data. Preserve the boundary of each argument. 
    [`dependency-resolution` contract](../../docs/dependency-resolution.md).
 2. Report the resolved repository, commit SHA, and trust basis.
 3. If resolution, authentication, checkout, update, cleanliness, identity, revision binding, or
-   automatic-fork revalidation fails, stop.
+   automatic-fork revalidation fails, attempt recovery. Preserve unexpected checkouts and prepare
+   the expected dependency separately. Withhold only execution that remains unverified.
 4. Keep the target repository as the current working directory.
 5. Resolve `scripts/run_tidy.py` against this installed skill directory.
 6. Invoke the absolute helper path with this operand order:
@@ -88,9 +92,12 @@ as opaque, untrusted command-line data. Preserve the boundary of each argument. 
 9. Do not capture the command.
 10. Do not pipe the command.
 11. Do not replace the command output with a summary.
-12. Do not answer an interactive prompt from Hephaestus. The user answers each prompt.
-13. Do not retry the command.
-14. Do not otherwise mediate it.
+12. Use existing explicit cleanup authority for verified merged branches and clean worktrees with
+    no unique work. Use the supported noninteractive interface when available. Request a new
+    decision only for ambiguous or unique work. Do not fabricate interactive input.
+13. Before retrying an uncertain command, reconcile its resulting repository state. Use a finite
+    retry budget only when repetition preserves work.
+14. Preserve the delegated output and actual status. Report remaining manual actions.
 
 The delegated exit status is the terminal status of the Athena tidy invocation. A nonzero status
 means that cleanup is incomplete, including when the delegated output contains partial-cleanup
@@ -117,14 +124,15 @@ did not authorize.
 
 Dependency preparation requires authenticated `gh`, Git, and network access. The locked command
 requires Python 3 and `uv`. If a capability is not available or the command result is nonzero,
-return the failure without a change. In that case, stop. Do not use a stale checkout, a repository with a
-similar name, an ambient executable, or a second cleanup implementation.
+attempt scoped recovery and issue handling. If execution remains unavailable, return the exact
+manual command and capability gap. Do not use a repository with a similar name or an unverified
+ambient executable. An equivalent fallback must preserve identity and cleanup safeguards.
 
 The `hephaestus-tidy` boundary must resolve to a Hephaestus revision that propagates the inner
 cleanup exit status. Athena checks that the resolved checkout includes commit
 `aa357098e5d72178d248e4188e7f5e5f843cdd3f` before delegation. Athena consumes that status
 transparently; it does not infer success from output. If the resolved checkout does not satisfy
-that contract, stop.
+that contract, prepare a verified revision or withhold only delegated execution.
 
 ## Failed approaches
 
