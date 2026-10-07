@@ -1460,7 +1460,7 @@ def _review_carriers(
                 normalized_result = review_exchange.verify_envelope(source_result)
             except review_exchange.ProtocolError as error:
                 raise DeliveryError(
-                    "A persisted author-event carrier is not reducer-derived."
+                    "A persisted author review message is not reducer-derived."
                 ) from error
             for result in (source_result, normalized_result):
                 digest = result["state_sha256"]
@@ -1473,7 +1473,7 @@ def _review_carriers(
             normalized_authors.append((record, normalized_event))
         if len(deferred) == len(pending):
             raise DeliveryError(
-                "A persisted author-event carrier has no reducer-derived predecessor."
+                "A persisted author review message has no reducer-derived predecessor."
             )
         pending = deferred
     return states, tuple(normalized_authors), original_states
@@ -1669,7 +1669,7 @@ def _verify_carrier_review_roots(
         if root.review_id is not None:
             roots_by_review.setdefault(root.review_id, []).append((root, thread))
     if any(roots_by_review.get(review_id) for review_id in selected_author_ids):
-        raise DeliveryError("An author-event carrier review owns an inline finding.")
+        raise DeliveryError("An author review message owns an inline finding.")
     recovered_root_seen = False
     for digest in verified_state_sha256s:
         verified_envelope = verified_envelopes.get(digest)
@@ -2039,13 +2039,13 @@ def _derive_author_transitions(
                 )
             except review_exchange.ProtocolError as error:
                 raise DeliveryError(
-                    "A persisted author-event carrier is not reducer-derived."
+                    "A persisted author review message is not reducer-derived."
                 ) from error
             if not _same_envelope(
                 cast(Mapping[str, Any], result["author_event"]), event_envelope
             ):
                 raise DeliveryError(
-                    "A persisted author-event carrier does not match its reducer event."
+                    "A persisted author review message does not match its reducer event."
                 )
             result_envelope = cast(dict[str, Any], result["envelope"])
             result_digest = cast(str, result_envelope["state_sha256"])
@@ -2054,12 +2054,12 @@ def _derive_author_transitions(
                 cast(Mapping[str, Any], persisted), result_envelope
             ):
                 raise DeliveryError(
-                    "A persisted reviewer state and a persisted author event "
+                    "A persisted reviewer state and a persisted author review "
                     "produce different states for the same result digest."
                 )
             if result_digest in transitions:
                 raise DeliveryError(
-                    "Two persisted author-event carriers produce the same result state."
+                    "Two persisted author review messages produce the same result state."
                 )
             transition = VerifiedAuthorTransition(
                 record=record,
@@ -2072,7 +2072,7 @@ def _derive_author_transitions(
             progressed = True
         if not progressed:
             raise DeliveryError(
-                "A persisted author-event carrier has no reducer-derived predecessor."
+                "A persisted author review message has no reducer-derived predecessor."
             )
         pending = deferred
     return transitions, logical_envelopes
@@ -2128,7 +2128,7 @@ def _verify_carrier_publication_order(
         )
         if previous_record_id is None or result_digest not in author_result_records:
             raise DeliveryError(
-                "A selected author-event carrier has no ordered predecessor."
+                "A selected author review message has no ordered predecessor."
             )
         edges.add((previous_record_id, f"review:{transition.record.id}"))
 
@@ -3100,7 +3100,7 @@ def validate_closure_manifest(
             elif entry.author_answer == "contest":
                 if entry.author_event_review_id is None:
                     raise DeliveryError(
-                        "The contest answer has no verified author-event carrier."
+                        "The contest answer has no verified author review message."
                     )
             elif entry.author_answer == "risk_acceptance":
                 if entry.reviewer_disposition not in {"withdrawn", "accepted_risk"}:

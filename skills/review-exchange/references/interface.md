@@ -705,7 +705,7 @@ sealed body with clean requirements and removes the obsolete finalization marker
 new round-1 epoch. It does not treat the generated finalized plan or sealed provenance as new
 requirements.
 
-After a verified reframe-plan publication, the plan contains the new author-event carrier while the
+After a verified reframe-plan publication, the plan contains the new author review message while the
 review still contains the exact old retained state. `inspect` recognizes only this narrow
 pending-reframe pair. It requires the deterministic new exchange identity, current requirements,
 same target and comment identities, empty responses, an exact prior-state binding, and one live
@@ -739,8 +739,8 @@ A reframe plan event has exactly these fields:
 | `scope` | Nonempty list of unique scope-target objects for the new requirements |
 
 A legacy-reframe plan event has the same fields. Its `event_type` is `legacy_reframe`. Use this
-event only for one complete imported legacy exchange. The retained plan must have no author-event
-carrier. The retained review must have one version 1 terminal `GO` state.
+event only for one complete imported legacy exchange. The retained plan must have no author
+review message. The retained review must have one version 1 terminal `GO` state.
 
 For GitHub, the retained plan and review must each use a positive REST numeric comment identity.
 Each identity must equal the numeric identity in its issue-comment URL. The helper rejects a
@@ -751,8 +751,8 @@ The reframe snapshot must contain the same retained plan and review comments, wi
 requirements. The helper verifies the receipt against one noncanonical comment in the normalized
 current snapshot whose author has `is_authority=true`. The comment body must be an exact `reframe`
 authority record for the new exchange, new requirements, current target, and old state digest. The
-helper makes a new exchange identity and binds it to the prior state digest. The plan author-event
-carrier does not persist the receipt. The prepared result carries the receipt only for publication
+helper makes a new exchange identity and binds it to the prior state digest. The plan author review
+message does not persist the receipt. The prepared result carries the receipt only for publication
 verification. `prepare-review` must receive and verify the authority receipt again.
 
 The retained review envelope must be the current logical state of the old exchange. The plan-source
@@ -765,11 +765,11 @@ For `legacy_reframe`, the helper also requires the exact retained review envelop
 requirements, one canonical plan, one canonical review, and the exact live reframe authority. The
 prepared operation updates only the retained plan. It preserves the retained review and authority
 comments. An exact repeat gives the same prepared operation. After publication, a second legacy
-migration request is invalid because the plan now has an author-event carrier.
+migration request is invalid because the plan now has an author review message.
 
 The result is a prepared issue-comment result. A ready initial result prepares one `create` operation
 for the canonical plan comment. A ready continued result prepares one `update` operation for that
-same comment. Its body has the latest author-event carrier. The helper does not prepare a plan when
+same comment. Its body has the latest author review message. The helper does not prepare a plan when
 the exchange awaits a reviewer, is complete, or requires a human decision, unless the request is an
 authorized reframe with changed requirements.
 
@@ -878,7 +878,7 @@ the exact live `recovery_authority_receipt`. For a review publication, it uses t
 result state.
 
 For a corrective plan publication, verification reduces the exact live retained review state with
-the published author-event carrier. The derived state and digest must equal the prepared result.
+the published author review message. The derived state and digest must equal the prepared result.
 Thus, a separately valid result state cannot replace the prepared continuation.
 
 ### `verify-finalize`

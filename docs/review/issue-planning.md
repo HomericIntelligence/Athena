@@ -30,7 +30,7 @@ For plan review, also apply [P069](../principles/README.md#p069),
 
 | Artifact | Owner and purpose | Write boundary |
 | --- | --- | --- |
-| Canonical plan | One authenticated actor-owned `<!-- HomericIntelligence:plan-issue -->` comment. It owns the latest author-event carrier. | When requested, `plan-issue` can create it when absent or update that same comment. |
+| Canonical plan | One authenticated actor-owned `<!-- HomericIntelligence:plan-issue -->` comment. It owns the latest author review message. | When requested, `plan-issue` can create it when absent or update that same comment. |
 | Plan review | One authenticated actor-owned `<!-- HomericIntelligence:issue-review -->` comment. It owns the complete current state carrier. | When requested without `--report-only`, `issue-review` can create it when absent or update that same comment. |
 | Finalized epoch | One sealed `R`, `P`, and `V` identity in the issue body. | `finalize-plan` can replace that body once. After exact readback, it can remove its two sealed comments. |
 | Missing or ambiguous plan | A coverage gap or identity conflict, never a favorable plan. | Withhold the write and return the prepared artifact. |

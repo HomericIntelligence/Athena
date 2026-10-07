@@ -172,7 +172,7 @@ the plan has a pending author event that the review has not accepted, first comp
 reviewer assessment before the requirements change. Do not overwrite the pending event or
 supersede the older persisted review state.
 
-For one complete imported legacy exchange that has no plan author-event carrier, use the
+For one complete imported legacy exchange that has no plan author review message, use the
 `legacy_reframe` event. Require the exact terminal review envelope and one live reframe authority
 receipt. For GitHub, require positive REST numeric identities for both retained comments. Require
 each identity to match its issue-comment URL. Publish only the returned plan update. Preserve the
