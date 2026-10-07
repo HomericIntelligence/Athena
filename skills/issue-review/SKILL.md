@@ -190,8 +190,10 @@ Otherwise, publish only the exact prepared comment operation. Read the issue aga
 `issue_exchange.py verify-publication`. After a verified result, continue to the applicable author-response or
 finalization workflow. Ask only for a human decision not already given. If the write or readback result is indeterminate, report
 `unknown_outcome`. Preserve the operation and receipts; reconcile exact readback before retrying.
-The reducer selects the verdict. At each fifth corrective round, supply `reassessment` when evidence
-supports a viable continuation. Continue through distinct author and reviewer transitions.
+The reducer selects the verdict. At the fifth reviewer round, supply `reassessment` with the
+assessed continuation as decision evidence. The fifth round is the hard limit: an unresolved
+exchange at that round requires a human decision. Continue through distinct author and reviewer
+transitions within the limit.
 
 After a verified `legacy_reframe` plan update, use the normal `reframe` reviewer event. Set
 `legacy_import` to `false`. Verify the same old state, authority receipt, and target set. Do not
@@ -209,8 +211,8 @@ has `next_action=human_decision`. Prefer forge-owned permission data and one exa
 comment. If unavailable, use explicit conversation authority with its actual log ID under the
 autonomous workflow policy. Use `prepare-review` to bind the
 decision to the current state and finding. This event does not increment the reviewer round. It can
-accept only a recorded risk request or select one active closure condition. A viable reassessment
-permits further reviewer rounds.
+accept only a recorded risk request or select one active closure condition. A round-5 closure
+selection cannot start another round.
 
 Before a requirements reframe, require the retained plan and review to identify the same current
 logical state. If the plan has a pending author event that the review has not accepted, complete and

@@ -1293,7 +1293,7 @@ class RealignAssessmentManifestTests(unittest.TestCase):
                 approved_report_digest=helper.assessment_report_digest(stale_resolved),
             )
 
-    def test_task_authority_preserves_dirty_evidence_and_validation_limits(
+    def test_repair_preflight_preserves_validation_and_overlap_limits(
         self,
     ) -> None:
         helper = load_helper()
@@ -1306,15 +1306,26 @@ class RealignAssessmentManifestTests(unittest.TestCase):
             source_digest=source["source_digest"],
             reason="The host cannot run validation.",
         )
-        result = helper.repair_preflight(
-            self.repository,
-            report,
-            ["RLG-001"],
-            task_authorized=True,
-        )
-        self.assertEqual("eligible", result["status"])
+        with self.assertRaisesRegex(RuntimeError, "not repair-eligible"):
+            helper.repair_preflight(
+                self.repository,
+                report,
+                ["RLG-001"],
+                approved_report_digest=helper.assessment_report_digest(report),
+            )
         self.assertEqual("not_run", report["validation"]["status"])
         self.assertFalse(report["validation"]["repair_eligibility"])
+
+        eligible_report, eligible_digest = valid_report(
+            helper, self.repository, source, "source.txt"
+        )
+        with self.assertRaisesRegex(RuntimeError, "overlaps existing work"):
+            helper.repair_preflight(
+                self.repository,
+                eligible_report,
+                ["RLG-001"],
+                approved_report_digest=eligible_digest,
+            )
         self.assertEqual(
             "existing work\n", (self.repository / "source.txt").read_text()
         )
@@ -1322,9 +1333,9 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             helper.repair_preflight(
                 self.repository,
-                report,
+                eligible_report,
                 ["RLG-001"],
-                task_authorized=True,
+                approved_report_digest=eligible_digest,
             )
 
     def test_repair_preflight_requires_the_supported_report_schema(self) -> None:

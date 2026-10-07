@@ -235,6 +235,7 @@ class FakeForge:
         self.published_terminal_comments: tuple[Any, ...] = ()
         self.requirements_failure: str | None = None
         self.ancestor_results: dict[tuple[str, str], Any] = {}
+        self.repair_last_edited_at = "2026-01-01T00:00:02Z"
 
     def snapshot(self) -> Any:
         self.events.append("read")
@@ -368,6 +369,27 @@ class FakeForge:
             self.labels.discard("state:implementation-go")
         if self.remove_reviews_after_no_go_label:
             self.reviews.clear()
+
+    def edit_comment(self, comment_id: str, body: str) -> None:
+        self.events.append(f"edit:{comment_id}")
+        for thread_id, thread in self.threads.items():
+            for index, comment in enumerate(thread.comments):
+                if comment.id != comment_id:
+                    continue
+                self.threads[thread_id] = replace(
+                    thread,
+                    comments=(
+                        *thread.comments[:index],
+                        replace(
+                            comment,
+                            body=body,
+                            last_edited_at=self.repair_last_edited_at,
+                        ),
+                        *thread.comments[index + 1 :],
+                    ),
+                )
+                return
+        raise RuntimeError("comment is absent")
 
     def publish_terminal(
         self, body: str, head_oid: str, comments: tuple[Any, ...]
@@ -2867,6 +2889,89 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         )
         deliver.assert_called_once_with(forge, self.binding(), manifest)
 
+    def test_main_routes_go_with_format_only_recovery(self) -> None:
+        forge = object()
+        manifest = object()
+        recovery = object()
+        with (
+            patch.object(self.delivery, "GitHubForge", return_value=forge),
+            patch.object(
+                self.delivery, "load_response_manifest", return_value=manifest
+            ),
+            patch.object(
+                self.delivery,
+                "load_format_only_inline_root_recovery",
+                return_value=recovery,
+            ) as load_recovery,
+            patch.object(
+                self.delivery,
+                "deliver_go_v1",
+                return_value=self.delivery.DeliveryResult("delivered", ()),
+            ) as deliver,
+            redirect_stdout(io.StringIO()),
+        ):
+            status = self.delivery.main(
+                [
+                    "--target-repository",
+                    "owner/repository",
+                    "--expected-pr-url",
+                    "https://github.com/owner/repository/pull/7",
+                    "--expected-base-oid",
+                    "a" * 40,
+                    "--expected-head-oid",
+                    "b" * 40,
+                    "--responses-file",
+                    "/bound/manifest.json",
+                    "--format-only-inline-root-recovery",
+                    "/bound/recovery.json",
+                    "7",
+                ]
+            )
+
+        self.assertEqual(0, status)
+        load_recovery.assert_called_once_with(
+            Path("/bound/recovery.json"), self.binding()
+        )
+        deliver.assert_called_once_with(
+            forge,
+            self.binding(),
+            manifest,
+            format_only_inline_root_recovery=recovery,
+        )
+
+    def test_main_routes_format_only_inline_root_repair(self) -> None:
+        forge = object()
+        receipt = {"schema_version": 2}
+        output = io.StringIO()
+        with (
+            patch.object(self.delivery, "GitHubForge", return_value=forge),
+            patch.object(
+                self.delivery,
+                "repair_format_only_inline_root",
+                return_value=receipt,
+            ) as repair,
+            redirect_stdout(output),
+        ):
+            status = self.delivery.main(
+                [
+                    "--target-repository",
+                    "owner/repository",
+                    "--expected-pr-url",
+                    "https://github.com/owner/repository/pull/7",
+                    "--expected-base-oid",
+                    "a" * 40,
+                    "--expected-head-oid",
+                    "b" * 40,
+                    "--repair-format-only-inline-root",
+                    "root-7",
+                    "7",
+                ]
+            )
+
+        self.assertEqual(0, status)
+        self.assertEqual(receipt, json.loads(output.getvalue()))
+        repair.assert_called_once_with(forge, self.binding(), "root-7")
+
     def test_main_routes_no_go_and_read_only_legacy_proofs(self) -> None:
         common = [
             "--target-repository",
@@ -3073,15 +3178,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     "/bound/manifest.json",
                     "--state-carrier-file",
                     "/bound/state.json",
-                ],
-            ),
-            (
-                "go-with-recovery",
-                [
-                    "--response-manifest",
-                    "/bound/manifest.json",
-                    "--format-only-inline-root-recovery",
-                    "/bound/recovery.json",
                 ],
             ),
         )
@@ -7821,6 +7917,197 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self.assertEqual({"state:implementation-no-go"}, forge.labels)
         self.assertEqual(1, forge.events.count("labels:no-go"))
         self.assertGreaterEqual(forge.events.count("read"), 2)
+
+    def test_format_only_inline_root_repair_moves_only_the_marker(self) -> None:
+        """Repair one unedited owned root and retain its exact evidence receipt."""
+        forge, binding, _proof, _recovery, compatibility = (
+            self.format_only_inline_root_fixture(edited_root=False)
+        )
+        self._replace_recovery_root(
+            forge,
+            body=compatibility["original_body"],
+            last_edited_at=None,
+        )
+
+        receipt = self.delivery.repair_format_only_inline_root(
+            forge, binding, compatibility["root_id"]
+        )
+
+        root = forge.threads["synthetic-thread"].comments[0]
+        self.assertEqual(compatibility["canonical_body"], root.body)
+        self.assertEqual(forge.repair_last_edited_at, root.last_edited_at)
+        self.assertEqual(
+            {
+                "schema_id": "athena.pr-review.format-only-inline-root-recovery",
+                "schema_version": 2,
+                "binding": compatibility["binding"],
+                "state_sha256": compatibility["state_sha256"],
+                "exchange_id": compatibility["exchange_id"],
+                "finding_id": compatibility["finding_id"],
+                "review_id": compatibility["review_id"],
+                "review_head_oid": binding.head_oid,
+                "root_id": compatibility["root_id"],
+                "root_database_id": compatibility["root_database_id"],
+                "path": compatibility["path"],
+                "side": compatibility["side"],
+                "original_line": compatibility["original_line"],
+                "author": compatibility["author"],
+                "author_association": compatibility["author_association"],
+                "review_submitted_at": compatibility["review_submitted_at"],
+                "original_published_at": compatibility["original_published_at"],
+                "original_last_edited_at": None,
+                "canonical_last_edited_at": forge.repair_last_edited_at,
+                "original_body": compatibility["original_body"],
+                "original_body_sha256": compatibility["original_body_sha256"],
+                "canonical_body": compatibility["canonical_body"],
+                "canonical_body_sha256": compatibility["canonical_body_sha256"],
+            },
+            receipt,
+        )
+        self.assertEqual(
+            ["read", f"edit:{compatibility['root_id']}", "read"], forge.events
+        )
+
+    def test_format_only_inline_root_repair_receipt_allows_no_go_delivery(self) -> None:
+        """A readback receipt permits delivery after the exact marker-only repair."""
+        forge, binding, proof, _recovery, compatibility = (
+            self.format_only_inline_root_fixture(edited_root=False)
+        )
+        self._replace_recovery_root(
+            forge,
+            body=compatibility["original_body"],
+            last_edited_at=None,
+        )
+        receipt = self.delivery.repair_format_only_inline_root(
+            forge, binding, compatibility["root_id"]
+        )
+        forge.events.clear()
+
+        result = self.delivery.deliver_no_go(
+            forge,
+            binding,
+            proof,
+            format_only_inline_root_recovery=receipt,
+        )
+
+        self.assertEqual("delivered", result.status)
+        self.assertEqual({"state:implementation-no-go"}, forge.labels)
+        self.assertEqual(1, forge.events.count("labels:no-go"))
+
+    def test_format_only_inline_root_repair_receipt_allows_go_delivery(self) -> None:
+        """A receipt permits a repaired historical root in a terminal GO replay."""
+        head_oid = "a" * 40
+        root = self.delivery.ReviewComment(
+            id="repairable-root",
+            full_database_id="41",
+            body=(
+                "Finding.\n"
+                "<!-- HomericIntelligence:review-finding:v1 "
+                "exchange=exchange-7 id=F-001 -->"
+            ),
+            author="reviewer",
+            viewer_did_author=True,
+            review_head_oid=head_oid,
+            review_id="initial-review-1",
+            path="src/example.py",
+            side="RIGHT",
+            line=7,
+            original_line=7,
+            published_at="2026-01-01T00:00:01Z",
+        )
+        thread = self.delivery.ReviewThread(
+            id="repairable-thread",
+            is_resolved=False,
+            comments=(root,),
+            viewer_can_reply=True,
+            viewer_can_resolve=True,
+        )
+        manifest = self.v1_manifest(thread)
+        forge = FakeForge(self.delivery, threads=(thread,))
+        self.add_history(forge, manifest)
+        forge.threads[thread.id] = replace(
+            thread,
+            comments=(replace(root, body=root.body.replace("\n<!--", "<!--", 1)),),
+        )
+
+        receipt = self.delivery.repair_format_only_inline_root(
+            forge, self.binding(), root.id
+        )
+        result = self.delivery.deliver_go_v1(
+            forge,
+            self.binding(),
+            manifest,
+            format_only_inline_root_recovery=receipt,
+        )
+
+        self.assertEqual("delivered", result.status)
+        self.assertTrue(forge.threads[thread.id].is_resolved)
+        self.assertEqual({"enhancement", "state:implementation-go"}, forge.labels)
+
+    def test_format_only_inline_root_repair_receipt_rejects_unverified_reply(
+        self,
+    ) -> None:
+        """A repaired root still rejects a reply that is not a closure receipt."""
+        root = self.delivery.ReviewComment(
+            id="repairable-root",
+            full_database_id="41",
+            body=(
+                "Finding.\n"
+                "<!-- HomericIntelligence:review-finding:v1 "
+                "exchange=exchange-7 id=F-001 -->"
+            ),
+            author="reviewer",
+            viewer_did_author=True,
+            review_head_oid="a" * 40,
+            review_id="initial-review-1",
+            path="src/example.py",
+            side="RIGHT",
+            line=7,
+            original_line=7,
+            published_at="2026-01-01T00:00:01Z",
+        )
+        thread = self.delivery.ReviewThread(
+            id="repairable-thread",
+            is_resolved=False,
+            comments=(root,),
+            viewer_can_reply=True,
+            viewer_can_resolve=True,
+        )
+        manifest = self.v1_manifest(thread)
+        forge = FakeForge(self.delivery, threads=(thread,))
+        self.add_history(forge, manifest)
+        forge.threads[thread.id] = replace(
+            thread,
+            comments=(replace(root, body=root.body.replace("\n<!--", "<!--", 1)),),
+        )
+        receipt = self.delivery.repair_format_only_inline_root(
+            forge, self.binding(), root.id
+        )
+        repaired = forge.threads[thread.id]
+        forge.threads[thread.id] = replace(
+            repaired,
+            comments=(
+                *repaired.comments,
+                self.delivery.ReviewComment(
+                    id="unverified-reply",
+                    body="This comment is not an Athena closure response.",
+                    author="other-reviewer",
+                    viewer_did_author=False,
+                ),
+            ),
+        )
+        forge.events.clear()
+
+        with self.assertRaises(self.delivery.DeliveryError):
+            self.delivery.deliver_go_v1(
+                forge,
+                self.binding(),
+                manifest,
+                format_only_inline_root_recovery=receipt,
+            )
+
+        self.assertNotIn("terminal", forge.events)
+        self.assertNotIn("labels", forge.events)
 
     def test_format_only_inline_root_recovery_delivers_no_go_through_two_snapshots(
         self,

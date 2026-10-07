@@ -650,18 +650,30 @@ class SnapshotMaterializationTests(unittest.TestCase):
             sum(path.stat().st_size for path in source.iterdir()), maximum_bytes
         )
 
-    def test_snapshot_uses_native_acquisition_without_quota_support(self) -> None:
+    def test_snapshot_without_quota_support_uses_the_bounded_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "snapshot"
             root.mkdir()
+            bounded = self.snapshot.MaterializedSnapshot(
+                root=root,
+                source_path=root / "source",
+                merge_base="a" * 40,
+                tree_oid="c" * 40,
+            )
+            free_bytes = 100 * 1024 * 1024
+            usage = shutil.disk_usage(directory)._replace(free=free_bytes)
             with (
                 patch.object(self.snapshot.tempfile, "mkdtemp", return_value=str(root)),
                 patch.object(self.snapshot, "_create_quota_volume", return_value=None),
                 patch.object(self.snapshot, "_require_base_ref", return_value="main"),
                 patch.object(
-                    self.snapshot, "_acquire_into", return_value=("a" * 40, "c" * 40)
-                ) as acquire,
-                patch.object(self.snapshot, "_make_read_only"),
+                    self.snapshot.shutil,
+                    "disk_usage",
+                    return_value=usage,
+                ),
+                patch.object(
+                    self.snapshot, "_bounded_materialize", return_value=bounded
+                ) as fallback,
             ):
                 result = self.snapshot.materialize_snapshot(
                     repository="owner/repository",
@@ -670,10 +682,19 @@ class SnapshotMaterializationTests(unittest.TestCase):
                     base_oid="a" * 40,
                     head_oid="b" * 40,
                 )
-            self.assertEqual(root / "source", result.source_path)
-            self.assertEqual((root / "source",), acquire.call_args.args)
-            self.assertGreater(acquire.call_args.kwargs["maximum_bytes"], 0)
-            self.assertEqual("b" * 40, acquire.call_args.kwargs["head_oid"])
+            self.assertIs(bounded, result)
+            self.assertEqual(root, fallback.call_args.args[0])
+            self.assertEqual((free_bytes * 9) // 10, fallback.call_args.args[1])
+            self.assertEqual(
+                {
+                    "repository": "owner/repository",
+                    "number": 9,
+                    "base_ref": "main",
+                    "base_oid": "a" * 40,
+                    "head_oid": "b" * 40,
+                },
+                fallback.call_args.kwargs,
+            )
 
     def test_rejects_snapshot_acquisition_failure_modes(self) -> None:
         cases = (
@@ -2285,68 +2306,6 @@ class BoundedLinkedCommentReaderTests(unittest.TestCase):
                 limit_error="must not overflow",
             )
 
-    def test_rejects_malformed_linked_comment_pages(self) -> None:
-        cases = (
-            (b"not json", RuntimeError),
-            (b'{"id": 1}', TypeError),
-            (b"[1]", RuntimeError),
-        )
-        for response, error_type in cases:
-            with (
-                self.subTest(response=response),
-                patch.object(
-                    self.collector, "bounded_gh_output", return_value=response
-                ),
-                self.assertRaises(error_type),
-            ):
-                self.collector.paginated_issue_comments("owner/requirements", 10)
-
-    def test_fails_closed_before_reading_when_comment_bytes_are_exhausted(self) -> None:
-        with (
-            patch.object(self.collector, "MAX_LINKED_ISSUE_COMMENT_BYTES", 0),
-            patch.object(
-                self.collector,
-                "bounded_gh_output",
-                side_effect=AssertionError("reader must not run"),
-            ),
-            self.assertRaises(self.collector.LinkedRequirementsCoverageGap),
-        ):
-            self.collector.paginated_issue_comments("owner/requirements", 10)
-
-    def test_fails_closed_when_the_next_nonempty_page_exceeds_the_page_budget(
-        self,
-    ) -> None:
-        with (
-            patch.object(self.collector, "LINKED_ISSUE_COMMENT_PAGE_SIZE", 1),
-            patch.object(self.collector, "MAX_LINKED_ISSUE_COMMENT_PAGES", 1),
-            patch.object(
-                self.collector,
-                "bounded_gh_output",
-                side_effect=(b"[{}]", b"[{}]"),
-            ),
-            self.assertRaises(self.collector.LinkedRequirementsCoverageGap),
-        ):
-            self.collector.paginated_issue_comments("owner/requirements", 10)
-
-    def test_fails_closed_when_comment_count_exceeds_the_budget(self) -> None:
-        with (
-            patch.object(self.collector, "MAX_LINKED_ISSUE_COMMENTS", 0),
-            patch.object(self.collector, "bounded_gh_output", return_value=b"[{}]"),
-            self.assertRaises(self.collector.LinkedRequirementsCoverageGap),
-        ):
-            self.collector.paginated_issue_comments("owner/requirements", 10)
-
-    def test_shared_budget_bounds_aggregate_comment_pages(self) -> None:
-        budget = self.collector.LinkedRequirementBudget()
-
-        with (
-            patch.object(self.collector, "MAX_LINKED_REQUIREMENT_PAGES", 1),
-            patch.object(self.collector, "bounded_gh_output", return_value=b"[]"),
-            self.assertRaises(self.collector.LinkedRequirementsCoverageGap),
-        ):
-            self.collector.paginated_issue_comments("owner/requirements", 10, budget)
-            self.collector.paginated_issue_comments("owner/requirements", 11, budget)
-
     def test_shared_budget_bounds_aggregate_requests(self) -> None:
         budget = self.collector.LinkedRequirementBudget()
 
@@ -2356,28 +2315,6 @@ class BoundedLinkedCommentReaderTests(unittest.TestCase):
         ):
             budget.reserve_request()
             budget.reserve_request()
-
-    def test_shared_budget_bounds_aggregate_comment_count(self) -> None:
-        budget = self.collector.LinkedRequirementBudget()
-
-        with (
-            patch.object(self.collector, "MAX_LINKED_REQUIREMENT_COMMENTS", 1),
-            patch.object(self.collector, "bounded_gh_output", return_value=b"[{}]"),
-            self.assertRaises(self.collector.LinkedRequirementsCoverageGap),
-        ):
-            self.collector.paginated_issue_comments("owner/requirements", 10, budget)
-            self.collector.paginated_issue_comments("owner/requirements", 11, budget)
-
-    def test_shared_budget_bounds_aggregate_comment_bytes(self) -> None:
-        budget = self.collector.LinkedRequirementBudget()
-
-        with (
-            patch.object(self.collector, "MAX_LINKED_REQUIREMENT_BYTES", 2),
-            patch.object(self.collector, "bounded_gh_output", return_value=b"[]"),
-            self.assertRaises(self.collector.LinkedRequirementsCoverageGap),
-        ):
-            self.collector.paginated_issue_comments("owner/requirements", 10, budget)
-            self.collector.paginated_issue_comments("owner/requirements", 11, budget)
 
 
 class BoundedChangedPathReaderTests(unittest.TestCase):
@@ -3341,8 +3278,10 @@ class ImmutableEvidenceTests(unittest.TestCase):
 
         self.assertEqual(1, result.returncode)
         self.assertEqual(1, call_count)
-        self.assertEqual("", result.stdout)
-        self.assertIn("more comments than the requested page", result.stderr)
+        error = json.loads(result.stdout)
+        self.assertEqual("linked issue requirements coverage gap", error["error"])
+        self.assertIn("more comments than the requested page", error["details"])
+        self.assertEqual("", result.stderr)
 
     def test_bounds_linked_issue_comment_bytes_as_a_structured_coverage_gap(
         self,

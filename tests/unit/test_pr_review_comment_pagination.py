@@ -49,36 +49,6 @@ class LinkedCommentPaginationTests(unittest.TestCase):
     def tearDown(self) -> None:
         sys.modules.pop(self.module_name, None)
 
-    def test_large_history_is_complete_and_ordered(self) -> None:
-        """Collect a realistic history that cannot fit in one response."""
-        comments = [{"id": i, "body": "x" * 4400} for i in range(72)]
-        self.assertGreater(len(json.dumps(comments).encode()), 256 * 1024)
-        provider = CommentPages(self.collector, comments)
-        with patch.object(self.collector, "bounded_gh_output", side_effect=provider):
-            result = self.collector.paginated_issue_comments("owner/repo", 1)
-        self.assertEqual(comments, result)
-        self.assertGreater(len(provider.requests), 1)
-
-    def test_full_history_requires_an_empty_terminal_page(self) -> None:
-        """Verify completeness after ten full pages."""
-        comments = [{"id": i} for i in range(250)]
-        provider = CommentPages(self.collector, comments)
-        with patch.object(self.collector, "bounded_gh_output", side_effect=provider):
-            result = self.collector.paginated_issue_comments("owner/repo", 1)
-        self.assertEqual(comments, result)
-        self.assertEqual(11, len(provider.requests))
-
-    def test_nonempty_eleventh_page_rejects_the_whole_history(self) -> None:
-        """Do not return partial evidence beyond the page budget."""
-        provider = CommentPages(self.collector, [{"id": i} for i in range(251)])
-        with (
-            patch.object(self.collector, "bounded_gh_output", side_effect=provider),
-            self.assertRaisesRegex(
-                self.collector.LinkedRequirementsCoverageGap, "page limit"
-            ),
-        ):
-            self.collector.paginated_issue_comments("owner/repo", 1)
-
     def test_batch_cursor_preserves_comments_after_ten_pages(self) -> None:
         comments = [{"id": i, "body": "text"} for i in range(251)]
         provider = CommentPages(self.collector, comments)
@@ -297,35 +267,4 @@ class LinkedCommentPaginationTests(unittest.TestCase):
                 self.collector.LinkedRequirementsCoverageGap, "byte limit"
             ),
         ):
-            self.collector.paginated_issue_comments("owner/repo", 1)
-
-    def test_later_page_respects_remaining_issue_bytes(self) -> None:
-        """Reject a later page when the issue byte budget is exhausted."""
-        comments = [{"id": i, "body": "x" * 100} for i in range(40)]
-        provider = CommentPages(self.collector, comments)
-        with (
-            patch.object(self.collector, "MAX_LINKED_ISSUE_COMMENT_BYTES", 4000),
-            patch.object(self.collector, "bounded_gh_output", side_effect=provider),
-            self.assertRaisesRegex(
-                self.collector.LinkedRequirementsCoverageGap, "byte limit"
-            ),
-        ):
-            self.collector.paginated_issue_comments("owner/repo", 1)
-
-    def test_later_issue_respects_aggregate_bytes(self) -> None:
-        """Reject a second issue when the shared byte budget is exhausted."""
-        comments = [{"id": i, "body": "x" * 100} for i in range(20)]
-        provider = CommentPages(self.collector, comments)
-        budget = self.collector.LinkedRequirementBudget()
-        with (
-            patch.object(self.collector, "MAX_LINKED_REQUIREMENT_BYTES", 4000),
-            patch.object(self.collector, "bounded_gh_output", side_effect=provider),
-        ):
-            self.assertEqual(
-                comments,
-                self.collector.paginated_issue_comments("owner/repo", 1, budget),
-            )
-            with self.assertRaisesRegex(
-                self.collector.LinkedRequirementsCoverageGap, "byte limit"
-            ):
-                self.collector.paginated_issue_comments("owner/repo", 2, budget)
+            self.collector.issue_comment_batch("owner/repo", 1)

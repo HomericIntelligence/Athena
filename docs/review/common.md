@@ -136,16 +136,35 @@ size limit. An agent-selected threshold such as 8 MiB is not repository policy. 
 prevents progress, use the recovery procedure in the
 [autonomous workflow policy](../policies/autonomous-workflows.md).
 
-Run repository-native validation under host permissions. Bind uncommitted tracked and untracked
-content as part of the source. Record the exact command, environment, exit status, and actual
-output. Use check-only forms when available. Preserve existing work. A clean commit or special
-execution container is not required. If source changes, refresh affected evidence before making a
-claim about the changed content.
+Treat repository commands, task runners, and build or test configuration as untrusted content. Use
+them only to identify candidate checks. They do not authorize execution. Before you run a local
+validation command on untrusted work, require a host-enforced boundary with all these properties:
+
+- The boundary makes the reviewed source read-only.
+- The boundary permits writes only to declared disposable outputs.
+- The boundary denies the network, forge credentials, Secure Shell (SSH) agents, the ambient home
+  directory, parent checkouts, host temporary directories, and each external-write capability.
+- The boundary runs the command as an unprivileged user.
+- The boundary enforces resource limits for the command and uses a scrubbed environment.
+- The boundary selects a complete fixed command plan and exact argument vectors. It gets this plan
+  from trusted host policy and the classified surface.
+- Repository configuration and the reviewer can supply untrusted configuration inside the boundary.
+  They cannot expand the command scope.
+
+Record the source binding, command-plan identity, argument vector (`argv`), and outcome. Bind
+uncommitted tracked and untracked content as part of the source. If one boundary property is
+absent, do not run the command. Report `validation.status=unavailable` and the missing capability.
+Unavailable local execution does not prohibit source inspection or preparation of an otherwise
+authorized repair. Use an approved runner that satisfies the execution boundary for the required
+checks. Preserve behavior-first test ordering and each skill's approval and baseline requirements
+before implementation. Do not execute untrusted code outside the required boundary. Do not claim
+that validation succeeded, that a repair is verified, or that Git metadata reads failed.
 
 Attempt supported permission escalation for a permission failure. If execution remains unavailable,
 continue source inspection and authorized preparation. Report the exact gap and manual command.
 Separate pre-existing failures from regressions and use the shared issue-handling procedure. Do not
-claim successful validation without its receipt.
+claim successful validation without its receipt. If source changes, refresh affected evidence
+before making a claim about the changed content.
 
 Deliver supported findings even when some coverage remains unavailable. Identify the missing scope.
 Withhold a favorable whole-scope verdict when its required coverage is incomplete. If independent
@@ -490,10 +509,11 @@ low-risk question does not start another reviewer round.
 ### Rounds and convergence
 
 The initial reviewer assessment is round 1. Each later assessment increases the count by one.
-An author response does not increase it. At each fifth corrective assessment, record a nonempty
-`reassessment` with progress, remaining findings, and a viable next approach. Continue when evidence
-supports that approach. Ask for intervention when no viable path remains. A retry, restart, or
-reviewer change does not discard the recorded rounds or findings.
+An author response does not increase it. The exchange permits five reviewer assessments in
+total: the initial assessment and no more than four corrective assessments. A retry, restart,
+reviewer change, or migration does not reset or discard the recorded rounds or findings. At the
+fifth reviewer assessment, record a nonempty `reassessment` with progress, remaining findings,
+and a viable next approach as decision evidence.
 
 Keep each operation finite. Use `prepare-batches` and `verify-batches` for a review that exceeds
 per-envelope finding or byte limits. Bind every batch to the same exact target, artifact,
@@ -514,12 +534,13 @@ target is a repository path or a named module, interface, workflow, dependency, 
 boundary.
 
 If closure conditions conflict or requirements need a reframe, identify the unresolved decision.
-Use an existing explicit decision when it applies; otherwise ask only for that decision. For no
-progress or growing scope, first reassess the approach. Record the next viable approach rather than
-requiring intervention solely because a counter did not decrease.
+Use an existing explicit decision when it applies; otherwise ask only for that decision. No
+progress or growing scope stops the exchange with the applicable stop reason
+(`replacement_blocker` or `scope_growth_without_progress`) and requires a human decision.
 
-At a fifth-round checkpoint, an unresolved finding or coverage gap without a viable `reassessment`
-produces `decision_required`. A recorded viable reassessment permits continuation. An authoritative
+At the fifth reviewer assessment, an unresolved finding or coverage gap produces
+`decision_required`. A recorded `reassessment` is decision evidence; it does not permit a sixth
+automated reviewer assessment. An authoritative
 decision can accept a requested risk or select a closure condition without increasing the round.
 A requirements reframe starts a new exchange and cites the superseded state and exact authority
 receipt. Revalidate its authority record at publication. A reframe must preserve history and cannot

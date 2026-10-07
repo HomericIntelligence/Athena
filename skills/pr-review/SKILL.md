@@ -192,8 +192,10 @@ invocation.
    `next_action=author_response`. For a pull-request head refresh, also accept
    `phase=awaiting_reviewer`, `phase=awaiting_evidence`, or a pre-round-5 complete
    `GO`, but only when the current head revision differs from the logical state revision.
-5. Prepare from current repair evidence or the caller’s explicit instructions one `fix`, `fix_with_tradeoff`, `contest`, or
-   `risk_acceptance` answer for each active required finding. When the head changed, also require one
+5. Require one explicit `fix`, `fix_with_tradeoff`, `contest`, or
+   `risk_acceptance` answer from the caller's instructions for each active required finding. Use
+   current repair evidence only to prepare an answer that those instructions authorize. Do not
+   infer an answer from the evidence alone. When the head changed, also require one
    answer for each required finding in `resolved`, `withdrawn`, or `accepted_risk` state. Keep its
    identifier. Replace its prior answer and reviewer reply. Clear a prior accepted-risk authority
    receipt. Do not require an answer for a nonblocking finding. A head refresh has an empty response
@@ -350,8 +352,9 @@ workflow in the same invocation.
 20. If the logical state needs an author response, perform that transition from current repair
     evidence, verify publication, then resume review. If it needs a human decision, use an existing
     explicit applicable decision or ask for the unresolved decision. Keep authority transitions
-    distinct. At each fifth corrective round, include a nonempty `reassessment` with the viable
-    continuation. If no viable approach remains, request intervention.
+     distinct. At the fifth reviewer round, include a nonempty `reassessment` that records the
+     assessed continuation. The fifth round is the hard limit: an unresolved exchange at that round
+     requires a human decision. Do not make a sixth automated reviewer assessment.
 
     Target-branch movement alone does not change the reviewed head or start a new exchange.
     During terminal GitHub GO delivery only, the delivery adapter can recover one Athena-owned
@@ -367,7 +370,7 @@ workflow in the same invocation.
     A continued assessment preserves the exact logical-state artifact revision
     and artifact digest. An initial assessment binds the exact current artifact. Use the
     visible-content digest for the new reviewer carrier. Render the complete state carrier. Add this
-    compact marker to each new anchorable inline finding:
+    compact marker on its own final top-level line in each new anchorable inline finding:
     `<!-- HomericIntelligence:review-finding:v1 exchange=<exchange-id> id=F-NNN -->`.
 23. For `--report-only`, return the prepared state, carrier, and logical review batch. Do not publish
     a review, respond to or resolve a thread, or change a label.

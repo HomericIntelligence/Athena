@@ -190,7 +190,7 @@ A state record has these fields:
 | `target` | Review target |
 | `requirements_sha256` | Requirements digest |
 | `round` | Current reviewer round, at least 1 |
-| `round_limit` | Integer `5`, the reassessment interval retained for wire compatibility |
+| `round_limit` | Integer `5`, the hard reviewer-round limit |
 | `phase` | `awaiting_author`, `awaiting_reviewer`, `awaiting_evidence`, `complete`, or `decision_required` |
 | `artifact_binding` | Artifact binding |
 | `scope` | Sorted, nonempty list of unique target strings |
@@ -967,12 +967,13 @@ changes and verify the complete set again before delivery.
 ## Reassessment and continuation
 
 A corrective reviewer event can include the optional `reassessment` string. It records the evidence
-for a viable next step. At each fifth review round, include this field to continue after the
-reassessment. Without this evidence the result requests intervention. Explicit stop reasons and
-unresolved architecture findings retain their existing effect. Rounds remain consecutive, and the
-accepted-event digest and replay include reassessment text. Existing events without this field
-remain valid. The `round_limit` wire field remains five for compatibility; it now gives the interval
-between reassessments.
+for a viable next step. The field is evidence for the human decision at the round limit; it does
+not extend the limit. The fifth reviewer round is the hard cap: a fifth-round assessment with an
+active required finding or a coverage gap results in `decision_required`, and no sixth automated
+reviewer assessment is valid. Explicit stop reasons and unresolved architecture findings retain
+their existing effect. Rounds remain consecutive, and the accepted-event digest and replay include
+reassessment text. Existing events without this field remain valid. The `round_limit` wire field
+remains five.
 
 When another actor has comments with canonical markers, preserve them. A unique actor-owned
 artifact takes precedence for updates and cleanup. Conflicting actor-owned artifacts still require

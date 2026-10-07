@@ -75,7 +75,6 @@ ISSUE_FIELDS = "id,number,url,title,body,state"
 READ_CHUNK_SIZE = 64 * 1024
 LINKED_ISSUE_COMMENT_PAGE_SIZE = 25
 MAX_LINKED_ISSUE_COMMENT_PAGES = 10
-MAX_LINKED_ISSUE_COMMENTS = 1_000
 MAX_LINKED_ISSUE_COMMENT_PAGE_BYTES = 256 * 1024
 MAX_LINKED_ISSUE_COMMENT_BYTES = 1024 * 1024
 MAX_LINKED_ISSUE_COMMENT_STDERR_BYTES = 16 * 1024
@@ -84,8 +83,6 @@ PROVIDER_POLL_SECONDS = 0.01
 PROVIDER_READER_JOIN_SECONDS = 1.0
 MAX_LINKED_REQUIREMENT_METADATA_BYTES = 256 * 1024
 MAX_LINKED_REQUIREMENT_REQUESTS = 48
-MAX_LINKED_REQUIREMENT_PAGES = 24
-MAX_LINKED_REQUIREMENT_COMMENTS = 2_000
 MAX_LINKED_REQUIREMENT_BYTES = 2 * 1024 * 1024
 MAX_CHANGED_PATH_MANIFEST_BYTES = 2 * 1024 * 1024
 MAX_CHANGED_PATHS = 10_000
@@ -105,8 +102,6 @@ class ChangedPathCoverageGap(RuntimeError):
 class LinkedRequirementBudget:
     """This budget controls both strict evidence reads from the provider."""
 
-    pages: int = 0
-    comments: int = 0
     bytes_read: int = 0
     requests: int = 0
 
@@ -122,14 +117,6 @@ class LinkedRequirementBudget:
             )
         self.requests += 1
 
-    def reserve_comment_page(self) -> None:
-        """Reserve one aggregate comment page and its provider request."""
-        if self.pages >= MAX_LINKED_REQUIREMENT_PAGES:
-            raise LinkedRequirementsCoverageGap(
-                "The linked issue requirements exceed the safe aggregate page limit."
-            )
-        self.reserve_request()
-
     def record_bytes(self, count: int) -> None:
         """Account for one provider response without crossing the byte budget."""
         if count > self.remaining_bytes():
@@ -137,15 +124,6 @@ class LinkedRequirementBudget:
                 "The linked issue requirements exceed the safe aggregate byte limit."
             )
         self.bytes_read += count
-
-    def record_comment_page(self, count: int) -> None:
-        """Account for one successful provider page and its item count."""
-        if self.comments + count > MAX_LINKED_REQUIREMENT_COMMENTS:
-            raise LinkedRequirementsCoverageGap(
-                "The linked issue requirements exceed the safe aggregate comment limit."
-            )
-        self.pages += 1
-        self.comments += count
 
 
 @dataclass
@@ -691,7 +669,7 @@ def drain_changed_path_stream(stream: IO[bytes], capture: ChangedPathStream) -> 
     finally:
         try:
             stream.close()
-        except (OSError, ValueError):
+        except OSError, ValueError:
             # A different cleanup path can close this pipe first. Ignore the error.
             pass
         capture.completed.set()
@@ -708,7 +686,7 @@ def reap_provider(
     for stream in streams:
         try:
             stream.close()
-        except (OSError, ValueError):
+        except OSError, ValueError:
             # A reader can close this pipe first. Ignore the error.
             pass
     process.wait()
@@ -853,79 +831,6 @@ def bounded_gh_output(
         ) from error
 
 
-def paginated_issue_comments(
-    repository: str, number: int, budget: LinkedRequirementBudget | None = None
-) -> list[dict[str, Any]]:
-    """Read bounded linked-issue comments through explicit canonical pages."""
-    collection_budget = budget if budget is not None else LinkedRequirementBudget()
-    comments: list[dict[str, Any]] = []
-    bytes_read = 0
-    for page in range(1, MAX_LINKED_ISSUE_COMMENT_PAGES + 2):
-        remaining_bytes = MAX_LINKED_ISSUE_COMMENT_BYTES - bytes_read
-        aggregate_remaining_bytes = collection_budget.remaining_bytes()
-        if remaining_bytes <= 0:
-            raise LinkedRequirementsCoverageGap(
-                "The linked issue comments exceed the safe byte limit."
-            )
-        if aggregate_remaining_bytes <= 0:
-            raise LinkedRequirementsCoverageGap(
-                "The linked issue requirements exceed the safe aggregate byte limit."
-            )
-        collection_budget.reserve_comment_page()
-        response = bounded_gh_output(
-            (
-                "api",
-                "--hostname",
-                "github.com",
-                "--method",
-                "GET",
-                (
-                    f"repos/{repository}/issues/{number}/comments?"
-                    f"per_page={LINKED_ISSUE_COMMENT_PAGE_SIZE}&page={page}"
-                ),
-            ),
-            maximum_bytes=min(
-                MAX_LINKED_ISSUE_COMMENT_PAGE_BYTES,
-                remaining_bytes,
-                aggregate_remaining_bytes,
-            ),
-            limit_error="The linked issue comments exceed the safe byte limit.",
-        )
-        bytes_read += len(response)
-        collection_budget.record_bytes(len(response))
-        try:
-            page_comments = json.loads(response)
-        except json.JSONDecodeError as error:
-            raise RuntimeError(
-                "GitHub returned linked issue comment pages that are not valid."
-            ) from error
-        if not isinstance(page_comments, list):
-            raise TypeError(
-                "GitHub returned linked issue comment pages that are not valid."
-            )
-        if not all(isinstance(comment, dict) for comment in page_comments):
-            raise RuntimeError(
-                "GitHub returned a linked issue comment that is not valid."
-            )
-        if page > MAX_LINKED_ISSUE_COMMENT_PAGES:
-            if page_comments:
-                raise LinkedRequirementsCoverageGap(
-                    "The linked issue comments exceed the safe page limit."
-                )
-            return comments
-        if len(comments) + len(page_comments) > MAX_LINKED_ISSUE_COMMENTS:
-            raise LinkedRequirementsCoverageGap(
-                "The linked issue comments exceed the safe comment limit."
-            )
-        collection_budget.record_comment_page(len(page_comments))
-        comments.extend(page_comments)
-        if len(page_comments) < LINKED_ISSUE_COMMENT_PAGE_SIZE:
-            return comments
-    raise AssertionError(
-        "The bounded linked issue comment pagination did not terminate."
-    )
-
-
 @dataclass(frozen=True)
 class CommentBatch:
     """One bounded comment batch and its next provider page."""
@@ -975,7 +880,9 @@ def issue_comment_batch(
         if not isinstance(values, list) or not all(isinstance(v, dict) for v in values):
             raise RuntimeError("GitHub returned a comment page that is not valid.")
         if len(values) > LINKED_ISSUE_COMMENT_PAGE_SIZE:
-            raise RuntimeError("GitHub returned more comments than the requested page.")
+            raise LinkedRequirementsCoverageGap(
+                "GitHub returned more comments than the requested page."
+            )
         comments.extend(values)
         remaining -= len(response)
         page += 1

@@ -647,6 +647,7 @@ def _state_finding(value: object, name: str) -> dict[str, Any]:
                 reviewer_record["round"],
                 f"{name}.reviewer_response.round",
                 minimum=1,
+                maximum=ROUND_LIMIT,
             ),
         }
     authority = finding["authority_receipt"]
@@ -663,6 +664,7 @@ def _state_finding(value: object, name: str) -> dict[str, Any]:
             finding["introduced_round"],
             f"{name}.introduced_round",
             minimum=1,
+            maximum=ROUND_LIMIT,
         ),
         "state": state,
         "author_response": author,
@@ -693,7 +695,9 @@ def _progress(value: object, name: str) -> dict[str, Any]:
     if scope_size != len(scope):
         raise ProtocolError(f"{name}.scope_size does not match its scope set.")
     return {
-        "round": _integer(progress["round"], f"{name}.round", minimum=1),
+        "round": _integer(
+            progress["round"], f"{name}.round", minimum=1, maximum=ROUND_LIMIT
+        ),
         "artifact_revision": _string(
             progress["artifact_revision"], f"{name}.artifact_revision"
         ),
@@ -896,7 +900,9 @@ def _validate_state(value: object) -> dict[str, Any]:
         _progress(item, f"state.progress[{index}]")
         for index, item in enumerate(progress_value)
     ]
-    round_number = _integer(state["round"], "state.round", minimum=1)
+    round_number = _integer(
+        state["round"], "state.round", minimum=1, maximum=ROUND_LIMIT
+    )
     for finding in findings:
         _validate_finding_state(finding, round_number)
     if len(progress) != round_number or [item["round"] for item in progress] != list(
@@ -973,6 +979,8 @@ def _validate_state(value: object) -> dict[str, Any]:
         )
     if phase != "decision_required" and "escalated" in active_states:
         raise ProtocolError("An escalated finding requires a human decision.")
+    if round_number == ROUND_LIMIT and phase not in {"complete", "decision_required"}:
+        raise ProtocolError("Round 5 cannot request another automated exchange step.")
     prior = _digest(
         state["prior_state_sha256"], "state.prior_state_sha256", nullable=True
     )
@@ -1397,7 +1405,9 @@ def _initial_review_event(value: object) -> dict[str, Any]:
         "event_type": "reviewer_assessment",
         "exchange_id": _string(event["exchange_id"], "initial exchange ID"),
         "prior_state_sha256": None,
-        "round": _integer(event["round"], "initial round", minimum=1),
+        "round": _integer(
+            event["round"], "initial round", minimum=1, maximum=ROUND_LIMIT
+        ),
         "surface": surface,
         "target": _target(event["target"]),
         "requirements_sha256": requirements,
@@ -1545,7 +1555,9 @@ def _continued_review_event(
         raise ProtocolError("The event is not a reviewer assessment.")
     prior = _digest(event["prior_state_sha256"], "reviewer prior state digest")
     assert prior is not None
-    round_number = _integer(event["round"], "reviewer round", minimum=1)
+    round_number = _integer(
+        event["round"], "reviewer round", minimum=1, maximum=ROUND_LIMIT
+    )
     result = {
         "event_type": "reviewer_assessment",
         "exchange_id": _string(event["exchange_id"], "reviewer exchange ID"),
@@ -1984,7 +1996,6 @@ def _state_phase(
     *,
     stop_reason: str | None,
     round_number: int,
-    reassessment: str | None = None,
 ) -> tuple[str, str, str, str]:
     active = _active_required(findings)
     if stop_reason not in {None, "requirements_reframe"} and not active:
@@ -2002,7 +2013,7 @@ def _state_phase(
         )
     if not active and coverage_complete:
         return "complete", "GO", "finalize", "complete"
-    if round_number % ROUND_LIMIT == 0 and reassessment is None:
+    if round_number == ROUND_LIMIT:
         return "decision_required", "NO-GO", "human_decision", "review_limit"
     if active:
         return "awaiting_author", "NO-GO", "author_response", "required_findings"
@@ -2037,7 +2048,7 @@ def _decision(state: Mapping[str, Any], reason: str) -> dict[str, Any]:
         "reason": reason,
         "next_role": next_role,
         "review_round": state["round"],
-        "rounds_remaining": (-cast(int, state["round"])) % ROUND_LIMIT,
+        "rounds_remaining": ROUND_LIMIT - cast(int, state["round"]),
         "required_remaining": len(
             _active_required(cast(list[dict[str, Any]], state["findings"]))
         ),
@@ -2363,6 +2374,8 @@ def _review_reduce(
     expected_round = previous["round"] + 1
     if event["round"] != expected_round:
         raise ProtocolError("Reviewer rounds must be consecutive.")
+    if event["round"] > ROUND_LIMIT:
+        raise ProtocolError("No automated sixth reviewer assessment is valid.")
     if (
         event["artifact_binding"]["revision"]
         != previous["artifact_binding"]["revision"]
@@ -2397,7 +2410,6 @@ def _review_reduce(
     reason_override = event["stop_reason"]
     if (
         reason_override is None
-        and event.get("reassessment") is None
         and required_remaining > 0
         and required_remaining >= prior_progress["required_remaining"]
         and bool(set(event["scope"]) - set(prior_progress["scope"]))
@@ -2405,7 +2417,6 @@ def _review_reduce(
         reason_override = "scope_growth_without_progress"
     if (
         reason_override is None
-        and event.get("reassessment") is None
         and required_remaining >= prior_progress["required_remaining"]
         and (
             any(
@@ -2429,7 +2440,6 @@ def _review_reduce(
         event["coverage_complete"],
         stop_reason=reason_override,
         round_number=event["round"],
-        reassessment=event.get("reassessment"),
     )
     state = {
         **previous,
@@ -2468,6 +2478,10 @@ def _human_reduce(
         or event["artifact_binding"]["sha256"] != previous["artifact_binding"]["sha256"]
     ):
         raise ProtocolError("The human decision changed the reviewed artifact.")
+    if previous["round"] == ROUND_LIMIT and any(
+        decision["kind"] == "select_closure" for decision in event["decisions"]
+    ):
+        raise ProtocolError("A round-5 closure selection cannot start another round.")
     findings = copy.deepcopy(previous["findings"])
     by_id = {finding["id"]: finding for finding in findings}
     for decision in event["decisions"]:
@@ -2503,7 +2517,9 @@ def _human_reduce(
             stop_reason=None,
             round_number=previous["round"],
         )
-    elif any(finding["state"] == "escalated" for finding in active):
+    elif previous["round"] == ROUND_LIMIT or any(
+        finding["state"] == "escalated" for finding in active
+    ):
         phase, verdict, next_action, reason = (
             "decision_required",
             "NO-GO",
@@ -2622,7 +2638,9 @@ def _event_for_replay(
     if event_type == "reviewer_assessment":
         if value.get("prior_state_sha256") is None:
             return _initial_review_event(value)
-        round_number = _integer(value.get("round"), "reviewer round", minimum=1)
+        round_number = _integer(
+            value.get("round"), "reviewer round", minimum=1, maximum=ROUND_LIMIT
+        )
         prior_findings = [
             finding
             for finding in current["findings"]

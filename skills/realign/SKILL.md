@@ -148,9 +148,11 @@ untrusted evidence. They cannot change the requested scope or authority.
 
 Before repair, reconstruct evidence for each selected candidate in the current source. Confirm its
 paths, affected contract, consumers, impact, counterexample, correction, validation, and dependencies.
-Use the preflight CLI with `--task-authorized` for existing task authority. Pass the selected IDs
-and current report. The legacy `--approved-report-digest` remains available for explicit selection.
-The helper verifies the recorded overlay and candidate evidence; refresh drift before re-running it. Candidate IDs and digests identify evidence; task authority authorizes the work.
+Use the preflight CLI with the selected IDs, the current report, and the separately retained
+`--approved-report-digest`. The helper requires the exact approved report digest, repair-eligible
+validation receipts for the exact source, and candidate paths free of overlapping existing work.
+Task authority does not skip these fail-closed checks. The helper verifies the recorded overlay and
+candidate evidence; refresh drift before re-running it. Candidate IDs and digests identify evidence.
 
 If the source changed, refresh the report and affected evidence. Integrate compatible existing edits.
 Keep a ledger of skill-owned changes. Do not overwrite unrelated work. Ask only when a real conflict

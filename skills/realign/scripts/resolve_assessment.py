@@ -177,7 +177,7 @@ def _run_bounded_process(
             try:
                 os.killpg(pid, signal.SIGKILL)
                 return
-            except (PermissionError, ProcessLookupError):
+            except PermissionError, ProcessLookupError:
                 pass
         if process.poll() is None:
             process.kill()
@@ -1432,10 +1432,8 @@ def _verify_candidate_evidence(
         _verify_worktree_binding(repository_root, source, deadline=deadline)
 
 
-def _verify_validation_manifest(
-    validation: Any, source_digest: str, *, task_authorized: bool = False
-) -> None:
-    """Verify exact-source receipts; preserve unavailable or failed task validation."""
+def _verify_validation_manifest(validation: Any, source_digest: str) -> None:
+    """Require complete successful receipts for the exact assessment source."""
     if not isinstance(validation, Mapping):
         raise TypeError("The assessment report is not repair-eligible.")
     receipts = validation.get("receipts")
@@ -1447,9 +1445,7 @@ def _verify_validation_manifest(
         reason=cast(str | None, validation.get("reason")),
         receipts=receipts,
     )
-    if dict(validation) != rebuilt or (
-        not task_authorized and not rebuilt["repair_eligibility"]
-    ):
+    if dict(validation) != rebuilt or not rebuilt["repair_eligibility"]:
         raise RuntimeError("The assessment report is not repair-eligible.")
 
 
@@ -1479,7 +1475,6 @@ def repair_preflight(
     candidate_ids: Sequence[str],
     *,
     approved_report_digest: str | None = None,
-    task_authorized: bool = False,
     _deadline: float | None = None,
 ) -> dict[str, Any]:
     """Rebind a report and reject stale evidence or overlapping user work."""
@@ -1495,10 +1490,9 @@ def repair_preflight(
     source = report.get("source")
     if not isinstance(source, Mapping):
         raise TypeError("The assessment report source binding is malformed.")
-    if not (task_authorized and approved_report_digest is None) and (
-        not isinstance(approved_report_digest, str)
-        or approved_report_digest != assessment_report_digest(report)
-    ):
+    if not isinstance(
+        approved_report_digest, str
+    ) or approved_report_digest != assessment_report_digest(report):
         raise RuntimeError(
             "The approved assessment report binding is missing or stale."
         )
@@ -1506,9 +1500,7 @@ def repair_preflight(
     source_digest = source.get("source_digest")
     if not isinstance(source_digest, str):
         raise TypeError("The assessment source digest is malformed.")
-    _verify_validation_manifest(
-        report.get("validation"), source_digest, task_authorized=task_authorized
-    )
+    _verify_validation_manifest(report.get("validation"), source_digest)
     source_kind = source.get("source_kind")
     isolated_start: str | None = None
     if source_kind == "selected_commit_tree":
@@ -1518,11 +1510,7 @@ def repair_preflight(
     else:
         raise RuntimeError("The assessment report source kind is not valid.")
     _verify_candidate_evidence(root, source, candidates, deadline=deadline)
-    # A verified overlay already binds the existing edits and candidate bytes.
-    # A selected commit does not bind mutable checkout state.
-    if _candidate_overlap(root, paths, deadline=deadline) and not (
-        task_authorized and source_kind == "worktree_overlay"
-    ):
+    if _candidate_overlap(root, paths, deadline=deadline):
         raise RuntimeError("A repair candidate path overlaps existing work.")
     return {
         "status": "eligible",
@@ -1588,12 +1576,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     preflight_parser.add_argument(
         "--candidate", action="append", required=True, dest="candidate_ids"
     )
-    preflight_parser.add_argument("--approved-report-digest")
-    preflight_parser.add_argument(
-        "--task-authorized",
-        action="store_true",
-        help="Use existing task authority; retain all source and receipt checks.",
-    )
+    preflight_parser.add_argument("--approved-report-digest", required=True)
     arguments = parser.parse_args(raw_arguments)
     try:
         deadline = (
@@ -1630,7 +1613,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 _read_report(arguments.report, deadline=deadline),
                 arguments.candidate_ids,
                 approved_report_digest=arguments.approved_report_digest,
-                **({"task_authorized": True} if arguments.task_authorized else {}),
                 _deadline=deadline,
             )
     except (

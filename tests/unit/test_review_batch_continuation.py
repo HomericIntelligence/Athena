@@ -21,15 +21,15 @@ class ReviewBatchContinuationTests(unittest.TestCase):
         cls.fixture = ReviewExchangeTests()
         cls.exchange = cls.fixture.exchange
 
-    def test_reassessment_allows_sixth_review(self) -> None:
+    def test_reassessment_does_not_override_the_round_limit(self) -> None:
         state = self.fixture.initial_state()
-        for number in range(2, 7):
+        for number in range(2, 6):
             answered = self.fixture.reduce(
                 self.fixture.author_event(state, "fix"), state
             )["envelope"]
             event = self.fixture.review_event(
                 answered,
-                "resolve" if number == 6 else "still_present",
+                "still_present",
                 round_number=number,
             )
             if number == 5:
@@ -42,9 +42,15 @@ class ReviewBatchContinuationTests(unittest.TestCase):
                 inferred = delivery._infer_reviewer_event(answered, state, None)
                 replayed = self.fixture.reduce(inferred, answered)["envelope"]
                 self.assertEqual(state, replayed)
-        self.assertEqual("GO", state["state"]["verdict"])
-        self.assertEqual(6, state["state"]["round"])
+        self.assertEqual("NO-GO", state["state"]["verdict"])
+        self.assertEqual(5, state["state"]["round"])
+        self.assertEqual("decision_required", state["state"]["phase"])
+        self.assertEqual("human_decision", state["state"]["next_action"])
         self.assertEqual(state, self.exchange.verify_envelope(state))
+        with self.assertRaises(self.exchange.ProtocolError):
+            self.fixture.reduce(
+                self.fixture.review_event(state, "resolve", round_number=6), state
+            )
 
     def batch_stream(
         self, count: int, *, complete: bool = True, changed_source: bool = False

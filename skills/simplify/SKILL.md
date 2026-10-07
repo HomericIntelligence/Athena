@@ -106,8 +106,8 @@ structural change.
 7. If a candidate affects a published public API, identify the published surface, current
    consumers, required deprecation notice or compatibility bridge, migration path, supported
    version or removal window, and validation evidence.
-8. If no deprecation policy exists, infer a migration policy from consumers and release practice
-   within task authority. State the evidence and decision. Ask only about a material unresolved choice.
+8. If no deprecation policy exists, stop and request maintainer direction. Do not infer a
+   migration policy from consumers or release practice.
 9. Until the deprecation and compatibility conditions are complete, classify that published public
    API candidate as `retain` or limit it to deprecation and migration work.
 10. Give each supported candidate `category: simplification`. Classify its action as `delete`,

@@ -78,9 +78,10 @@ use that response to refresh the artifact binding and all active finding answers
 required finding that was resolved, withdrawn, or accepted as risk on the prior artifact. Keep the
 same finding identifiers. Do not carry a risk-acceptance receipt to the new artifact. A pull-request
 refresh before its next review
-must also bind a new head revision. At each fifth corrective review round, record a nonempty
-`reassessment` with the progress, remaining findings, and viable next approach. Continue with that
-approach; request intervention only when no viable path remains. Do not use a label,
+must also bind a new head revision. At the fifth reviewer round, record a nonempty `reassessment`
+with the progress, remaining findings, and viable next approach. The fifth round is the hard
+limit: the exchange then requires a human decision, and no sixth automated reviewer assessment is
+valid. Do not use a label,
 acknowledgment, or stale carrier as proof of closure.
 
 A terminal GO does not accept an author refresh. The invoking pull-request workflow selects any
