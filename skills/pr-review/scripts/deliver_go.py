@@ -310,7 +310,7 @@ class VerifiedAuthorTransition:
 
 @dataclass(frozen=True)
 class NoGoProof:
-    """One published current-head non-GO state carrier."""
+    """One published current-head non-GO reviewer state message."""
 
     state_envelope: dict[str, Any]
     visible_content: str
@@ -691,7 +691,7 @@ def terminal_visible_content(
 
 
 def terminal_review_body(manifest: ClosureManifest) -> str:
-    """Render and verify the terminal state carrier for one COMMENT review."""
+    """Render and verify the terminal reviewer state message for one COMMENT review."""
     try:
         return cast(
             str,
@@ -1437,7 +1437,9 @@ def _review_carriers(
         if envelope["schema_id"] == review_exchange.STATE_SCHEMA_ID:
             digest = cast(str, envelope["state_sha256"])
             if digest in states:
-                raise DeliveryError("A reviewer round has duplicate state carriers.")
+                raise DeliveryError(
+                    "A reviewer round has duplicate reviewer state messages."
+                )
             states[digest] = (review, envelope)
             original_states[digest] = original
             source_states[original["state_sha256"]] = original
@@ -1721,7 +1723,7 @@ def _verify_carrier_review_roots(
             marker = _finding_marker(root)
             if marker is None:
                 raise DeliveryError(
-                    "A reviewer-state carrier owns an unmarked inline root."
+                    "A reviewer state message owns an unmarked inline root."
                 )
             exchange_id, finding_id = marker
             anchor = expected.get(finding_id)
@@ -1780,14 +1782,14 @@ def _verify_carrier_review_roots(
                 or root.side not in {"LEFT", "RIGHT"}
             ):
                 raise DeliveryError(
-                    "A reviewer-state carrier has an invalid inline finding batch."
+                    "A reviewer state message has an invalid inline finding batch."
                 )
             if recovered_root:
                 recovered_root_seen = True
             actual.add(finding_id)
         if actual != set(expected):
             raise DeliveryError(
-                "A reviewer-state carrier does not own its exact inline finding batch."
+                "A reviewer state message does not own its exact inline finding batch."
             )
     if format_only_compatibility is not None and not recovered_root_seen:
         raise DeliveryError("The format-only recovery reference is unused.")
@@ -2150,7 +2152,7 @@ def _verify_carrier_publication_order(
             edges.add((author_record_id, f"review:{current_record.id}"))
             continue
         raise DeliveryError(
-            "A selected reviewer-state carrier has no ordered predecessor."
+            "A selected reviewer state message has no ordered predecessor."
         )
 
     selected_envelopes = {
@@ -3974,7 +3976,9 @@ def deliver_no_go(
     """Apply and verify the exclusive current-head NO-GO label state."""
     initial = _snapshot(forge, binding)
     if proof is None:
-        raise DeliveryError("A verified current-head NO-GO state carrier is required.")
+        raise DeliveryError(
+            "A verified current-head NO-GO reviewer state message is required."
+        )
     original_body = _verify_no_go_snapshot(
         forge,
         initial,
@@ -4757,7 +4761,7 @@ def _format_only_inline_root_context(
     exchange_id: str,
     finding_id: str,
 ) -> tuple[ReviewThread, ReviewComment, ReviewRecord, dict[str, Any]]:
-    """Bind one format-only repair root to its immutable state carrier."""
+    """Bind one format-only repair root to its immutable reviewer state message."""
     thread, root = _format_only_inline_root(snapshot, root_id)
     if (
         root.body != body
@@ -4787,7 +4791,9 @@ def _format_only_inline_root_context(
         if review.id == root.review_id
     ]
     if len(carrier_matches) != 1:
-        raise DeliveryError("The format-only repair root has no unique state carrier.")
+        raise DeliveryError(
+            "The format-only repair root has no unique reviewer state message."
+        )
     review, envelope = carrier_matches[0]
     if (
         review.head_oid != root.review_head_oid

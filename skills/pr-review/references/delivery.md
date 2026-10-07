@@ -12,7 +12,7 @@ and review output. Use the canonical
 policy.
 
 ```text
-[complete review] -> [state carrier] -> [exact readback]
+[complete review] -> [reviewer state message] -> [exact readback]
                               |                |
                               |                +-> [nonterminal: exclusive NO-GO]
                               +-> [terminal GO: carrier -> thread closure -> exclusive GO]
@@ -111,7 +111,7 @@ repository-policy gate. The other delivery boundaries are unchanged by batching.
 
 ## Reviewer-round carrier
 
-Source-review direct delivery publishes one exact-head state carrier for each reviewer round.
+Source-review direct delivery publishes one exact-head reviewer state message for each reviewer round.
 A normal `--report-only` review calls the exchange helper and returns the prepared carrier and
 logical batch. It does not publish, resolve a thread, or change a label. `--prevalidated` does not
 call an exchange or delivery helper.
@@ -119,7 +119,7 @@ call an exchange or delivery helper.
 Two stored review messages carry one exchange. A reviewer state message holds one reviewer round.
 An author review message holds the author's answers to the findings of the round before it. The
 author review message is a review with an empty inline comment array. Its body holds the answers
-and the state carrier envelope.
+and the reviewer state message envelope.
 
 For GitHub, send exactly one atomic request to the retained target:
 
@@ -127,7 +127,7 @@ For GitHub, send exactly one atomic request to the retained target:
 POST /repos/{owner}/{repo}/pulls/{number}/reviews
 commit_id = reviewed head OID
 event     = COMMENT
-body      = visible review followed by the final canonical state carrier
+body      = visible review followed by the final canonical reviewer state message
 comments  = one entry for each new anchorable finding
 ```
 
@@ -160,7 +160,7 @@ separate exchange for a new head. A material requirements change uses the refram
 silently reset the exchange.
 
 Terminal GitHub GO delivery has one compatibility rule for an immutable historical carrier. The
-adapter can remove exactly one final line feed from one Athena-owned state carrier when all these
+adapter can remove exactly one final line feed from one Athena-owned reviewer state message when all these
 conditions apply:
 
 - the unchanged body then passes the strict carrier parser;
@@ -174,7 +174,7 @@ decision, a NO-GO delivery, or a state without a direct authoritative reframe. R
 state-chain, authority, publication-order, source, thread, and label checks after recovery.
 
 Before a human decision or requirements reframe, the pull-request surface adapter must resolve one
-exact current logical state. Start with the latest accepted state carrier. Reduce each later
+exact current logical state. Start with the latest accepted reviewer state message. Reduce each later
 contiguous author review message in verified provider order. Reject a stale event, fork, gap, or
 ambiguous chain. Then, resolve one exact live authority record. Verify its body digest, repository
 authority, target, exchange, applicable findings, and decision before you give the normalized
@@ -187,13 +187,13 @@ or `COLLABORATOR` author association. Also require its author to have current `A
 repository permission. If the adapter cannot prove both conditions, withhold the state-dependent
 operation.
 
-## Authority-transition state carrier
+## Authority-transition reviewer state message
 
 An invocation with an explicit `human_decision` or `reframe` event is the only owner of that
 authority transition. Require the explicit event and receipt before reduction. Do not infer either
 item from the retained state or the authority record. Resolve the current logical state through all
 verified pending author events before you apply the transition. A human decision binds the retained
-exchange, logical state, artifact revision, and artifact digest. Its state carrier has a new
+exchange, logical state, artifact revision, and artifact digest. Its reviewer state message has a new
 visible-content digest, and its reviewer-round count does not change. A reframe binds the exact
 superseded logical state, starts a new exchange at round 1, binds the new requirements and current
 artifact, and stores the verified supersession receipt. Its `superseded_exchange_ids` value is the
@@ -220,7 +220,7 @@ owner and do not publish a duplicate.
 The `pr-review --author-response` invocation is the only direct author review message preparation and
 publication owner. A reviewer-round invocation verifies the result. It must not synthesize or
 publish an author event. Before a corrective reviewer round or authority transition, reduce every
-pending author review message after the latest state carrier in verified provider order. Each event
+pending author review message after the latest reviewer state message in verified provider order. Each event
 must bind the logical state that its exact predecessor derives. When this chain is nonempty, its
 final event must bind the current head, the complete active required-finding set, and the author's
 answers. For GitHub,
@@ -289,11 +289,11 @@ The proof has only these fields:
   and exact head object identifier;
 - `review_id`, with the published `COMMENT` review identity;
 - `state`, with the complete version-1 state envelope; and
-- `visible_content`, with the exact text before the state carrier; and
+- `visible_content`, with the exact text before the reviewer state message; and
 - `requirements_binding`, with the reviewed-scope digest, linked-requirements digest, and canonical
   sorted set of selected requirement-issue URLs.
 
-The helper extracts the state carrier from the exact review body. It compares the extracted carrier
+The helper extracts the reviewer state message from the exact review body. It compares the extracted carrier
 with `state` and `visible_content`. It must verify either the nonterminal `phase!=complete`,
 `verdict=NO-GO`, and `next_action!=finalize` tuple or the terminal `phase=complete`,
 `verdict=GO` and `next_action=finalize` tuple. It also verifies the
@@ -309,7 +309,7 @@ A write or readback failure is partial. Do not claim delivery or make a blind re
 
 Use `--repair-format-only-inline-root <root-id>` only when an Athena-owned inline root has one
 final finding marker on the same line as the finding text. The operation reads the retained target,
-checks the unedited root, its immutable state carrier, its source anchor, and its ownership. It then
+checks the unedited root, its immutable reviewer state message, its source anchor, and its ownership. It then
 adds exactly one newline before that final marker and verifies the fetched result.
 
 The command prints one canonical JSON recovery receipt. Retain that receipt. Supply it through
@@ -398,7 +398,7 @@ Use only `resolved`, `withdrawn`, `accepted_risk`, or `nonblocking` as terminal 
 dispositions. An accepted risk requires the `risk_acceptance` answer and a verified authority
 receipt. A corrected finding requires its author answer and corrective head. A contest requires its
 bound author review message and one valid terminal reviewer answer. The helper extracts that
-author review message, replays it from the exact prior state carrier, and derives the author answer
+author review message, replays it from the exact prior reviewer state message, and derives the author answer
 and artifact revision. The helper generates the response body. It does not accept arbitrary
 version-1 response prose.
 
@@ -517,17 +517,21 @@ supersede an old finding, transfer a risk acceptance, or authorize a historical 
 Preserve all original-root, ownership, chronology, current-head, and delivery checks. Do not use it
 to abandon a pending or conditional exchange.
 
-A GO label retained from this verified completed history is not current-head proof.
-After full current-artifact validation, continue with publication of the new terminal
+A GO label from this verified completed history is proof on its own. It does not depend on the
+current head. After full current-artifact validation, continue with publication of the new terminal
 carrier and normal readback before final label verification. Keep a GO label without
-a matching current-head terminal record or verified completed history as a delivery
+a matching current-head terminal record and without verified completed history as a delivery
 failure. Do not remove the retained label as a preparatory workaround.
 
-Treat the exact same-head terminal record, zero open threads, and exclusive GO label as
-`already_delivered`. A label without the matching current-head terminal ledger is not proof. If the
+Treat the exclusive GO label, zero open threads, and verified completed history as
+`already_delivered`. The label does not lapse when a later commit changes the head. If the
 terminal carrier exists after an interrupted run, validate the same manifest and resume only the
 remaining generated responses, resolutions, or label operation. Do not publish the terminal carrier
 again.
+
+A delivered GO label is independent of the forge status. A rebase, a merge of the base branch, or a
+later bug fix does not remove it. Re-review is the author's judgement. The label lapses only when a
+reviewer delivers `state:implementation-no-go` or when the target carries no state label.
 
 If a read or mutation fails, reconcile the exact target before another dependent mutation.
 Do not retry blindly, unresolve a thread, or make a compensating label change. Report the known
@@ -614,7 +618,7 @@ discussion closure.
 Create one actionable changed-line discussion for each new anchorable finding. Put the exact
 `base_sha`, `start_sha`, `head_sha`, `old_path`, `new_path`, and `position_type=text` values in its
 position. Use `new_line` for an addition, `old_line` for a deletion, and both for an unchanged line.
-The discussion contains the compact finding marker. It does not contain the complete state carrier.
+The discussion contains the compact finding marker. It does not contain the complete reviewer state message.
 
 When a reviewer action has one or more new finding discussions, publish all discussions and the new
 state note through one supported atomic draft or batch. If the host or forge cannot provide this
