@@ -2036,9 +2036,17 @@ def _derive_author_transitions(
                 )
             result_envelope = cast(dict[str, Any], result["envelope"])
             result_digest = cast(str, result_envelope["state_sha256"])
-            if result_digest in logical_envelopes or result_digest in transitions:
+            persisted = logical_envelopes.get(result_digest)
+            if persisted is not None and not _same_envelope(
+                cast(Mapping[str, Any], persisted), result_envelope
+            ):
                 raise DeliveryError(
-                    "Persisted author-event carriers have an ambiguous result state."
+                    "A persisted reviewer state and a persisted author event "
+                    "produce different states for the same result digest."
+                )
+            if result_digest in transitions:
+                raise DeliveryError(
+                    "Two persisted author-event carriers produce the same result state."
                 )
             transition = VerifiedAuthorTransition(
                 record=record,
