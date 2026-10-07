@@ -513,6 +513,8 @@ def prepare_separate_checkout(expected: str) -> Path:
             if existing.repository.casefold() == expected.casefold():
                 return target
         except RuntimeError:
+            # The existing directory is not a usable checkout. Do not reuse or
+            # repair it. Select a new name so the caller's work is preserved.
             pass
         target = target.with_name(f"{target.name}-{uuid4().hex}")
     if not target.exists():
@@ -547,6 +549,8 @@ def resolve_knowledge_checkout(knowledge_root: Path, mode: str) -> dict[str, Any
                     == expected.casefold()
                 )
             except RuntimeError:
+                # The origin is absent or unreadable. Treat the checkout as a
+                # different repository, so the caller prepares a separate one.
                 pass
         needs_separate_checkout = not origin_matches
         if origin_matches:
