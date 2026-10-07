@@ -284,6 +284,32 @@ class DistributionTests(unittest.TestCase):
 
         self.assert_validation_errors(validator._validate_opencode, "opencode")
 
+    def test_opencode_package_must_pin_the_plugin_sdk(self) -> None:
+        manifest = self.fixture / "npm" / "athena-opencode" / "package.json"
+        original = json.loads(manifest.read_text(encoding="utf-8"))
+        cases: tuple[tuple[str, dict[str, str] | None], ...] = (
+            ("absent", None),
+            ("empty", {}),
+            ("range", {"@opencode/plugin": "^2.0.24"}),
+        )
+        try:
+            for label, dependencies in cases:
+                with self.subTest(dependencies=label):
+                    document = dict(original)
+                    if dependencies is None:
+                        document.pop("dependencies", None)
+                    else:
+                        document["dependencies"] = dependencies
+                    manifest.write_text(json.dumps(document), encoding="utf-8")
+
+                    self.assert_validation_errors(
+                        validator._validate_opencode,
+                        "opencode",
+                        literal="'@opencode/plugin'",
+                    )
+        finally:
+            manifest.write_text(json.dumps(original), encoding="utf-8")
+
     def test_opencode_manifest_version_must_match_the_host_manifests(self) -> None:
         manifest = self.fixture / "npm" / "athena-opencode" / "package.json"
         document = json.loads(manifest.read_text(encoding="utf-8"))

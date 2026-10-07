@@ -406,6 +406,20 @@ def _validate_opencode(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
                 "The package must publish at least the plugin entry and skills corpus.",
             )
         )
+    dependencies = manifest.get("dependencies")
+    sdk_version = (
+        dependencies.get("@opencode/plugin") if isinstance(dependencies, dict) else None
+    )
+    if (
+        not isinstance(sdk_version, str)
+        or SEMVER_PATTERN.fullmatch(sdk_version) is None
+    ):
+        errors.append(
+            ValidationError(
+                "opencode",
+                "The package must pin an exact '@opencode/plugin' dependency version.",
+            )
+        )
     return errors
 
 

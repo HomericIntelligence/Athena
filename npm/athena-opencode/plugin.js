@@ -9,6 +9,7 @@ import {
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Plugin } from "@opencode/plugin";
 
 const NAMESPACE = "athena";
 
@@ -42,18 +43,21 @@ export function syncSkills() {
   return target;
 }
 
-async function athenaPlugin() {
-  try {
-    syncSkills();
-  } catch (error) {
-    console.warn(
-      `[athena-opencode] The plugin could not install the skills: ${error}`,
-    );
-  }
-  return {};
-}
-
-export default athenaPlugin;
+export default Plugin.define({
+  id: "@homericintelligence/athena-opencode",
+  setup() {
+    try {
+      const target = syncSkills();
+      console.log(
+        `[athena-opencode] The plugin installed the skills at '${target}'.`,
+      );
+    } catch (error) {
+      console.warn(
+        `[athena-opencode] The plugin could not install the skills: ${error}`,
+      );
+    }
+  },
+});
 
 export function bundledSkillNames() {
   const root = bundledSkillsRoot();
