@@ -112,6 +112,11 @@ A normal `--report-only` review calls the exchange helper and returns the prepar
 logical batch. It does not publish, resolve a thread, or change a label. `--prevalidated` does not
 call an exchange or delivery helper.
 
+Two stored review messages carry one exchange. A reviewer state message holds one reviewer round.
+An author review message holds the author's answers to the findings of the round before it. The
+author review message is a review with an empty inline comment array. Its body holds the answers
+and the state carrier envelope.
+
 For GitHub, send exactly one atomic request to the retained target:
 
 ```text
@@ -160,13 +165,13 @@ conditions apply:
 - the direct successor is a verified authoritative requirements reframe.
 
 This rule does not change the carrier parser or the publication format. It does not apply to a
-foreign carrier, an author-event carrier, a second malformed carrier, another suffix, a human
+foreign carrier, an author review message, a second malformed carrier, another suffix, a human
 decision, a NO-GO delivery, or a state without a direct authoritative reframe. Run all normal
 state-chain, authority, publication-order, source, thread, and label checks after recovery.
 
 Before a human decision or requirements reframe, the pull-request surface adapter must resolve one
 exact current logical state. Start with the latest accepted state carrier. Reduce each later
-contiguous author-event carrier in verified provider order. Reject a stale event, fork, gap, or
+contiguous author review message in verified provider order. Reject a stale event, fork, gap, or
 ambiguous chain. Then, resolve one exact live authority record. Verify its body digest, repository
 authority, target, exchange, applicable findings, and decision before you give the normalized
 receipt to the reducer. The reducer validates the receipt shape and state binding. It does not
@@ -208,15 +213,15 @@ owner and do not publish a duplicate.
 
 ## Author-event carrier
 
-The `pr-review --author-response` invocation is the only direct author-event preparation and
+The `pr-review --author-response` invocation is the only direct author review message preparation and
 publication owner. A reviewer-round invocation verifies the result. It must not synthesize or
 publish an author event. Before a corrective reviewer round or authority transition, reduce every
-pending author-event carrier after the latest state carrier in verified provider order. Each event
+pending author review message after the latest state carrier in verified provider order. Each event
 must bind the logical state that its exact predecessor derives. When this chain is nonempty, its
 final event must bind the current head, the complete active required-finding set, and the author's
 answers. For GitHub,
 publish each author event through one exact-head `COMMENT` review with an empty inline-comments
-array. For GitLab, use one immutable author-event note in
+array. For GitLab, use one immutable author review message in
 [GitLab discussion delivery](#gitlab-discussion-delivery). The carrier is the response ledger.
 Thread prose can give context, but it is not the author answer and cannot replace the carrier.
 
@@ -235,18 +240,18 @@ state, it moves to `awaiting_reviewer` when it revalidates a terminal required f
 it moves to `phase=awaiting_evidence`. Each refresh has `verdict=NO-GO` and
 `next_action=review_assessment`.
 
-Verify the returned record identity, actor, current head, final author-event carrier, body digest,
+Verify the returned record identity, actor, current head, final author review message, body digest,
 and prior-state digest. For GitHub, also require `COMMENT` or `COMMENTED` state. Reject an absent,
 stale, foreign, repeated, or ambiguous author event. Do not infer an answer from a commit message,
 acknowledgment, thread resolution, or old prose. A normal report-only author response can prepare
 this exact review; it cannot publish it.
 
-Immediately before author-event publication, revalidate the exact target, current head, reviewed
-scope, requirements, complete scope set, latest state review, complete pending author-event chain,
+Immediately before author review message publication, revalidate the exact target, current head, reviewed
+scope, requirements, complete scope set, latest state review, complete pending chain of author review messages,
 logical state, provider order, and publisher actor. Retain the current base as integration context.
 For GitHub, publish one
 atomic review with the current head as `commit_id`,
-`COMMENT` as `event`, the exact rendered author-event carrier as `body`, and an empty `comments`
+`COMMENT` as `event`, the exact rendered author review message as `body`, and an empty `comments`
 array. Read the review and target again. Require the exact body bytes, actor, target, current head,
 carrier digest, prior-state digest, and publication order after the exact predecessor carrier. Also
 require `COMMENT` or `COMMENTED` state for GitHub. If publication or readback fails or is uncertain,
@@ -387,8 +392,8 @@ the caller does not predict a thread identity.
 Use only `resolved`, `withdrawn`, `accepted_risk`, or `nonblocking` as terminal reviewer
 dispositions. An accepted risk requires the `risk_acceptance` answer and a verified authority
 receipt. A corrected finding requires its author answer and corrective head. A contest requires its
-bound author-event review and one valid terminal reviewer answer. The helper extracts that
-author-event carrier, replays it from the exact prior state carrier, and derives the author answer
+bound author review message and one valid terminal reviewer answer. The helper extracts that
+author review message, replays it from the exact prior state carrier, and derives the author answer
 and artifact revision. The helper generates the response body. It does not accept arbitrary
 version-1 response prose.
 
@@ -584,15 +589,15 @@ Use the same reducer and carrier. Create one immutable authenticated actor-owned
 merge-request note for each reviewer-round or authority-transition state. Its body is the visible
 review followed by the final `kind=state` carrier. Do not update or replace a carrier-bearing note.
 The latest state note in the single complete, replay-valid ancestry is the canonical retained-state
-note. Reduce its later author-event notes to derive the current logical state. Always publish a
+note. Reduce its later author review messages to derive the current logical state. Always publish a
 terminal state, including when there is no new inline finding.
 
 Create one separate immutable authenticated actor-owned top-level note for each
 `kind=author-event` carrier. Do not update or replace it. Do not use a discussion reply as the
 complete author event. It can contain only supporting context.
 
-Before a create, enumerate all top-level notes. Reconstruct one complete state and author-event
-chain in provider order. Reject a foreign or malformed carrier, a repeated event, a missing
+Before a create, enumerate all top-level notes. Reconstruct one complete state and chain of author
+review messages in provider order. Reject a foreign or malformed carrier, a repeated event, a missing
 predecessor, a fork, both carrier kinds in one note, or a retained note whose actor, ID, or body
 digest changed. Revalidate the merge-request identity and exact head before each write. After the
 write, read the note and merge request again. Accept the result only when the actor, note ID, exact
@@ -608,7 +613,7 @@ The discussion contains the compact finding marker. It does not contain the comp
 When a reviewer action has one or more new finding discussions, publish all discussions and the new
 state note through one supported atomic draft or batch. If the host or forge cannot provide this
 capability, return the prepared batch and withhold publication. Do not start a sequential fallback.
-When the action has no new finding discussion, publish one immutable state or author-event note.
+When the action has no new finding discussion, publish one immutable state or author review message.
 Refresh changed bindings and reconcile uncertain writes through exact readback. Report the known result.
 Read back its result before any retry. Retry only a proven absent operation with valid preconditions.
 

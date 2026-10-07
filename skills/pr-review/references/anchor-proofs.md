@@ -62,7 +62,7 @@ The annex must be the final visible section. Only ASCII spaces, tabs, carriage r
 feeds can follow its closing fence in the visible content. Keep those bytes in the carrier digest.
 The canonical exchange carrier follows it. The
 existing carrier digest binds the annex; the exchange state schema does not change. Do not add the
-annex to an author-event carrier. Before publication, retain the captured base for source
+annex to an author review message. Before publication, retain the captured base for source
 reproduction. Revalidate the exact target, head, requirements, and complete comment batch as required
 by the delivery contract.
 
