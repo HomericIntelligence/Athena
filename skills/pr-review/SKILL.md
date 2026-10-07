@@ -206,6 +206,8 @@ invocation.
    `next_action=author_response`. For a pull-request head refresh, also accept
    `phase=awaiting_reviewer`, `phase=awaiting_evidence`, or a pre-round-5 complete
    `GO`, but only when the current head revision differs from the logical state revision.
+   Before round 5, also accept `decision_required` after an explicit `replacement_blocker` reviewer
+   stop under the [author-response contract](../review-exchange/references/interface.md).
 5. Require one explicit `fix`, `fix_with_tradeoff`, `contest`, or
    `risk_acceptance` answer from the caller's instructions for each active required finding. Use
    current repair evidence only to prepare an answer that those instructions authorize. Do not
@@ -225,7 +227,8 @@ invocation.
 7. Run `review_exchange.py reduce` with the exact prior state and prepared event. Require an accepted
    or idempotently replayed result, a non-null author-event envelope, the unchanged reviewer-round
    count, finding identities, progress history, and GO eligibility. A normal answer or an
-   `awaiting_reviewer` refresh results in `phase=awaiting_reviewer`. An `awaiting_evidence` or
+   `awaiting_reviewer` refresh results in `phase=awaiting_reviewer`. A permitted `decision_required`
+   refresh also results in `phase=awaiting_reviewer`. An `awaiting_evidence` or
    conditional refresh also results in `phase=awaiting_reviewer` when it revalidates a terminal
    required finding. Otherwise, it results in `phase=awaiting_evidence`. Each refresh has
    `verdict=NO-GO` and `next_action=review_assessment`. Each changed-head refresh invalidates
@@ -368,8 +371,10 @@ workflow in the same invocation.
     explicit applicable decision or ask for the unresolved decision. Keep authority transitions
      distinct. At the fifth reviewer round, include a nonempty `reassessment` that records the
      assessed continuation. The fifth round is the hard limit: an unresolved exchange at that round
-     requires a human decision. Do not make a sixth automated reviewer assessment.
-
+     requires a human decision. Do not make a sixth automated reviewer assessment. An explicit
+     `replacement_blocker` reviewer stop permits one author response before round 5, unless a human
+     decision intervened first. Do not reduce another reviewer round directly from a state that
+     needs a human decision.
     Target-branch movement alone does not change the reviewed head or start a new exchange.
     During terminal GitHub GO delivery only, the delivery adapter can recover one Athena-owned
     directly superseded state carrier that has exactly one additional final line feed. Require the
