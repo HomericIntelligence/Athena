@@ -169,6 +169,15 @@ coordinator must satisfy the same thread, head, and exclusive-label postconditio
 the result as a delivered GO. Do not race the coordinator with a second write path. A different
 indirect invocation is report-only.
 
+A coordinator may dispatch several independent reviews at once, one per artifact or one per review
+dimension, and each is bound and reported separately. Independence comes from a fresh context window
+per review that did not author or author-respond to the artifact, not from a different authenticated
+account; one account may produce many independent reviews. Exactly one coordinator owns publication,
+labels, threads, and auto-merge for an artifact, and no delegated review writes. A batch cannot yield
+a GO that none of its members reached: an unresolved disagreement, an active `required` finding, or a
+missing member withholds the verdict. See
+[`references/delivery.md`](references/delivery.md) for reviewer independence and batch delivery.
+
 You can recommend follow-up work that is out of scope. Do not create that work without a request that
 includes it.
 
