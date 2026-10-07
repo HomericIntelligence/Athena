@@ -49,7 +49,7 @@ merge base, fixed diff policy, both diff hashes, and one ordered entry per findi
 - `non_source_location`: the finding has a prose location rather than a source coordinate.
 
 Append this separate section to the visible review, before calculating its existing
-`visible_content_sha256` and rendering the canonical state carrier:
+`visible_content_sha256` and rendering the canonical reviewer state message:
 
 ````text
 <!-- HomericIntelligence:review-anchors:v1 -->

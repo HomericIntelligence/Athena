@@ -1,7 +1,7 @@
 ---
 name: pr-review
 license: BSD-3-Clause
-description: Perform an architecture-first source review of a GitHub pull request or GitLab merge request. Bind the exact open artifact and immutable source. Do not use local validation or CI/CD as review evidence. Publish one exact-head `COMMENT` state carrier per reviewer round. Use `--author-response`, an explicit `human_decision`, or an explicit `reframe` only for their stated exchange transition. Use `--report-only` to prevent publication. Use `--enable-auto-merge-on-go` only after an exact delivered GO.
+description: Perform an architecture-first source review of a GitHub pull request or GitLab merge request. Bind the exact open artifact and immutable source. Do not use local validation or CI/CD as review evidence. Publish one exact-head `COMMENT` reviewer state message per reviewer round. Use `--author-response`, an explicit `human_decision`, or an explicit `reframe` only for their stated exchange transition. Use `--report-only` to prevent publication. Use `--enable-auto-merge-on-go` only after an exact delivered GO.
 argument-hint: "[--report-only] [--enable-auto-merge-on-go] [REVIEW_NUMBER_OR_URL] | --author-response [--report-only] [REVIEW_NUMBER_OR_URL] | [--prevalidated] [REVIEW_NUMBER_OR_URL]"
 allowed-tools: [Read, Bash, Grep, Glob, Agent, WebFetch]
 ---
@@ -114,8 +114,8 @@ applicable, cite it. Do not cite a principle that is not applicable.
 | --- | --- | --- |
 | Source review | Resolve the configured forge target. Use exact-head source only. Do not run, request, wait for, or score local validation or CI/CD. | Publish one exact-head `COMMENT` carrier per reviewer round. After verified non-GO publication, make the NO-GO label exclusive. For a terminal GO, complete verified terminal-carrier, thread, and GO-label delivery. |
 | `--author-response` | Resolve one retained exchange and its complete pending chain of author review messages. Normally, require `phase=awaiting_author` and `next_action=author_response`. For a pull-request head refresh, also permit the specified non-author phases below only when the head revision changed. Bind the logical prior state and the exact current artifact. Do not make a reviewer assessment, calculate a score, query CI/CD systems, or inspect the implementation. | Prepare or publish one exact-head author review message. For GitHub, use one `COMMENT` review with an empty inline-comments array. For GitLab, use one immutable author review message. Verify the complete readback. Do not change a label or thread. Complete this transition, then continue through a separate reviewer assessment within task authority. |
-| Explicit `human_decision` event | Bind one current logical state and one exact live authority record. Apply only the supplied event. | Prepare one state carrier with no inline comments. Use the result's normal delivery path. |
-| Explicit `reframe` event | Bind one current logical state and one exact live authority record. Start round 1 of a new exchange. | Prepare one state carrier with the normal round-1 inline finding batch. Use the result's normal delivery path. |
+| Explicit `human_decision` event | Bind one current logical state and one exact live authority record. Apply only the supplied event. | Prepare one reviewer state message with no inline comments. Use the result's normal delivery path. |
+| Explicit `reframe` event | Bind one current logical state and one exact live authority record. Start round 1 of a new exchange. | Prepare one reviewer state message with the normal round-1 inline finding batch. Use the result's normal delivery path. |
 | `--prevalidated` | Review only the immutable snapshot and structured evidence that the host attests. Do not run commands, queries, delegation, or a local helper. | Emit only the structured audit for the caller. Do not publish. Do not make a merge-readiness claim. |
 | `--report-only` | Keep the selected review boundary. | Return findings or a ready-to-publish batch. Do not write to the forge. |
 
@@ -278,7 +278,7 @@ workflow in the same invocation.
    exchange and logical-state digest. Require the retained artifact revision to equal the current
    head and its artifact digest to equal the current reviewed-scope digest. If either value differs,
    report stale state and stop before reduction. Bind those same artifact values and the
-   visible-content digest for the new state carrier. Require a nonempty explicit decision list. This
+   visible-content digest for the new reviewer state message. Require a nonempty explicit decision list. This
    event must keep the reviewer-round count.
 5. For `reframe`, require materially changed requirements, a new exchange identity, `round=1`, the
    same surface and target, and both `prior_state_sha256` and `supersedes_state_sha256` equal to the
@@ -312,7 +312,7 @@ workflow in the same invocation.
     batch to the normal terminal helper. Invoke it one time as the sole `COMMENT` publisher and
     terminal delivery owner. Require its full current-evidence, readback, and postcondition gates.
 13. For each GitHub result other than a direct default terminal GO, publish exactly one atomic
-    review with the current head as `commit_id`, `COMMENT` as `event`, the rendered state carrier as
+    review with the current head as `commit_id`, `COMMENT` as `event`, the rendered reviewer state message as
     `body`, and the action-specific inline batch as `comments`. This branch includes a complete
     conditional state. Verify the expected target and actor, current head, exact body and comment
     bytes, carrier and accepted-event digests, authority receipt, and provider order. Then, invoke
@@ -358,7 +358,7 @@ workflow in the same invocation.
     every condition can be excluded from current-exchange selection. Retain and verify their full
     history. If no current exchange remains, start one distinct exchange at round 1 with a full
     review of the current artifact. Do not transfer earlier coverage or check evidence. Otherwise,
-    select the latest state carrier in the current exchange. Reduce every later contiguous
+    select the latest reviewer state message in the current exchange. Reduce every later contiguous
     author review message in verified provider order to derive its logical state. For a continued
     exchange with a pending chain of author review messages, require the final event to bind the current head
     and reviewed-scope digest. Without such a chain, require the current exchange's latest state
@@ -377,7 +377,7 @@ workflow in the same invocation.
      needs a human decision.
     Target-branch movement alone does not change the reviewed head or start a new exchange.
     During terminal GitHub GO delivery only, the delivery adapter can recover one Athena-owned
-    directly superseded state carrier that has exactly one additional final line feed. Require the
+    directly superseded reviewer state message that has exactly one additional final line feed. Require the
     unchanged carrier body to end with `\n```\n\n`. Require removal of only the final line feed to
     pass the strict parser. Require the proposed terminal state to be the verified direct
     authoritative reframe successor. Reject all other malformed carriers.
@@ -388,7 +388,7 @@ workflow in the same invocation.
     completed-history rule leaves no current exchange, reduce an initial round-1 assessment instead.
     A continued assessment preserves the exact logical-state artifact revision
     and artifact digest. An initial assessment binds the exact current artifact. Use the
-    visible-content digest for the new reviewer carrier. Render the complete state carrier. Add this
+    visible-content digest for the new reviewer carrier. Render the complete reviewer state message. Add this
     compact marker on its own final top-level line in each new anchorable inline finding:
     `<!-- HomericIntelligence:review-finding:v1 exchange=<exchange-id> id=F-NNN -->`.
 23. For `--report-only`, return the prepared state, carrier, and logical review batch. Do not publish
@@ -397,7 +397,7 @@ workflow in the same invocation.
     bind the exact artifact, scope, linked requirements, and source again. Publish one exact-head
     atomic `COMMENT` review and verify its complete readback. This general path includes a complete
     completed source-review state.
-25. After a verified general-path publication, give the verified version-1 state carrier to
+25. After a verified general-path publication, give the verified version-1 reviewer state message to
     `deliver_go.py --deliver-no-go`. The helper verifies that proof before it makes
     `state:implementation-no-go` exclusive. A complete conditional state has no automatic next
     round. Do not GO-finalize it or close its threads.
@@ -471,7 +471,7 @@ For the prevalidated profile, use only its structured-audit override.
 - Do not treat a sampled dimension as complete.
 - Do not emit a delivered GO before exact-head thread and label readback.
 - Do not publish more than one carrier review for one reviewer round.
-- Do not apply an authority transition to an old state carrier when a later verified author event
+- Do not apply an authority transition to an old reviewer state message when a later verified author event
   derives the current logical state.
 - Do not reuse or replace a finding ID for an earlier cause.
 - Do not use schema 0 as a fallback for a version-1 exchange.

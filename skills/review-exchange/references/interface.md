@@ -491,7 +491,7 @@ fields:
 | `schema_version` | Integer `1` |
 | `binding` | Exact repository, pull-request number and URL, base object identifier, and head object identifier |
 | `state` | Complete terminal pull-request state envelope |
-| `terminal_visible_content` | Exact visible content before the terminal state carrier |
+| `terminal_visible_content` | Exact visible content before the terminal reviewer state message |
 | `entries` | Ordered list of existing finding-thread closure entries |
 | `requirements_binding` | Exact live pull-request scope and linked-requirements binding |
 | `comments` | Ordered list of terminal inline finding entries |
@@ -559,7 +559,7 @@ finding in `comments` with the same path and line. Put each other terminal-round
 `summary_finding_ids`. Both lists are ordered by finding identity and contain no duplicate. They do
 not overlap, and their union is the exact terminal-round finding set. Both lists can be empty.
 
-The delivery helper publishes `terminal_visible_content`, its state carrier, and the complete
+The delivery helper publishes `terminal_visible_content`, its reviewer state message, and the complete
 `comments` list in one exact-head `COMMENT` review. Readback must bind each inline root to that
 review, head, path, side, line, body, exchange, and finding. The helper derives new thread identities
 after readback. It then generates the closure responses. It does not accept arbitrary closure prose.
@@ -836,7 +836,7 @@ top-level marker in the visible content:
 ```
 
 The source token is the digest of canonical JSON with the exact `comment_id` and `body_sha256` of
-the plan. The review body then ends with the complete state carrier. A terminal review still
+the plan. The review body then ends with the complete reviewer state message. A terminal review still
 produces this update when it has no new finding.
 
 ### `verify-publication`

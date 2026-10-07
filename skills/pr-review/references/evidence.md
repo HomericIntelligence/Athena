@@ -49,7 +49,7 @@ publish from that evidence.
 When a pull-request head changes without a requirements change and the current exchange accepts a
 head refresh, continue that exchange through a separate `--author-response` invocation. Bind the
 event to the exact current logical state and new revision. Derive that logical state by reducing
-each verified pending author review message in provider order after the latest state carrier. The
+each verified pending author review message in provider order after the latest reviewer state message. The
 refresh invalidates prior coverage and does not
 increase the reviewer-round count. The next reviewer assessment must inspect and bind the refreshed
 immutable source. A material requirements change requires an authoritative reframe instead.
