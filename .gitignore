@@ -41,3 +41,11 @@ skills/_drafts/
 # Ignore local plugin-scanner output. The scanner writes output in this directory.
 .scanner-out/
 .worktrees/
+
+# Ignore local automation build output. Automation creates per-issue worktrees
+# under build/.worktrees/. These are local scratch, not repository content.
+build/
+
+# Ignore local coding-harness session state. The harness writes session logs and
+# state files in this directory.
+.opencode/
