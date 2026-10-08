@@ -5,6 +5,9 @@
   "license": "BSD-3-Clause",
   "type": "module",
   "main": "plugin.js",
+  "dependencies": {
+    "@opencode/plugin": "2.0.24"
+  },
   "files": [
     "plugin.js",
     "skills",
