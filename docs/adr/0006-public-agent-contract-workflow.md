@@ -1,4 +1,6 @@
-# ADR 0002: Public agent-contract workflow
+# ADR 0006: Public agent-contract workflow
+
+**Renumbered:** This record was originally `ADR 0002`. `docs/adr/0002-local-first-knowledge-retrieval.md` claimed sequence 0002 first (commit `cda2971`), and this record collided with it (commit `aeeac85`). ADR sequence number is the canonical identity, so this record takes the next free number. No content changed and no inbound link referenced the old path.
 
 **Status:** Proposed
 

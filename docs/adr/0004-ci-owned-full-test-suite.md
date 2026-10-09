@@ -1,6 +1,10 @@
 # ADR 0004: Automated pytest execution ownership
 
-**Status:** Proposed
+**Status:** Accepted
+
+**Superseded in part by:** [ADR 0005](0005-publication-before-validation.md). ADR 0005 keeps this
+record's pytest ownership decision and supersedes only the pre-publication local test
+requirement below.
 
 ## Context
 
@@ -19,8 +23,9 @@ changed test is selected and passes. It does not prove that the complete reposit
 - Keep the complete pytest suite and coverage policy in nightly and release workflows.
 - Make continuous integration and continuous delivery (CI/CD) workflows the only automatic
   executors of pytest tiers.
-- Before a contributor creates a pull request, require a focused local run of each new or changed
-  test. The contributor must confirm that the command selects that test and that the test passes.
+- ~~Before a contributor creates a pull request, require a focused local run of each new or changed
+  test.~~ Superseded by ADR 0005. Pull-request publication is permitted before validation finishes;
+  focused selection of each new or changed test is still required before completion or merge.
 - Keep `just test` and `just all` available for optional local use.
 - Do not use focused local validation as a replacement for required CI.
 

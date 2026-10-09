@@ -7,7 +7,6 @@ import json
 import posixpath
 import re
 import shutil
-import subprocess
 import sys
 from collections.abc import Iterator, Sequence
 from pathlib import Path, PurePosixPath
@@ -18,7 +17,7 @@ sys.dont_write_bytecode = True
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts.package_plugin import PackageError, forbidden_name
+from scripts.package_plugin import PackageError, _repository_root, forbidden_name
 from scripts.semver import SEMVER_PATTERN
 from skills._cli import argument_parser
 
@@ -280,23 +279,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     arguments = parser.parse_args(argv)
     try:
-        repo_root = arguments.root.resolve() if arguments.root else _git_root()
+        repo_root = (
+            arguments.root.resolve() if arguments.root else _repository_root(None)
+        )
         staged = stage_package(repo_root, arguments.output)
     except (PackageError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
     print(f"The tool staged the opencode npm package at '{staged}'.")
     return 0
-
-
-def _git_root() -> Path:
-    result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return Path(result.stdout.strip()).resolve()
 
 
 if __name__ == "__main__":

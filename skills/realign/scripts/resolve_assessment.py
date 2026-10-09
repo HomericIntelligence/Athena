@@ -48,8 +48,6 @@ CANDIDATE_ID = re.compile(r"[A-Z][A-Z0-9_-]{2,63}\Z")
 REALIGN_CANDIDATE_ID = re.compile(r"RLG-[0-9]{3}\Z")
 MAX_GIT_OUTPUT_BYTES = 64 * 1024 * 1024
 MAX_FILE_BYTES = 64 * 1024 * 1024
-# Compatibility name only. Fingerprint reads retain one chunk, not total source bytes.
-MAX_TOTAL_BYTES = 512 * 1024 * 1024
 MAX_PATH_COUNT = 250_000
 GIT_TIMEOUT_SECONDS = 30.0
 ASSESSMENT_TIMEOUT_SECONDS = 300.0
@@ -468,6 +466,15 @@ def assessment_report_digest(report: Mapping[str, Any]) -> str:
     return _canonical_digest(dict(report))
 
 
+def _close_quietly(descriptor: int) -> None:
+    """Release a descriptor during error handling without masking its cause."""
+    try:
+        os.close(descriptor)
+    except OSError:
+        # Cleanup must not mask the exception that triggered this path.
+        pass
+
+
 def _open_parent(repository_root: Path, relative_path: str) -> tuple[int, str]:
     """Open a repository path parent without following a symbolic link."""
     if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
@@ -475,19 +482,37 @@ def _open_parent(repository_root: Path, relative_path: str) -> tuple[int, str]:
             "The host cannot inspect repository paths without following symbolic links."
         )
     components = normalize_repo_tree_path(relative_path).split("/")
-    descriptor = os.open(repository_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    descriptor: int | None = os.open(
+        repository_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    )
     try:
         for component in components[:-1]:
-            child = os.open(
-                component,
-                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-                dir_fd=descriptor,
-            )
-            os.close(descriptor)
+            assert descriptor is not None
+            try:
+                child = os.open(
+                    component,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=descriptor,
+                )
+            except (NotImplementedError, TypeError) as error:
+                raise RuntimeError(
+                    "The host cannot inspect repository paths without following symbolic "
+                    "links."
+                ) from error
+            try:
+                os.close(descriptor)
+            except OSError:
+                # A failed `close()` leaves the parent descriptor state unspecified.
+                # Stop using it and always release the child that was just opened.
+                descriptor = None
+                _close_quietly(child)
+                raise
             descriptor = child
-    except BaseException:
-        os.close(descriptor)
+    except OSError, RuntimeError:
+        if descriptor is not None:
+            _close_quietly(descriptor)
         raise
+    assert descriptor is not None
     return descriptor, components[-1]
 
 
