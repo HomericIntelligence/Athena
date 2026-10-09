@@ -175,7 +175,7 @@ def _run_bounded_process(
             try:
                 os.killpg(pid, signal.SIGKILL)
                 return
-            except PermissionError, ProcessLookupError:
+            except (PermissionError, ProcessLookupError):
                 pass
         if process.poll() is None:
             process.kill()
@@ -508,7 +508,7 @@ def _open_parent(repository_root: Path, relative_path: str) -> tuple[int, str]:
                 _close_quietly(child)
                 raise
             descriptor = child
-    except OSError, RuntimeError:
+    except (OSError, RuntimeError):
         if descriptor is not None:
             _close_quietly(descriptor)
         raise

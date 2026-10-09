@@ -22,7 +22,7 @@ class ToolchainPolicyTests(unittest.TestCase):
         version = tuple(int(part) for part in parts)
         self.assertEqual((3, 14, 8), version)
         project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
-        self.assertEqual(">=3.14.8,<3.15", project["project"]["requires-python"])
+        self.assertEqual(">=3.12,<3.15", project["project"]["requires-python"])
 
     def test_container_stages_use_the_pinned_python_version(self) -> None:
         """Require every CI image stage to use the pinned Python version."""

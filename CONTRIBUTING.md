@@ -13,7 +13,7 @@ Before you change the repository:
 
 ## Environment setup
 
-Install Git, uv, Just, and Python 3.14.8. Athena uses these tools only for repository validation.
+Install Git, uv, Just, and Python 3.12 or newer. Athena uses these tools only for repository validation.
 
 ```bash
 git clone https://github.com/HomericIntelligence/Athena
