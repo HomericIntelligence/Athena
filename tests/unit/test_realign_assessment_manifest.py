@@ -51,6 +51,14 @@ def commit_file(repository: Path, path: str, contents: str, message: str) -> str
 
 
 @lru_cache(maxsize=1)
+def _close_if_open(descriptor: int) -> None:
+    """Release a descriptor that a test may already have closed."""
+    try:
+        os.close(descriptor)
+    except OSError:
+        pass
+
+
 def load_helper() -> ModuleType:
     """Load the repository helper after the artifact-presence assertion."""
     if not HELPER.is_file():
@@ -1779,6 +1787,8 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         # The high descriptor stands in for the repository root. Closing it
         # fails, so the walk must release the directory descriptor it opened.
         root_descriptor = real_open(str(self.repository), os.O_RDONLY | os.O_DIRECTORY)
+        # Guarantee release even when an assertion below fails.
+        self.addCleanup(_close_if_open, root_descriptor)
 
         def fake_open(path: Any, flags: int, *, dir_fd: int | None = None) -> int:
             if dir_fd is None and os.fspath(path) == os.fspath(self.repository):
