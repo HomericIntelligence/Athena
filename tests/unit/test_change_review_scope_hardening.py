@@ -180,7 +180,9 @@ class ChangeReviewScopeHardeningTests(unittest.TestCase):
             self.assertEqual(0, worktree.returncode, worktree.stderr)
             self.assertEqual([], json.loads(worktree.stdout)["paths"])
 
-    def test_range_scope_reports_gitlink_paths_under_local_ignore_submodules(self) -> None:
+    def test_range_scope_reports_gitlink_paths_under_local_ignore_submodules(
+        self,
+    ) -> None:
         """A local `diff.ignoreSubmodules` setting must not hide a gitlink from any mode.
 
         Every scope path must carry the same `--ignore-submodules=none` guard.
