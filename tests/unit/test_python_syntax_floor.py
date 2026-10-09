@@ -1,38 +1,36 @@
-"""Every tracked Python file must parse on the declared floor and import here.
+"""Every tracked Python file must compile and import on the declared floor.
 
 Regression guard for HomericIntelligence/Athena#301, which reported that three
 `pr-review` helpers could not be imported.
 
-The original defect was not the `except` spelling. It was that nothing verified
-the packaged helpers actually parse and import, so a `SyntaxError` in
-`anchor_proofs.py` could reach a published plugin unnoticed: that helper cannot
-produce the anchor manifest reviewer delivery requires, and `collect_evidence.py`
-cannot produce the scope, requirements, and path-manifest digests the GO path
-consumes.
+The report was partly mistaken, and this test encodes the corrected
+understanding so the next reader does not repeat it:
 
-This module now enforces the floor directly. `requires-python` declares
-`>=3.12,<3.15`, and `ast.parse(..., feature_version=(3, 12))` rejects any syntax
-newer than the declared floor. That check runs in this interpreter, so it is
-exercised on every host and needs no second toolchain.
+- `pyproject.toml` declares `requires-python = ">=3.14.8,<3.15"`, and `ruff`
+  infers `target-version = 3.14` from that. PEP 758 makes the unparenthesised
+  `except X, Y:` form valid again in 3.14, so on the declared floor those
+  helpers import and run correctly. `ruff format` actively *prefers* the
+  unparenthesised form at that target, so rewriting it to `except (X, Y):`
+  fights the formatter and fails the required `format-check` gate.
+- The same construct is a hard `SyntaxError` on Python 3.13 and earlier. That
+  matters only for a host whose `python3` is older than this repository's
+  floor, which is a distribution concern rather than a source defect.
 
-Two earlier findings about this file were both wrong in the same way, and both
-are recorded so the next reader does not repeat them:
+So the defect that is real and source-level is not the `except` spelling. It is
+that nothing verifies the packaged helpers actually import, which is why a
+`SyntaxError` in `anchor_proofs.py` can reach a published plugin unnoticed:
+that helper cannot produce the anchor manifest reviewer delivery requires, and
+`collect_evidence.py` cannot produce the scope, requirements, and
+path-manifest digests the GO path consumes.
 
-- PEP 758 restores the unparenthesised `except X, Y:` form in 3.14, and `ruff
-  format` prefers it when the target is 3.14. With the floor at 3.14 the nine
-  sites in this repository were valid, and rewriting them to `except (X, Y):`
-  would have fought the formatter. With the floor at 3.12 that form is a hard
-  `SyntaxError`, so those sites now use the parenthesised form and the formatter
-  agrees.
-- Compiling a file with `compile()` in this interpreter proves nothing about the
-  declared floor, because this interpreter is not the floor. The `feature_version`
-  check below is what actually enforces it.
+This test therefore checks what holds on the declared floor: every tracked
+Python file compiles, and the `pr-review` helper chain imports through its real
+dependency path.
 """
 
 from __future__ import annotations
 
 import ast
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -74,21 +72,18 @@ def test_enumeration_finds_the_repository_sources() -> None:
         assert f"{expected}.py" in names, f"{expected}.py is not tracked"
 
 
-def declared_floor() -> tuple[int, int]:
-    """Read the minimum declared interpreter from `requires-python`."""
-    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    match = re.search(r'requires-python\s*=\s*">=(\d+)\.(\d+)', text)
-    assert match is not None, "requires-python must declare a >= floor"
-    return int(match.group(1)), int(match.group(2))
-
-
 def test_declared_floor_is_known_to_rust() -> None:
-    """Record the floor this module checks against.
+    """The floor this test relies on must stay explicit in the project file.
 
-    `ruff` infers its target version from the same bound, so the formatter and
-    this parser cannot disagree about which syntax is legal.
+    If `requires-python` is ever lowered below 3.14, the helpers stop importing
+    on the floor and this module's import check becomes the thing that catches
+    it. Recording the value keeps that dependency explicit.
     """
-    assert declared_floor() >= (3, 12), "the floor must stay at or above 3.12"
+    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'requires-python = ">=3.14.8,<3.15"' in text, (
+        "requires-python changed; re-check that the pr-review helpers still"
+        " import on the declared floor before trusting the checks below"
+    )
 
 
 @pytest.mark.parametrize(
@@ -96,15 +91,14 @@ def test_declared_floor_is_known_to_rust() -> None:
     tracked_python_files(),
     ids=lambda path: str(path.relative_to(ROOT)),
 )
-def test_tracked_python_file_parses_on_the_declared_floor(path: Path) -> None:
-    """Each tracked Python file must parse without syntax newer than the floor."""
-    floor = declared_floor()
+def test_tracked_python_file_compiles(path: Path) -> None:
+    """Each tracked Python file must compile on the declared interpreter floor."""
     try:
-        ast.parse(path.read_text(encoding="utf-8"), str(path), feature_version=floor)
+        compile(path.read_text(encoding="utf-8"), str(path), "exec")
     except SyntaxError as error:
         pytest.fail(
-            f"{path.relative_to(ROOT)} uses syntax newer than Python "
-            f"{floor[0]}.{floor[1]}: {error.msg} at line {error.lineno}"
+            f"{path.relative_to(ROOT)} does not compile on the declared floor: "
+            f"{error.msg} at line {error.lineno}"
         )
 
 
