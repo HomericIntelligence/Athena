@@ -51,14 +51,6 @@ def commit_file(repository: Path, path: str, contents: str, message: str) -> str
 
 
 @lru_cache(maxsize=1)
-def _close_if_open(descriptor: int) -> None:
-    """Release a descriptor that a test may already have closed."""
-    try:
-        os.close(descriptor)
-    except OSError:
-        pass
-
-
 def load_helper() -> ModuleType:
     """Load the repository helper after the artifact-presence assertion."""
     if not HELPER.is_file():
@@ -1784,37 +1776,37 @@ class RealignAssessmentManifestTests(unittest.TestCase):
 
         opened: list[int] = []
         real_open, real_close = os.open, os.close
-        # The high descriptor stands in for the repository root. Closing it
-        # fails, so the walk must release the directory descriptor it opened.
+        # This descriptor stands in for the repository root. Closing it fails,
+        # so the walk must release the directory descriptor it opened.
         root_descriptor = real_open(str(self.repository), os.O_RDONLY | os.O_DIRECTORY)
-        # Guarantee release even when an assertion below fails.
-        self.addCleanup(_close_if_open, root_descriptor)
+        try:
 
-        def fake_open(path: Any, flags: int, *, dir_fd: int | None = None) -> int:
-            if dir_fd is None and os.fspath(path) == os.fspath(self.repository):
-                return root_descriptor
-            if dir_fd == root_descriptor:
-                opened.append(real_open(path, flags, dir_fd=dir_fd))
-                return opened[-1]
-            return real_open(path, flags, dir_fd=dir_fd)
+            def fake_open(path: Any, flags: int, *, dir_fd: int | None = None) -> int:
+                if dir_fd is None and os.fspath(path) == os.fspath(self.repository):
+                    return root_descriptor
+                if dir_fd == root_descriptor:
+                    opened.append(real_open(path, flags, dir_fd=dir_fd))
+                    return opened[-1]
+                return real_open(path, flags, dir_fd=dir_fd)
 
-        def fake_close(descriptor: int) -> None:
-            if descriptor == root_descriptor:
-                raise OSError("close failed")
-            real_close(descriptor)
+            def fake_close(descriptor: int) -> None:
+                if descriptor == root_descriptor:
+                    raise OSError("close failed")
+                real_close(descriptor)
 
-        with (
-            patch.object(helper.os, "open", fake_open),
-            patch.object(helper.os, "close", fake_close),
-            self.assertRaises(OSError),
-        ):
-            helper._open_parent(self.repository, "directory/file.txt")
+            with (
+                patch.object(helper.os, "open", fake_open),
+                patch.object(helper.os, "close", fake_close),
+                self.assertRaises(OSError),
+            ):
+                helper._open_parent(self.repository, "directory/file.txt")
 
-        for descriptor in opened:
-            with self.assertRaises(OSError):
-                os.fstat(descriptor)  # the child descriptor must already be closed
-
-        real_close(root_descriptor)
+            for descriptor in opened:
+                with self.assertRaises(OSError):
+                    # The child descriptor must already be closed.
+                    os.fstat(descriptor)
+        finally:
+            real_close(root_descriptor)
 
 
 if __name__ == "__main__":
