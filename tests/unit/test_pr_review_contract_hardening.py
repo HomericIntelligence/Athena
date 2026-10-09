@@ -3388,7 +3388,7 @@ class ImmutableEvidenceTests(unittest.TestCase):
             [{"id": "final"}], json.loads(result.stdout)["pull_request"]["reviews"]
         )
 
-    def test_immutable_changed_paths_ignore_replacement_refs(self) -> None:
+    def test_author_intent_paths_ignore_replacement_refs(self) -> None:
         result, call_count, _, _ = self.run_collector(
             [pull_request(), pull_request()],
             changed_path="replacement.txt",

@@ -64,29 +64,19 @@ REVIEWED_PLAN_PATTERN = re.compile(
     r"<!-- HomericIntelligence:reviewed-plan:v1 "
     r"token=([0-9a-f]{64}) -->"
 )
-HEX_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+HEX_DIGEST = review_exchange.HEX_DIGEST
 TARGET_KINDS = frozenset(
     {"path", "module", "interface", "workflow", "dependency", "migration", "command"}
 )
 
 ProtocolError = review_exchange.ProtocolError
 OperationalError = review_exchange.OperationalError
+# These validators are byte-identical to the protocol module. Only _string,
+# _integer, and _nullable_string differ, because this surface uses an
+# allow_empty flag and different rejection text.
 
 
-def _object(value: object, name: str, fields: frozenset[str]) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise ProtocolError(f"{name} must be an object.")
-    actual = frozenset(value)
-    if actual != fields:
-        missing = sorted(fields - actual)
-        unknown = sorted(actual - fields)
-        details = []
-        if missing:
-            details.append(f"missing {', '.join(missing)}")
-        if unknown:
-            details.append(f"unknown {', '.join(unknown)}")
-        raise ProtocolError(f"{name} has invalid fields: {'; '.join(details)}.")
-    return cast(dict[str, Any], value)
+_object = review_exchange._object
 
 
 def _string(value: object, name: str, *, allow_empty: bool = False) -> str:
@@ -101,10 +91,7 @@ def _integer(value: object, name: str) -> int:
     return value
 
 
-def _boolean(value: object, name: str) -> bool:
-    if type(value) is not bool:
-        raise ProtocolError(f"{name} must be a Boolean.")
-    return value
+_boolean = review_exchange._boolean
 
 
 def _nullable_string(value: object, name: str) -> str | None:
@@ -113,12 +100,7 @@ def _nullable_string(value: object, name: str) -> str | None:
     return _string(value, name)
 
 
-def _digest(value: object, name: str, *, nullable: bool = False) -> str | None:
-    if value is None and nullable:
-        return None
-    if not isinstance(value, str) or HEX_DIGEST.fullmatch(value) is None:
-        raise ProtocolError(f"{name} must be a lowercase SHA-256 digest.")
-    return value
+_digest = review_exchange._digest
 
 
 def _actor(value: object, name: str) -> dict[str, str]:
@@ -536,12 +518,6 @@ def _legacy_import_exchange_id(
                 "legacy_plan_sha256": _body_sha256(plan["body"]),
             }
         )[:24]
-    )
-
-
-def _artifact_matches(first: Mapping[str, Any], second: Mapping[str, Any]) -> bool:
-    return bool(
-        first["revision"] == second["revision"] and first["sha256"] == second["sha256"]
     )
 
 

@@ -151,9 +151,6 @@ The tracked `main` ruleset records this staged merge-queue policy:
 - Require a minimum wait of 5 minutes.
 - Use a check timeout of 180 minutes.
 
-This issue updates only the tracked artifact and the local validator that reads it. GitHub
-application, live readback, rollback, and mutation remain outside this change.
-
 The required workflow also runs each week. Thus, dependency findings are refreshed between changes.
 
 Tag releases require a GitHub-verified, signed, annotated Semantic Versioning (SemVer) tag. Its

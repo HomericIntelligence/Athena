@@ -326,8 +326,6 @@ Use TDD as the strong default for behavior changes. Record justified exceptions 
 verification. For a pure refactor, use the available behavior baseline without an artificial RED.
 Never delete good implementation solely to recreate test-first ordering.
 
-
-
 ## Output contract
 
 For assessment, report these items:

@@ -654,21 +654,6 @@ def _bounded_file_snapshot(
     )
 
 
-def _worktree_snapshot_entry(
-    repository_root: Path,
-    relative_path: str,
-    *,
-    deadline: float | None = None,
-) -> SnapshotFileEntry:
-    """Read one regular worktree file without following symbolic links."""
-    return _bounded_file_snapshot(
-        repository_root,
-        relative_path,
-        deadline=deadline,
-        byte_limit=MAX_FILE_BYTES,
-    )
-
-
 def _worktree_fingerprint_entry(
     repository_root: Path, relative_path: str, *, deadline: float | None = None
 ) -> dict[str, Any]:

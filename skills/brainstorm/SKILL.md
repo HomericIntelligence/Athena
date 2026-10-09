@@ -191,17 +191,6 @@ implementation unless the user requests changes. Use this message:
   the conversation.
 - For complex multi-agent work, invoke `myrmidon-swarm`.
 
-## Rules
-
-- **Ask one question at a time.** Do not put multiple questions in one message.
-- **Apply [P002 — YAGNI — You Ain't Gonna Need It](../../docs/principles/README.md#p002).** Remove
-  unnecessary features from all designs.
-- **Compare alternatives.** Always propose two or three approaches.
-- **Validate in increments.** Present the design in sections. Resolve material ambiguity before you
-  continue.
-- **Invoke `advise` first.** Do not duplicate an existing solution. Do not repeat a problem that prior
-  guidance already resolved.
-
 ---
 
 _Adapted from [obra/superpowers](https://github.com/obra/superpowers) under the [MIT License](https://github.com/obra/superpowers/blob/main/LICENSE). Copyright (c) 2025 Jesse Vincent._
