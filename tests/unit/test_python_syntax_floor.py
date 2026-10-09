@@ -6,7 +6,7 @@ Regression guard for HomericIntelligence/Athena#301, which reported that three
 The report was partly mistaken, and this test encodes the corrected
 understanding so the next reader does not repeat it:
 
-- `pyproject.toml` declares `requires-python = ">=3.14.7,<3.15"`, and `ruff`
+- `pyproject.toml` declares `requires-python = ">=3.14.8,<3.15"`, and `ruff`
   infers `target-version = 3.14` from that. PEP 758 makes the unparenthesised
   `except X, Y:` form valid again in 3.14, so on the declared floor those
   helpers import and run correctly. `ruff format` actively *prefers* the
@@ -80,7 +80,7 @@ def test_declared_floor_is_known_to_rust() -> None:
     it. Recording the value keeps that dependency explicit.
     """
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'requires-python = ">=3.14.7,<3.15"' in text, (
+    assert 'requires-python = ">=3.14.8,<3.15"' in text, (
         "requires-python changed; re-check that the pr-review helpers still"
         " import on the declared floor before trusting the checks below"
     )
