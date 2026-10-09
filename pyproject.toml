@@ -2,7 +2,7 @@
 name = "athena-development"
 version = "0.0.0"
 description = "This package contains development tools for the Athena plugin distribution."
-requires-python = ">=3.12,<3.15"
+requires-python = ">=3.14.8,<3.15"
 dependencies = []
 
 [dependency-groups]
@@ -22,6 +22,13 @@ dev = [
 [tool.uv]
 package = false
 default-groups = ["dev"]
+
+[tool.ruff]
+# The declared floor is 3.14.8, but the source stays within 3.12 syntax so a
+# host on an older interpreter can still import the packaged helpers. Pin the
+# lint target to the older version so the formatter keeps the parenthesised
+# `except (X, Y):` form instead of rewriting it to the 3.14-only spelling.
+target-version = "py312"
 
 [tool.coverage.run]
 core = "ctrace"
