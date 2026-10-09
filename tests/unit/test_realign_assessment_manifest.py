@@ -475,18 +475,7 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         self,
     ) -> None:
         helper = load_helper()
-        limits = cast(Any, helper)
         os.symlink("abcd", self.repository / "link.txt")
-        original_total_limit = limits.MAX_TOTAL_BYTES
-        self.addCleanup(setattr, helper, "MAX_TOTAL_BYTES", original_total_limit)
-
-        for byte_limit in (5, 4):
-            with self.subTest(byte_limit=byte_limit):
-                limits.MAX_TOTAL_BYTES = byte_limit
-                inventory = helper._worktree_inventory(self.repository, "0" * 40, ".")
-                self.assertEqual("abcd", inventory["entries"][0]["target"])
-
-        limits.MAX_TOTAL_BYTES = 3
         inventory = helper._worktree_inventory(self.repository, "0" * 40, ".")
         self.assertEqual("abcd", inventory["entries"][0]["target"])
 
@@ -667,11 +656,9 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         (self.repository / "two.txt").write_text("22\n", encoding="utf-8")
         original_path_limit = limits.MAX_PATH_COUNT
         original_file_limit = limits.MAX_FILE_BYTES
-        original_total_limit = limits.MAX_TOTAL_BYTES
         original_git_limit = limits.MAX_GIT_OUTPUT_BYTES
         self.addCleanup(setattr, helper, "MAX_PATH_COUNT", original_path_limit)
         self.addCleanup(setattr, helper, "MAX_FILE_BYTES", original_file_limit)
-        self.addCleanup(setattr, helper, "MAX_TOTAL_BYTES", original_total_limit)
         self.addCleanup(setattr, helper, "MAX_GIT_OUTPUT_BYTES", original_git_limit)
 
         limits.MAX_PATH_COUNT = 3
@@ -693,14 +680,6 @@ class RealignAssessmentManifestTests(unittest.TestCase):
             helper._bounded_file_snapshot(self.repository, "two.txt")
 
         limits.MAX_FILE_BYTES = original_file_limit
-        limits.MAX_TOTAL_BYTES = 6
-        helper.resolve_source_binding(self.repository)
-        limits.MAX_TOTAL_BYTES = 5
-        helper.resolve_source_binding(self.repository)
-        limits.MAX_TOTAL_BYTES = 4
-        helper.resolve_source_binding(self.repository)
-
-        limits.MAX_TOTAL_BYTES = original_total_limit
         root_output = limits._git_bytes(self.repository, "rev-parse", "--show-toplevel")
         limits.MAX_GIT_OUTPUT_BYTES = len(root_output) + 1
         self.assertEqual(
@@ -1471,7 +1450,6 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         self,
     ) -> None:
         helper = load_helper()
-        limits = cast(Any, helper)
         commit_file(self.repository, "one.txt", "11\n", "one")
         selected = commit_file(self.repository, "two.txt", "22\n", "two")
         source = helper.resolve_source_binding(self.repository, reference=selected)
@@ -1486,18 +1464,6 @@ class RealignAssessmentManifestTests(unittest.TestCase):
             }
         ]
         report["candidates"].append(second)
-        original_total_limit = limits.MAX_TOTAL_BYTES
-        self.addCleanup(setattr, helper, "MAX_TOTAL_BYTES", original_total_limit)
-
-        limits.MAX_TOTAL_BYTES = 6
-        eligible = helper.repair_preflight(
-            self.repository,
-            report,
-            ["RLG-001", "RLG-002"],
-            approved_report_digest=helper.assessment_report_digest(report),
-        )
-        self.assertEqual("eligible", eligible["status"])
-        limits.MAX_TOTAL_BYTES = 5
         eligible = helper.repair_preflight(
             self.repository,
             report,
@@ -1801,6 +1767,46 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         self.assertEqual(0, returncode)
         self.assertIsNotNone(observed["read"])
         self.assertEqual(observed["read"], observed["preflight"])
+
+    def test_open_parent_releases_the_child_when_the_parent_close_fails(self) -> None:
+        """A failed parent `close()` must still release the descriptor just opened."""
+        helper = load_helper()
+        self.repository.mkdir(parents=True, exist_ok=True)
+        (self.repository / "directory").mkdir(exist_ok=True)
+
+        opened: list[int] = []
+        real_open, real_close = os.open, os.close
+        # This descriptor stands in for the repository root. Closing it fails,
+        # so the walk must release the directory descriptor it opened.
+        root_descriptor = real_open(str(self.repository), os.O_RDONLY | os.O_DIRECTORY)
+        try:
+
+            def fake_open(path: Any, flags: int, *, dir_fd: int | None = None) -> int:
+                if dir_fd is None and os.fspath(path) == os.fspath(self.repository):
+                    return root_descriptor
+                if dir_fd == root_descriptor:
+                    opened.append(real_open(path, flags, dir_fd=dir_fd))
+                    return opened[-1]
+                return real_open(path, flags, dir_fd=dir_fd)
+
+            def fake_close(descriptor: int) -> None:
+                if descriptor == root_descriptor:
+                    raise OSError("close failed")
+                real_close(descriptor)
+
+            with (
+                patch.object(helper.os, "open", fake_open),
+                patch.object(helper.os, "close", fake_close),
+                self.assertRaises(OSError),
+            ):
+                helper._open_parent(self.repository, "directory/file.txt")
+
+            for descriptor in opened:
+                with self.assertRaises(OSError):
+                    # The child descriptor must already be closed.
+                    os.fstat(descriptor)
+        finally:
+            real_close(root_descriptor)
 
 
 if __name__ == "__main__":

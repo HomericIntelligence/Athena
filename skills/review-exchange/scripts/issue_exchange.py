@@ -50,6 +50,8 @@ REVIEW_MARKERS = (
     "<!-- hephaestus-plan-review:canonical -->",
     "<!-- athena:issue-review -->",
 )
+FINALIZE_MARKER_PREFIX = "<!-- HomericIntelligence:finalize-plan "
+FINALIZE_MARKER_TEMPLATE = FINALIZE_MARKER_PREFIX + "R=<R> P=<P> V=<V> F=<F> -->"
 FINALIZE_NAMESPACE_PATTERN = re.compile(
     r"<!-- (?:HomericIntelligence|athena):finalize-plan(?=\s|-->)"
 )
@@ -3005,7 +3007,7 @@ def _verify_finalize_readback(
                 review=selected["V"],
                 issue_body_sha256=operation["expected_issue_body_sha256"],
                 candidate_body=operation["body"].rsplit(
-                    "\n\n<!-- HomericIntelligence:finalize-plan ", 1
+                    f"\n\n{FINALIZE_MARKER_PREFIX}", 1
                 )[0],
             )
         _verify_issue_source_chain(
@@ -3175,7 +3177,7 @@ def verify_finalize(value: object) -> dict[str, Any]:
             source["author_id"] = comment["author"]["id"]
     requirements = inspection["requirements_sha256"]
     marker_template = (
-        "<!-- HomericIntelligence:finalize-plan "
+        f"{FINALIZE_MARKER_PREFIX}"
         f"R={requirements} P={p_source['token']} V={v_source['token']} F=<F> -->\n"
     )
     template = f"{candidate.rstrip()}\n\n{marker_template}"

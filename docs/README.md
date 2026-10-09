@@ -11,6 +11,12 @@ technical-English, and governance contracts. Do not copy these contracts for eac
   local-first read boundary and strict mutation boundary for repository integrations.
 - [`adr/0003-best-effort-read-only-knowledge-refresh.md`](adr/0003-best-effort-read-only-knowledge-refresh.md):
   the best-effort refresh rule for read-only Mnemosyne access.
+- [`adr/0004-ci-owned-full-test-suite.md`](adr/0004-ci-owned-full-test-suite.md): CI/CD owns
+  automatic pytest execution.
+- [`adr/0005-publication-before-validation.md`](adr/0005-publication-before-validation.md): publish a
+  pull request before validation finishes; require success before completion or merge.
+- [`adr/0006-public-agent-contract-workflow.md`](adr/0006-public-agent-contract-workflow.md): the
+  reusable public agent-contract workflow.
 - [`host-compatibility.md`](host-compatibility.md): coding-harness capability mapping.
 - [`dependency-resolution.md`](dependency-resolution.md): local-first Mnemosyne reads with
   best-effort refresh and mandatory repository resolution for Mnemosyne delivery and Hephaestus
