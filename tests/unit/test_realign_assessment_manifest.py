@@ -507,7 +507,7 @@ class RealignAssessmentManifestTests(unittest.TestCase):
 
         started = time.monotonic()
         with self.assertRaisesRegex(RuntimeError, "time limit"):
-            helper._worktree_snapshot_entry(
+            helper._bounded_file_snapshot(
                 self.repository,
                 "link.txt",
                 deadline=time.monotonic() - 1.0,
@@ -690,7 +690,7 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         limits.MAX_FILE_BYTES = 2
         helper.resolve_source_binding(self.repository)
         with self.assertRaisesRegex(RuntimeError, "file byte limit"):
-            helper._worktree_snapshot_entry(self.repository, "two.txt")
+            helper._bounded_file_snapshot(self.repository, "two.txt")
 
         limits.MAX_FILE_BYTES = original_file_limit
         limits.MAX_TOTAL_BYTES = 6
@@ -753,7 +753,7 @@ class RealignAssessmentManifestTests(unittest.TestCase):
 
         started = time.monotonic()
         with self.assertRaisesRegex(RuntimeError, "not a regular file"):
-            helper._worktree_snapshot_entry(self.repository, "source.txt")
+            helper._bounded_file_snapshot(self.repository, "source.txt")
         self.assertLess(time.monotonic() - started, 1.0)
 
     @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO support is required")

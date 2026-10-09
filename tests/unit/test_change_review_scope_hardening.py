@@ -180,6 +180,52 @@ class ChangeReviewScopeHardeningTests(unittest.TestCase):
             self.assertEqual(0, worktree.returncode, worktree.stderr)
             self.assertEqual([], json.loads(worktree.stdout)["paths"])
 
+    def test_range_scope_reports_gitlink_paths_under_local_ignore_submodules(self) -> None:
+        """A local `diff.ignoreSubmodules` setting must not hide a gitlink from any mode.
+
+        Every scope path must carry the same `--ignore-submodules=none` guard.
+        Without it, batch discovery and single-operation resolution disagree
+        about which paths the review can observe.
+        """
+        with tempfile.TemporaryDirectory() as temp:
+            repository = Path(temp) / "repo"
+            initialize_repository(repository)
+            base = git(repository, "rev-parse", "HEAD")
+
+            # A local setting that `git_read_environment` does not neutralize.
+            git(repository, "config", "diff.ignoreSubmodules", "all")
+            git(
+                repository,
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                f"160000,{git(repository, 'rev-parse', 'HEAD')},linked.txt",
+            )
+            git(repository, "commit", "--quiet", "-m", "test: gitlink")
+            head = git(repository, "rev-parse", "HEAD")
+
+            for arguments in (
+                ["--range", f"{base}..{head}"],
+                ["--range", f"{base}..{head}", "--batch-size", "2"],
+            ):
+                with self.subTest(arguments=arguments):
+                    result = subprocess.run(
+                        [sys.executable, str(RESOLVER), *arguments],
+                        cwd=repository,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    reported: set[str] = set()
+                    for line in result.stdout.splitlines():
+                        record = json.loads(line)
+                        if "paths" in record:
+                            reported.update(record["paths"])
+                        reported.update(record.get("manifest", {}).get("paths", []))
+                    self.assertIn("linked.txt", reported, result.stdout)
+
     def test_worktree_scope_preserves_trailing_whitespace_in_repository_root(
         self,
     ) -> None:

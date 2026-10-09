@@ -340,14 +340,10 @@ def parse_repo_view(output: str, expected: str) -> str:
 
 def unavailable_refresh(
     checkout: LocalCheckout,
-    mode: str,
     limitations: list[str],
     reason: str,
-    *,
-    cause: BaseException | None = None,
 ) -> RefreshOutcome:
     """Keep the local revision available when refresh fails."""
-    del mode, cause
     limitations.append(reason)
     return RefreshOutcome(
         revision=checkout.revision,
@@ -365,21 +361,20 @@ def refresh_local_checkout(
     if shutil.which("gh") is None:
         return unavailable_refresh(
             checkout,
-            mode,
             limitations,
             "The required command is not available: 'gh'.",
         )
     try:
         auth_result = gh_command("auth", "status", "--hostname", "github.com")
     except RuntimeError as error:
-        return unavailable_refresh(checkout, mode, limitations, str(error), cause=error)
+        return unavailable_refresh(checkout, limitations, str(error))
     if auth_result.returncode != 0:
         reason = (
             auth_result.stderr.strip()
             or auth_result.stdout.strip()
             or "GitHub authentication is unavailable."
         )
-        return unavailable_refresh(checkout, mode, limitations, reason)
+        return unavailable_refresh(checkout, limitations, reason)
     try:
         repo_result = gh_command(
             "repo",
@@ -389,22 +384,21 @@ def refresh_local_checkout(
             "nameWithOwner,defaultBranchRef",
         )
     except RuntimeError as error:
-        return unavailable_refresh(checkout, mode, limitations, str(error), cause=error)
+        return unavailable_refresh(checkout, limitations, str(error))
     if repo_result.returncode != 0:
         reason = (
             repo_result.stderr.strip()
             or repo_result.stdout.strip()
             or "GitHub repository discovery failed."
         )
-        return unavailable_refresh(checkout, mode, limitations, reason)
+        return unavailable_refresh(checkout, limitations, reason)
     try:
         default_branch = parse_repo_view(repo_result.stdout, expected)
     except (json.JSONDecodeError, TypeError) as error:
-        return unavailable_refresh(checkout, mode, limitations, str(error), cause=error)
+        return unavailable_refresh(checkout, limitations, str(error))
     if checkout.branch is None:
         return unavailable_refresh(
             checkout,
-            mode,
             limitations,
             "The knowledge checkout is detached and cannot be refreshed.",
         )
@@ -413,16 +407,15 @@ def refresh_local_checkout(
             "The knowledge checkout branch does not match the remote default "
             f"branch: '{checkout.branch}' != '{default_branch}'."
         )
-        return unavailable_refresh(checkout, mode, limitations, reason)
+        return unavailable_refresh(checkout, limitations, reason)
     try:
         require_safe_local_git_configuration(checkout.root)
         current_revision = git_text(checkout.root, "rev-parse", "HEAD")
     except RuntimeError as error:
-        return unavailable_refresh(checkout, mode, limitations, str(error), cause=error)
+        return unavailable_refresh(checkout, limitations, str(error))
     if current_revision != checkout.revision:
         return unavailable_refresh(
             checkout,
-            mode,
             limitations,
             "The knowledge checkout revision changed before refresh.",
         )
@@ -437,24 +430,24 @@ def refresh_local_checkout(
             timeout=BEST_EFFORT_REMOTE_TIMEOUT_SECONDS,
         )
     except RuntimeError as error:
-        return unavailable_refresh(checkout, mode, limitations, str(error), cause=error)
+        return unavailable_refresh(checkout, limitations, str(error))
     if fetch_result.returncode != 0:
         reason = (
             fetch_result.stderr.strip()
             or fetch_result.stdout.strip()
             or f"The knowledge checkout could not fetch origin/{default_branch}."
         )
-        return unavailable_refresh(checkout, mode, limitations, reason)
+        return unavailable_refresh(checkout, limitations, reason)
     try:
         require_safe_local_git_configuration(checkout.root)
         fetched_revision = git_text(checkout.root, "rev-parse", "FETCH_HEAD")
     except RuntimeError as error:
-        return unavailable_refresh(checkout, mode, limitations, str(error), cause=error)
+        return unavailable_refresh(checkout, limitations, str(error))
     if not FULL_SHA_PATTERN.fullmatch(fetched_revision):
         reason = (
             f"The upstream revision is not a full commit SHA: '{fetched_revision}'."
         )
-        return unavailable_refresh(checkout, mode, limitations, reason)
+        return unavailable_refresh(checkout, limitations, reason)
     ancestor_result = run_git(
         checkout.root,
         "merge-base",
@@ -469,7 +462,7 @@ def refresh_local_checkout(
             else ancestor_result.stderr.strip()
             or "The knowledge checkout ancestry could not be verified."
         )
-        return unavailable_refresh(checkout, mode, limitations, reason)
+        return unavailable_refresh(checkout, limitations, reason)
     merge_result = run_git(checkout.root, "merge", "--ff-only", "FETCH_HEAD")
     if merge_result.returncode != 0:
         reason = (
@@ -477,7 +470,7 @@ def refresh_local_checkout(
             or merge_result.stdout.strip()
             or "The knowledge checkout could not fast-forward."
         )
-        return unavailable_refresh(checkout, mode, limitations, reason)
+        return unavailable_refresh(checkout, limitations, reason)
     revision = git_text(checkout.root, "rev-parse", "HEAD")
     if revision != fetched_revision:
         raise RuntimeError(

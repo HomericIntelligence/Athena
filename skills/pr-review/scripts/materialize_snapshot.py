@@ -256,7 +256,6 @@ def _detach_best_effort(source: Path) -> None:
     try:
         _detach_volume(source)
     except RuntimeError:
-        # Do not let this cleanup error hide an earlier failure.
         pass
 
 

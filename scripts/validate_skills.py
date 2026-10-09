@@ -79,15 +79,6 @@ APPROVED_REQUIRED_STATUS_CHECKS_PARAMETERS: dict[str, object] = {
         }
     ],
 }
-APPROVED_RULE_TYPES: tuple[str, ...] = (
-    "deletion",
-    "non_fast_forward",
-    "required_linear_history",
-    "pull_request",
-    "merge_queue",
-    "required_status_checks",
-    "required_signatures",
-)
 APPROVED_RULESET_POLICY: dict[str, object] = {
     "name": APPROVED_RULESET_NAME,
     "target": APPROVED_RULESET_TARGET,

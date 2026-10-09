@@ -273,6 +273,35 @@ def pathspec_arguments(arguments: list[str], paths: Sequence[str]) -> list[str]:
     return [*arguments, "--", *literal_paths]
 
 
+def diff_arguments(
+    revision: str,
+    *,
+    cached: bool = False,
+    binary: bool = False,
+    extra: Sequence[str] = (),
+) -> list[str]:
+    """Build one guarded `diff` argument list for every scope path.
+
+    Every caller must use this builder. The filter and smudge guards decide
+    which content the review can observe, so a scope path that omits one
+    silently disagrees with the others. `--ignore-submodules=none` in
+    particular: without it a repository with a local `diff.ignoreSubmodules`
+    setting hides submodule paths from one mode and not the other.
+    """
+    arguments = ["-c", "diff.autoRefreshIndex=false", "diff"]
+    if cached:
+        arguments.append("--cached")
+    arguments.extend(
+        ["--no-ext-diff", "--no-textconv", "--ignore-submodules=none", "--no-renames"]
+    )
+    arguments.append("--binary" if binary else "--name-only")
+    if not binary:
+        arguments.append("-z")
+    arguments.extend(extra)
+    arguments.append(revision)
+    return arguments
+
+
 def normalized_paths(repository_root: Path, paths: Sequence[str]) -> list[str]:
     """Keep lexical filters inside the repository without following symbolic links."""
     root = Path(os.path.abspath(os.fspath(repository_root)))
@@ -327,32 +356,9 @@ def tracked_paths(
     if scope == "worktree":
         return list(worktree_tracked_capture(head, paths, repository_root).paths)
     elif scope == "staged":
-        arguments = [
-            "-c",
-            "diff.autoRefreshIndex=false",
-            "diff",
-            "--cached",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--ignore-submodules=none",
-            "--name-only",
-            "-z",
-            "--no-renames",
-            head,
-        ]
+        arguments = diff_arguments(head, cached=True)
     else:
-        arguments = [
-            "-c",
-            "diff.autoRefreshIndex=false",
-            "diff",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--ignore-submodules=none",
-            "--name-only",
-            "-z",
-            "--no-renames",
-            f"{base}..{head}",
-        ]
+        arguments = diff_arguments(f"{base}..{head}")
     return path_list(
         git_bytes(
             *pathspec_arguments(arguments, paths), repository_root=repository_root
@@ -371,30 +377,9 @@ def tracked_diff(
     if scope == "worktree":
         return worktree_tracked_capture(head, paths, repository_root).fingerprint
     elif scope == "staged":
-        arguments = [
-            "-c",
-            "diff.autoRefreshIndex=false",
-            "diff",
-            "--cached",
-            "--binary",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--ignore-submodules=none",
-            "--no-renames",
-            head,
-        ]
+        arguments = diff_arguments(head, cached=True, binary=True)
     else:
-        arguments = [
-            "-c",
-            "diff.autoRefreshIndex=false",
-            "diff",
-            "--binary",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--ignore-submodules=none",
-            "--no-renames",
-            f"{base}..{head}",
-        ]
+        arguments = diff_arguments(f"{base}..{head}", binary=True)
     return git_stream_fingerprint(
         *pathspec_arguments(arguments, paths), repository_root=repository_root
     )
@@ -610,6 +595,26 @@ def index_path_entries(
     return tuple(entries.get(path, PathEntry(path, "absent")) for path in paths)
 
 
+def parse_head_tree_record(record: bytes) -> PathEntry:
+    """Decode one streamed `git ls-tree -z` record."""
+    try:
+        header, raw_path = record.split(b"\t", maxsplit=1)
+        raw_mode, raw_type, raw_object_id = header.split()
+    except ValueError as error:
+        raise RuntimeError(
+            "The Git tree entry is not valid for scope resolution."
+        ) from error
+    path = os.fsdecode(raw_path)
+    mode = raw_mode.decode("ascii")
+    object_type = raw_type.decode("ascii")
+    return PathEntry(
+        path,
+        git_object_kind(mode, object_type),
+        object_id=raw_object_id.decode("ascii"),
+        mode=mode,
+    )
+
+
 def head_tree_entry_map(
     head: str, paths: Sequence[str], repository_root: Path
 ) -> dict[str, PathEntry]:
@@ -621,22 +626,8 @@ def head_tree_entry_map(
             *pathspec_arguments(arguments, paths), repository_root=repository_root
         )
     ):
-        try:
-            header, raw_path = record.split(b"\t", maxsplit=1)
-            raw_mode, raw_type, raw_object_id = header.split()
-        except ValueError as error:
-            raise RuntimeError(
-                "The Git tree entry is not valid for scope resolution."
-            ) from error
-        path = os.fsdecode(raw_path)
-        mode = raw_mode.decode("ascii")
-        object_type = raw_type.decode("ascii")
-        entries[path] = PathEntry(
-            path,
-            git_object_kind(mode, object_type),
-            object_id=raw_object_id.decode("ascii"),
-            mode=mode,
-        )
+        entry = parse_head_tree_record(record)
+        entries[entry.path] = entry
     return entries
 
 
@@ -670,26 +661,6 @@ def add_worktree_candidate(candidates: set[str], path: str) -> None:
             "Run the command again with narrower PATH arguments."
         )
     candidates.add(path)
-
-
-def parse_head_tree_record(record: bytes) -> PathEntry:
-    """Decode one streamed `git ls-tree -z` record."""
-    try:
-        header, raw_path = record.split(b"\t", maxsplit=1)
-        raw_mode, raw_type, raw_object_id = header.split()
-    except ValueError as error:
-        raise RuntimeError(
-            "The Git tree entry is not valid for scope resolution."
-        ) from error
-    path = os.fsdecode(raw_path)
-    mode = raw_mode.decode("ascii")
-    object_type = raw_type.decode("ascii")
-    return PathEntry(
-        path,
-        git_object_kind(mode, object_type),
-        object_id=raw_object_id.decode("ascii"),
-        mode=mode,
-    )
 
 
 def parse_tagged_index_record(record: bytes) -> tuple[PathEntry, bool]:
@@ -763,20 +734,7 @@ def worktree_metadata(
     )
     consume_git_nul_records(
         pathspec_arguments(
-            [
-                "-c",
-                "diff.autoRefreshIndex=false",
-                "diff",
-                "--cached",
-                "--no-ext-diff",
-                "--no-textconv",
-                "--ignore-submodules=none",
-                "--name-only",
-                "-z",
-                "--no-renames",
-                "--ita-invisible-in-index",
-                head,
-            ],
+            diff_arguments(head, cached=True, extra=("--ita-invisible-in-index",)),
             paths,
         ),
         repository_root,
@@ -1279,18 +1237,7 @@ def resolve_scope_batches(
             database.execute("INSERT OR IGNORE INTO paths VALUES (?)", (path,))
 
         if scope == "range":
-            commands = [
-                [
-                    "diff",
-                    "--name-only",
-                    "--no-ext-diff",
-                    "--no-textconv",
-                    "--no-renames",
-                    "-z",
-                    base,
-                    head,
-                ]
-            ]
+            commands = [diff_arguments(f"{base}..{head}")]
         else:
             commands = [
                 ["ls-tree", "-r", "--name-only", "-z", head],

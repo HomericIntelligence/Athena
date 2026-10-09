@@ -1382,14 +1382,6 @@ def immutable_range_paths(
     )
 
 
-def immutable_changed_paths(
-    base_oid: str, head_oid: str, *, cwd: Path | None = None
-) -> ChangedPathManifest:
-    """Bind the author-intent paths for one immutable pull-request head."""
-    author_intent, _ = immutable_changed_path_lenses(base_oid, head_oid, cwd=cwd)
-    return author_intent
-
-
 def changed_path_manifest(entries: Sequence[bytes]) -> ChangedPathManifest:
     """Return one canonical manifest for validated Git path bytes."""
     canonical_entries = sorted(set(entries))
