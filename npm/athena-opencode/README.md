@@ -42,7 +42,7 @@ Use the native opencode skill mechanism. For example, ask opencode to use the `r
 [`README.md`](https://github.com/HomericIntelligence/Athena#readme) for this information:
 
 - the full skill catalog;
-- dependency requirements for Git and Python 3.14.7;
+- dependency requirements for Git and Python 3.14.8;
 - the authenticated GitHub CLI (`gh`) requirement for forge routes; and
 - capability fallbacks.
 

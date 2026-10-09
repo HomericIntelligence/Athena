@@ -280,7 +280,7 @@ def write_workflow(path: Path, action: str = "actions/checkout@" + "a" * 40) -> 
                             {"uses": action},
                             {
                                 "uses": "astral-sh/setup-uv@" + "b" * 40,
-                                "with": {"version": "0.12.10"},
+                                "with": {"version": "0.12.24"},
                             },
                         ]
                     },
@@ -362,7 +362,7 @@ class SbomTests(unittest.TestCase):
         self.assertNotIn("actions/download-artifact", package_names)
         self.assertEqual(1, len(document["documentDescribes"]))
         packages = {item["name"]: item for item in document["packages"]}
-        self.assertEqual("0.12.10", packages["uv"]["versionInfo"])
+        self.assertEqual("0.12.24", packages["uv"]["versionInfo"])
         self.assertEqual("1.2.3", packages["athena-build-linux-64"]["versionInfo"])
         relationship_types = {
             item["relationshipType"] for item in document["relationships"]
