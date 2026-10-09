@@ -475,7 +475,6 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         self,
     ) -> None:
         helper = load_helper()
-        limits = cast(Any, helper)
         os.symlink("abcd", self.repository / "link.txt")
         inventory = helper._worktree_inventory(self.repository, "0" * 40, ".")
         self.assertEqual("abcd", inventory["entries"][0]["target"])
@@ -1451,7 +1450,6 @@ class RealignAssessmentManifestTests(unittest.TestCase):
         self,
     ) -> None:
         helper = load_helper()
-        limits = cast(Any, helper)
         commit_file(self.repository, "one.txt", "11\n", "one")
         selected = commit_file(self.repository, "two.txt", "22\n", "two")
         source = helper.resolve_source_binding(self.repository, reference=selected)
