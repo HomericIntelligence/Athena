@@ -24,8 +24,8 @@ FROM python:3.14.8-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabf
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -fsSL https://github.com/astral-sh/uv/releases/download/0.12.10/uv-x86_64-unknown-linux-gnu.tar.gz -o /tmp/uv.tar.gz \
-    && echo "173d95a0c32d18c896c46ba6fafbf3cf9c14ab74b033f81b76c883ef492a976b  /tmp/uv.tar.gz" | sha256sum --check \
+    && curl -fsSL https://github.com/astral-sh/uv/releases/download/0.12.24/uv-x86_64-unknown-linux-gnu.tar.gz -o /tmp/uv.tar.gz \
+    && echo "b4dfaef47d491a7296981f8374a4595f55dbf84e8937c8ecd2983574d8bb3da6  /tmp/uv.tar.gz" | sha256sum --check \
     && tar xzf /tmp/uv.tar.gz -C /usr/local/bin --strip-components=1 \
     && rm /tmp/uv.tar.gz
 
