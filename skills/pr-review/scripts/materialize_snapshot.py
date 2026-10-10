@@ -539,6 +539,45 @@ def _bounded_materialize_main(arguments: Sequence[str]) -> int:
     return 0
 
 
+def _plain_materialize(
+    root: Path,
+    maximum_bytes: int,
+    *,
+    repository: str,
+    number: int,
+    base_ref: str,
+    base_oid: str,
+    head_oid: str,
+    hooks: Path,
+    template: Path,
+) -> MaterializedSnapshot:
+    """Materialize a verified snapshot with the host's normal permissions.
+
+    Use this tier when neither a quota volume nor a user namespace is
+    available, which is the normal case on macOS and Windows. Acquisition
+    still fetches only the captured refs, still verifies the base and head
+    object identifiers, and still refuses a shallow or promisor repository.
+    The bound here is the available-disk check, not a file system quota.
+    """
+    source = root / "source"
+    source.mkdir()
+    merge_base, tree_oid = _acquire_into(
+        source,
+        repository_url=canonical_repository_url(repository),
+        number=number,
+        base_ref=base_ref,
+        base_oid=base_oid,
+        head_oid=head_oid,
+        hooks=hooks,
+        template=template,
+        maximum_bytes=maximum_bytes,
+    )
+    _make_read_only(root)
+    return MaterializedSnapshot(
+        root=root, source_path=source, merge_base=merge_base, tree_oid=tree_oid
+    )
+
+
 def _bounded_materialize(
     root: Path,
     maximum_bytes: int,
@@ -647,15 +686,30 @@ def materialize_snapshot(
             )
         source = _create_quota_volume(root, maximum_snapshot_bytes)
         if source is None:
-            return _bounded_materialize(
-                root,
-                maximum_snapshot_bytes,
-                repository=canonical_repository,
-                number=number,
-                base_ref=canonical_base_ref,
-                base_oid=canonical_base,
-                head_oid=canonical_head,
-            )
+            try:
+                return _bounded_materialize(
+                    root,
+                    maximum_snapshot_bytes,
+                    repository=canonical_repository,
+                    number=number,
+                    base_ref=canonical_base_ref,
+                    base_oid=canonical_base,
+                    head_oid=canonical_head,
+                )
+            except RuntimeError:
+                # No user namespace on this host. Acquire with the host's own
+                # permissions rather than refusing to review the pull request.
+                return _plain_materialize(
+                    root,
+                    maximum_snapshot_bytes,
+                    repository=canonical_repository,
+                    number=number,
+                    base_ref=canonical_base_ref,
+                    base_oid=canonical_base,
+                    head_oid=canonical_head,
+                    hooks=hooks,
+                    template=template,
+                )
         merge_base, tree_oid = _acquire_into(
             source,
             repository_url=canonical_repository_url(canonical_repository),

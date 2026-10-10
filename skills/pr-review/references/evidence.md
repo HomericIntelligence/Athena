@@ -142,10 +142,21 @@ rejects any of these conditions:
 The shipped helper `<installed-skill>/scripts/materialize_snapshot.py` performs this materialization
 step when local objects are absent.
 
-Use a quota volume when the host supports it. If that optional capability is unavailable, acquire
-the snapshot under native host permissions. Retain available-disk checks, command deadlines,
-immutable object verification, a managed source directory, and cleanup. Do not require a separate
-mount namespace only to read source evidence. For a local immutable Git
+Acquisition uses the caller's normal authenticated Git credentials. Do not require a quota mount, a
+user namespace, a custom credential adapter, or a separate service to read source evidence. Select
+the strongest tier the host supports:
+
+1. a quota volume, when the host provides one;
+2. a bounded user and mount namespace, when `unshare` is available;
+3. otherwise a managed temporary directory with the host's own permissions.
+
+Tier 3 is the normal case on macOS and Windows. Do not refuse a review because the host cannot
+provide a quota volume or a mount namespace.
+
+Every tier keeps the same obligations: fetch only the captured base ref and pull-request head,
+verify both against the captured object identifiers, refuse a shallow or promisor repository, bound
+the acquired size by available disk, use a managed source directory, and clean up. For a local
+immutable Git
 read, disable replacement references, graft input, and commit-graph reads. Prohibit lazy promisor-object
 fetches. Treat a missing object as a coverage gap only when this exact materialization boundary cannot
 verify it.

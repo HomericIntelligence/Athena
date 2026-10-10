@@ -338,6 +338,54 @@ class SnapshotMaterializationTests(unittest.TestCase):
     def tearDown(self) -> None:
         sys.modules.pop(self.module_name, None)
 
+    def test_materializes_without_a_quota_volume_when_the_host_cannot_provide_one(
+        self,
+    ) -> None:
+        """Acquisition must not require a mount namespace or a quota volume.
+
+        Issue #291 requires that source acquisition works under the host's normal
+        permissions. `_create_quota_volume` returning None is the documented
+        signal that the host cannot provide one, and that path must still produce
+        a verified snapshot.
+        """
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = root / "source"
+            source.mkdir()
+            base_oid, head_oid = initialize_divergent_repository(source, "changed.txt")
+            git(source, "update-ref", "refs/pull/9/head", head_oid)
+            remote = root / "remote.git"
+            git(root, "init", "--bare", "--quiet", str(remote))
+            git(source, "remote", "add", "origin", str(remote))
+            git(source, "push", "--quiet", "origin", "main", "refs/pull/9/head")
+
+            with (
+                patch.object(
+                    self.snapshot, "canonical_repository_url", return_value=str(remote)
+                ),
+                patch.object(self.snapshot, "_create_quota_volume", return_value=None),
+            ):
+                materialized = self.snapshot.materialize_snapshot(
+                    repository="owner/repository",
+                    number=9,
+                    base_ref="main",
+                    base_oid=base_oid,
+                    head_oid=head_oid,
+                )
+            self.addCleanup(self.snapshot.remove_snapshot, materialized.root)
+
+            self.assertEqual(
+                head_oid, git(materialized.source_path, "rev-parse", "HEAD")
+            )
+            self.assertEqual(
+                base_oid,
+                git(materialized.source_path, "rev-parse", "refs/athena/base"),
+            )
+            self.assertEqual(
+                git(materialized.source_path, "rev-parse", "HEAD^{tree}"),
+                materialized.tree_oid,
+            )
+
     def test_materializes_a_missing_head_from_only_the_canonical_pr_refs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
