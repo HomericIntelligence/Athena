@@ -54,27 +54,6 @@ class PackageOpenCodeTests(unittest.TestCase):
         )
         return staged
 
-    def install_opencode_plugin_stub(self, package_root: Path) -> None:
-        """Install a local '@opencode/plugin' module for the entry point import."""
-        module = package_root / "node_modules" / "@opencode" / "plugin"
-        module.mkdir(parents=True)
-        (module / "package.json").write_text(
-            json.dumps(
-                {
-                    "name": "@opencode/plugin",
-                    "version": "2.0.24",
-                    "type": "module",
-                    "main": "index.js",
-                    "exports": {".": "./index.js"},
-                }
-            ),
-            encoding="utf-8",
-        )
-        (module / "index.js").write_text(
-            "export const Plugin = { define: (definition) => definition };\n",
-            encoding="utf-8",
-        )
-
     def artifact_snapshot(self, artifact: Path) -> dict[str, bytes | None]:
         """Return the artifact path inventory and exact file content."""
         return {
@@ -240,7 +219,6 @@ class PackageOpenCodeTests(unittest.TestCase):
     def test_bundled_skill_inventory_excludes_support_content(self) -> None:
         """Only directories with a skill entrypoint appear in the plugin inventory."""
         staged = self.stage()
-        self.install_opencode_plugin_stub(staged)
         script = (
             f"import {{ bundledSkillNames }} from "
             f"{json.dumps((staged / 'plugin.js').as_uri())};"
@@ -264,7 +242,6 @@ class PackageOpenCodeTests(unittest.TestCase):
     def test_installed_local_markdown_links_resolve_inside_the_package(self) -> None:
         """The installed package contains each local Markdown link target."""
         staged = self.stage()
-        self.install_opencode_plugin_stub(staged)
         config_home = self.fixture.parent / "xdg-config"
         environment = os.environ.copy()
         environment["XDG_CONFIG_HOME"] = str(config_home)
@@ -290,7 +267,6 @@ class PackageOpenCodeTests(unittest.TestCase):
     def test_default_export_is_an_opencode_v2_plugin_definition(self) -> None:
         """The staged default export carries an id and a setup function."""
         staged = self.stage()
-        self.install_opencode_plugin_stub(staged)
         script = (
             f"import definition from {json.dumps((staged / 'plugin.js').as_uri())};"
             "const value = definition == null ? null : {"
@@ -318,11 +294,35 @@ class PackageOpenCodeTests(unittest.TestCase):
             json.loads(result.stdout),
         )
 
+    @unittest.skipUnless(shutil.which("node"), "Plugin definition requires Node.js")
+    def test_definition_needs_no_runtime_dependency(self) -> None:
+        """The staged entry point loads from a package that has no dependencies."""
+        staged = self.stage()
+        manifest = json.loads((staged / "package.json").read_text(encoding="utf-8"))
+        self.assertIn(manifest.get("dependencies"), (None, {}))
+        script = (
+            f"import definition from {json.dumps((staged / 'plugin.js').as_uri())};"
+            "process.stdout.write(JSON.stringify("
+            "{id: definition.id, setup: typeof definition.setup}));"
+        )
+
+        result = subprocess.run(
+            ["node", "--input-type=module", "--eval", script],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            {"id": "@homericintelligence/athena-opencode", "setup": "function"},
+            json.loads(result.stdout),
+        )
+
     @unittest.skipUnless(shutil.which("node"), "Plugin installation requires Node.js")
     def test_setup_installs_the_skill_corpus(self) -> None:
         """The V2 setup hook installs the bundled skills under the config home."""
         staged = self.stage()
-        self.install_opencode_plugin_stub(staged)
         config_home = self.fixture.parent / "xdg-config-setup"
         environment = os.environ.copy()
         environment["XDG_CONFIG_HOME"] = str(config_home)
@@ -354,7 +354,6 @@ class PackageOpenCodeTests(unittest.TestCase):
     def test_setup_warns_and_stays_loaded_when_installation_fails(self) -> None:
         """A failed skill copy warns without rejecting the V2 setup hook."""
         staged = self.stage()
-        self.install_opencode_plugin_stub(staged)
         config_home = self.fixture.parent / "xdg-config-blocked"
         blocker = config_home / "opencode"
         blocker.parent.mkdir(parents=True)
