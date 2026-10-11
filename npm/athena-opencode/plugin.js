@@ -9,7 +9,6 @@ import {
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Plugin } from "@opencode/plugin";
 
 const NAMESPACE = "athena";
 
@@ -43,7 +42,7 @@ export function syncSkills() {
   return target;
 }
 
-export default Plugin.define({
+export default {
   id: "@homericintelligence/athena-opencode",
   setup() {
     try {
@@ -57,7 +56,7 @@ export default Plugin.define({
       );
     }
   },
-});
+};
 
 export function bundledSkillNames() {
   const root = bundledSkillsRoot();
