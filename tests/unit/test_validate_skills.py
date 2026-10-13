@@ -987,5 +987,181 @@ class DistributionTests(unittest.TestCase):
         self.assertTrue(errors.getvalue().strip())
 
 
+class IgnoredTopLevelsTests(unittest.TestCase):
+    """Cover the consumer-supplied skip list for the repository walk."""
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.fixture = Path(self.temporary_directory.name) / "Athena"
+        shutil.copytree(
+            ROOT,
+            self.fixture,
+            ignore=shutil.ignore_patterns(
+                ".git",
+                ".venv",
+                "dist",
+                "build",
+                "__pycache__",
+                "*.pyc",
+                ".coverage*",
+            ),
+        )
+
+    def _seed_runtime_cache(self) -> Path:
+        cache = self.fixture / ".fleet-runtime" / "athena-uv" / "archive-v0"
+        cache.mkdir(parents=True)
+        (cache / "module.cpython-314-aarch64-linux-gnu.so").write_bytes(
+            b"\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+        )
+        (cache / "seed-1.0-py3-none-any.whl").write_bytes(b"PK\x03\x04\xff\xfe\x01")
+        return self.fixture / ".fleet-runtime"
+
+    def test_binary_payload_under_runtime_cache_fails_without_the_skip(self) -> None:
+        runtime = self._seed_runtime_cache()
+        repository = "HomericIntelligence/" + "UnapprovedRepository"
+        (runtime / "athena-uv" / "lexers").mkdir(parents=True)
+        (runtime / "athena-uv" / "lexers" / "vendored.py").write_text(
+            f"depends on {repository}", encoding="utf-8"
+        )
+
+        errors = validator._validate_layout_and_policy(self.fixture)
+
+        reasons = "\n".join(error.reason for error in errors)
+        self.assertIn("cannot inspect", reasons, errors)
+        self.assertIn(repository, reasons, errors)
+
+    def test_declared_runtime_cache_is_skipped(self) -> None:
+        self._seed_runtime_cache()
+
+        errors = validator._validate_layout_and_policy(
+            self.fixture, (".fleet-runtime",)
+        )
+
+        self.assertEqual([], errors)
+
+    def test_declared_skip_does_not_hide_repository_content(self) -> None:
+        repository = "HomericIntelligence/" + "UnapprovedRepository"
+        (self.fixture / "docs" / "bad.md").write_text(
+            f"depends on {repository}", encoding="utf-8"
+        )
+
+        errors = validator._validate_layout_and_policy(
+            self.fixture, (".fleet-runtime",)
+        )
+
+        self.assertEqual(
+            ["self-contained"], [error.surface for error in errors], errors
+        )
+        self.assertEqual(1, sum(repository in e.reason for e in errors), errors)
+
+    def test_nested_payload_under_declared_cache_is_skipped(self) -> None:
+        self._seed_runtime_cache()
+        (self.fixture / ".fleet-runtime" / "athena-uv" / "a" / "b").mkdir(parents=True)
+        (
+            self.fixture / ".fleet-runtime" / "athena-uv" / "a" / "b" / "x.bin"
+        ).write_bytes(b"\xff\xfe\x01\x02")
+
+        self.assertEqual(
+            [], validator._validate_layout_and_policy(self.fixture, (".fleet-runtime",))
+        )
+
+    def test_validate_repository_forwards_the_skip(self) -> None:
+        self._seed_runtime_cache()
+
+        self.assertEqual(
+            [], validator.validate_repository(self.fixture, [".fleet-runtime"])
+        )
+
+
+class ParseIgnoredTopLevelsTests(unittest.TestCase):
+    """Cover the parsing rules for the skip-list setting."""
+
+    def test_blank_and_empty_entries_are_dropped(self) -> None:
+        self.assertEqual(
+            (".fleet-runtime", "scratch"),
+            validator.parse_ignored_top_levels(" .fleet-runtime , ,scratch "),
+        )
+
+    def test_empty_setting_yields_no_entries(self) -> None:
+        self.assertEqual((), validator.parse_ignored_top_levels(""))
+        self.assertEqual((), validator.parse_ignored_top_levels("  ,  "))
+
+    def test_multi_segment_entry_is_rejected(self) -> None:
+        for entry in ("a/b", "a\\b", "../a", "..", ".", "*", "-rf"):
+            with self.subTest(entry=entry), self.assertRaises(ValueError):
+                validator.parse_ignored_top_levels(entry)
+
+    def test_environment_variable_is_honoured_by_main(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            fixture = Path(temporary_directory) / "Athena"
+            shutil.copytree(
+                ROOT,
+                fixture,
+                ignore=shutil.ignore_patterns(
+                    ".git",
+                    ".venv",
+                    "dist",
+                    "build",
+                    "__pycache__",
+                    "*.pyc",
+                    ".coverage*",
+                ),
+            )
+            cache = fixture / ".fleet-runtime" / "athena-uv"
+            cache.mkdir(parents=True)
+            (cache / "m.so").write_bytes(b"\x7fELF\xff\xfe\x01\x02")
+
+            with (
+                patch.dict(
+                    "os.environ",
+                    {
+                        validator.IGNORED_TOP_LEVELS_ENVIRONMENT_VARIABLE: ".fleet-runtime"
+                    },
+                ),
+                redirect_stdout(io.StringIO()),
+                redirect_stderr(io.StringIO()),
+            ):
+                self.assertEqual(0, validator.main(["--root", str(fixture)]))
+
+    def test_repeated_flag_extends_the_skip(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            fixture = Path(temporary_directory) / "Athena"
+            shutil.copytree(
+                ROOT,
+                fixture,
+                ignore=shutil.ignore_patterns(
+                    ".git",
+                    ".venv",
+                    "dist",
+                    "build",
+                    "__pycache__",
+                    "*.pyc",
+                    ".coverage*",
+                ),
+            )
+            for name in (".fleet-runtime", ".scratch"):
+                (fixture / name).mkdir()
+                (fixture / name / "m.so").write_bytes(b"\x7fELF\xff\xfe\x01\x02")
+
+            with (
+                redirect_stdout(io.StringIO()),
+                redirect_stderr(io.StringIO()),
+            ):
+                self.assertEqual(
+                    0,
+                    validator.main(
+                        [
+                            "--root",
+                            str(fixture),
+                            "--ignore-path",
+                            ".fleet-runtime",
+                            "--ignore-path",
+                            ".scratch",
+                        ]
+                    ),
+                )
+
+
 if __name__ == "__main__":
     unittest.main()
