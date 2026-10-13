@@ -6326,13 +6326,15 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
 
         return forge, manifest, old_record
 
-    def test_authoritative_reframe_supersedes_one_extra_final_line_feed(self) -> None:
+    def test_reframe_with_one_extra_final_line_feed_delivers(self) -> None:
         forge, manifest, canonical = self._direct_completed_reframe(
             extra_final_line_feed=True
         )
 
-        with self.assertRaises(self.delivery.review_exchange.ProtocolError):
-            self.delivery.review_exchange.extract_carrier(f"{canonical.body}\n")
+        self.assertEqual(
+            self.delivery.review_exchange.extract_carrier(canonical.body),
+            self.delivery.review_exchange.extract_carrier(f"{canonical.body}\n"),
+        )
 
         result = self.delivery.deliver_go_v1(forge, self.binding(), manifest)
 
