@@ -930,6 +930,30 @@ class DistributionTests(unittest.TestCase):
                 finally:
                     _write_ruleset_document(self.fixture, original_document)
 
+    def test_merge_queue_tuning_requires_no_python_edit(self) -> None:
+        policy_path = self.fixture / "docs" / "policies" / "required-checks.md"
+        original_policy = policy_path.read_text(encoding="utf-8")
+        original_document = _ruleset_document(self.fixture)
+        tuned_document = copy.deepcopy(original_document)
+        _ruleset_rule(tuned_document, "merge_queue")["parameters"][
+            "max_entries_to_build"
+        ] = 7
+        tuned_policy = original_policy.replace(
+            '"max_entries_to_build": 10', '"max_entries_to_build": 7'
+        )
+        try:
+            _write_ruleset_document(self.fixture, tuned_document)
+            self.assert_validation_errors(
+                validator._validate_ruleset_policy,
+                "ruleset",
+                literal="max_entries_to_build",
+            )
+            policy_path.write_text(tuned_policy, encoding="utf-8")
+            self.assertEqual(validator._validate_ruleset_policy(self.fixture), [])
+        finally:
+            policy_path.write_text(original_policy, encoding="utf-8")
+            _write_ruleset_document(self.fixture, original_document)
+
     def test_ruleset_requires_immutable_agent_contract_tag_protection(self) -> None:
         path = (
             self.fixture / ".github" / "rulesets" / "homeric-agent-contract-tags.json"
