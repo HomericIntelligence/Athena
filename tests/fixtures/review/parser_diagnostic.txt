@@ -1,0 +1,10 @@
+"""Model of a line-sensitive test where line position is the product contract."""
+
+from comet.config import parse_config
+
+
+def test_parser_reports_the_line_of_invalid_input() -> None:
+    """Require the parser diagnostic to report the invalid input line."""
+    diagnostic = parse_config("[section\nkey = value\nbroken")
+    assert diagnostic.line == 3
+    assert diagnostic.column == 7

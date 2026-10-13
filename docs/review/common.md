@@ -229,6 +229,12 @@ Use these principles:
 [P067](../principles/README.md#p067), [P068](../principles/README.md#p068),
 [P069](../principles/README.md#p069), and [P091](../principles/README.md#p091).
 
+Reject a test that enforces a product contract through a fixed source-line position, a stored
+citation offset, or the source-file length. Treat it as a required test-design correction and
+require a behavior-level test or the removal of the invalid test. Do not request citation-offset
+maintenance. A diagnostic location in failure output or a review annotation is not a test
+invariant.
+
 ### Errors and reliability
 
 Apply this profile to:

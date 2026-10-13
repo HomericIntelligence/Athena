@@ -1,0 +1,18 @@
+"""Model of a test that validates stored citations against the source file length."""
+
+import re
+from pathlib import Path
+
+CITATION_PATTERN = re.compile(r"^(?P<path>[\w/]+\.py):(?P<line>\d+)$")
+CITATIONS = ["src/comet/domain_registry.py:1160"]
+
+
+def test_source_citations_for_path_facts_exist_in_the_repository() -> None:
+    """Require every stored citation line to stay within the current file length."""
+    for citation in CITATIONS:
+        match = CITATION_PATTERN.match(citation)
+        assert match is not None
+        path = Path(match.group("path"))
+        line_number = int(match.group("line"))
+        line_count = len(path.read_text(encoding="utf-8").splitlines())
+        assert 0 < line_number <= line_count, f"{citation} exceeds {line_count}"
