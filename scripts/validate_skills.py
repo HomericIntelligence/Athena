@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import re
 import sys
+from collections.abc import Collection
 from pathlib import Path
 from typing import NamedTuple, cast
 
@@ -400,7 +402,9 @@ def _validate_opencode(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
     return errors
 
 
-def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
+def _validate_layout_and_policy(
+    repo_root: Path = REPO_ROOT, extra_ignored_top_levels: Collection[str] = ()
+) -> list[ValidationError]:
     errors: list[ValidationError] = []
     forbidden_paths = ("athena", "plugins/athena", "CODEOWNERS")
     for relative in forbidden_paths:
@@ -436,6 +440,7 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
         "build",
         "dist",
     }
+    ignored_top_levels.update(extra_ignored_top_levels)
     for path in repo_root.rglob("*"):
         relative_path = path.relative_to(repo_root)
         if (
@@ -769,7 +774,45 @@ def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationErro
     return errors
 
 
-def validate_repository(repo_root: Path) -> list[ValidationError]:
+IGNORED_TOP_LEVELS_ENVIRONMENT_VARIABLE = "ATHENA_VALIDATE_IGNORED_PATHS"
+
+
+def parse_ignored_top_levels(raw: str) -> tuple[str, ...]:
+    """Read extra top-level paths to skip from a comma-separated setting.
+
+    The repository walk in `_validate_layout_and_policy` inspects every file it
+    is not told to skip. A consumer that runs the validator over a prepared
+    workspace needs a way to declare its own runtime scratch directories, which
+    hold vendored wheels, shared objects, and other non-source payloads that
+    cannot be read as UTF-8 and are not Athena content.
+
+    Only a single path segment is accepted. Rejecting separators, wildcards, and
+    relative markers keeps one entry from silently disabling the walk for a
+    whole subtree, and keeps this setting from becoming a blanket opt-out.
+    """
+    entries: list[str] = []
+    for item in raw.split(","):
+        name = item.strip()
+        if not name:
+            continue
+        if (
+            "/" in name
+            or "\\" in name
+            or "*" in name
+            or name in {".", ".."}
+            or name.startswith("-")
+        ):
+            raise ValueError(
+                f"{IGNORED_TOP_LEVELS_ENVIRONMENT_VARIABLE} accepts only a single "
+                f"path segment per entry; got {name!r}"
+            )
+        entries.append(name)
+    return tuple(entries)
+
+
+def validate_repository(
+    repo_root: Path, extra_ignored_top_levels: Collection[str] = ()
+) -> list[ValidationError]:
     """Validate the skills, manifests, layout, and policies in one repository."""
     repo_root = repo_root.resolve()
     errors = [
@@ -778,7 +821,7 @@ def validate_repository(repo_root: Path) -> list[ValidationError]:
         *_validate_codex(repo_root),
         *_validate_pi(repo_root),
         *_validate_opencode(repo_root),
-        *_validate_layout_and_policy(repo_root),
+        *_validate_layout_and_policy(repo_root, extra_ignored_top_levels),
         *_validate_cli_conventions(repo_root),
         *_validate_repo_review_scorecard(repo_root),
         *_validate_ruleset_policy(repo_root),
@@ -826,8 +869,22 @@ def main(argv: list[str] | None = None) -> int:
         default=REPO_ROOT,
         help="Repository root. By default, use this checkout.",
     )
+    parser.add_argument(
+        "--ignore-path",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help=(
+            "Skip a top-level directory during the repository walk. Repeatable. "
+            f"May also be supplied as a comma-separated "
+            f"{IGNORED_TOP_LEVELS_ENVIRONMENT_VARIABLE} environment variable."
+        ),
+    )
     args = parser.parse_args(argv)
-    errors = validate_repository(args.root)
+    declared = parse_ignored_top_levels(
+        os.environ.get(IGNORED_TOP_LEVELS_ENVIRONMENT_VARIABLE, "")
+    )
+    errors = validate_repository(args.root, (*declared, *args.ignore_path))
     if errors:
         print("The Athena skill validation failed:", file=sys.stderr)
         for error in errors:
