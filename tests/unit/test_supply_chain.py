@@ -1715,7 +1715,7 @@ jobs:
         self.assertEqual(
             {
                 "pi-subagents": "0.58.0",
-                "@earendil-works/pi-coding-agent": "0.84.3",
+                "@earendil-works/pi-coding-agent": "0.86.0",
             },
             manifest["dependencies"],
         )
