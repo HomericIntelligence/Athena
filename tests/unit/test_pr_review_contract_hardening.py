@@ -338,6 +338,62 @@ class SnapshotMaterializationTests(unittest.TestCase):
     def tearDown(self) -> None:
         sys.modules.pop(self.module_name, None)
 
+    def test_mac_without_hdiutil_reaches_the_plain_acquisition_tier(self) -> None:
+        """A host whose quota tool is unavailable must still acquire source.
+
+        #342 added a plain acquisition tier, but `_create_quota_volume` raised on
+        macOS and on every non-Linux platform, so the tier was unreachable on
+        exactly the hosts it was written for. Assert the ladder runs.
+        """
+        for platform in ("darwin", "win32"):
+            with (
+                self.subTest(platform=platform),
+                tempfile.TemporaryDirectory() as temporary_directory,
+            ):
+                root = Path(temporary_directory)
+                source = root / "source"
+                source.mkdir()
+                base_oid, head_oid = initialize_divergent_repository(
+                    source, "changed.txt"
+                )
+                git(source, "update-ref", "refs/pull/9/head", head_oid)
+                remote = root / "remote.git"
+                git(root, "init", "--bare", "--quiet", str(remote))
+                git(source, "remote", "add", "origin", str(remote))
+                git(source, "push", "--quiet", "origin", "main", "refs/pull/9/head")
+
+                with (
+                    patch.object(self.snapshot.sys, "platform", platform),
+                    patch.object(
+                        self.snapshot,
+                        "canonical_repository_url",
+                        return_value=str(remote),
+                    ),
+                    patch.object(self.snapshot, "_hdiutil", return_value=False),
+                    patch.object(
+                        self.snapshot,
+                        "_bounded_materialize",
+                        side_effect=RuntimeError("no user namespace"),
+                    ),
+                ):
+                    materialized = self.snapshot.materialize_snapshot(
+                        repository="owner/repository",
+                        number=9,
+                        base_ref="main",
+                        base_oid=base_oid,
+                        head_oid=head_oid,
+                    )
+                self.addCleanup(self.snapshot.remove_snapshot, materialized.root)
+
+                self.assertEqual(
+                    head_oid,
+                    git(materialized.source_path, "rev-parse", "HEAD"),
+                )
+                self.assertEqual(
+                    base_oid,
+                    git(materialized.source_path, "rev-parse", "refs/athena/base"),
+                )
+
     def test_materializes_without_a_quota_volume_when_the_host_cannot_provide_one(
         self,
     ) -> None:
@@ -613,11 +669,16 @@ class SnapshotMaterializationTests(unittest.TestCase):
             root.mkdir()
             calls: list[tuple[str, ...]] = []
 
+            def record_hdiutil(*arguments: str) -> bool:
+                """Record the call and report that the quota tool succeeded."""
+                calls.append(arguments)
+                return True
+
             with (
                 patch.object(
                     self.snapshot,
                     "_hdiutil",
-                    side_effect=lambda *arguments: calls.append(arguments),
+                    side_effect=record_hdiutil,
                 ),
                 patch.object(self.snapshot.sys, "platform", "darwin"),
                 patch.object(Path, "is_mount", return_value=True),
