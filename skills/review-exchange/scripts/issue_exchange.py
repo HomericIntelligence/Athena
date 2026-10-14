@@ -9,7 +9,7 @@ import re
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -1125,9 +1125,24 @@ def _prepare_input(
     return snapshot, content, cast(dict[str, Any], request["event"])
 
 
-def _verified_reframe_context(
-    snapshot: Mapping[str, Any], value: object
-) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+class _PriorExchange(NamedTuple):
+    """The one reframe prior record with its plan carrier and its review carrier."""
+
+    previous: dict[str, Any]
+    state: dict[str, Any]
+    requirements: str
+    plan: dict[str, Any]
+    review: dict[str, Any]
+    plan_envelope: dict[str, Any]
+
+
+def _prior_exchange(snapshot: Mapping[str, Any], value: object) -> _PriorExchange:
+    """Verify the prior review record and recover its one plan and review carrier.
+
+    A reframe and a replan share every precondition. Only the binding check on
+    the recovered plan carrier differs between them, so that check stays with
+    each caller.
+    """
     previous = review_exchange.verify_envelope(value)
     if previous["schema_id"] != review_exchange.STATE_SCHEMA_ID:
         raise ProtocolError("The reframe prior record is not review state.")
@@ -1167,6 +1182,20 @@ def _verified_reframe_context(
             "The supplied prior state is not the retained review state."
         )
     plan_envelope = _extract_issue_carrier(snapshot, plan, recovered_ids)
+    return _PriorExchange(previous, state, requirements, plan, review, plan_envelope)
+
+
+def _verified_reframe_context(
+    snapshot: Mapping[str, Any], value: object
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    prior = _prior_exchange(snapshot, value)
+    previous = prior.previous
+    state = prior.state
+    plan = prior.plan
+    review = prior.review
+    plan_envelope = prior.plan_envelope
+    if plan_envelope["schema_id"] != review_exchange.AUTHOR_EVENT_SCHEMA_ID:
+        raise ProtocolError("The retained plan does not contain an author event.")
     if plan_envelope["schema_id"] != review_exchange.AUTHOR_EVENT_SCHEMA_ID:
         raise ProtocolError("The retained plan does not contain an author event.")
     plan_state = plan_envelope["state"]
@@ -1352,45 +1381,15 @@ def _authority_context(
 def _verified_replanned_context(
     snapshot: Mapping[str, Any], value: object
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
-    previous = review_exchange.verify_envelope(value)
-    if previous["schema_id"] != review_exchange.STATE_SCHEMA_ID:
-        raise ProtocolError("The reframe prior record is not review state.")
-    state = previous["state"]
-    requirements = _requirements_sha256(snapshot)
-    if (
-        state["surface"] != "issue"
-        or state["target"] != _core_target(snapshot)
-        or state["requirements_sha256"] == requirements
-    ):
-        raise ProtocolError(
-            "A reframe requires changed requirements and a prior review state."
-        )
-    if _finalized_status(snapshot["issue"]["body"]) != "absent":
-        raise ProtocolError("A finalized or malformed issue cannot be reframed.")
-    plan_comments = _role_comments(snapshot, PLAN_MARKERS)
-    review_comments = _role_comments(snapshot, REVIEW_MARKERS)
-    actor_id = snapshot["actor"]["id"]
-    if (
-        len(plan_comments) != 1
-        or len(review_comments) != 1
-        or plan_comments[0]["id"] == review_comments[0]["id"]
-        or any(
-            comment["author"]["id"] != actor_id
-            for comment in (*plan_comments, *review_comments)
-        )
-    ):
-        raise ProtocolError(
-            "A reframe requires one actor-owned plan and review comment."
-        )
-    plan = plan_comments[0]
-    review = review_comments[0]
-    recovered_ids: set[str] = set()
-    retained = _extract_issue_carrier(snapshot, review, recovered_ids)
-    if retained != previous:
-        raise ProtocolError(
-            "The supplied prior state is not the retained review state."
-        )
-    plan_envelope = _extract_issue_carrier(snapshot, plan, recovered_ids)
+    prior = _prior_exchange(snapshot, value)
+    previous = prior.previous
+    state = prior.state
+    requirements = prior.requirements
+    plan = prior.plan
+    review = prior.review
+    plan_envelope = prior.plan_envelope
+    if plan_envelope["schema_id"] != review_exchange.AUTHOR_EVENT_SCHEMA_ID:
+        raise ProtocolError("The reframed plan does not contain an author event.")
     if plan_envelope["schema_id"] != review_exchange.AUTHOR_EVENT_SCHEMA_ID:
         raise ProtocolError("The reframed plan does not contain an author event.")
     plan_state = plan_envelope["state"]
