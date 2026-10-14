@@ -66,7 +66,6 @@ REVIEWED_PLAN_PATTERN = re.compile(
     r"<!-- HomericIntelligence:reviewed-plan:v1 "
     r"token=([0-9a-f]{64}) -->"
 )
-HEX_DIGEST = review_exchange.HEX_DIGEST
 TARGET_KINDS = frozenset(
     {"path", "module", "interface", "workflow", "dependency", "migration", "command"}
 )
