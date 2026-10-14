@@ -125,6 +125,124 @@ STOP_REASONS = frozenset(
     }
 )
 
+# One structured statement marks a check as not performed. One visible sentence
+# claims that a check produced a result. A carrier is inconsistent when a visible
+# claim names the same check and admits no unavailability.
+CLOSURE_DEGRADED_PHRASES = (
+    "unavailable",
+    "not available",
+    "not accessible",
+    "unable to run",
+    "unable to be run",
+    "unable to be checked",
+    "could not run",
+    "could not be run",
+    "could not be checked",
+    "was not run",
+    "were not run",
+    "was not checked",
+    "were not checked",
+    "was not performed",
+    "were not performed",
+    "was not completed",
+    "were not completed",
+    "was not verified",
+    "were not verified",
+    "did not run",
+    "did not complete",
+    "did not pass",
+    "not run",
+    "not checked",
+    "not performed",
+    "not completed",
+    "not verified",
+    "not validated",
+)
+CLOSURE_CLAIM_PHRASES = (
+    "complete",
+    "completes",
+    "completed",
+    "confirm",
+    "confirms",
+    "confirmed",
+    "cover",
+    "covers",
+    "covered",
+    "covering",
+    "pass",
+    "passes",
+    "passed",
+    "passing",
+    "succeed",
+    "succeeds",
+    "succeeded",
+    "successful",
+    "validate",
+    "validates",
+    "validated",
+    "verify",
+    "verifies",
+    "verified",
+    "no errors",
+    "no failures",
+    "no findings",
+    "no violations",
+)
+CLOSURE_SEGMENT_PATTERN = re.compile(r"[\n.;:!?()\[\]`|,]+")
+CLOSURE_TERM_PATTERN = re.compile(r"[a-z]{4,}")
+CLOSURE_DEGRADED_PATTERN = re.compile(
+    r"\b(?:" + "|".join(CLOSURE_DEGRADED_PHRASES) + r")\b"
+)
+CLOSURE_CLAIM_PATTERN = re.compile(r"\b(?:" + "|".join(CLOSURE_CLAIM_PHRASES) + r")\b")
+CLOSURE_MARKER_WORDS = frozenset(
+    word
+    for phrase in (*CLOSURE_DEGRADED_PHRASES, *CLOSURE_CLAIM_PHRASES)
+    for word in CLOSURE_TERM_PATTERN.findall(phrase)
+)
+CLOSURE_TERM_STOP_WORDS = frozenset(
+    {
+        "about",
+        "after",
+        "already",
+        "also",
+        "another",
+        "because",
+        "before",
+        "been",
+        "both",
+        "does",
+        "each",
+        "from",
+        "have",
+        "into",
+        "more",
+        "most",
+        "only",
+        "other",
+        "over",
+        "shall",
+        "some",
+        "such",
+        "than",
+        "that",
+        "their",
+        "them",
+        "then",
+        "there",
+        "these",
+        "they",
+        "this",
+        "those",
+        "under",
+        "when",
+        "where",
+        "which",
+        "while",
+        "with",
+        "would",
+    }
+)
+
 
 class ProtocolError(ValueError):
     """A supplied record violates the review-exchange protocol."""
@@ -729,7 +847,9 @@ def _merge_unique_evidence(target: list[str], additions: Sequence[str]) -> None:
             known.add(evidence)
 
 
-def _validate_finding_state(finding: Mapping[str, Any], round_number: int) -> None:
+def _validate_finding_state(
+    finding: Mapping[str, Any], round_number: int, artifact_revision: str
+) -> None:
     """Reject a stored finding that no legal transition can produce."""
     state = finding["state"]
     required = finding["disposition"] == "required"
@@ -831,6 +951,17 @@ def _validate_finding_state(finding: Mapping[str, Any], round_number: int) -> No
         raise ProtocolError(
             "The stored finding state has no legal response transition."
         )
+    if (
+        state == "resolved"
+        and cast(Mapping[str, Any], author)["artifact_revision"] != artifact_revision
+    ):
+        # A closure stays bound to the reviewed head that supplied its evidence.
+        # The exact closure condition is already required of every required
+        # finding, and the accepted-event replay rejects adverse evidence that
+        # a resolve response only repeats.
+        raise ProtocolError(
+            "A resolved finding is not bound to the reviewed artifact revision."
+        )
 
 
 def _validate_state(value: object) -> dict[str, Any]:
@@ -904,7 +1035,7 @@ def _validate_state(value: object) -> dict[str, Any]:
         state["round"], "state.round", minimum=1, maximum=ROUND_LIMIT
     )
     for finding in findings:
-        _validate_finding_state(finding, round_number)
+        _validate_finding_state(finding, round_number, artifact["revision"])
     if len(progress) != round_number or [item["round"] for item in progress] != list(
         range(1, round_number + 1)
     ):
@@ -2288,6 +2419,16 @@ def _apply_reviewer_response(
         raise ProtocolError(
             "A contest response must add evidence, not restate the finding."
         )
+    # The finding ledger already holds the introducing evidence and the current
+    # author response evidence. A closure that adds nothing to that ledger
+    # repeats the adverse evidence instead of supporting the closure.
+    if action == "resolve" and set(response["evidence"]).issubset(
+        set(finding["evidence"])
+    ):
+        raise ProtocolError(
+            "A resolve response must add closure evidence, not restate the adverse "
+            "evidence."
+        )
     if action == "counter":
         closure = cast(str, response["closure_condition"])
         if closure == finding["closure_condition"]:
@@ -3580,6 +3721,62 @@ def extract_carrier(document: str) -> dict[str, Any]:
     return extract_carrier_pair(document)[1]
 
 
+def _closure_subject_terms(evidence: str) -> frozenset[str]:
+    """Return the words that one unavailable statement uses to name its check."""
+    return frozenset(
+        word
+        for word in CLOSURE_TERM_PATTERN.findall(evidence.lower())
+        if word not in CLOSURE_MARKER_WORDS and word not in CLOSURE_TERM_STOP_WORDS
+    )
+
+
+def _degraded_response_evidence(event: Mapping[str, Any]) -> list[str]:
+    """Return the structured evidence that admits a check was not performed."""
+    responses = event.get("responses")
+    if not isinstance(responses, list):
+        return []
+    degraded: list[str] = []
+    for response in responses:
+        if not isinstance(response, Mapping):
+            continue
+        evidence = response.get("evidence")
+        if not isinstance(evidence, list):
+            continue
+        degraded.extend(
+            item
+            for item in evidence
+            if isinstance(item, str) and CLOSURE_DEGRADED_PATTERN.search(item)
+        )
+    return degraded
+
+
+def _visible_conflicts_with_structured_evidence(
+    visible_content: str, event: Mapping[str, Any]
+) -> bool:
+    """Report a visible completion claim for a check the event marks unavailable.
+
+    The structured event stays the closure authority. This check only compares
+    the visible sentence with the event for one named check, and it never reads
+    the visible prose for closure.
+    """
+    degraded = _degraded_response_evidence(event)
+    if not degraded:
+        return False
+    terms = frozenset(
+        term for evidence in degraded for term in _closure_subject_terms(evidence)
+    )
+    if not terms:
+        return False
+    for segment in CLOSURE_SEGMENT_PATTERN.split(visible_content.lower()):
+        if not CLOSURE_CLAIM_PATTERN.search(segment):
+            continue
+        if CLOSURE_DEGRADED_PATTERN.search(segment):
+            continue
+        if terms.intersection(CLOSURE_TERM_PATTERN.findall(segment)):
+            return True
+    return False
+
+
 def extract_carrier_pair(document: str) -> tuple[dict[str, Any], dict[str, Any]]:
     """Return the verified original envelope and its current representation."""
     if not isinstance(document, str):
@@ -3649,6 +3846,18 @@ def extract_carrier_pair(document: str) -> tuple[dict[str, Any], dict[str, Any]]
     expected_visible = envelope["state"]["artifact_binding"]["visible_content_sha256"]
     if sha256_text(visible) != expected_visible:
         raise ProtocolError("The carrier visible-content digest does not match.")
+    accepted_events = envelope["state"].get("accepted_events")
+    latest_event: object = envelope["state"]
+    if isinstance(accepted_events, list) and accepted_events:
+        latest_event = accepted_events[-1]
+    if (
+        isinstance(latest_event, dict)
+        and latest_event.get("event_type") == "author_response"
+        and _visible_conflicts_with_structured_evidence(visible, latest_event)
+    ):
+        raise ProtocolError(
+            "The visible author claims contradict the structured response evidence."
+        )
     provider = envelope["state"]["target"]["provider"]
     if len(encoded_document) > PROVIDER_BODY_LIMITS[provider]:
         raise ProtocolError(f"The document exceeds the {provider} body limit.")
