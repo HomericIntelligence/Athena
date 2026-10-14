@@ -1164,6 +1164,44 @@ def entry_documents(entries: Sequence[PathEntry]) -> list[dict[str, str]]:
     return documents
 
 
+def dependency_content_identities(
+    scope: str,
+    entries: Sequence[PathEntry],
+    repository_root: Path,
+) -> dict[str, str]:
+    """Return one content identity for each reviewed dependency path.
+
+    The identity is derived from the resolved content source. A worktree file
+    uses its raw no-follow content identity. An index or head-tree entry uses its
+    immutable Git object identity. A symbolic link uses its link target bytes. An
+    absent or other object uses its resolved kind, so a deletion is a change.
+    """
+    object_format = git_object_format(repository_root)
+    identities: dict[str, str] = {}
+    for entry in entries:
+        digest = sha256()
+        add_digest_part(digest, b"schema", b"athena-change-review-dependency-v1")
+        add_digest_part(digest, b"path", os.fsencode(entry.path))
+        add_digest_part(digest, b"kind", entry.kind.encode("ascii"))
+        if entry.mode is not None:
+            add_digest_part(digest, b"mode", entry.mode.encode("ascii"))
+        if scope == "worktree":
+            snapshot = worktree_path_snapshot(
+                repository_root, entry.path, object_format
+            )
+            if snapshot.object_id is not None:
+                add_digest_part(
+                    digest, b"object-id", snapshot.object_id.encode("ascii")
+                )
+            if snapshot.content is not None:
+                add_content_fingerprint(digest, b"content", snapshot.content)
+        elif entry.object_id is not None:
+            add_digest_part(digest, b"object-id", entry.object_id.encode("ascii"))
+        add_digest_part(digest, b"scope", scope.encode("ascii"))
+        identities[entry.path] = digest.hexdigest()
+    return identities
+
+
 def resolve_scope(
     scope: str, range_value: str | None, selected_paths: Sequence[str]
 ) -> dict[str, object]:
@@ -1200,6 +1238,11 @@ def resolve_scope(
         "paths": list(second_capture.paths),
         "scope": scope,
         "scope_digest": second_capture.scope_digest,
+        "dependency_identities": dependency_content_identities(
+            scope,
+            second_capture.path_entries,
+            repository_root,
+        ),
         "tracked_paths": list(second_capture.tracked_paths),
         "untracked_paths": list(second_capture.untracked_paths),
         "untracked_scope": "included" if scope == "worktree" else "excluded",

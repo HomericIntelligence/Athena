@@ -44,6 +44,7 @@ flowchart LR
 | [Language routing](language-routing.md) | Applicable language and toolchain profile. | The changed or inventoried surface contains code or build tooling. |
 | [Behavior-first testing](behavior-first-testing.md) | Functional-test quality and false-confidence rules. | Tests, validation, or a plan are in scope. |
 | [Issue planning](issue-planning.md) | Canonical plan identity, review, and finalized-epoch artifacts. | Planning, reviewing, or finalizing an issue. |
+| [Requirement-to-evidence contract](requirement-evidence.md) | Independent expected inventory, assessed rows, one complete findings batch, selective repetition, and the local change-review interface. | The review reports requirement coverage or reuses technical evidence. |
 | [Repository scorecard](repository-scorecard.md) | Full-inventory repository criteria and scoring. | Reviewing a repository. |
 | [Design-document structure](design-docs.md) | A clear order for architecture and design decisions. | Writing a new mutable design document. |
 
@@ -56,8 +57,9 @@ flowchart LR
 5. Classify the surface.
 6. Read only the applicable language and test guidance.
 7. If the scope includes issue planning, read the issue-planning contract.
-8. If the scope includes a repository review, read the repository scorecard.
-9. Follow the invoking skill for scope resolution and its authorized delivery channel.
+8. If the review reports requirement coverage, read the requirement-to-evidence contract.
+9. If the scope includes a repository review, read the repository scorecard.
+10. Follow the invoking skill for scope resolution and its authorized delivery channel.
 
 The diagram appears only here. Component documents use tables or prose when those communicate their
 own decision more clearly.
