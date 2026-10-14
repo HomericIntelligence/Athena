@@ -1,31 +1,25 @@
-"""Every tracked Python file must compile and import on the declared floor.
+"""Guard the Python source syntax level and the packaged helper imports.
 
-Regression guard for HomericIntelligence/Athena#301, which reported that three
-`pr-review` helpers could not be imported.
+Regression guard for HomericIntelligence/Athena#306, where seven multi-exception
+`except` clauses used a Python 2 spelling that no supported host accepts, and
+for HomericIntelligence/Athena#301, where nothing verified that the packaged
+`pr-review` helpers import.
 
-The report was partly mistaken, and this test encodes the corrected
-understanding so the next reader does not repeat it:
+This repository uses two different interpreter levels, and each has its own
+contract:
 
-- `pyproject.toml` declares `requires-python = ">=3.14.8,<3.15"`, and `ruff`
-  infers `target-version = 3.14` from that. PEP 758 makes the unparenthesised
-  `except X, Y:` form valid again in 3.14, so on the declared floor those
-  helpers import and run correctly. `ruff format` actively *prefers* the
-  unparenthesised form at that target, so rewriting it to `except (X, Y):`
-  fights the formatter and fails the required `format-check` gate.
-- The same construct is a hard `SyntaxError` on Python 3.13 and earlier. That
-  matters only for a host whose `python3` is older than this repository's
-  floor, which is a distribution concern rather than a source defect.
+- `pyproject.toml` declares `requires-python = ">=3.14.8,<3.15"`. On that
+  interpreter the Python 3.14 relaxation of multi-exception `except` clauses
+  makes the old spelling legal again, so a plain compile on the declared floor
+  cannot detect its return.
+- `[tool.ruff] target-version = "py312"` pins the source syntax level, and
+  `README.md` documents Python 3.12 or newer on the host. A host below 3.14
+  rejects that spelling with a hard `SyntaxError`, so the source must stay
+  inside 3.12 syntax even though the declared floor is newer.
 
-So the defect that is real and source-level is not the `except` spelling. It is
-that nothing verifies the packaged helpers actually import, which is why a
-`SyntaxError` in `anchor_proofs.py` can reach a published plugin unnoticed:
-that helper cannot produce the anchor manifest reviewer delivery requires, and
-`collect_evidence.py` cannot produce the scope, requirements, and
-path-manifest digests the GO path consumes.
-
-This test therefore checks what holds on the declared floor: every tracked
-Python file compiles, and the `pr-review` helper chain imports through its real
-dependency path.
+This module therefore checks that every tracked Python file compiles on the
+running interpreter, parses at the documented 3.12 syntax level, and that the
+`pr-review` helper chain imports through its real dependency path.
 """
 
 from __future__ import annotations
@@ -33,6 +27,7 @@ from __future__ import annotations
 import ast
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -62,6 +57,26 @@ def tracked_python_files() -> list[Path]:
         for name in completed.stdout.split()
         if not name.startswith(("build/", "dist/"))
     ]
+
+
+def documented_syntax_level() -> tuple[int, int]:
+    """Return the `(major, minor)` syntax level pinned by the ruff target.
+
+    The pin is the canonical record of the source syntax contract, so the guard
+    reads it instead of hard-coding a level that can drift silently.
+    """
+    with (ROOT / "pyproject.toml").open("rb") as handle:
+        project = tomllib.load(handle)
+    target = project.get("tool", {}).get("ruff", {}).get("target-version")
+    assert isinstance(target, str) and target.startswith("py"), (
+        "[tool.ruff] target-version is missing or unreadable; re-anchor"
+        " documented_syntax_level() before trusting the syntax-level check"
+    )
+    digits = target.removeprefix("py").replace("_", "")
+    assert digits.isdigit() and len(digits) >= 3, (
+        f"cannot read a version from {target!r}"
+    )
+    return (int(digits[0]), int(digits[1:]))
 
 
 def test_enumeration_finds_the_repository_sources() -> None:
@@ -99,6 +114,26 @@ def test_tracked_python_file_compiles(path: Path) -> None:
         pytest.fail(
             f"{path.relative_to(ROOT)} does not compile on the declared floor: "
             f"{error.msg} at line {error.lineno}"
+        )
+
+
+@pytest.mark.parametrize(
+    "path",
+    tracked_python_files(),
+    ids=lambda path: str(path.relative_to(ROOT)),
+)
+def test_tracked_python_file_parses_at_the_documented_syntax_level(path: Path) -> None:
+    """Each tracked Python file must parse at the ruff-pinned syntax level."""
+    try:
+        ast.parse(
+            path.read_text(encoding="utf-8"),
+            filename=str(path),
+            feature_version=documented_syntax_level(),
+        )
+    except SyntaxError as error:
+        pytest.fail(
+            f"{path.relative_to(ROOT)} does not parse at the documented syntax"
+            f" level: {error.msg} at line {error.lineno}"
         )
 
 
