@@ -434,6 +434,7 @@ def _validate_layout_and_policy(
     ignored_top_levels = {
         ".git",
         ".mypy_cache",
+        ".pixi",
         ".venv",
         ".pytest_cache",
         ".ruff_cache",
