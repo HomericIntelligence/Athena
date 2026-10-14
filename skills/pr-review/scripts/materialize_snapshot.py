@@ -104,8 +104,12 @@ def _git(
     return result.stdout.strip() if isinstance(result.stdout, str) else ""
 
 
-def _hdiutil(*arguments: str) -> None:
-    """Run the macOS disk-image tool or fail closed when it cannot enforce a quota."""
+def _hdiutil(*arguments: str) -> bool:
+    """Run the macOS disk-image tool. Return False when it cannot enforce a quota.
+
+    Report unavailability instead of raising. The caller selects the next
+    acquisition tier, so an unavailable `hdiutil` must not end acquisition.
+    """
     try:
         result = run_command(
             ["hdiutil", *arguments],
@@ -114,10 +118,9 @@ def _hdiutil(*arguments: str) -> None:
             text=True,
             check=False,
         )
-    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
-        raise RuntimeError(QUOTA_ERROR) from error
-    if result.returncode != 0:
-        raise RuntimeError(QUOTA_ERROR)
+    except (OSError, RuntimeError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
 
 
 def _mount_tmpfs(source: Path, maximum_bytes: int) -> bool:
@@ -165,13 +168,15 @@ def _mount_tmpfs(source: Path, maximum_bytes: int) -> bool:
 
 
 def _create_quota_volume(root: Path, maximum_bytes: int) -> Path | None:
-    """Return a bounded source directory, or None for the Linux bounded fallback.
+    """Return a bounded source directory, or None to select a later tier.
 
     On macOS, attach a sparse HFS+ volume whose total capacity is the quota.
-    On Linux, mount a tmpfs when the host has the required authority. Otherwise,
-    return None so the caller can materialize the snapshot inside a bounded user
-    and mount namespace. On other systems, fail closed because the host cannot
-    enforce the snapshot size limit.
+    On Linux, mount a tmpfs when the host has the required authority. Return
+    None whenever the host cannot provide a quota volume, so the caller can
+    select the next acquisition tier.
+
+    Only a host with no usable disk fails closed here. Every other host
+    continues to a tier that does not need a quota volume.
     """
     maximum_kibibytes = maximum_bytes // 1024
     if maximum_kibibytes < 1:
@@ -182,7 +187,7 @@ def _create_quota_volume(root: Path, maximum_bytes: int) -> Path | None:
         image = root / "snapshot.sparseimage"
         source = root / "source"
         source.mkdir()
-        _hdiutil(
+        created = _hdiutil(
             "create",
             "-quiet",
             "-type",
@@ -196,7 +201,7 @@ def _create_quota_volume(root: Path, maximum_bytes: int) -> Path | None:
             "-nospotlight",
             str(image),
         )
-        _hdiutil(
+        attached = created and _hdiutil(
             "attach",
             "-quiet",
             "-nobrowse",
@@ -204,8 +209,10 @@ def _create_quota_volume(root: Path, maximum_bytes: int) -> Path | None:
             str(source),
             str(image),
         )
-        if not source.is_mount():
-            raise RuntimeError(QUOTA_ERROR)
+        if not attached or not source.is_mount():
+            # The host cannot provide a quota volume. Return None so the caller
+            # selects the next acquisition tier instead of ending the review.
+            return None
         return source
     if sys.platform.startswith("linux"):
         source = root / "source"
@@ -218,13 +225,16 @@ def _create_quota_volume(root: Path, maximum_bytes: int) -> Path | None:
             # If rmdir fails, the caller uses None to select the other method.
             pass
         return None
-    raise RuntimeError(QUOTA_ERROR)
+    # Every other platform has no quota mechanism. Return None so the caller
+    # selects the next acquisition tier instead of ending the review.
+    return None
 
 
 def _detach_volume(source: Path) -> None:
     """Detach the platform quota volume from its mount point."""
     if sys.platform == "darwin":
-        _hdiutil("detach", "-force", "-quiet", str(source))
+        if not _hdiutil("detach", "-force", "-quiet", str(source)):
+            raise RuntimeError(REMOVE_ERROR)
         return
     if sys.platform.startswith("linux"):
         try:
@@ -559,8 +569,10 @@ def _plain_materialize(
     object identifiers, and still refuses a shallow or promisor repository.
     The bound here is the available-disk check, not a file system quota.
     """
+    # `exist_ok` matters: a failed macOS quota attempt leaves root/source
+    # behind, and this tier reuses that path.
     source = root / "source"
-    source.mkdir()
+    source.mkdir(exist_ok=True)
     merge_base, tree_oid = _acquire_into(
         source,
         repository_url=canonical_repository_url(repository),
