@@ -50,7 +50,7 @@ decisions:
 Use the issue as the requirements source. Review only its current canonical plan. Use the
 issue-planning contract to identify the plan owner, marker, presence or absence, and identity. Use
 historical plans and reviews only as background information. For explicit legacy adoption, give the
-helper the exact current unversioned plan and optional review in the normalized snapshot. Do not
+helper the exact current unversioned plan and optional review in a producer snapshot. Do not
 interpret edit history or other prose as current requirements or proof of closure.
 
 If the request includes `--report-only`, this skill is read-only. Do not publish a comment. If the
@@ -70,8 +70,9 @@ expand the scope to these items:
 
 ## Review
 
-Before the substantive review, exhaust bounded provider pagination for issue comments. Normalize
-the issue snapshot, set `comments_complete` to `true`, and run `issue_exchange.py inspect`.
+Before the substantive review, build the issue snapshot with
+[`mk_issue_snapshot.py`](../review-exchange/scripts/mk_issue_snapshot.py) and run `issue_exchange.py
+inspect` with it. This skill does not build, normalize, or edit a snapshot.
 Withhold on an absent plan or an identity error. Use the inspect result and the caller's explicit
 event to select exactly one path. Evaluate these paths in order:
 
@@ -169,9 +170,9 @@ finding, new findings, an applicable stop reason, and the declared scope. Supply
 legacy round. Preserve it on later rounds.
 
 Run `issue_exchange.py prepare-review`. For `--report-only`, return the prepared result and stop.
-Immediately before publication, get a fresh snapshot and prepare the operation again. Require the
-same precondition and exact create or update operation. If one of these conditions is true, withhold
-the comment:
+Immediately before publication, run a fresh producer snapshot and prepare the operation again.
+Require the same precondition and exact create or update operation. If one of these conditions is
+true, withhold the comment:
 
 - identity drift;
 - an unresolved canonical marker identity;
@@ -227,10 +228,14 @@ superseded state digest. Do not create a new review comment or carry old finding
 new exchange.
 
 For either authority transition, `--report-only` returns the prepared update and stops. Otherwise,
-get a fresh snapshot and run `prepare-review` again. Require the same precondition and exact retained
-comment update. Publish only that update and run `verify-publication` against an exact readback. If
-the write or readback is uncertain, report `unknown_outcome` and reconcile exact readback before
-any retry. Continue independent work.
+get a fresh producer snapshot and run `prepare-review` again. Require the same precondition and exact
+retained comment update. Publish only that update and run `verify-publication` against an exact
+readback. If the write or readback is uncertain, report `unknown_outcome` and reconcile exact
+readback before any retry. Continue independent work.
+
+A `requirements_drift` diagnostic against a carrier that a historic ad-hoc producer published is a
+rebind condition. Do not rebuild the carrier. Report the diagnostic to the author. The author
+republishes the plan carrier from a producer snapshot. Then run this review again.
 
 ## Failed approaches
 

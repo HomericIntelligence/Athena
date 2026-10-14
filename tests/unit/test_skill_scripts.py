@@ -213,6 +213,12 @@ class ScriptConventionTests(unittest.TestCase):
                 1,
             ),
             (
+                "skills/review-exchange/scripts/mk_issue_snapshot.py",
+                ("--repo", "owner/repository", "--number", "210"),
+                "gh",
+                2,
+            ),
+            (
                 "skills/realign/scripts/resolve_assessment.py",
                 ("bind",),
                 "git",
