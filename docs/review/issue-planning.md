@@ -329,7 +329,8 @@ only with the deletion procedure below.
 Put exactly one machine-readable marker in the body:
 `<!-- HomericIntelligence:finalize-plan R=<R> P=<P> V=<V> F=<F> -->`. Compute `F` from a
 canonical body representation. In that representation, use the literal `<F>` placeholder as the
-marker's `F` value. This prevents self-reference. Immediately before publication, resolve each source
+marker's `F` value. This prevents self-reference. The canonical body representation is the exact
+issue-body form that the provider publishes. For GitHub, that form has no final line feed. Immediately before publication, resolve each source
 identity, actor, marker, and `GO` binding again. Update the issue body exactly once. Then, read the body
 again and call the readback form of `verify-finalize` with the snapshot and prepared result. Only a
 `verified` result supplies a deletion allowlist. Only after successful readback, re-read the exact actor-owned plan
