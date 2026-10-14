@@ -113,17 +113,61 @@ def require_unambiguous_git_merge_base(
     return merge_bases[0]
 
 
-def plugin_version() -> str:
-    """Return this corpus's generated version or its adjacent canonical manifest."""
-    corpus = Path(__file__).resolve().parent
+def corpus_manifest(module_file: Path) -> Path | None:
+    """Return the manifest that declares the corpus version for one helper file."""
+    corpus = corpus_root(module_file)
+    if corpus is None:
+        return None
     manifest = corpus / "_plugin.json"
     if not manifest.exists() and corpus.name == "skills":
         manifest = PLUGIN_ROOT / ".codex-plugin" / "plugin.json"
-    document = json.loads(manifest.read_text(encoding="utf-8"))
+    return manifest
+
+
+def corpus_root(module_file: Path) -> Path | None:
+    """Return the nearest ancestor directory that anchors one Athena corpus.
+
+    The anchor is the presence of the shared ``_cli.py`` helper. Directory
+    names are not used, because the installed corpus directory and its parent
+    use host-specific names.
+    """
+    for directory in module_file.resolve().parents:
+        if (directory / "_cli.py").is_file():
+            return directory
+    return None
+
+
+def corpus_version(module_file: Path) -> str | None:
+    """Return the declared corpus version, or None when no manifest is readable."""
+    manifest = corpus_manifest(module_file)
+    if manifest is None:
+        return None
+    try:
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
     version = document.get("version") if isinstance(document, dict) else None
     if not isinstance(version, str) or not version.strip():
+        return None
+    return version
+
+
+def corpus_relative_path(module_file: Path) -> str:
+    """Return the corpus-root-relative path of one helper file."""
+    corpus = corpus_root(module_file)
+    if corpus is None:
+        return module_file.name
+    return module_file.resolve().relative_to(corpus).as_posix()
+
+
+def plugin_version() -> str:
+    """Return this corpus's generated version or its adjacent canonical manifest."""
+    version = corpus_version(Path(__file__))
+    if version is None:
+        manifest = corpus_manifest(Path(__file__))
         raise TypeError(
-            f"The plugin manifest does not contain a string version: '{manifest}'."
+            "The plugin manifest does not contain a readable string version: "
+            f"'{manifest}'."
         )
     return version
 

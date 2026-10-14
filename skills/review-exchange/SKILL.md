@@ -63,7 +63,8 @@ result. Exit code `1` is a protocol rejection. Exit code `2` is an operational f
 6. Treat exit code `1` as a withheld transition. Recover malformed state from verifiable records
    and retry preparation. Do not invent missing decisions, events, or successful receipts.
 7. Treat exit code `2` as an operational failure. Preserve the prepared input and report the failed
-   operation.
+   operation. When the diagnostic reports a mixed helper corpus, re-sync the installed helper corpus
+   to one version and run the command again. Do not recover the withheld transition by hand.
 8. Before a forge write, revalidate the target, source revision, actor, artifact identity, and
    prepared preconditions.
 9. Publish only the exact prepared artifact through the invoking workflow.
