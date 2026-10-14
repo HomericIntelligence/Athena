@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import copy
+import json
 import unittest
 import zlib
 from dataclasses import replace
@@ -196,6 +197,55 @@ class LegacyHistoryTests(unittest.TestCase):
                 self.assertRaises(self.exchange.ProtocolError),
             ):
                 self.exchange.verify_envelope(original)
+
+
+class LegacyClosureEvidenceTests(unittest.TestCase):
+    """A version-1 upgrade must reject an unsupported closure."""
+
+    def setUp(self) -> None:
+        self.exchange = fixtures.load_module()
+
+    def fixture(self, name: str) -> str:
+        """Return one immutable carrier from the immutable pull request."""
+        return (
+            fixtures.ROOT / "tests/fixtures/review_exchange/comet_pr_1510" / name
+        ).read_text(encoding="utf-8")
+
+    def test_legacy_upgrade_rejects_a_resolve_that_repeats_adverse_evidence(
+        self,
+    ) -> None:
+        document = self.fixture("terminal_reviewer_body.md")
+        payload = document.split("\n```json\n", 1)[1].rsplit("\n```", 1)[0]
+        original = json.loads(payload)
+        self.assertEqual(1, original["schema_version"])
+        self.assertTrue(original["state"]["go_eligible"])
+
+        with self.assertRaises(self.exchange.ProtocolError) as caught:
+            self.exchange.extract_carrier(document)
+
+        self.assertIn("closure evidence", str(caught.exception))
+
+    def test_legacy_upgrade_rejects_a_conflicting_author_visible_claim(self) -> None:
+        with self.assertRaises(self.exchange.ProtocolError) as caught:
+            self.exchange.extract_carrier(self.fixture("author_review_body.md"))
+
+        self.assertIn(
+            "contradict the structured response evidence", str(caught.exception)
+        )
+
+    def test_legitimate_legacy_closure_evidence_still_upgrades(self) -> None:
+        history = LegacyHistoryTests()
+        history.setUp()
+        expected = history.history()[-1]
+        originals, _ = legacy_prefixes(self.exchange, expected)
+
+        self.assertEqual(
+            expected,
+            self.exchange.verify_envelope(originals[expected["state_sha256"]]),
+        )
+        self.assertEqual(
+            "resolve", expected["state"]["findings"][0]["reviewer_response"]["kind"]
+        )
 
 
 class LegacyDeliveryTests(unittest.TestCase):
