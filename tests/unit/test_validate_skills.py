@@ -416,6 +416,20 @@ class DistributionTests(unittest.TestCase):
 
         self.assertEqual(validator.validate_repository(self.fixture), [])
 
+    def test_local_pixi_cache_is_not_inspected(self) -> None:
+        """A local pixi environment must not produce distribution findings.
+
+        A developer runs pixi to obtain the optional SBOM and SCA tooling. The
+        environment carries third-party sources and binary files that the
+        validator would report, so it must skip that directory.
+        """
+        cache = self.fixture / ".pixi" / "envs" / "security"
+        cache.mkdir(parents=True, exist_ok=True)
+        self.addCleanup(shutil.rmtree, self.fixture / ".pixi", ignore_errors=True)
+        (cache / "font.woff").write_bytes(b"\x00\xb8\x00\x80font")
+
+        self.assertEqual(validator.validate_repository(self.fixture), [])
+
     def test_executable_scripts_must_use_shared_argparse_convention(self) -> None:
         script = self.fixture / "skills" / "pr-review" / "scripts" / "resolve_pr.py"
         script.write_text(
