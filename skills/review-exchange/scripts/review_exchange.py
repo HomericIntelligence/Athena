@@ -16,12 +16,17 @@ from contextlib import nullcontext
 from hashlib import sha256
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NoReturn, cast
+from types import ModuleType
+from typing import TYPE_CHECKING, Any, Final, NoReturn, cast
 
 sys.dont_write_bytecode = True
 
 if TYPE_CHECKING or __package__ not in {None, ""}:
-    from skills._cli import argument_parser
+    from skills._cli import (
+        argument_parser,
+        corpus_relative_path,
+        corpus_version,
+    )
 else:
     _cli_path = Path(__file__).resolve().parents[2] / "_cli.py"
     _cli_spec = importlib.util.spec_from_file_location(
@@ -34,12 +39,15 @@ else:
     _cli = importlib.util.module_from_spec(_cli_spec)
     _cli_spec.loader.exec_module(_cli)
     argument_parser = _cli.argument_parser
+    corpus_relative_path = _cli.corpus_relative_path
+    corpus_version = _cli.corpus_version
 
 STATE_SCHEMA_ID = "athena.review-exchange.state"
 AUTHOR_EVENT_SCHEMA_ID = "athena.review-exchange.author-event"
 RESULT_SCHEMA_ID = "athena.review-exchange.reduce-result"
 AUTHORITY_SCHEMA_ID = "athena.review-exchange.authority"
 SCHEMA_VERSION = 1
+CORPUS_VERSION: Final[str] = "0.6.0"
 ENVELOPE_SCHEMA_VERSION = 2
 LEGACY_ENVELOPE_SCHEMA_VERSION = 1
 ROUND_LIMIT = 5
@@ -132,6 +140,76 @@ class ProtocolError(ValueError):
 
 class OperationalError(RuntimeError):
     """The helper could not read or write its requested local stream."""
+
+
+def module_identity(module: ModuleType) -> dict[str, str]:
+    """Return the corpus identity of one loaded helper module.
+
+    Every reported path is relative to the corpus root. An absolute operator
+    path must not reach a published diagnostic.
+    """
+    file_name = getattr(module, "__file__", None)
+    module_file = Path(file_name) if isinstance(file_name, str) else None
+    declared = getattr(module, "CORPUS_VERSION", None)
+    declared_version = (
+        declared if isinstance(declared, str) and declared.strip() else "none"
+    )
+    if module_file is None:
+        return {
+            "path": module.__name__,
+            "declared_corpus_version": declared_version,
+            "tree_corpus_version": "unreadable",
+        }
+    return {
+        "path": corpus_relative_path(module_file),
+        "declared_corpus_version": declared_version,
+        "tree_corpus_version": corpus_version(module_file) or "unreadable",
+    }
+
+
+def verify_corpus(peer: ModuleType) -> dict[str, str]:
+    """Refuse a mixed or unreadable corpus and return the verified identity.
+
+    Each refusal condition has its own sentence, so an operator can tell a
+    missing declaration from a conflicting declaration from an unreadable
+    version manifest.
+    """
+    own = module_identity(sys.modules[__name__])
+    other = module_identity(peer)
+    if own["declared_corpus_version"] == "none":
+        raise OperationalError(
+            f"This helper declares no corpus version ('{own['path']}'). "
+            "Re-sync the installed helper corpus to one version."
+        )
+    if other["declared_corpus_version"] == "none":
+        raise OperationalError(
+            f"The loaded peer helper declares no corpus version: '{other['path']}'. "
+            "Re-sync the installed helper corpus to one version."
+        )
+    if other["declared_corpus_version"] != own["declared_corpus_version"]:
+        raise OperationalError(
+            "The loaded helper corpus is mixed: "
+            f"'{own['path']}' declares corpus version "
+            f"{own['declared_corpus_version']}, and '{other['path']}' declares "
+            f"corpus version {other['declared_corpus_version']}. "
+            "Re-sync the installed helper corpus to one version."
+        )
+    if (
+        own["tree_corpus_version"] == "unreadable"
+        or other["tree_corpus_version"] == "unreadable"
+    ):
+        raise OperationalError(
+            "The helper corpus version manifest cannot be read. "
+            "Re-sync the installed helper corpus to one version."
+        )
+    return {
+        "review_exchange": own["path"],
+        "review_exchange_corpus_version": own["declared_corpus_version"],
+        "review_exchange_tree_corpus_version": own["tree_corpus_version"],
+        "peer": other["path"],
+        "peer_corpus_version": other["declared_corpus_version"],
+        "peer_tree_corpus_version": other["tree_corpus_version"],
+    }
 
 
 def canonical_json(value: object) -> str:

@@ -9,7 +9,7 @@ import re
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Final, cast
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -37,6 +37,7 @@ PREPARE_SCHEMA_ID = "athena.issue-exchange.prepare-result"
 PUBLICATION_SCHEMA_ID = "athena.issue-exchange.publication-result"
 FINALIZE_SCHEMA_ID = "athena.issue-exchange.finalize-result"
 SCHEMA_VERSION = 1
+CORPUS_VERSION: Final[str] = "0.6.0"
 
 PLAN_MARKER = "<!-- HomericIntelligence:plan-issue -->"
 REVIEW_MARKER = "<!-- HomericIntelligence:issue-review -->"
@@ -263,8 +264,31 @@ def _body_sha256(body: str) -> str:
     return review_exchange.sha256_text(body)
 
 
-def _diagnostic(code: str, message: str) -> dict[str, str]:
-    return {"code": code, "message": message}
+def _diagnostic(
+    code: str,
+    message: str,
+    *,
+    location: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    diagnostic: dict[str, Any] = {"code": code, "message": message}
+    if location is not None:
+        diagnostic["location"] = dict(location)
+    return diagnostic
+
+
+def _carrier_location(comment: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Return the comment and the loaded helpers that read one carrier.
+
+    Every path is relative to the corpus root, so no operator home directory
+    reaches a published diagnostic.
+    """
+    location: dict[str, Any] = {
+        "review_exchange": review_exchange.module_identity(review_exchange),
+        "issue_exchange": review_exchange.module_identity(sys.modules[__name__]),
+    }
+    if comment is not None:
+        location["comment_id"] = comment["id"]
+    return location
 
 
 def _starts_finalize_namespace(line: str) -> bool:
@@ -528,6 +552,8 @@ def _withheld_inspection(
     requirements_sha256: str,
     code: str,
     message: str,
+    *,
+    location: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "schema_id": INSPECT_SCHEMA_ID,
@@ -541,7 +567,7 @@ def _withheld_inspection(
         "state": None,
         "state_sha256": None,
         "next_action": "human_decision",
-        "diagnostics": [_diagnostic(code, message)],
+        "diagnostics": [_diagnostic(code, message, location=location)],
     }
 
 
@@ -670,20 +696,27 @@ def inspect_snapshot(
     plan_envelope: dict[str, Any] | None = None
     review_envelope: dict[str, Any] | None = None
     recovered_ids: set[str] = set()
+    carrier_comment: Mapping[str, Any] | None = None
     try:
         if plan is not None and review_exchange.CARRIER_PREFIX in plan["body"]:
+            carrier_comment = plan
             plan_envelope = _extract_issue_carrier(snapshot, plan, recovered_ids)
             if plan_envelope["schema_id"] != review_exchange.AUTHOR_EVENT_SCHEMA_ID:
                 raise ProtocolError(
                     "The plan comment does not contain an author event."
                 )
         if review is not None and review_exchange.CARRIER_PREFIX in review["body"]:
+            carrier_comment = review
             review_envelope = _extract_issue_carrier(snapshot, review, recovered_ids)
             if review_envelope["schema_id"] != review_exchange.STATE_SCHEMA_ID:
                 raise ProtocolError("The review comment does not contain review state.")
     except ProtocolError as error:
         return _withheld_inspection(
-            snapshot, requirements_sha256, "malformed_carrier", str(error)
+            snapshot,
+            requirements_sha256,
+            "malformed_carrier",
+            str(error),
+            location=_carrier_location(carrier_comment),
         )
     if plan_envelope is not None:
         plan_state = plan_envelope["state"]
@@ -1061,7 +1094,7 @@ def _prepared_result(
     snapshot: Mapping[str, Any],
     state_envelope: Mapping[str, Any] | None,
     operation: Mapping[str, Any] | None,
-    diagnostics: list[dict[str, str]],
+    diagnostics: list[dict[str, Any]],
     authority_receipt: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     status = "ready" if operation is not None else "withheld"
@@ -2326,7 +2359,7 @@ def verify_publication(value: object) -> dict[str, Any]:
             verified = False
             authority_error = str(error)
     receipt: dict[str, Any] | None = None
-    diagnostics: list[dict[str, str]] = []
+    diagnostics: list[dict[str, Any]] = []
     if verified:
         assert isinstance(operation, dict)
         receipt = {
@@ -3267,6 +3300,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         subparser.add_argument("input", help="A JSON file, or '-' for standard input.")
     arguments = parser.parse_args(argv)
     try:
+        review_exchange.verify_corpus(sys.modules[__name__])
         value = review_exchange.parse_json_bytes(
             review_exchange._read_input(arguments.input)
         )
