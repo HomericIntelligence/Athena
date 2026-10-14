@@ -1343,6 +1343,52 @@ def _expected_target(binding: ReviewBinding) -> dict[str, object]:
     }
 
 
+def retained_requirement_evidence(
+    state_envelope: object,
+    *,
+    requirements_sha256: str,
+    artifact_revision: str,
+) -> dict[str, Any]:
+    """Return the retained technical evidence for one exact review state.
+
+    A state without the requirement-evidence record retains no technical
+    evidence. A retained record must bind the current requirements. The result is
+    technical evidence only. It never transfers approval, accepted-risk
+    authority, a current-head test receipt, or merge permission.
+    """
+    try:
+        verified = review_exchange.verify_envelope(state_envelope)
+    except review_exchange.ProtocolError as error:
+        raise DeliveryError(f"The retained review state is invalid: {error}") from error
+    if verified["schema_id"] != review_exchange.STATE_SCHEMA_ID:
+        raise DeliveryError("The retained review state is not a review state.")
+    state = verified["state"]
+    record = state.get("requirement_evidence")
+    if record is None:
+        return {
+            "retained": False,
+            "record_sha256": None,
+            "inventory_sha256": None,
+            "assessed_artifact_revision": None,
+            "current_artifact_revision": artifact_revision,
+        }
+    if record["requirements_sha256"] != requirements_sha256:
+        raise DeliveryError(
+            "The retained requirement evidence does not match the current requirements."
+        )
+    if record["artifact_binding"]["identity"] != state["artifact_binding"]["revision"]:
+        raise DeliveryError(
+            "The retained requirement evidence does not match the reviewed artifact."
+        )
+    return {
+        "retained": True,
+        "record_sha256": record["record_sha256"],
+        "inventory_sha256": record["inventory_sha256"],
+        "assessed_artifact_revision": record["artifact_binding"]["identity"],
+        "current_artifact_revision": artifact_revision,
+    }
+
+
 def _require_pr_envelope(
     envelope: object, binding: ReviewBinding, *, schema_id: str
 ) -> dict[str, Any]:

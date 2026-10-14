@@ -164,8 +164,16 @@ must withhold the review. Review a later material issue change only after an aut
 replaces the sealed body with clean requirements, removes the obsolete marker, and publishes its
 new canonical plan.
 
-Build one reviewer event with complete coverage status, responses for every active prior required
-finding, new findings, an applicable stop reason, and the declared scope. Supply scope for a first or
+Build one independent expected inventory for the bound issue requirements, the canonical plan, and
+the declared scope. Freeze its digest before assessment. Follow the
+[requirement-to-evidence contract](../../docs/review/requirement-evidence.md). Map every applicable
+acceptance criterion and contract to the proposed implementation, tests, documentation, and operation
+evidence. Mark a cell not applicable only with a reason. Assess every expected cell, then report the
+material findings as one bounded batch. A correction to one finding repeats only the affected
+sections, and the repeat cause names the finding or the changed source.
+
+Build one reviewer event with complete coverage status, the requirement evidence record, responses for
+every active prior required finding, new findings, an applicable stop reason, and the declared scope. Supply scope for a first or
 legacy round. Preserve it on later rounds.
 
 Run `issue_exchange.py prepare-review`. For `--report-only`, return the prepared result and stop.

@@ -39,7 +39,8 @@ A binding contains these items:
 - exact revisions;
 - the scope that the review used;
 - each linked requirement that the review used; and
-- a null-character-safe (NUL-safe) manifest from both immutable diff lenses.
+- a null-character-safe (NUL-safe) manifest from both immutable diff lenses; and
+- the dependency content identities of every selected path.
 
 Before source inspection, verify that each applicable component is complete, current, and consistent.
 Do the same verification before publication. If evidence is missing, malformed, ambiguous, stale, or
@@ -50,8 +51,13 @@ When a pull-request head changes without a requirements change and the current e
 head refresh, continue that exchange through a separate `--author-response` invocation. Bind the
 event to the exact current logical state and new revision. Derive that logical state by reducing
 each verified pending author review message in provider order after the latest reviewer state message. The
-refresh invalidates prior coverage and does not
-increase the reviewer-round count. The next reviewer assessment must inspect and bind the refreshed
+refresh repeats only the review sections whose content dependencies changed, does not
+increase the reviewer-round count, and does not keep approval, accepted-risk authority, a
+current-head test receipt, or merge permission. Compare the dependency content identities from
+[evidence collection](#dependency-content-identities) with the retained
+[requirement-to-evidence record](../../../docs/review/requirement-evidence.md). A signature-only
+rewrite or a compatible base change keeps the applicable technical evidence when those
+dependencies are equivalent. The next reviewer assessment must inspect and bind the refreshed
 immutable source. A material requirements change requires an authoritative reframe instead.
 
 A terminal GO cannot accept an author refresh. For GitHub, use the
@@ -468,3 +474,14 @@ Missing source material can be a source-coverage gap. Local validation availabil
 are never source-coverage gaps and cannot change a review score or verdict. If the caller requests
 CI/CD status or merge readiness, report it separately after the source-review verdict. Do not let
 that report delay review publication.
+
+## Dependency content identities
+
+Evidence collection returns `dependency_identities`. Each entry binds one selected path to the
+immutable Git object identity of the reviewed head tree. A path that is not a blob, such as a
+deletion or a submodule, uses its immutable object type, so a logical content change is visible to
+the requirement-to-evidence comparison.
+
+These identities are technical evidence identity. They are separate from the execution receipts and
+from the approval authority. A retained identity never carries approval, accepted-risk authority, a
+current-head test receipt, or merge permission.

@@ -204,6 +204,38 @@ A state record has these fields:
 | `findings` | Ordered list of 0 through 100 stored findings |
 | `verdict` | `GO` or `NO-GO` |
 | `next_action` | `author_response`, `review_assessment`, `finalize`, `human_decision`, or `none` |
+| `requirement_evidence` | Requirement-evidence record or absent |
+
+A state that carries `requirement_evidence` uses envelope `schema_version` 3. A state without it uses
+`schema_version` 2. A version 1 envelope is historical. A reader rejects a `schema_version` that does
+not match the presence of the requirement-evidence record before any publication or state change.
+
+The requirement-evidence record follows the
+[requirement-to-evidence contract](../../../docs/review/requirement-evidence.md). It has
+`schema_id` `athena.review-exchange.requirement-evidence` and `schema_version` 1. Its fields are
+`requirements_binding`, `requirements_sha256`, `artifact_binding`, `inventory`,
+`inventory_sha256`, `rows`, and `record_sha256`. The inner expected inventory has `schema_id`
+`athena.review-exchange.expected-inventory` and the same `schema_version` 1.
+
+An initial or corrective reviewer assessment may carry `requirement_evidence`. The record must bind
+the requirements digest of the exchange. Every material finding in the record must exist as a finding
+of that assessment. Otherwise, the helper rejects the event. The helper derives structural
+completeness from the independent inventory and the assessed rows. It does not judge finding
+technical correctness.
+
+An author response may carry `coverage_changes`:
+
+| Field | Type and value |
+| --- | --- |
+| `inventory_sha256` | Digest of the retained inventory |
+| `retained_sections` | List of retained review section identifiers |
+| `repeated_sections` | List of repeated review section identifiers |
+| `changed_dependencies` | List of changed dependency identifiers |
+
+The digest must equal the retained inventory digest of the state. Coverage stays complete only when
+at least one section is retained and the requirements, declared scope, and artifact binding did not
+change. A state without a requirement-evidence record keeps the prior rule: each changed artifact
+invalidates coverage.
 
 The accepted-event ledger starts with the initial reviewer assessment or reframe. It contains at
 most 509 events. The helper replays the complete ledger, verifies each prior-state binding, and
@@ -372,6 +404,7 @@ A corrective reviewer assessment has these fields:
 | `responses` | One reviewer response for each prior author answer |
 | `new_findings` | Ordered list of permitted later finding inputs |
 | `stop_reason` | `null` or a stop reason from the list below |
+| `requirement_evidence` | Requirement-evidence record or absent |
 
 The stop reasons are `closure_conflict`, `replacement_blocker`,
 `scope_growth_without_progress`, `no_consensus`, and `requirements_reframe`.
