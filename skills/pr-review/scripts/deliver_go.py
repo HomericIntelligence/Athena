@@ -8,7 +8,7 @@ import importlib.util
 import json
 import re
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from hashlib import sha256
@@ -269,6 +269,15 @@ class RequirementsBinding:
 
 
 @dataclass(frozen=True)
+class TerminalSupersession:
+    """One declared foreign terminal carrier that an override report replaces."""
+
+    superseded_review_id: str
+    superseded_state_sha256: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class ClosureManifest:
     """One terminal v1 state and its exact review-thread closure ledger."""
 
@@ -282,6 +291,7 @@ class ClosureManifest:
     historical_anchor_proofs: tuple[dict[str, Any], ...] = ()
     batch_manifest_path: Path | None = None
     batch_manifest_sha256: str | None = None
+    terminal_supersession: TerminalSupersession | None = None
 
 
 @dataclass(frozen=True)
@@ -336,6 +346,8 @@ class DeliveryResult:
     uncertain_operation: str | None = None
     recovery_read_required: bool = False
     reason: str | None = None
+    superseded_terminal_review_id: str | None = None
+    superseded_terminal_state_sha256: str | None = None
 
 
 class Forge(Protocol):
@@ -648,7 +660,9 @@ def _requirements_binding_dict(binding: RequirementsBinding) -> dict[str, Any]:
 
 
 def terminal_visible_content(
-    binding: ReviewBinding, entries: Sequence[ThreadClosure]
+    binding: ReviewBinding,
+    entries: Sequence[ThreadClosure],
+    superseded: TerminalSupersession | None = None,
 ) -> str:
     """Render the deterministic visible terminal ledger."""
     ordered = sorted(
@@ -687,6 +701,17 @@ def terminal_visible_content(
             f"- `{entry.finding_exchange_id}/{entry.finding_id}`: "
             f"`{entry.reviewer_disposition}`"
             for entry in ordered
+        )
+    if superseded is not None:
+        lines.extend(
+            (
+                "",
+                "Superseded terminal carrier",
+                "",
+                f"Superseded review: `{superseded.superseded_review_id}`",
+                f"Superseded state: `{superseded.superseded_state_sha256}`",
+                f"Supersession reason: `{superseded.reason}`",
+            )
         )
     return "\n".join(lines)
 
@@ -1935,6 +1960,37 @@ def _infer_reframe_event(
     }
 
 
+def _infer_terminal_supersession_event(
+    previous: Mapping[str, Any], current: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    """Read the supersession event of one overriding terminal state."""
+    current_state = cast(Mapping[str, Any], current["state"])
+    accepted = cast(Mapping[str, Any], current_state["accepted_events"][-1])
+    if accepted.get("event_type") != "terminal_supersession":
+        return None
+    return {
+        **_infer_reviewer_event(
+            previous, current, cast(str | None, accepted["stop_reason"])
+        ),
+        "event_type": "terminal_supersession",
+        "supersedes_state_sha256": accepted["supersedes_state_sha256"],
+        "superseded_review_id": accepted["superseded_review_id"],
+        "supersession_reason": accepted["supersession_reason"],
+    }
+
+
+def _continued_candidate_events(
+    previous: Mapping[str, Any], current: Mapping[str, Any]
+) -> Iterator[dict[str, Any]]:
+    """Yield the only reducible continued event kinds for one terminal state."""
+    supersession = _infer_terminal_supersession_event(previous, current)
+    if supersession is not None:
+        yield supersession
+        return
+    for stop_reason in _review_stop_reasons():
+        yield _infer_reviewer_event(previous, current, stop_reason)
+
+
 def _infer_human_event(
     previous: Mapping[str, Any], current: Mapping[str, Any]
 ) -> dict[str, Any] | None:
@@ -2304,6 +2360,37 @@ def _verified_batch_terminals(
     return indexed.terminals
 
 
+def _void_superseded_terminal_carrier(
+    terminal: Mapping[str, Any],
+    states: dict[str, tuple[ReviewRecord, dict[str, Any]]],
+    original_states: dict[str, dict[str, Any]],
+    binding: ReviewBinding,
+) -> None:
+    """Remove one foreign terminal carrier that the selected terminal declares void."""
+    superseded = _superseded_digest(terminal)
+    if superseded is None:
+        return
+    record = _terminal_supersession_record(terminal)
+    assert record is not None
+    persisted = states.get(superseded)
+    if persisted is None:
+        raise DeliveryError(
+            "The declared superseded terminal carrier is not published."
+        )
+    review, envelope = persisted
+    if (
+        review.id != record.superseded_review_id
+        or review.head_oid != binding.head_oid
+        or cast(Mapping[str, Any], envelope["state"])["artifact_binding"]["revision"]
+        != binding.head_oid
+    ):
+        raise DeliveryError(
+            "The declared superseded terminal carrier does not bind its review and head."
+        )
+    del states[superseded]
+    original_states.pop(superseded, None)
+
+
 def _verify_state_chain(
     forge: Forge,
     terminal: Mapping[str, Any],
@@ -2337,6 +2424,7 @@ def _verify_state_chain(
     states, author_records, original_states = _review_carriers(
         snapshot, binding, cast(str | None, direct_supersession)
     )
+    _void_superseded_terminal_carrier(terminal, states, original_states, binding)
     author_transitions, logical_envelopes = _derive_author_transitions(
         states, author_records
     )
@@ -2495,10 +2583,9 @@ def _verify_state_chain(
                             ),
                         )
                     )
-                for stop_reason in _review_stop_reasons():
-                    reviewer_event = _infer_reviewer_event(
-                        continued_previous, envelope, stop_reason
-                    )
+                for reviewer_event in _continued_candidate_events(
+                    continued_previous, envelope
+                ):
                     if (
                         _try_reduce(continued_previous, reviewer_event, envelope)
                         is not None
@@ -2839,7 +2926,9 @@ def validate_closure_manifest(
             in dynamic_terminal_identities
         )
     )
-    ledger = terminal_visible_content(binding, static_entries)
+    ledger = terminal_visible_content(
+        binding, static_entries, manifest.terminal_supersession
+    )
     visible = manifest.terminal_visible_content
     try:
         annex = anchor_proofs.visible_manifest(visible)
@@ -3347,6 +3436,29 @@ def _same_compressed_carrier(left: str, right: str) -> bool:
     ) == _carrier_visible(right)
 
 
+def _terminal_supersession_record(
+    envelope: Mapping[str, Any],
+) -> TerminalSupersession | None:
+    """Read the declared supersession from one terminal state envelope."""
+    if envelope["schema_id"] != review_exchange.STATE_SCHEMA_ID:
+        return None
+    state = cast(Mapping[str, Any], envelope["state"])
+    accepted = cast(Mapping[str, Any], state["accepted_events"][-1])
+    if accepted.get("event_type") != "terminal_supersession":
+        return None
+    return TerminalSupersession(
+        superseded_review_id=cast(str, accepted["superseded_review_id"]),
+        superseded_state_sha256=cast(str, accepted["supersedes_state_sha256"]),
+        reason=cast(str, accepted["supersession_reason"]),
+    )
+
+
+def _superseded_digest(envelope: Mapping[str, Any]) -> str | None:
+    """Return the digest that one terminal envelope declares as superseded."""
+    record = _terminal_supersession_record(envelope)
+    return None if record is None else record.superseded_state_sha256
+
+
 def _conflicting_terminal_review(
     snapshot: PullRequestSnapshot,
     binding: ReviewBinding,
@@ -3355,6 +3467,7 @@ def _conflicting_terminal_review(
     verified_state_sha256s: frozenset[str] | set[str],
 ) -> bool:
     exchange_id = manifest.state_envelope["state"]["exchange_id"]
+    superseded = _superseded_digest(manifest.state_envelope)
     for review in snapshot.reviews:
         if (
             not review.viewer_did_author
@@ -3374,10 +3487,304 @@ def _conflicting_terminal_review(
         if (
             state["target"] == _expected_target(binding)
             and state["exchange_id"] == exchange_id
+            and envelope["state_sha256"] != superseded
             and envelope["state_sha256"] not in verified_state_sha256s
         ):
             return True
     return False
+
+
+def _manifest_state_digests(manifest: ClosureManifest) -> frozenset[str]:
+    """Return every state digest that the manifest terminal already binds."""
+    events = cast(
+        Sequence[Mapping[str, Any]], manifest.state_envelope["state"]["accepted_events"]
+    )
+    return frozenset(
+        {
+            cast(str, manifest.state_envelope["state_sha256"]),
+            *(
+                cast(str, event["prior_state_sha256"])
+                for event in events
+                if event.get("prior_state_sha256") is not None
+            ),
+        }
+    )
+
+
+def _same_head_state_carriers(
+    snapshot: PullRequestSnapshot, binding: ReviewBinding
+) -> Iterator[tuple[ReviewRecord, dict[str, Any]]]:
+    """Yield every immutable Athena-owned state carrier at the current head."""
+    for review in snapshot.reviews:
+        if (
+            not review.viewer_did_author
+            or review.head_oid != binding.head_oid
+            or review.state not in {"COMMENT", "COMMENTED"}
+            or review.includes_created_edit
+            or review.last_edited_at is not None
+            or review_exchange.CARRIER_PREFIX not in review.body
+        ):
+            continue
+        try:
+            envelope = review_exchange.extract_carrier(review.body)
+        except review_exchange.ProtocolError:
+            continue
+        if envelope["schema_id"] == review_exchange.STATE_SCHEMA_ID:
+            yield review, cast(dict[str, Any], envelope)
+
+
+def _is_parseable_carrier(body: str) -> bool:
+    try:
+        review_exchange.extract_carrier(body)
+    except review_exchange.ProtocolError:
+        return False
+    return True
+
+
+def _unparseable_terminal_carriers(
+    snapshot: PullRequestSnapshot, binding: ReviewBinding
+) -> list[ReviewRecord]:
+    """Return every current-head Athena-owned carrier that does not parse."""
+    return [
+        review
+        for review in snapshot.reviews
+        if review.viewer_did_author
+        and review.head_oid == binding.head_oid
+        and review_exchange.CARRIER_PREFIX in review.body
+        and not _is_parseable_carrier(review.body)
+    ]
+
+
+def _candidate_diagnostic(candidates: Iterable[tuple[str, str]]) -> str:
+    """Render one stable line per conflicting current-head terminal candidate."""
+    return "; ".join(
+        f"review {review_id} with state {digest}" for review_id, digest in candidates
+    )
+
+
+def _foreign_terminal_candidates(
+    snapshot: PullRequestSnapshot, binding: ReviewBinding, manifest: ClosureManifest
+) -> list[tuple[ReviewRecord, dict[str, Any]]]:
+    """Return every attributable foreign terminal GO carrier at the current head."""
+    state = manifest.state_envelope["state"]
+    manifest_digests = _manifest_state_digests(manifest)
+    candidates: list[tuple[ReviewRecord, dict[str, Any]]] = []
+    for review, envelope in _same_head_state_carriers(snapshot, binding):
+        carrier = envelope["state"]
+        digest = cast(str, envelope["state_sha256"])
+        if (
+            digest in manifest_digests
+            or carrier["target"] != _expected_target(binding)
+            or carrier["exchange_id"] != state["exchange_id"]
+            or (
+                carrier["phase"],
+                carrier["verdict"],
+                carrier["next_action"],
+            )
+            != ("complete", "GO", "finalize")
+        ):
+            continue
+        candidates.append((review, envelope))
+    return candidates
+
+
+def _replayed_state_envelope(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Replay one accepted-event prefix into its state envelope."""
+    envelope: dict[str, Any] | None = None
+    for event in events:
+        try:
+            result = review_exchange.reduce_request(
+                {"previous": envelope, "event": dict(event)}
+            )
+        except review_exchange.ProtocolError as error:
+            raise DeliveryError(
+                f"The persisted review-exchange history does not replay: {error}"
+            ) from error
+        envelope = cast(dict[str, Any], result["envelope"])
+    if envelope is None:
+        raise DeliveryError("The manifest terminal has no prior review history.")
+    return envelope
+
+
+def _superseding_visible_content(
+    binding: ReviewBinding, manifest: ClosureManifest, superseded: TerminalSupersession
+) -> str:
+    """Render the override ledger and keep any stored anchor annex verbatim."""
+    separator = "\n\n" + anchor_proofs.MARKER
+    occurrences = manifest.terminal_visible_content.count(separator)
+    if occurrences > 1:
+        raise DeliveryError(
+            "The terminal visible content contains an ambiguous anchor annex."
+        )
+    annex = (
+        ""
+        if occurrences == 0
+        else separator + manifest.terminal_visible_content.partition(separator)[2]
+    )
+    return terminal_visible_content(binding, manifest.entries, superseded) + annex
+
+
+def _superseding_terminal_envelope(
+    binding: ReviewBinding,
+    manifest: ClosureManifest,
+    superseded: TerminalSupersession,
+) -> dict[str, Any]:
+    """Derive one overriding terminal state that supersedes a foreign carrier."""
+    state = cast(Mapping[str, Any], manifest.state_envelope["state"])
+    events = cast(Sequence[Mapping[str, Any]], state["accepted_events"])
+    if len(events) < 2 or events[-1]["event_type"] != "reviewer_assessment":
+        raise DeliveryError(
+            "A terminal supersession requires a reviewer assessment terminal state."
+        )
+    if state["artifact_binding"]["revision"] != binding.head_oid:
+        raise DeliveryError("The v1 terminal ledger does not bind the current head.")
+    previous = _replayed_state_envelope(events[:-1])
+    visible = _superseding_visible_content(binding, manifest, superseded)
+    event = {
+        **events[-1],
+        "event_type": "terminal_supersession",
+        "supersedes_state_sha256": superseded.superseded_state_sha256,
+        "superseded_review_id": superseded.superseded_review_id,
+        "supersession_reason": superseded.reason,
+        "artifact_binding": {
+            **cast(Mapping[str, Any], events[-1]["artifact_binding"]),
+            "visible_content_sha256": review_exchange.sha256_text(visible),
+        },
+    }
+    try:
+        result = review_exchange.reduce_request({"previous": previous, "event": event})
+    except review_exchange.ProtocolError as error:
+        raise DeliveryError(
+            f"The overriding terminal state is not reducer-derived: {error}"
+        ) from error
+    return cast(dict[str, Any], result["envelope"])
+
+
+def _superseding_manifest(
+    binding: ReviewBinding,
+    manifest: ClosureManifest,
+    superseded: TerminalSupersession,
+    envelope: Mapping[str, Any],
+) -> ClosureManifest:
+    """Rebuild one closure manifest around the overriding terminal state."""
+    superseded_digest = cast(str, manifest.state_envelope["state_sha256"])
+    digest = cast(str, envelope["state_sha256"])
+    return replace(
+        manifest,
+        state_envelope=dict(envelope),
+        terminal_visible_content=_superseding_visible_content(
+            binding, manifest, superseded
+        ),
+        entries=tuple(
+            (
+                replace(entry, finding_state_sha256=digest)
+                if entry.finding_state_sha256 == superseded_digest
+                else entry
+            )
+            for entry in manifest.entries
+        ),
+        terminal_supersession=superseded,
+    )
+
+
+def _adopt_persisted_supersession(
+    snapshot: PullRequestSnapshot, binding: ReviewBinding, manifest: ClosureManifest
+) -> ClosureManifest | None:
+    """Rebuild the superseding manifest from one already published override."""
+    terminal_state = cast(Mapping[str, Any], manifest.state_envelope["state"])
+    history = cast(Sequence[Mapping[str, Any]], terminal_state["accepted_events"])
+    carriers = list(_same_head_state_carriers(snapshot, binding))
+    persisted = {
+        cast(str, envelope["state_sha256"]): review for review, envelope in carriers
+    }
+    adopted: list[tuple[dict[str, Any], TerminalSupersession]] = []
+    for _review, envelope in carriers:
+        state = cast(Mapping[str, Any], envelope["state"])
+        record = _terminal_supersession_record(envelope)
+        accepted = cast(Sequence[Mapping[str, Any]], state["accepted_events"])
+        if (
+            record is None
+            or len(accepted) != len(history)
+            or state["exchange_id"] != terminal_state["exchange_id"]
+            or state["target"] != _expected_target(binding)
+            or state["artifact_binding"]["revision"] != binding.head_oid
+            or state["prior_state_sha256"] != terminal_state["prior_state_sha256"]
+            or cast(list[Any], accepted[:-1]) != cast(list[Any], history[:-1])
+        ):
+            continue
+        superseded_review = persisted.get(record.superseded_state_sha256)
+        if superseded_review is None or superseded_review.id != (
+            record.superseded_review_id
+        ):
+            continue
+        adopted.append((envelope, record))
+    if not adopted:
+        return None
+    if len(adopted) > 1:
+        raise DeliveryError(
+            "More than one published terminal report overrides this closure "
+            "manifest: "
+            + _candidate_diagnostic(
+                sorted(
+                    (record.superseded_review_id, cast(str, envelope["state_sha256"]))
+                    for envelope, record in adopted
+                )
+            )
+            + "."
+        )
+    envelope, record = adopted[0]
+    return _superseding_manifest(binding, manifest, record, envelope)
+
+
+def _manifest_for_delivery(
+    snapshot: PullRequestSnapshot,
+    binding: ReviewBinding,
+    manifest: ClosureManifest,
+    supersede_foreign_terminal: bool,
+) -> ClosureManifest:
+    """Resolve the exact terminal state, including one declared supersession."""
+    adopted = _adopt_persisted_supersession(snapshot, binding, manifest)
+    if adopted is not None:
+        return adopted
+    if not supersede_foreign_terminal:
+        return manifest
+    unparseable = _unparseable_terminal_carriers(snapshot, binding)
+    if unparseable:
+        raise DeliveryError(
+            "A current-head carrier does not parse and cannot be superseded: "
+            + _candidate_diagnostic(
+                (
+                    review.id,
+                    review_exchange.sha256_text(review.body),
+                )
+                for review in unparseable
+            )
+            + "."
+        )
+    candidates = _foreign_terminal_candidates(snapshot, binding, manifest)
+    if not candidates:
+        return manifest
+    if len(candidates) > 1:
+        raise DeliveryError(
+            "More than one foreign terminal carrier would be superseded: "
+            + _candidate_diagnostic(
+                (review.id, cast(str, envelope["state_sha256"]))
+                for review, envelope in candidates
+            )
+            + "."
+        )
+    review, envelope = candidates[0]
+    superseded = TerminalSupersession(
+        superseded_review_id=review.id,
+        superseded_state_sha256=cast(str, envelope["state_sha256"]),
+        reason="foreign-publication",
+    )
+    return _superseding_manifest(
+        binding,
+        manifest,
+        superseded,
+        _superseding_terminal_envelope(binding, manifest, superseded),
+    )
 
 
 def _validate_terminal_inline_comments(
@@ -3729,6 +4136,7 @@ def deliver_go_v1(
     *,
     format_only_inline_root_recovery: Mapping[str, Any] | None = None,
     terminal_duplicate_repair: Mapping[str, Any] | None = None,
+    supersede_foreign_terminal: bool = False,
 ) -> DeliveryResult:
     """Deliver one current-head v1 terminal record, closures, and GO label."""
     initial = _snapshot(forge, binding)
@@ -3740,6 +4148,9 @@ def deliver_go_v1(
             terminal_duplicate_repair,
         )
     last_snapshot = initial
+    manifest = _manifest_for_delivery(
+        initial, binding, manifest, supersede_foreign_terminal
+    )
     body = terminal_review_body(manifest)
     matching = _matching_terminal_reviews(
         initial, body, binding.head_oid, recover_compressed=True
@@ -3826,6 +4237,7 @@ def deliver_go_v1(
         uncertain_operation = None
 
     def result(status: str) -> DeliveryResult:
+        superseded = manifest.terminal_supersession
         return DeliveryResult(
             status=status,
             resolved_thread_ids=tuple(sorted(resolved)),
@@ -3834,19 +4246,19 @@ def deliver_go_v1(
             pending_thread_ids=tuple(sorted(set(by_thread).difference(resolved))),
             observed_head_oid=last_snapshot.head_oid,
             observed_labels=tuple(sorted(last_snapshot.labels)),
+            superseded_terminal_review_id=(
+                None if superseded is None else superseded.superseded_review_id
+            ),
+            superseded_terminal_state_sha256=(
+                None if superseded is None else superseded.superseded_state_sha256
+            ),
         )
 
     def fail(error: DeliveryError) -> NoReturn:
         if not writes_started:
             raise error
-        error.report = DeliveryResult(
-            status="partial",
-            resolved_thread_ids=tuple(sorted(resolved)),
-            terminal_review_id=terminal_review_id,
-            responded_thread_ids=tuple(sorted(responded)),
-            pending_thread_ids=tuple(sorted(set(by_thread).difference(resolved))),
-            observed_head_oid=last_snapshot.head_oid,
-            observed_labels=tuple(sorted(last_snapshot.labels)),
+        error.report = replace(
+            result("partial"),
             uncertain_operation=uncertain_operation,
             recovery_read_required=True,
             reason=str(error),
@@ -5315,6 +5727,8 @@ def _delivery_result_document(result: DeliveryResult) -> dict[str, object]:
         "uncertain_operation": result.uncertain_operation,
         "recovery_read_required": result.recovery_read_required,
         "reason": result.reason,
+        "superseded_terminal_review_id": result.superseded_terminal_review_id,
+        "superseded_terminal_state_sha256": result.superseded_terminal_state_sha256,
     }
 
 
@@ -5357,9 +5771,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         metavar="ISSUE_URL",
     )
     parser.add_argument("--schema-version", type=int, choices=(1,), default=1)
+    parser.add_argument("--supersede-foreign-terminal", action="store_true")
     args = parser.parse_args(argv)
     try:
         binding = _binding_from_args(args)
+        if args.supersede_foreign_terminal and (
+            args.prepare_manifest
+            or args.verify_legacy_go is not None
+            or args.deliver_no_go
+            or args.repair_format_only_inline_root is not None
+        ):
+            raise DeliveryError(
+                "A terminal supersession is valid only during final delivery."
+            )
         forge = GitHubForge(binding, args.target_host)
         historical: tuple[dict[str, Any], ...] = ()
         if args.historical_anchor_proofs is not None:
@@ -5550,27 +5974,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                     anchor_source=args.anchor_source,
                     historical_anchor_proofs=historical,
                 )
-            if recovery is None and repair is None:
-                result = deliver_go_v1(forge, binding, manifest)
-            elif recovery is None:
-                result = deliver_go_v1(
-                    forge, binding, manifest, terminal_duplicate_repair=repair
-                )
-            elif repair is None:
-                result = deliver_go_v1(
-                    forge,
-                    binding,
-                    manifest,
-                    format_only_inline_root_recovery=recovery,
-                )
-            else:
-                result = deliver_go_v1(
-                    forge,
-                    binding,
-                    manifest,
-                    format_only_inline_root_recovery=recovery,
-                    terminal_duplicate_repair=repair,
-                )
+            repairs: dict[str, Any] = {}
+            if recovery is not None:
+                repairs["format_only_inline_root_recovery"] = recovery
+            if repair is not None:
+                repairs["terminal_duplicate_repair"] = repair
+            if args.supersede_foreign_terminal:
+                repairs["supersede_foreign_terminal"] = True
+            result = deliver_go_v1(forge, binding, manifest, **repairs)
     except (DeliveryError, RuntimeError, TypeError, ValueError) as error:
         if isinstance(error, DeliveryError) and error.report is not None:
             print(
