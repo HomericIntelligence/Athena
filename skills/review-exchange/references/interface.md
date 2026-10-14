@@ -65,9 +65,9 @@ The common reducer validates the receipt shape and digest binding. It does not a
 record. Before reduction, the surface workflow must resolve one exact live forge record, verify its
 body digest and repository authority, and make sure that it authorizes the target, exchange,
 applicable findings, and decision. The issue-snapshot producer must derive `is_authority` from
-provider authority metadata. The issue adapter then verifies the exact comment and digest from the
-normalized current snapshot. A pull-request workflow must do the equivalent verification from its
-exact-head forge snapshot.
+provider authority metadata under its pinned rule. The issue adapter then verifies the exact comment
+and digest from the producer snapshot. A pull-request workflow must do the equivalent verification
+from its exact-head forge snapshot.
 
 An action-bound authority record is the complete comment body. It is one canonical JSON object with
 these fields:
@@ -568,6 +568,29 @@ and prove `ADMIN` or `MAINTAIN` repository permission before a state-dependent w
 
 ## `issue_exchange.py`
 
+### Issue snapshot producer
+
+`mk_issue_snapshot.py` is the single source of the snapshot `target`, `actor`, `issue`, `comments`,
+and `comments_complete`. A hand-built or hand-edited snapshot is not a valid input. Its module
+docstring pins these rules:
+
+- The endpoint family is the GitHub REST API through the GitHub CLI. There is no GraphQL read.
+- `target.issue_id` is the REST `node_id` of the issue.
+- The actor comes from `gh api user`. Every `id` is the stringified REST integer identity.
+- The issue title and body are the exact REST strings.
+- The acceptance-criteria heading level is between 2 and 6. `ACCEPTANCE_HEADING_NAMES` and
+  `ACCEPTANCE_ITEM_MARKERS` are pinned ordered tuples. The first matching heading wins. The section
+  ends at the next heading whose level is less than or equal to the section level. An item line
+  starts at column 0. There is no continuation folding. Every criterion has an `AC-NNN` identity
+  and the literal `source` value `body`. A missing section yields an empty list.
+- A comment author is authoritative only when the author association is `OWNER`, `MEMBER`, or
+  `COLLABORATOR` and the repository permission is `ADMIN` or `MAINTAIN`. This proves the same
+  repository authority that an authority receipt requires. The producer fails closed.
+- Each response is read as bytes, is bounded, and is decoded with a strict UTF-8 decode.
+- One request timeout and one overall deadline bound the run.
+- The producer sets `comments_complete` to `true` only after a short final page.
+- A GitLab locator fails until an adapter lands.
+
 ### Issue snapshot
 
 The `inspect` command takes an issue snapshot directly. Each other issue command contains a snapshot
@@ -585,7 +608,8 @@ in its request. The snapshot has these fields:
 
 An issue target has `provider`, `host`, `repository`, `issue_id`, `number`, and `url`. `provider` is
 `github` or `gitlab`. `number` is an integer of at least 1. Each other field is a nonempty string.
-The reducer uses `provider`, `repository`, `number`, and `url` as the common review target.
+For a producer snapshot, `issue_id` is the GitHub REST `node_id`. The reducer uses `provider`,
+`repository`, `number`, and `url` as the common review target.
 
 An actor has `id` and `login`. `id` is a nonempty stable actor identity. `login` is a string and can
 be empty. An issue record has `state`, `title`, `body`, and `acceptance_criteria`. `state` is `open`
@@ -596,13 +620,13 @@ Each comment has `id`, `url`, `author`, and `body`. `id` and `url` are nonempty 
 author has `id`, `login`, and `is_authority`. The first two fields have the same rules as the snapshot
 actor fields. `is_authority` is a Boolean. `body` is a string and can be empty. Comment identities
 are unique. The snapshot producer must exhaust the provider's bounded comment pagination and then
-set `comments_complete` to `true`. A missing or false value rejects the snapshot. The helper does
-not infer completeness from an empty or short list. The snapshot must contain all top-level
-comments that can own a canonical plan or review marker.
+set `comments_complete` to `true`, and it enforces that rule. A missing or false value rejects the
+snapshot. The helper does not infer completeness from an empty or short list. The snapshot must
+contain all top-level comments that can own a canonical plan or review marker.
 
 The current requirements digest is the digest of canonical JSON with `schema_id` set to
 `athena.issue-exchange.requirements`, `schema_version` set to `1`, and the exact `target`, issue
-`title`, issue `body`, and `acceptance_criteria` from the normalized snapshot.
+`title`, issue `body`, and `acceptance_criteria` from the producer snapshot.
 
 ### Issue artifact records
 
