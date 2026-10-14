@@ -94,6 +94,10 @@ The scan verifies the linked issue through GitHub. It fails closed if the issue 
 inaccessible, closed, or outside Athena. A Critical exception can last for a maximum of 7 days from
 approval. A High exception can last for a maximum of 30 days from approval.
 
+The linked issue must stay open for the whole lifetime of the exception. Close the linked issue only
+when its entries leave `security/vulnerability-exceptions.yaml`. Do not add a `Closes` line to a pull
+request that edits that file, because it closes the tracking issue of the entries it writes.
+
 The scan fails closed for these exception conditions:
 
 - broad scope;
