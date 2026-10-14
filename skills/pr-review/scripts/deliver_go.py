@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import anchor_proofs
 from pr_identity import (
+    GITHUB_HOST,
     pull_request_number,
     repository_from_pr_url,
     require_canonical_pull_request_url,
@@ -76,7 +77,6 @@ else:
 
 GO_LABEL = "state:implementation-go"
 NO_GO_LABEL = "state:implementation-no-go"
-GITHUB_HOST = "github.com"
 V1_MANIFEST_SCHEMA_ID = "athena.pr-review.closure-manifest"
 NO_GO_PROOF_SCHEMA_ID = "athena.pr-review.no-go-proof"
 FINDING_MARKER = re.compile(
