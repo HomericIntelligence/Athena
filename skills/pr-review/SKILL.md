@@ -394,9 +394,11 @@ workflow in the same invocation.
 23. For `--report-only`, return the prepared state, carrier, and logical review batch. Do not publish
     a review, respond to or resolve a thread, or change a label.
 24. For every result other than a direct default GitHub terminal GO, immediately before the write,
-    bind the exact artifact, scope, linked requirements, and source again. Publish one exact-head
-    atomic `COMMENT` review and verify its complete readback. This general path includes a complete
-    completed source-review state.
+    bind the exact artifact, scope, linked requirements, and source again. Run
+    `review_exchange.py verify-finding-batch <batch.json>` and then `publish_round.py` to publish
+    one exact-head atomic `COMMENT` review and verify its complete readback. Stop on any
+    validation failure while the batch is still correctable. This general path includes a
+    complete completed source-review state.
 25. After a verified general-path publication, give the verified version-1 reviewer state message to
     `deliver_go.py --deliver-no-go`. The helper verifies that proof before it makes
     `state:implementation-no-go` exclusive. A complete conditional state has no automatic next
