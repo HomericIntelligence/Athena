@@ -79,10 +79,6 @@ NO_GO_LABEL = "state:implementation-no-go"
 GITHUB_HOST = "github.com"
 V1_MANIFEST_SCHEMA_ID = "athena.pr-review.closure-manifest"
 NO_GO_PROOF_SCHEMA_ID = "athena.pr-review.no-go-proof"
-FINDING_MARKER = re.compile(
-    r"<!-- HomericIntelligence:review-finding:v1 "
-    r"exchange=([^\s]+) id=(F-(?:00[1-9]|0[1-9][0-9]|100)) -->"
-)
 FORMAT_ONLY_INLINE_ROOT_RECOVERY_SCHEMA_ID = (
     "athena.pr-review.format-only-inline-root-recovery"
 )
@@ -826,6 +822,46 @@ _FORMAT_ONLY_DYNAMIC_RECOVERY_FIELDS = frozenset(
 )
 
 
+MISPLACED_MARKER_RECOVERY_SCHEMA_ID = (
+    "athena.pr-review.misplaced-finding-marker-recovery"
+)
+MISPLACED_MARKER_RECOVERIES_SCHEMA_ID = (
+    "athena.pr-review.misplaced-finding-marker-recoveries"
+)
+MISPLACED_MARKER_DEFECT = "marker_not_final"
+_MISPLACED_RECEIPT_FIELDS = frozenset(
+    {
+        "schema_id",
+        "schema_version",
+        "binding",
+        "state_sha256",
+        "exchange_id",
+        "finding_id",
+        "review_id",
+        "review_head_oid",
+        "root_id",
+        "root_database_id",
+        "path",
+        "side",
+        "original_line",
+        "author",
+        "author_association",
+        "review_submitted_at",
+        "original_published_at",
+        "original_last_edited_at",
+        "canonical_last_edited_at",
+        "defect",
+        "original_body",
+        "original_body_sha256",
+        "canonical_body",
+        "canonical_body_sha256",
+    }
+)
+_MISPLACED_RECOVERIES_FIELDS = frozenset(
+    {"schema_id", "schema_version", "binding", "receipts"}
+)
+
+
 def _format_only_compatibility_document() -> dict[str, Any]:
     """Return the fixed source record after its local integrity checks."""
     raw = _FORMAT_ONLY_INLINE_ROOT_COMPATIBILITY
@@ -889,6 +925,50 @@ def _format_only_compatibility_document() -> dict[str, Any]:
     return compatibility
 
 
+def _misplaced_marker_canonical_body(original_body: str) -> str:
+    """Return the only body that moves one misplaced marker to the final line."""
+    lines = original_body.splitlines()
+    marker_lines = [
+        (index, line)
+        for index, line in enumerate(lines)
+        if review_exchange.FINDING_MARKER_PREFIX in line
+    ]
+    if (
+        len(marker_lines) != 1
+        or review_exchange.FINDING_MARKER.fullmatch(marker_lines[0][1]) is None
+    ):
+        raise DeliveryError(
+            "The misplaced-marker recovery body is not one finding marker."
+        )
+    index, marker_line = marker_lines[0]
+    if index == len(lines) - 1:
+        raise DeliveryError("The misplaced-marker recovery marker is already final.")
+    remainder = [*lines[:index], *lines[index + 1 :]]
+    while remainder and not remainder[0].strip():
+        remainder.pop(0)
+    while remainder and not remainder[-1].strip():
+        remainder.pop()
+    if not remainder:
+        raise DeliveryError("The misplaced-marker recovery body has no finding text.")
+    return "\n".join([*remainder, "", marker_line])
+
+
+def _canonical_misplaced_marker_body(
+    original_body: str, canonical_body: str
+) -> tuple[str, str]:
+    """Require the canonical body to move one marker and change no other byte."""
+    if canonical_body != _misplaced_marker_canonical_body(original_body):
+        raise DeliveryError(
+            "The misplaced-marker recovery body changes more than marker placement."
+        )
+    marker = _finding_marker(
+        ReviewComment(id="misplaced", body=canonical_body, author="reviewer")
+    )
+    if marker is None:
+        raise DeliveryError("The misplaced-marker recovery body has no final marker.")
+    return marker
+
+
 def _expected_format_only_recovery_reference(
     binding: ReviewBinding, compatibility: Mapping[str, Any]
 ) -> dict[str, Any]:
@@ -950,7 +1030,7 @@ def _validated_format_only_recovery_reference(
 
 def _format_only_inline_root_canonical_body(original_body: str) -> str:
     """Return the only body that moves one final inline marker to a new line."""
-    matches = tuple(FINDING_MARKER.finditer(original_body))
+    matches = tuple(review_exchange.FINDING_MARKER.finditer(original_body))
     if (
         len(matches) != 1
         or matches[0].start() == 0
@@ -1081,6 +1161,106 @@ def _validate_format_only_recovery_reference(
     ):
         raise DeliveryError("The format-only recovery reference does not match state.")
     return compatibility
+
+
+def _validated_misplaced_marker_receipt(
+    value: Mapping[str, Any], binding: ReviewBinding
+) -> dict[str, Any]:
+    """Validate one receipt from a completed misplaced-marker repair."""
+    receipt = _require_manifest_fields(
+        value, _MISPLACED_RECEIPT_FIELDS, "misplaced-marker recovery receipt"
+    )
+    if (
+        receipt["schema_id"] != MISPLACED_MARKER_RECOVERY_SCHEMA_ID
+        or type(receipt["schema_version"]) is not int
+        or receipt["schema_version"] != 1
+        or not _format_only_binding_matches(receipt["binding"], _binding_dict(binding))
+        or type(receipt["root_database_id"]) is not int
+        or receipt["root_database_id"] < 1
+        or type(receipt["original_line"]) is not int
+        or receipt["original_line"] < 1
+        or receipt["original_last_edited_at"] is not None
+        or receipt["side"] not in {"LEFT", "RIGHT"}
+        or receipt["defect"] != MISPLACED_MARKER_DEFECT
+    ):
+        raise DeliveryError("The misplaced-marker recovery receipt is invalid.")
+    for field in (
+        "state_sha256",
+        "exchange_id",
+        "finding_id",
+        "review_id",
+        "review_head_oid",
+        "root_id",
+        "path",
+        "author",
+        "author_association",
+        "review_submitted_at",
+        "original_published_at",
+        "canonical_last_edited_at",
+        "original_body",
+        "original_body_sha256",
+        "canonical_body",
+        "canonical_body_sha256",
+    ):
+        if not isinstance(receipt[field], str) or not receipt[field]:
+            raise DeliveryError("The misplaced-marker recovery receipt is invalid.")
+    if (
+        re.fullmatch(r"[0-9a-f]{64}", receipt["state_sha256"]) is None
+        or re.fullmatch(r"[0-9a-f]{40}", receipt["review_head_oid"]) is None
+    ):
+        raise DeliveryError("The misplaced-marker recovery receipt is invalid.")
+    for digest_field, body_field in (
+        ("original_body_sha256", "original_body"),
+        ("canonical_body_sha256", "canonical_body"),
+    ):
+        digest = receipt[digest_field]
+        if (
+            re.fullmatch(r"[0-9a-f]{64}", digest) is None
+            or sha256(receipt[body_field].encode("utf-8")).hexdigest() != digest
+        ):
+            raise DeliveryError("The misplaced-marker recovery receipt is invalid.")
+    exchange_id, finding_id = _canonical_misplaced_marker_body(
+        receipt["original_body"], receipt["canonical_body"]
+    )
+    if exchange_id != receipt["exchange_id"] or finding_id != receipt["finding_id"]:
+        raise DeliveryError("The misplaced-marker recovery receipt is invalid.")
+    return receipt
+
+
+def load_misplaced_marker_recoveries(
+    value: Mapping[str, Any] | None, binding: ReviewBinding
+) -> Mapping[str, Mapping[str, Any]]:
+    """Validate one canonical receipt set from completed misplaced-marker repairs.
+
+    Each receipt is bound to the verified state chain later, when the helper
+    replays the state that owns the repaired inline root.
+    """
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise DeliveryError("The misplaced-marker recovery receipts are not an object.")
+    document = _require_manifest_fields(
+        value, _MISPLACED_RECOVERIES_FIELDS, "misplaced-marker recovery receipts"
+    )
+    if (
+        document["schema_id"] != MISPLACED_MARKER_RECOVERIES_SCHEMA_ID
+        or type(document["schema_version"]) is not int
+        or document["schema_version"] != 1
+        or not _format_only_binding_matches(document["binding"], _binding_dict(binding))
+    ):
+        raise DeliveryError("The misplaced-marker recovery receipts are invalid.")
+    raw_receipts = document["receipts"]
+    if not isinstance(raw_receipts, list) or (
+        len(raw_receipts) > review_exchange.MAX_FINDINGS
+    ):
+        raise DeliveryError("The misplaced-marker recovery receipts are invalid.")
+    receipts: dict[str, Mapping[str, Any]] = {}
+    for raw_receipt in raw_receipts:
+        receipt = _validated_misplaced_marker_receipt(raw_receipt, binding)
+        if receipt["root_id"] in receipts:
+            raise DeliveryError("The misplaced-marker recovery receipts repeat a root.")
+        receipts[receipt["root_id"]] = receipt
+    return receipts
 
 
 def _requirements_binding(value: object) -> RequirementsBinding:
@@ -1251,34 +1431,14 @@ def _terminal_inline_comment(value: object) -> TerminalInlineComment:
 
 
 def _finding_marker(comment: ReviewComment) -> tuple[str, str] | None:
-    prefix = "<!-- HomericIntelligence:review-finding:"
-    marker_lines = [
-        (index, line, FINDING_MARKER.fullmatch(line))
-        for index, line in enumerate(comment.body.splitlines())
-        if prefix in line
-    ]
-    if not marker_lines:
-        return None
-    if len(marker_lines) != 1 or marker_lines[0][2] is None:
-        raise DeliveryError(
-            "The Athena review-finding marker is malformed or repeated."
-        )
-    index, _, match = marker_lines[0]
-    lines = comment.body.splitlines()
-    if index != len(lines) - 1:
-        raise DeliveryError("The Athena review-finding marker is not final.")
+    """Return one review-finding marker identity from the shared protocol rule."""
     try:
-        top_level_lines = review_exchange.top_level_markdown_lines(
-            comment.body, require_closed=True
+        return cast(
+            "tuple[str, str] | None",
+            review_exchange.verify_finding_marker(comment.body),
         )
     except review_exchange.ProtocolError as error:
-        raise DeliveryError(
-            "The Athena review-finding marker is inside an open Markdown block."
-        ) from error
-    if not any(line == marker_lines[0][1] for _, _, line in top_level_lines):
-        raise DeliveryError("The Athena review-finding marker is not a top-level line.")
-    assert match is not None
-    return cast(tuple[str, str], match.groups())
+        raise DeliveryError(str(error)) from error
 
 
 def _finding_anchor(location: str) -> tuple[str, int] | None:
@@ -1647,6 +1807,49 @@ def _verify_decimal_native_alias(
         )
 
 
+def _recovered_root_matches(
+    root: ReviewComment,
+    thread: ReviewThread,
+    review: ReviewRecord,
+    binding: ReviewBinding,
+    marker: tuple[str, str],
+    receipt: Mapping[str, Any],
+    state_sha256: str,
+    recovered_thread_ids: frozenset[str],
+) -> bool:
+    """Require one repaired root to match its verified recovery receipt."""
+    exchange_id, finding_id = marker
+    return (
+        state_sha256 == receipt["state_sha256"]
+        and root.id == receipt["root_id"]
+        and root.full_database_id == str(receipt["root_database_id"])
+        and root.body == receipt["canonical_body"]
+        and root.author == receipt["author"]
+        and root.author_association == receipt["author_association"]
+        and root.viewer_did_author
+        and root.review_id == receipt["review_id"]
+        and root.review_head_oid == receipt.get("review_head_oid", binding.head_oid)
+        and root.path == receipt["path"]
+        and root.side == receipt["side"]
+        and root.line == receipt["original_line"]
+        and root.original_line == receipt["original_line"]
+        and root.published_at == receipt["original_published_at"]
+        and root.last_edited_at == receipt["canonical_last_edited_at"]
+        and review.id == receipt["review_id"]
+        and review.head_oid == receipt.get("review_head_oid", binding.head_oid)
+        and review.author == receipt["author"]
+        and review.author_association == receipt["author_association"]
+        and review.viewer_did_author
+        and not review.includes_created_edit
+        and review.last_edited_at is None
+        and review.state in {"COMMENT", "COMMENTED"}
+        and review.submitted_at == receipt["review_submitted_at"]
+        and exchange_id == receipt["exchange_id"]
+        and finding_id == receipt["finding_id"]
+        and (len(thread.comments) == 1 or thread.id in recovered_thread_ids)
+    )
+
+
 def _verify_carrier_review_roots(
     forge: Forge,
     snapshot: PullRequestSnapshot,
@@ -1661,6 +1864,7 @@ def _verify_carrier_review_roots(
     historical_anchor_proofs: tuple[dict[str, Any], ...] = (),
     format_only_compatibility: Mapping[str, Any] | None = None,
     format_only_recovered_thread_ids: frozenset[str] = frozenset(),
+    misplaced_recoveries: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> None:
     """Bind each selected carrier review to its complete atomic inline batch."""
     roots_by_review: dict[str, list[tuple[ReviewComment, ReviewThread]]] = {}
@@ -1672,7 +1876,9 @@ def _verify_carrier_review_roots(
             roots_by_review.setdefault(root.review_id, []).append((root, thread))
     if any(roots_by_review.get(review_id) for review_id in selected_author_ids):
         raise DeliveryError("An author review message owns an inline finding.")
-    recovered_root_seen = False
+    misplaced_seen: set[str] = set()
+    misplaced = {} if misplaced_recoveries is None else misplaced_recoveries
+    format_only_root_seen = False
     for digest in verified_state_sha256s:
         verified_envelope = verified_envelopes.get(digest)
         if verified_envelope is None:
@@ -1729,46 +1935,33 @@ def _verify_carrier_review_roots(
             anchor = expected.get(finding_id)
             recovered_root = (
                 format_only_compatibility is not None
-                and envelope["state_sha256"]
-                == format_only_compatibility["state_sha256"]
-                and root.id == format_only_compatibility["root_id"]
-                and root.full_database_id
-                == str(format_only_compatibility["root_database_id"])
-                and root.body == format_only_compatibility["canonical_body"]
-                and root.author == format_only_compatibility["author"]
-                and root.author_association
-                == format_only_compatibility["author_association"]
-                and root.viewer_did_author
-                and root.review_id == format_only_compatibility["review_id"]
-                and root.review_head_oid
-                == format_only_compatibility.get("review_head_oid", binding.head_oid)
-                and root.path == format_only_compatibility["path"]
-                and root.side == format_only_compatibility["side"]
-                and root.line == format_only_compatibility["original_line"]
-                and root.original_line == format_only_compatibility["original_line"]
-                and root.published_at
-                == format_only_compatibility["original_published_at"]
-                and root.last_edited_at
-                == format_only_compatibility["canonical_last_edited_at"]
-                and review.id == format_only_compatibility["review_id"]
-                and review.head_oid
-                == format_only_compatibility.get("review_head_oid", binding.head_oid)
-                and review.author == format_only_compatibility["author"]
-                and review.author_association
-                == format_only_compatibility["author_association"]
-                and review.viewer_did_author
-                and not review.includes_created_edit
-                and review.last_edited_at is None
-                and review.state in {"COMMENT", "COMMENTED"}
-                and review.submitted_at
-                == format_only_compatibility["review_submitted_at"]
-                and exchange_id == format_only_compatibility["exchange_id"]
-                and finding_id == format_only_compatibility["finding_id"]
-                and (
-                    len(thread.comments) == 1
-                    or thread.id in format_only_recovered_thread_ids
+                and _recovered_root_matches(
+                    root,
+                    thread,
+                    review,
+                    binding,
+                    marker,
+                    format_only_compatibility,
+                    envelope["state_sha256"],
+                    format_only_recovered_thread_ids,
                 )
             )
+            if recovered_root and format_only_compatibility is not None:
+                format_only_root_seen = True
+            if not recovered_root and root.id in misplaced:
+                receipt = misplaced[root.id]
+                recovered_root = _recovered_root_matches(
+                    root,
+                    thread,
+                    review,
+                    binding,
+                    marker,
+                    receipt,
+                    envelope["state_sha256"],
+                    format_only_recovered_thread_ids,
+                )
+                if recovered_root:
+                    misplaced_seen.add(root.id)
             if (
                 exchange_id != state["exchange_id"]
                 or anchor is None
@@ -1784,15 +1977,15 @@ def _verify_carrier_review_roots(
                 raise DeliveryError(
                     "A reviewer state message has an invalid inline finding batch."
                 )
-            if recovered_root:
-                recovered_root_seen = True
             actual.add(finding_id)
         if actual != set(expected):
             raise DeliveryError(
                 "A reviewer state message does not own its exact inline finding batch."
             )
-    if format_only_compatibility is not None and not recovered_root_seen:
+    if format_only_compatibility is not None and not format_only_root_seen:
         raise DeliveryError("The format-only recovery reference is unused.")
+    if misplaced_seen != set(misplaced):
+        raise DeliveryError("A misplaced-marker recovery receipt is unused.")
 
 
 def _try_reduce(
@@ -2303,6 +2496,7 @@ def _verify_state_chain(
     recover_direct_reframe: bool = False,
     format_only_compatibility: Mapping[str, Any] | None = None,
     format_only_recovered_thread_ids: frozenset[str] = frozenset(),
+    misplaced_recoveries: Mapping[str, Mapping[str, Any]] | None = None,
     batch_manifest_path: Path | None = None,
     batch_manifest_sha256: str | None = None,
 ) -> VerifiedStateChain:
@@ -2641,6 +2835,7 @@ def _verify_state_chain(
         historical_anchor_proofs,
         format_only_compatibility,
         format_only_recovered_thread_ids,
+        misplaced_recoveries,
     )
     verified_original_digests = {
         original_states[digest]["state_sha256"]
@@ -2779,6 +2974,7 @@ def validate_closure_manifest(
     snapshot: PullRequestSnapshot,
     *,
     format_only_inline_root_recovery: Mapping[str, Any] | None = None,
+    misplaced_marker_recoveries: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, ThreadClosure]:
     """Validate one complete v1 closure ledger before any forge mutation."""
     _terminal_state(binding, manifest)
@@ -2792,6 +2988,7 @@ def validate_closure_manifest(
         raise DeliveryError(
             "The historical format-only recovery is valid only for NO-GO."
         )
+    misplaced = load_misplaced_marker_recoveries(misplaced_marker_recoveries, binding)
     chain = _verify_state_chain(
         forge,
         manifest.state_envelope,
@@ -2803,9 +3000,10 @@ def validate_closure_manifest(
         format_only_compatibility=format_only_compatibility,
         format_only_recovered_thread_ids=(
             frozenset()
-            if format_only_compatibility is None
-            else _format_only_recovered_thread_ids(snapshot, binding, manifest)
+            if format_only_compatibility is None and not misplaced
+            else _recovered_thread_ids(snapshot, binding, manifest)
         ),
+        misplaced_recoveries=misplaced,
         batch_manifest_path=manifest.batch_manifest_path,
         batch_manifest_sha256=manifest.batch_manifest_sha256,
     )
@@ -3363,6 +3561,7 @@ def _verify_go_state_history(
     manifest: ClosureManifest,
     body: str,
     format_only_inline_root_recovery: Mapping[str, Any] | None = None,
+    misplaced_marker_recoveries: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> VerifiedStateChain:
     format_only_compatibility = _validate_format_only_recovery_reference(
         format_only_inline_root_recovery, binding, manifest.state_envelope
@@ -3374,10 +3573,11 @@ def _verify_go_state_history(
         raise DeliveryError(
             "The historical format-only recovery is valid only for NO-GO."
         )
+    misplaced = load_misplaced_marker_recoveries(misplaced_marker_recoveries, binding)
     recovered_thread_ids = (
         frozenset()
-        if format_only_compatibility is None
-        else _format_only_recovered_thread_ids(snapshot, binding, manifest)
+        if format_only_compatibility is None and not misplaced
+        else _recovered_thread_ids(snapshot, binding, manifest)
     )
     chain = _verify_state_chain(
         forge,
@@ -3389,6 +3589,7 @@ def _verify_go_state_history(
         recover_direct_reframe=True,
         format_only_compatibility=format_only_compatibility,
         format_only_recovered_thread_ids=recovered_thread_ids,
+        misplaced_recoveries=misplaced,
         batch_manifest_path=manifest.batch_manifest_path,
         batch_manifest_sha256=manifest.batch_manifest_sha256,
     )
@@ -3445,7 +3646,7 @@ def _closure_reply_recovered(
     return conversation_sha256(prior) == entry.conversation_sha256
 
 
-def _format_only_recovered_thread_ids(
+def _recovered_thread_ids(
     snapshot: PullRequestSnapshot,
     binding: ReviewBinding,
     manifest: ClosureManifest,
@@ -3591,6 +3792,7 @@ def deliver_go_v1(
     manifest: ClosureManifest,
     *,
     format_only_inline_root_recovery: Mapping[str, Any] | None = None,
+    misplaced_marker_recoveries: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> DeliveryResult:
     """Deliver one current-head v1 terminal record, closures, and GO label."""
     initial = _snapshot(forge, binding)
@@ -3608,6 +3810,7 @@ def deliver_go_v1(
         manifest,
         body,
         format_only_inline_root_recovery,
+        misplaced_marker_recoveries,
     )
     if len(matching) > 1:
         raise DeliveryError("The current-head terminal COMMENT evidence is ambiguous.")
@@ -3621,6 +3824,7 @@ def deliver_go_v1(
         manifest,
         initial,
         format_only_inline_root_recovery=format_only_inline_root_recovery,
+        misplaced_marker_recoveries=misplaced_marker_recoveries,
     )
     _verify_live_requirements(forge, manifest.requirements_binding)
     open_threads = [thread for thread in initial.threads if not thread.is_resolved]
@@ -3703,6 +3907,7 @@ def deliver_go_v1(
                     manifest,
                     body,
                     format_only_inline_root_recovery,
+                    misplaced_marker_recoveries,
                 )
                 if (
                     GO_LABEL not in recovered.labels
@@ -3745,6 +3950,7 @@ def deliver_go_v1(
                 manifest,
                 body,
                 format_only_inline_root_recovery,
+                misplaced_marker_recoveries,
             )
             if len(terminal_matches) != 1:
                 raise DeliveryError(
@@ -3760,6 +3966,7 @@ def deliver_go_v1(
                 manifest,
                 after_terminal,
                 format_only_inline_root_recovery=format_only_inline_root_recovery,
+                misplaced_marker_recoveries=misplaced_marker_recoveries,
             )
             responded = [
                 thread_id
@@ -3850,6 +4057,7 @@ def deliver_go_v1(
             manifest,
             body,
             format_only_inline_root_recovery,
+            misplaced_marker_recoveries,
         )
         if len(_matching_terminal_reviews(current, body, binding.head_oid)) != 1:
             raise DeliveryError(
@@ -3866,6 +4074,7 @@ def deliver_go_v1(
             manifest,
             body,
             format_only_inline_root_recovery,
+            misplaced_marker_recoveries,
         )
         if len(_matching_terminal_reviews(final, body, binding.head_oid)) != 1:
             raise DeliveryError("The terminal COMMENT changed after GO label delivery.")
@@ -3887,6 +4096,7 @@ def _verify_no_go_snapshot(
     binding: ReviewBinding,
     proof: NoGoProof,
     format_only_inline_root_recovery: Mapping[str, Any] | None = None,
+    misplaced_marker_recoveries: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> str:
     """Verify one exact NO-GO or conditional carrier and its complete ancestry."""
     envelope = _require_pr_envelope(
@@ -3940,6 +4150,9 @@ def _verify_no_go_snapshot(
             proof.anchor_source,
             proof.historical_anchor_proofs,
             format_only_compatibility=format_only_compatibility,
+            misplaced_recoveries=load_misplaced_marker_recoveries(
+                misplaced_marker_recoveries, binding
+            ),
         ).verified_state_sha256s
     )
     for review in snapshot.reviews:
@@ -3972,6 +4185,7 @@ def deliver_no_go(
     proof: NoGoProof | None,
     *,
     format_only_inline_root_recovery: Mapping[str, Any] | None = None,
+    misplaced_marker_recoveries: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> DeliveryResult:
     """Apply and verify the exclusive current-head NO-GO label state."""
     initial = _snapshot(forge, binding)
@@ -3985,6 +4199,7 @@ def deliver_no_go(
         binding,
         proof,
         format_only_inline_root_recovery,
+        misplaced_marker_recoveries,
     )
     _verify_live_requirements(forge, proof.requirements_binding)
     if NO_GO_LABEL in initial.labels and GO_LABEL not in initial.labels:
@@ -4528,28 +4743,53 @@ class GitHubForge:
             arguments.extend(("--remove-label", GO_LABEL))
         _gh(*arguments)
 
+    def _create_comment_review(
+        self,
+        body: str,
+        head_oid: str,
+        comments: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        payload = {
+            "commit_id": head_oid,
+            "event": "COMMENT",
+            "body": body,
+            "comments": [dict(comment) for comment in comments],
+        }
+        return _json_object(
+            _gh(
+                "api",
+                "--hostname",
+                self.host,
+                "--method",
+                "POST",
+                f"repos/{self.owner}/{self.name}/pulls/{self.binding.number}/reviews",
+                "--input",
+                "-",
+                input_text=review_exchange.canonical_json(payload),
+            ),
+            "published review",
+        )
+
+    def publish_round_batch(
+        self,
+        body: str,
+        head_oid: str,
+        comments: Sequence[Mapping[str, Any]],
+    ) -> str:
+        """Publish one non-terminal reviewer round batch and return its review ID."""
+        review_id = self._create_comment_review(body, head_oid, comments).get("id")
+        if not isinstance(review_id, str) or not review_id:
+            raise DeliveryError("The published review has no review ID.")
+        return review_id
+
     def publish_terminal(
         self,
         body: str,
         head_oid: str,
         comments: tuple[TerminalInlineComment, ...],
     ) -> None:
-        payload = {
-            "commit_id": head_oid,
-            "event": "COMMENT",
-            "body": body,
-            "comments": [_terminal_comment_dict(comment) for comment in comments],
-        }
-        _gh(
-            "api",
-            "--hostname",
-            self.host,
-            "--method",
-            "POST",
-            f"repos/{self.owner}/{self.name}/pulls/{self.binding.number}/reviews",
-            "--input",
-            "-",
-            input_text=review_exchange.canonical_json(payload),
+        self._create_comment_review(
+            body, head_oid, [_terminal_comment_dict(comment) for comment in comments]
         )
 
 
@@ -4739,7 +4979,7 @@ def load_format_only_inline_root_recovery(
 
 
 def _format_only_inline_root(
-    snapshot: PullRequestSnapshot, root_id: str
+    snapshot: PullRequestSnapshot, root_id: str, *, label: str = "format-only"
 ) -> tuple[ReviewThread, ReviewComment]:
     """Return one exact inline root selected for a marker-only repair."""
     matches = [
@@ -4748,7 +4988,7 @@ def _format_only_inline_root(
         if thread.comments and thread.comments[0].id == root_id
     ]
     if len(matches) != 1:
-        raise DeliveryError("The format-only repair root is absent or ambiguous.")
+        raise DeliveryError(f"The {label} repair root is absent or ambiguous.")
     return matches[0]
 
 
@@ -4760,9 +5000,11 @@ def _format_only_inline_root_context(
     last_edited_at: str | None,
     exchange_id: str,
     finding_id: str,
+    *,
+    label: str = "format-only",
 ) -> tuple[ReviewThread, ReviewComment, ReviewRecord, dict[str, Any]]:
     """Bind one format-only repair root to its immutable reviewer state message."""
-    thread, root = _format_only_inline_root(snapshot, root_id)
+    thread, root = _format_only_inline_root(snapshot, root_id, label=label)
     if (
         root.body != body
         or root.last_edited_at != last_edited_at
@@ -4782,7 +5024,7 @@ def _format_only_inline_root_context(
         or not root.published_at
         or root.full_database_id is None
     ):
-        raise DeliveryError("The format-only repair root is not immutable evidence.")
+        raise DeliveryError(f"The {label} repair root is not immutable evidence.")
     _database_comment_id(root.full_database_id)
     states, _authors, _originals = _review_carriers(snapshot, binding)
     carrier_matches = [
@@ -4792,7 +5034,7 @@ def _format_only_inline_root_context(
     ]
     if len(carrier_matches) != 1:
         raise DeliveryError(
-            "The format-only repair root has no unique reviewer state message."
+            f"The {label} repair root has no unique reviewer state message."
         )
     review, envelope = carrier_matches[0]
     if (
@@ -4805,7 +5047,7 @@ def _format_only_inline_root_context(
         or review.state not in {"COMMENT", "COMMENTED"}
         or not review.submitted_at
     ):
-        raise DeliveryError("The format-only repair carrier is not immutable evidence.")
+        raise DeliveryError(f"The {label} repair carrier is not immutable evidence.")
     state = envelope["state"]
     matches = [finding for finding in state["findings"] if finding["id"] == finding_id]
     anchor = None if len(matches) != 1 else _finding_anchor(matches[0]["location"])
@@ -4815,7 +5057,7 @@ def _format_only_inline_root_context(
         or root.path != anchor[0]
         or root.original_line != anchor[1]
     ):
-        raise DeliveryError("The format-only repair root does not match its finding.")
+        raise DeliveryError(f"The {label} repair root does not match its finding.")
     return thread, root, review, envelope
 
 
@@ -4934,6 +5176,131 @@ def repair_format_only_inline_root(
     if receipt != expected:
         raise DeliveryError("The format-only repair changed before readback.")
     _validated_dynamic_format_only_recovery_reference(receipt, binding)
+    return receipt
+
+
+def _misplaced_marker_recovery_document(
+    binding: ReviewBinding,
+    root: ReviewComment,
+    review: ReviewRecord,
+    envelope: Mapping[str, Any],
+    original_body: str,
+    canonical_body: str,
+    canonical_last_edited_at: str,
+    exchange_id: str,
+    finding_id: str,
+) -> dict[str, Any]:
+    """Create one receipt for one repaired misplaced inline-root marker."""
+    if (
+        root.full_database_id is None
+        or root.path is None
+        or root.side is None
+        or root.original_line is None
+        or root.published_at is None
+        or review.submitted_at is None
+    ):
+        raise DeliveryError("The misplaced-marker repair evidence is incomplete.")
+    return {
+        "schema_id": MISPLACED_MARKER_RECOVERY_SCHEMA_ID,
+        "schema_version": 1,
+        "binding": _binding_dict(binding),
+        "state_sha256": envelope["state_sha256"],
+        "exchange_id": exchange_id,
+        "finding_id": finding_id,
+        "review_id": review.id,
+        "review_head_oid": review.head_oid,
+        "root_id": root.id,
+        "root_database_id": int(_database_comment_id(root.full_database_id)),
+        "path": root.path,
+        "side": root.side,
+        "original_line": root.original_line,
+        "author": root.author,
+        "author_association": root.author_association,
+        "review_submitted_at": review.submitted_at,
+        "original_published_at": root.published_at,
+        "original_last_edited_at": None,
+        "canonical_last_edited_at": canonical_last_edited_at,
+        "defect": MISPLACED_MARKER_DEFECT,
+        "original_body": original_body,
+        "original_body_sha256": sha256(original_body.encode("utf-8")).hexdigest(),
+        "canonical_body": canonical_body,
+        "canonical_body_sha256": sha256(canonical_body.encode("utf-8")).hexdigest(),
+    }
+
+
+def repair_misplaced_finding_marker(
+    forge: Forge, binding: ReviewBinding, root_id: str
+) -> dict[str, Any]:
+    """Move one owned misplaced marker to its final line and return a receipt."""
+    if not isinstance(root_id, str) or not root_id:
+        raise DeliveryError("The misplaced-marker repair root ID is invalid.")
+    label = "misplaced-marker"
+    initial = _snapshot(forge, binding)
+    _thread, root = _format_only_inline_root(initial, root_id, label=label)
+    canonical_body = _misplaced_marker_canonical_body(root.body)
+    exchange_id, finding_id = _canonical_misplaced_marker_body(
+        root.body, canonical_body
+    )
+    _thread, root, review, envelope = _format_only_inline_root_context(
+        initial,
+        binding,
+        root_id,
+        root.body,
+        None,
+        exchange_id,
+        finding_id,
+        label=label,
+    )
+    before = _misplaced_marker_recovery_document(
+        binding,
+        root,
+        review,
+        envelope,
+        root.body,
+        canonical_body,
+        "pending",
+        exchange_id,
+        finding_id,
+    )
+    _call_write(
+        f"{label} inline-root repair", forge.edit_comment, root_id, canonical_body
+    )
+    final = _snapshot(forge, binding)
+    _thread, repaired_root = _format_only_inline_root(final, root_id, label=label)
+    repaired_marker = _finding_marker(repaired_root)
+    repaired_last_edited_at = repaired_root.last_edited_at
+    if repaired_marker != (exchange_id, finding_id) or not isinstance(
+        repaired_last_edited_at, str
+    ):
+        raise DeliveryError("The misplaced-marker repair was not verified by readback.")
+    _thread, repaired_root, repaired_review, repaired_envelope = (
+        _format_only_inline_root_context(
+            final,
+            binding,
+            root_id,
+            canonical_body,
+            repaired_last_edited_at,
+            exchange_id,
+            finding_id,
+            label=label,
+        )
+    )
+    receipt = _misplaced_marker_recovery_document(
+        binding,
+        repaired_root,
+        repaired_review,
+        repaired_envelope,
+        root.body,
+        canonical_body,
+        repaired_last_edited_at,
+        exchange_id,
+        finding_id,
+    )
+    expected = dict(before)
+    expected["canonical_last_edited_at"] = receipt["canonical_last_edited_at"]
+    if receipt != expected:
+        raise DeliveryError("The misplaced-marker repair changed before readback.")
+    _validated_misplaced_marker_receipt(receipt, binding)
     return receipt
 
 
@@ -5069,8 +5436,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     delivery_input.add_argument("--verify-legacy-go", type=Path)
     delivery_input.add_argument("--deliver-no-go", action="store_true")
     delivery_input.add_argument("--repair-format-only-inline-root", metavar="ROOT_ID")
+    delivery_input.add_argument("--repair-misplaced-finding-marker", metavar="ROOT_ID")
     parser.add_argument("--state-carrier-file", type=Path)
     parser.add_argument("--format-only-inline-root-recovery", type=Path)
+    parser.add_argument("--misplaced-marker-recovery", type=Path)
     parser.add_argument("--anchor-source", type=Path)
     parser.add_argument("--historical-anchor-proofs", type=Path)
     parser.add_argument(
@@ -5106,6 +5475,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.prepare_manifest
             or args.verify_legacy_go is not None
             or args.repair_format_only_inline_root is not None
+            or args.repair_misplaced_finding_marker is not None
         ):
             raise DeliveryError("Anchor source inputs require version-1 delivery.")
         if args.prepare_manifest:
@@ -5116,6 +5486,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.format_only_inline_root_recovery is not None:
                 raise DeliveryError(
                     "A format-only recovery reference is valid only for final delivery."
+                )
+            if args.misplaced_marker_recovery is not None:
+                raise DeliveryError(
+                    "A misplaced-marker recovery set is valid only for final delivery."
                 )
             print(
                 review_exchange.canonical_json(
@@ -5141,10 +5515,39 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise DeliveryError(
                     "A repair cannot use an earlier format-only recovery reference."
                 )
+            if args.misplaced_marker_recovery is not None:
+                raise DeliveryError(
+                    "A repair cannot use an earlier misplaced-marker recovery set."
+                )
             print(
                 review_exchange.canonical_json(
                     repair_format_only_inline_root(
                         forge, binding, args.repair_format_only_inline_root
+                    )
+                )
+            )
+            return 0
+        if args.repair_misplaced_finding_marker is not None:
+            if args.requirement_issue:
+                raise DeliveryError(
+                    "Requirement issue inputs are valid only during manifest preparation."
+                )
+            if args.state_carrier_file is not None:
+                raise DeliveryError(
+                    "A state-carrier file is valid only for NO-GO delivery."
+                )
+            if args.format_only_inline_root_recovery is not None:
+                raise DeliveryError(
+                    "A repair cannot use an earlier format-only recovery reference."
+                )
+            if args.misplaced_marker_recovery is not None:
+                raise DeliveryError(
+                    "A repair cannot use an earlier misplaced-marker recovery set."
+                )
+            print(
+                review_exchange.canonical_json(
+                    repair_misplaced_finding_marker(
+                        forge, binding, args.repair_misplaced_finding_marker
                     )
                 )
             )
@@ -5164,6 +5567,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                     args.format_only_inline_root_recovery, binding
                 )
             )
+            misplaced = (
+                None
+                if args.misplaced_marker_recovery is None
+                else load_misplaced_marker_recoveries(
+                    _read_json_document(
+                        args.misplaced_marker_recovery,
+                        "misplaced-marker recovery receipts",
+                        canonical=True,
+                    ),
+                    binding,
+                )
+            )
             if args.anchor_source is not None:
                 proof = replace(
                     proof,
@@ -5175,6 +5590,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 binding,
                 proof,
                 format_only_inline_root_recovery=recovery,
+                misplaced_marker_recoveries=misplaced,
             )
         elif args.verify_legacy_go is not None:
             if args.requirement_issue:
@@ -5188,6 +5604,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.format_only_inline_root_recovery is not None:
                 raise DeliveryError(
                     "A format-only recovery reference is valid only for NO-GO delivery."
+                )
+            if args.misplaced_marker_recovery is not None:
+                raise DeliveryError(
+                    "A misplaced-marker recovery set is valid only for final delivery."
                 )
             result = verify_legacy_go(
                 forge,
@@ -5213,13 +5633,25 @@ def main(argv: Sequence[str] | None = None) -> int:
                     args.format_only_inline_root_recovery, binding
                 )
             )
+            misplaced = (
+                None
+                if args.misplaced_marker_recovery is None
+                else load_misplaced_marker_recoveries(
+                    _read_json_document(
+                        args.misplaced_marker_recovery,
+                        "misplaced-marker recovery receipts",
+                        canonical=True,
+                    ),
+                    binding,
+                )
+            )
             if args.anchor_source is not None:
                 manifest = replace(
                     manifest,
                     anchor_source=args.anchor_source,
                     historical_anchor_proofs=historical,
                 )
-            if recovery is None:
+            if recovery is None and misplaced is None:
                 result = deliver_go_v1(forge, binding, manifest)
             else:
                 result = deliver_go_v1(
@@ -5227,6 +5659,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     binding,
                     manifest,
                     format_only_inline_root_recovery=recovery,
+                    misplaced_marker_recoveries=misplaced,
                 )
     except (DeliveryError, RuntimeError, TypeError, ValueError) as error:
         if isinstance(error, DeliveryError) and error.report is not None:
