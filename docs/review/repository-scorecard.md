@@ -67,7 +67,9 @@ The abbreviation `CI/CD` means continuous integration and continuous delivery. T
      paths, isolation, concurrency, test-target wiring, regression proof, and proportionate performance
      and load evidence.
    - Apply [behavior-first testing](behavior-first-testing.md).
-   - Reject tests of prose, counts, implementation layout, or unstable ambient conditions.
+   - Reject tests of prose, counts, implementation layout, or unstable ambient conditions. Reject
+     tests that enforce product behavior through a fixed source-line position, a stored citation
+     offset, or the source-file length. Accept a diagnostic location in failure output.
    - Apply the [testing and evidence](common.md#testing-and-evidence) and
      [errors and reliability](common.md#errors-and-reliability) profiles.
 
