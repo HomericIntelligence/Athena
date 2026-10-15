@@ -101,6 +101,27 @@ def test_declared_floor_is_known_to_rust() -> None:
     )
 
 
+def test_the_syntax_level_gate_rejects_the_python_2_except_spelling() -> None:
+    """Negative control: the syntax-level gate must reject what it exists for.
+
+    `ast.parse` documents `feature_version` as a best-effort emulation of an
+    older grammar. That makes the PEP 758 gating this guard relies on a
+    CPython implementation detail: if the interpreter stops applying it, the
+    sweep below would pass every file while checking nothing.
+
+    This control fails as soon as that happens, so the gate cannot go inert
+    silently. The unparenthesised multi-exception form is invalid below 3.14
+    on every supported host, and the declared floor is 3.14, so this holds
+    whether the control runs on 3.12, 3.13, or 3.14.
+    """
+    with pytest.raises(SyntaxError):
+        ast.parse(
+            "try:\n    pass\nexcept OSError, ValueError:\n    pass\n",
+            filename="except_two_values.py",
+            feature_version=documented_syntax_level(),
+        )
+
+
 @pytest.mark.parametrize(
     "path",
     tracked_python_files(),
