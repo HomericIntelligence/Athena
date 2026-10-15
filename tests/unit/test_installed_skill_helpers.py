@@ -310,6 +310,47 @@ class InstalledSkillHelperTests(unittest.TestCase):
                 )
                 self.assertEqual(0, help_result.returncode, help_result.stderr)
 
+    def test_portable_archive_helper_enforces_the_interpreter_floor(self) -> None:
+        """The packaged helper must reject an unsupported interpreter legibly.
+
+        The archive does not carry `pyproject.toml`, so the floor travels in the
+        packaged `skills/_cli.py`. This runs the extracted helper under a
+        simulated older interpreter to prove the gate ships with the artifact.
+        """
+        archive, _ = build_package(self.source, self.root / "archives")
+        extracted = self.root / "portable"
+        with tarfile.open(archive) as bundle:
+            bundle.extractall(extracted, filter="data")
+        self.source.rename(self.root / "unavailable-source")
+        helper = (
+            extracted
+            / "skills"
+            / "advise"
+            / "scripts"
+            / "resolve_knowledge_checkout.py"
+        )
+        preamble = (
+            "import runpy, sys\n"
+            f"sys.argv = [{str(helper)!r}, '--json', '--mode', 'read-only']\n"
+            "sys.version_info = (3, 13, 2)\n"
+            f"runpy.run_path({str(helper)!r}, run_name='__main__')\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", preamble],
+            cwd=self.cwd,
+            env=self.environment,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertEqual("", result.stdout)
+        self.assertIn("3.14.8", result.stderr)
+        self.assertIn("3.13.2", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
     def test_generated_metadata_conflict_preserves_existing_output(self) -> None:
         from scripts.package_plugin import PackageError
 
