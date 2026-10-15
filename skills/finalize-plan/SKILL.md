@@ -126,8 +126,9 @@ both marker versions.
 
 ## Finalize
 
-1. Exhaust bounded provider pagination. Resolve one exact issue snapshot with its node or URL,
-   title, body, state, actor, all comments, and `comments_complete` set to `true`.
+1. Build the issue snapshot with
+   [`mk_issue_snapshot.py`](../review-exchange/scripts/mk_issue_snapshot.py). This skill does not
+   build, normalize, or edit a snapshot.
 2. Build compact and lossless candidate content without a finalization marker.
 3. Do not parse a plan marker, review marker, carrier, ledger, or source digest in this skill.
 4. Apply [P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001) only to the
@@ -165,7 +166,7 @@ both marker versions.
 20. If the user selects `--draft`, return the complete prepared result and do not make a forge write.
 21. Immediately before publication, apply
     [P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061).
-22. Get a fresh snapshot and call the same preflight form again. Require the same state,
+22. Run a fresh producer snapshot and call the same preflight form again. Require the same state,
     precondition, and operation.
 23. If an input changed, refresh the affected evidence and prepare the body again. Preserve all
     still-valid decisions. Do not publish stale content.
