@@ -2937,6 +2937,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             self.binding(),
             manifest,
             format_only_inline_root_recovery=recovery,
+            misplaced_marker_recoveries=None,
         )
 
     def test_main_routes_format_only_inline_root_repair(self) -> None:
@@ -3013,6 +3014,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             self.binding(),
             proof,
             format_only_inline_root_recovery=None,
+            misplaced_marker_recoveries=None,
         )
 
         recovery = object()
@@ -3053,6 +3055,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             self.binding(),
             proof,
             format_only_inline_root_recovery=recovery,
+            misplaced_marker_recoveries=None,
         )
 
         responses = (object(),)

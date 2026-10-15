@@ -50,7 +50,9 @@ result. Exit code `1` is a protocol rejection. Exit code `2` is an operational f
 3. For a state envelope, preserve the complete nonempty current-exchange event ledger in
    `accepted_events`. Preserve its normalized order. Treat per-envelope size and finding limits
    as batch thresholds. Use `prepare-batches` and `verify-batches` for a larger review with the same exact source and
-   requirements. Preserve progress and verify every batch before a whole-scope verdict. Use the
+   requirements. Before any inline batch write, use `verify-finding-batch` to reject a batch with a
+   misplaced, repeated, nested, or exchanged finding marker. Preserve progress and verify every
+   batch before a whole-scope verdict. Use the
    helper to replay each ledger and verify prior-state bindings. For a
    reframe, preserve the complete ordered `superseded_exchange_ids` list in its genesis event. Do not
    reuse an identifier from this list.
