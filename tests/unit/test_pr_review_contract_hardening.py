@@ -17,7 +17,7 @@ from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -3595,6 +3595,262 @@ class ImmutableEvidenceTests(unittest.TestCase):
             sha256(path.encode("utf-8") + b"\0").hexdigest(),
             evidence["changed_path_manifest"]["sha256"],
         )
+
+
+class FailingReadStream(io.BytesIO):
+    """A pipe whose read fails the way a closed descriptor does."""
+
+    def __init__(self, error: Exception) -> None:
+        super().__init__(b"")
+        self.read_error = error
+
+    def read(self, size: int | None = -1, /) -> bytes:
+        raise self.read_error
+
+
+class FailingCloseStream(io.BytesIO):
+    """A pipe a reader thread closed before the owning cleanup path runs."""
+
+    def __init__(self, payload: bytes = b"") -> None:
+        super().__init__(payload)
+        self.close_attempts = 0
+
+    def close(self) -> None:
+        self.close_attempts += 1
+        if self.close_attempts == 1:
+            raise OSError("the pipe was already closed")
+        super().close()
+
+
+class ProviderStreamDrainTests(unittest.TestCase):
+    """Exercise the bounded provider-pipe drain without a live provider."""
+
+    def setUp(self) -> None:
+        self.module_name = f"test_collect_evidence_provider_{id(self)}"
+        self.collector = load_collector(self.module_name)
+
+    def tearDown(self) -> None:
+        sys.modules.pop(self.module_name, None)
+
+    def test_collects_the_complete_pipe_output(self) -> None:
+        capture = self.collector.ProviderStream(maximum_bytes=64)
+
+        self.collector.drain_provider_stream(io.BytesIO(b'{"status":"ok"}'), capture)
+
+        self.assertEqual(b'{"status":"ok"}', bytes(capture.output))
+        self.assertFalse(capture.overflowed.is_set())
+        self.assertIsNone(capture.error)
+        self.assertTrue(capture.completed.is_set())
+
+    def test_stops_and_reports_overflow_when_the_pipe_exceeds_the_byte_limit(
+        self,
+    ) -> None:
+        capture = self.collector.ProviderStream(maximum_bytes=4)
+
+        self.collector.drain_provider_stream(io.BytesIO(b"payload"), capture)
+
+        self.assertTrue(capture.overflowed.is_set())
+        self.assertEqual(b"", bytes(capture.output))
+        self.assertTrue(capture.completed.is_set())
+
+    def test_stops_before_reading_when_no_byte_budget_remains(self) -> None:
+        capture = self.collector.ProviderStream(maximum_bytes=-1)
+
+        self.collector.drain_provider_stream(io.BytesIO(b"payload"), capture)
+
+        self.assertTrue(capture.overflowed.is_set())
+        self.assertEqual(b"", bytes(capture.output))
+        self.assertTrue(capture.completed.is_set())
+
+    def test_records_a_pipe_read_failure(self) -> None:
+        capture = self.collector.ProviderStream(maximum_bytes=64)
+
+        self.collector.drain_provider_stream(
+            FailingReadStream(OSError("the pipe closed")), capture
+        )
+
+        self.assertIsInstance(capture.error, OSError)
+        self.assertFalse(capture.overflowed.is_set())
+        self.assertTrue(capture.completed.is_set())
+
+    def test_completes_when_a_reader_closed_the_pipe_first(self) -> None:
+        capture = self.collector.ProviderStream(maximum_bytes=64)
+
+        self.collector.drain_provider_stream(FailingCloseStream(b"payload"), capture)
+
+        self.assertEqual(b"payload", bytes(capture.output))
+        self.assertTrue(capture.completed.is_set())
+
+
+class ChangedPathStreamDrainTests(unittest.TestCase):
+    """Exercise the bounded Git path-manifest drain without a live Git process."""
+
+    def setUp(self) -> None:
+        self.module_name = f"test_collect_evidence_manifest_{id(self)}"
+        self.collector = load_collector(self.module_name)
+
+    def tearDown(self) -> None:
+        sys.modules.pop(self.module_name, None)
+
+    def capture(self, *, maximum_bytes: int = 64, maximum_paths: int = 4) -> Any:
+        return self.collector.ChangedPathStream(
+            maximum_bytes=maximum_bytes, maximum_paths=maximum_paths
+        )
+
+    def test_collects_every_terminated_path(self) -> None:
+        capture = self.capture()
+
+        self.collector.drain_changed_path_stream(
+            io.BytesIO(b"alpha\0beta/gamma.py\0"), capture
+        )
+
+        self.assertEqual([b"alpha", b"beta/gamma.py"], capture.paths)
+        self.assertFalse(capture.overflowed.is_set())
+        self.assertIsNone(capture.error)
+        self.assertTrue(capture.completed.is_set())
+
+    def test_rejects_a_manifest_that_ends_mid_entry(self) -> None:
+        capture = self.capture()
+
+        self.collector.drain_changed_path_stream(io.BytesIO(b"alpha\0beta"), capture)
+
+        self.assertIsInstance(capture.error, RuntimeError)
+        self.assertIn("is not valid", str(capture.error))
+        self.assertEqual([b"alpha"], capture.paths)
+        self.assertTrue(capture.completed.is_set())
+
+    def test_rejects_a_repeated_path(self) -> None:
+        capture = self.capture()
+
+        self.collector.drain_changed_path_stream(io.BytesIO(b"alpha\0alpha\0"), capture)
+
+        self.assertIsInstance(capture.error, RuntimeError)
+        self.assertIn("duplicate changed paths", str(capture.error))
+        self.assertEqual([b"alpha"], capture.paths)
+
+    def test_rejects_a_path_that_escapes_the_repository(self) -> None:
+        capture = self.capture()
+
+        self.collector.drain_changed_path_stream(io.BytesIO(b"../escape\0"), capture)
+
+        self.assertIsInstance(capture.error, RuntimeError)
+        self.assertIn("unsafe changed path", str(capture.error))
+        self.assertEqual([], capture.paths)
+
+    def test_rejects_an_absolute_path(self) -> None:
+        capture = self.capture()
+
+        self.collector.drain_changed_path_stream(io.BytesIO(b"/etc/passwd\0"), capture)
+
+        self.assertIsInstance(capture.error, RuntimeError)
+        self.assertIn("unsafe changed path", str(capture.error))
+        self.assertEqual([], capture.paths)
+
+    def test_rejects_an_empty_path_entry(self) -> None:
+        capture = self.capture()
+
+        self.collector.drain_changed_path_stream(
+            io.BytesIO(b"alpha\0\0beta\0"), capture
+        )
+
+        self.assertIsInstance(capture.error, RuntimeError)
+        self.assertIn("empty changed path", str(capture.error))
+        self.assertEqual([b"alpha"], capture.paths)
+
+    def test_reports_the_byte_limit_without_reading_past_it(self) -> None:
+        capture = self.capture(maximum_bytes=4)
+
+        self.collector.drain_changed_path_stream(io.BytesIO(b"alpha\0beta\0"), capture)
+
+        self.assertTrue(capture.overflowed.is_set())
+        self.assertIn("byte limit", capture.limit_error)
+        self.assertEqual(0, capture.bytes_read)
+        self.assertEqual([], capture.paths)
+
+    def test_reports_the_path_limit(self) -> None:
+        capture = self.capture(maximum_paths=1)
+
+        self.collector.drain_changed_path_stream(io.BytesIO(b"alpha\0beta\0"), capture)
+
+        self.assertTrue(capture.overflowed.is_set())
+        self.assertIn("path limit", capture.limit_error)
+        self.assertEqual([b"alpha"], capture.paths)
+
+    def test_stops_before_reading_when_no_byte_budget_remains(self) -> None:
+        capture = self.capture(maximum_bytes=-1)
+
+        self.collector.drain_changed_path_stream(io.BytesIO(b"alpha\0"), capture)
+
+        self.assertTrue(capture.overflowed.is_set())
+        self.assertIn("byte limit", capture.limit_error)
+        self.assertEqual(0, capture.bytes_read)
+        self.assertEqual([], capture.paths)
+
+    def test_records_a_pipe_read_failure(self) -> None:
+        capture = self.capture()
+
+        self.collector.drain_changed_path_stream(
+            FailingReadStream(OSError("the pipe closed")), capture
+        )
+
+        self.assertIsInstance(capture.error, OSError)
+        self.assertFalse(capture.overflowed.is_set())
+        self.assertTrue(capture.completed.is_set())
+
+    def test_completes_when_a_reader_closed_the_pipe_first(self) -> None:
+        capture = self.capture()
+
+        self.collector.drain_changed_path_stream(
+            FailingCloseStream(b"alpha\0"), capture
+        )
+
+        self.assertEqual([b"alpha"], capture.paths)
+        self.assertTrue(capture.completed.is_set())
+
+
+class ReapProviderTests(unittest.TestCase):
+    """Exercise provider cleanup for both running and already-exited requests."""
+
+    def setUp(self) -> None:
+        self.module_name = f"test_collect_evidence_reap_{id(self)}"
+        self.collector = load_collector(self.module_name)
+
+    def tearDown(self) -> None:
+        sys.modules.pop(self.module_name, None)
+
+    def test_kills_and_reaps_a_provider_that_is_still_running(self) -> None:
+        process: Any = Mock()
+        process.poll.return_value = None
+        reader: Any = Mock()
+        stream = io.BytesIO(b"payload")
+
+        self.collector.reap_provider(process, [stream], [reader])
+
+        process.kill.assert_called_once_with()
+        process.wait.assert_called_once_with()
+        reader.join.assert_called_once_with(self.collector.PROVIDER_READER_JOIN_SECONDS)
+        self.assertTrue(stream.closed)
+
+    def test_does_not_kill_a_provider_that_already_exited(self) -> None:
+        process: Any = Mock()
+        process.poll.return_value = 0
+        reader: Any = Mock()
+
+        self.collector.reap_provider(process, [io.BytesIO(b"")], [reader])
+
+        process.kill.assert_not_called()
+        process.wait.assert_called_once_with()
+        reader.join.assert_called_once_with(self.collector.PROVIDER_READER_JOIN_SECONDS)
+
+    def test_completes_when_a_reader_closed_the_pipe_first(self) -> None:
+        process: Any = Mock()
+        process.poll.return_value = None
+        reader: Any = Mock()
+
+        self.collector.reap_provider(process, [FailingCloseStream(b"")], [reader])
+
+        process.wait.assert_called_once_with()
+        reader.join.assert_called_once_with(self.collector.PROVIDER_READER_JOIN_SECONDS)
 
 
 if __name__ == "__main__":
