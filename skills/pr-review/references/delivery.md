@@ -239,8 +239,11 @@ prior reviewer replies. It also clears a prior accepted-risk authority receipt. 
 needs a new authoritative decision for the changed head. Nonblocking findings keep their state.
 
 The response list is empty only when there is no active or terminal required finding. A refresh
-invalidates coverage and does not change the round, progress history, GO eligibility, or finding
-IDs. From `awaiting_reviewer`, it stays `awaiting_reviewer`. From `awaiting_evidence` or a conditional
+repeats only the review sections that a requirements, scope, or dependency content change affects,
+and does not change the round, progress history, GO eligibility, or finding
+IDs. When the state retains a requirement-evidence record, the response carries the retained,
+repeated, and changed section identifiers with the cause. The changes must bind the retained
+inventory digest. A record without verified dependency evidence repeats the complete review. From `awaiting_reviewer`, it stays `awaiting_reviewer`. From `awaiting_evidence` or a conditional
 state, it moves to `awaiting_reviewer` when it revalidates a terminal required finding. Otherwise,
 it moves to `phase=awaiting_evidence`. Each refresh has `verdict=NO-GO` and
 `next_action=review_assessment`.
@@ -440,6 +443,9 @@ Save the completed canonical JSON and invoke delivery:
 The helper uses this order:
 
 1. Bind the canonical open, non-draft pull request, captured base context, and exact head.
+   Retained requirement evidence must match the current requirements and the reviewed artifact
+   identity. It is technical evidence only. It never authorizes a stale head, an approval, or a
+   merge.
 2. Read all threads, complete conversations, review records, and implementation-state labels.
 3. Before a mutation, validate the complete terminal state and its selected supersession ancestry,
    manifest, ownership, capabilities, composite finding identities, origin heads, answers,
