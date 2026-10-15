@@ -2884,10 +2884,14 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                 "status": "delivered",
                 "terminal_review_id": "review-7",
                 "uncertain_operation": None,
+                "superseded_terminal_review_id": None,
+                "superseded_terminal_state_sha256": None,
             },
             json.loads(output.getvalue()),
         )
-        deliver.assert_called_once_with(forge, self.binding(), manifest)
+        deliver.assert_called_once_with(
+            forge, self.binding(), manifest, supersede_foreign_terminal=False
+        )
 
     def test_main_routes_go_with_format_only_recovery(self) -> None:
         forge = object()
@@ -2937,6 +2941,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             self.binding(),
             manifest,
             format_only_inline_root_recovery=recovery,
+            supersede_foreign_terminal=False,
         )
 
     def test_main_routes_format_only_inline_root_repair(self) -> None:
@@ -3248,6 +3253,407 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self.assertEqual(
             self.delivery._delivery_result_document(report), diagnostic["recovery"]
         )
+
+    def foreign_terminal(
+        self,
+        manifest: Any,
+        *,
+        visible: str = "A general publisher released the terminal carrier.",
+        identifier: str = "foreign-review-1",
+        coverage_complete: bool | None = None,
+    ) -> Any:
+        """Return one foreign-published terminal carrier at the current head."""
+        exchange = self.delivery.review_exchange
+        events = manifest.state_envelope["state"]["accepted_events"]
+        previous = None
+        for event in events[:-1]:
+            previous = exchange.reduce_request(
+                {"previous": previous, "event": dict(event)}
+            )["envelope"]
+        final = dict(events[-1])
+        final["artifact_binding"] = {
+            **final["artifact_binding"],
+            "visible_content_sha256": exchange.sha256_text(visible),
+        }
+        if coverage_complete is not None:
+            final["coverage_complete"] = coverage_complete
+        envelope = exchange.reduce_request({"previous": previous, "event": final})[
+            "envelope"
+        ]
+        return self.carrier_record(identifier, envelope, visible)
+
+    def foreign_exchange_terminal(
+        self, manifest: Any, *, identifier: str, number: int = 8
+    ) -> Any:
+        """Return one unrelated complete exchange published at the current head."""
+        exchange = self.delivery.review_exchange
+        visible = f"{identifier} published an unrelated terminal carrier."
+        envelope = exchange.reduce_request(
+            {
+                "previous": None,
+                "event": {
+                    "event_type": "reviewer_assessment",
+                    "exchange_id": "exchange-9",
+                    "prior_state_sha256": None,
+                    "round": 1,
+                    "surface": "pull_request",
+                    "target": {
+                        "provider": "github",
+                        "repository": "owner/repository",
+                        "number": number,
+                        "url": f"https://github.com/owner/repository/pull/{number}",
+                    },
+                    "requirements_sha256": manifest.state_envelope["state"][
+                        "requirements_sha256"
+                    ],
+                    "supersedes_state_sha256": None,
+                    "artifact_binding": {
+                        "revision": "b" * 40,
+                        "sha256": "8" * 64,
+                        "visible_content_sha256": exchange.sha256_text(visible),
+                    },
+                    "scope": ["path:src/other.py"],
+                    "coverage_complete": True,
+                    "responses": [],
+                    "new_findings": [],
+                    "stop_reason": None,
+                },
+            }
+        )["envelope"]
+        return self.carrier_record(identifier, envelope, visible)
+
+    def supersession_fixture(self) -> tuple[FakeForge, Any, Any, Any]:
+        """Return one wedged pull request, its manifest, and its foreign carrier."""
+        thread = self.owned_thread()
+        forge = FakeForge(self.delivery, threads=(thread,))
+        manifest = self.v1_manifest(thread)
+        self.add_history(forge, manifest)
+        foreign = self.foreign_terminal(manifest)
+        forge.reviews.append(foreign)
+        return forge, self.binding(), manifest, foreign
+
+    def test_supersede_foreign_terminal_publishes_one_override(self) -> None:
+        forge, binding, manifest, foreign = self.supersession_fixture()
+
+        result = self.delivery.deliver_go_v1(
+            forge, binding, manifest, supersede_foreign_terminal=True
+        )
+
+        self.assertEqual("delivered", result.status)
+        self.assertEqual("foreign-review-1", result.superseded_terminal_review_id)
+        self.assertEqual(
+            self.delivery.review_exchange.extract_carrier(foreign.body)["state_sha256"],
+            result.superseded_terminal_state_sha256,
+        )
+        self.assertEqual(1, forge.events.count("terminal"))
+        self.assertEqual(1, forge.events.count("labels"))
+        self.assertTrue(forge.threads["thread-1"].is_resolved)
+        self.assertEqual({"state:implementation-go", "enhancement"}, forge.labels)
+
+    def test_foreign_terminal_without_flag_keeps_the_ambiguous_error(self) -> None:
+        forge, binding, manifest, _ = self.supersession_fixture()
+
+        with self.assertRaises(self.delivery.DeliveryError) as error:
+            self.delivery.deliver_go_v1(forge, binding, manifest)
+
+        self.assertEqual(["read"], forge.events)
+        self.assertEqual(
+            "One review-exchange state has multiple derived successors.",
+            str(error.exception),
+        )
+
+    def test_supersession_failures_name_every_candidate(self) -> None:
+        forge, binding, manifest, _ = self.supersession_fixture()
+        second = self.foreign_terminal(
+            manifest,
+            visible="A second publisher released another carrier.",
+            identifier="foreign-review-2",
+        )
+        forge.reviews.append(second)
+        expected = [
+            self.delivery.review_exchange.extract_carrier(record.body)["state_sha256"]
+            for record in (forge.reviews[-2], forge.reviews[-1])
+        ]
+
+        with self.assertRaises(self.delivery.DeliveryError) as error:
+            self.delivery.deliver_go_v1(
+                forge, binding, manifest, supersede_foreign_terminal=True
+            )
+
+        self.assertEqual(["read"], forge.events)
+        for identifier in ("foreign-review-1", "foreign-review-2"):
+            self.assertIn(identifier, str(error.exception))
+        for digest in expected:
+            self.assertIn(digest, str(error.exception))
+
+    def test_supersession_refuses_an_unparseable_foreign_carrier(self) -> None:
+        forge, binding, manifest, _ = self.supersession_fixture()
+        forge.reviews.append(
+            replace(
+                forge.reviews[-1],
+                id="broken-review-1",
+                body=forge.reviews[-1].body.replace("```json", "```jsonx", 1),
+            )
+        )
+
+        with self.assertRaises(self.delivery.DeliveryError) as error:
+            self.delivery.deliver_go_v1(
+                forge, binding, manifest, supersede_foreign_terminal=True
+            )
+
+        self.assertEqual(["read"], forge.events)
+        self.assertIn("broken-review-1", str(error.exception))
+        self.assertIn(
+            self.delivery.review_exchange.sha256_text(forge.reviews[-1].body),
+            str(error.exception),
+        )
+
+    def test_override_body_is_deterministic_and_resume_is_nonforking(self) -> None:
+        forge, binding, manifest, foreign = self.supersession_fixture()
+
+        first = self.delivery.deliver_go_v1(
+            forge, binding, manifest, supersede_foreign_terminal=True
+        )
+        second = self.delivery.deliver_go_v1(forge, binding, manifest)
+
+        self.assertEqual("delivered", first.status)
+        self.assertEqual("already_delivered", second.status)
+        self.assertEqual(
+            first.superseded_terminal_review_id, second.superseded_terminal_review_id
+        )
+        self.assertEqual(1, forge.events.count("terminal"))
+        self.assertEqual(1, forge.events.count("labels"))
+        published = next(
+            record
+            for record in forge.reviews
+            if "Superseded terminal carrier" in record.body
+        )
+        visible = published.body.split("<!-- HomericIntelligence:review-exchange:v1 ")[
+            0
+        ].rstrip("\n")
+        self.assertIn("foreign-review-1", visible)
+        self.assertIn(
+            self.delivery.review_exchange.extract_carrier(foreign.body)["state_sha256"],
+            visible,
+        )
+        self.assertIn("foreign-publication", visible)
+        self.assertEqual(
+            visible,
+            self.delivery.terminal_visible_content(
+                binding,
+                manifest.entries,
+                self.delivery.TerminalSupersession(
+                    superseded_review_id="foreign-review-1",
+                    superseded_state_sha256=(
+                        self.delivery.review_exchange.extract_carrier(foreign.body)[
+                            "state_sha256"
+                        ]
+                    ),
+                    reason="foreign-publication",
+                ),
+            ),
+        )
+
+    def test_supersession_refuses_a_non_terminal_foreign_carrier(self) -> None:
+        forge, binding, manifest, _ = self.supersession_fixture()
+        forge.reviews[-1] = self.foreign_terminal(
+            manifest,
+            visible="The foreign publisher released a nonterminal carrier.",
+            coverage_complete=False,
+        )
+
+        with self.assertRaises(self.delivery.DeliveryError):
+            self.delivery.deliver_go_v1(
+                forge, binding, manifest, supersede_foreign_terminal=True
+            )
+
+        self.assertEqual(["read"], forge.events)
+
+    def test_supersession_refuses_a_foreign_carrier_from_another_exchange(self) -> None:
+        forge, binding, manifest, _ = self.supersession_fixture()
+        forge.reviews[-1] = self.foreign_exchange_terminal(
+            manifest, identifier="foreign-review-1"
+        )
+
+        with self.assertRaises(self.delivery.DeliveryError):
+            self.delivery.deliver_go_v1(
+                forge, binding, manifest, supersede_foreign_terminal=True
+            )
+
+        self.assertEqual(["read"], forge.events)
+
+    def test_supersession_refuses_a_foreign_carrier_from_another_target(self) -> None:
+        forge, binding, manifest, _ = self.supersession_fixture()
+        forge.reviews[-1] = self.foreign_exchange_terminal(
+            manifest, identifier="foreign-review-1", number=9
+        )
+
+        with self.assertRaises(self.delivery.DeliveryError):
+            self.delivery.deliver_go_v1(
+                forge, binding, manifest, supersede_foreign_terminal=True
+            )
+
+        self.assertEqual(["read"], forge.events)
+
+    def test_supersession_refuses_a_carrier_from_another_head(self) -> None:
+        forge, binding, manifest, foreign = self.supersession_fixture()
+        forge.reviews[-1] = replace(foreign, head_oid="a" * 40)
+
+        with self.assertRaises(self.delivery.DeliveryError) as error:
+            self.delivery.deliver_go_v1(
+                forge, binding, manifest, supersede_foreign_terminal=True
+            )
+
+        self.assertEqual(["read"], forge.events)
+        self.assertIn("does not bind its review head", str(error.exception))
+
+    def test_supersession_leaves_a_self_duplicate_alone(self) -> None:
+        forge, binding, manifest, _ = self.supersession_fixture()
+        forge.reviews[-1] = self.carrier_record(
+            "foreign-review-1",
+            manifest.state_envelope,
+            manifest.terminal_visible_content,
+        )
+
+        result = self.delivery.deliver_go_v1(
+            forge, binding, manifest, supersede_foreign_terminal=True
+        )
+
+        self.assertEqual("delivered", result.status)
+        self.assertIsNone(result.superseded_terminal_review_id)
+        self.assertEqual("foreign-review-1", result.terminal_review_id)
+        self.assertEqual(0, forge.events.count("terminal"))
+
+    def test_supersession_is_a_no_op_without_a_foreign_carrier(self) -> None:
+        thread = self.owned_thread()
+        forge = FakeForge(self.delivery, threads=(thread,))
+        manifest = self.v1_manifest(thread)
+        self.add_history(forge, manifest)
+
+        result = self.delivery.deliver_go_v1(
+            forge, self.binding(), manifest, supersede_foreign_terminal=True
+        )
+
+        self.assertEqual("delivered", result.status)
+        self.assertIsNone(result.superseded_terminal_review_id)
+        self.assertEqual(1, forge.events.count("terminal"))
+
+    def test_supersession_preserves_the_publication_anchor_annex(self) -> None:
+        forge, binding, manifest, foreign = self.supersession_fixture()
+        proofs = self.delivery.anchor_proofs
+        annex = {
+            "schema_id": "athena.pr-review.anchor-manifest",
+            "schema_version": 1,
+            "base_oid": "a" * 40,
+            "head_oid": "b" * 40,
+            "merge_base_oid": "a" * 40,
+            "diff_policy": "immutable-two-lens-v1",
+            "hunks_sha256": {"current_target": "1" * 64},
+            "findings": [],
+        }
+        stored = (
+            f"{manifest.terminal_visible_content}\n\n{proofs.MARKER}\n```json\n"
+            f"{proofs.canonical(annex)}\n```\n"
+        )
+        manifest = replace(manifest, terminal_visible_content=stored)
+        superseded = self.delivery.TerminalSupersession(
+            superseded_review_id=foreign.id,
+            superseded_state_sha256=(
+                self.delivery.review_exchange.extract_carrier(foreign.body)[
+                    "state_sha256"
+                ]
+            ),
+            reason="foreign-publication",
+        )
+        envelope = self.delivery._superseding_terminal_envelope(
+            binding, manifest, superseded
+        )
+
+        derived = self.delivery._superseding_manifest(
+            binding, manifest, superseded, envelope
+        )
+
+        self.assertEqual(
+            annex, proofs.visible_manifest(derived.terminal_visible_content)
+        )
+        self.assertEqual(
+            stored.split("\n\n" + proofs.MARKER, 1)[1],
+            derived.terminal_visible_content.split("\n\n" + proofs.MARKER, 1)[1],
+        )
+        self.assertEqual(
+            self.delivery.review_exchange.sha256_text(derived.terminal_visible_content),
+            derived.state_envelope["state"]["artifact_binding"][
+                "visible_content_sha256"
+            ],
+        )
+        del forge
+
+    def test_supersession_result_names_the_superseded_review(self) -> None:
+        forge, binding, manifest, _ = self.supersession_fixture()
+
+        result = self.delivery.deliver_go_v1(
+            forge, binding, manifest, supersede_foreign_terminal=True
+        )
+        document = self.delivery._delivery_result_document(result)
+
+        self.assertEqual("foreign-review-1", document["superseded_terminal_review_id"])
+        self.assertRegex(
+            str(document["superseded_terminal_state_sha256"]), r"^[0-9a-f]{64}$"
+        )
+
+    def test_supersession_rejects_cross_mode_invocations(self) -> None:
+        common = [
+            "--target-repository",
+            "owner/repository",
+            "--expected-pr-url",
+            "https://github.com/owner/repository/pull/7",
+            "--expected-base-oid",
+            "a" * 40,
+            "--expected-head-oid",
+            "b" * 40,
+        ]
+        cases = (
+            ("prepare-manifest", ["--prepare-manifest"]),
+            ("verify-legacy-go", ["--verify-legacy-go", "/bound/legacy.json"]),
+            (
+                "deliver-no-go",
+                ["--deliver-no-go", "--state-carrier-file", "/bound/state.json"],
+            ),
+            (
+                "repair-format-only-inline-root",
+                ["--repair-format-only-inline-root", "root-1"],
+            ),
+        )
+        operations = (
+            "prepare_response_manifest",
+            "verify_legacy_go",
+            "deliver_no_go",
+            "repair_format_only_inline_root",
+        )
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch.object(self.delivery, "GitHubForge", return_value=object())
+            )
+            mocks = [
+                stack.enter_context(patch.object(self.delivery, operation))
+                for operation in operations
+            ]
+            for name, mode in cases:
+                output = io.StringIO()
+                errors = io.StringIO()
+                with (
+                    self.subTest(name=name),
+                    redirect_stdout(output),
+                    redirect_stderr(errors),
+                ):
+                    status = self.delivery.main(
+                        [*common, *mode, "--supersede-foreign-terminal", "7"]
+                    )
+                self.assertEqual(1, status)
+                self.assertEqual("", output.getvalue())
+                self.assertIn("valid only during final delivery", errors.getvalue())
+            for mock in mocks:
+                mock.assert_not_called()
 
     def test_v1_corrective_head_publishes_terminal_then_closes_and_labels(
         self,

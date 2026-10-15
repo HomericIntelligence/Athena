@@ -124,6 +124,7 @@ STOP_REASONS = frozenset(
         "requirements_reframe",
     }
 )
+TERMINAL_SUPERSESSION_REASONS = frozenset({"foreign-publication"})
 
 
 class ProtocolError(ValueError):
@@ -1006,7 +1007,15 @@ def _validate_state(value: object) -> dict[str, Any]:
             "state.supersession_authority_receipt",
         )
     )
-    if (supersedes is None) != (supersession_authority is None):
+    if supersession_authority is not None and supersedes is None:
+        raise ProtocolError(
+            "A superseding exchange must include its authority receipt."
+        )
+    if (
+        supersedes is not None
+        and supersession_authority is None
+        and not _declares_terminal_supersession(accepted_events)
+    ):
         raise ProtocolError(
             "A superseding exchange must include its authority receipt."
         )
@@ -1485,6 +1494,85 @@ def _reframe_event(value: object) -> dict[str, Any]:
         "supersedes_state_sha256": supersedes,
         "superseded_exchange_ids": superseded_exchange_ids,
         "authority_receipt": authority,
+    }
+
+
+def _declares_terminal_supersession(events: object) -> bool:
+    """Report whether a history ends in a supersession without an authority receipt."""
+    if not isinstance(events, list) or not events:
+        return False
+    first = events[0]
+    last = events[-1]
+    return (
+        isinstance(first, dict)
+        and isinstance(last, dict)
+        and last.get("event_type") == "terminal_supersession"
+        and first.get("event_type") != "reframe"
+    )
+
+
+def _continued_terminal_supersession_event(
+    value: object, existing_findings: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """Validate one continued event that overrides a foreign terminal carrier."""
+    event = _object(
+        value,
+        "terminal supersession",
+        frozenset(
+            {
+                "event_type",
+                "exchange_id",
+                "prior_state_sha256",
+                "round",
+                "supersedes_state_sha256",
+                "superseded_review_id",
+                "supersession_reason",
+                "artifact_binding",
+                "scope",
+                "coverage_complete",
+                "responses",
+                "new_findings",
+                "stop_reason",
+            }
+        ),
+    )
+    if event["event_type"] != "terminal_supersession":
+        raise ProtocolError("The event is not a terminal supersession.")
+    supersedes = _digest(
+        event["supersedes_state_sha256"],
+        "terminal supersession superseded state digest",
+    )
+    reason = _enum(
+        event["supersession_reason"],
+        "terminal supersession reason",
+        TERMINAL_SUPERSESSION_REASONS,
+    )
+    reviewed = _string(
+        event["superseded_review_id"], "terminal supersession superseded review ID"
+    )
+    reduced = _continued_review_event(
+        {
+            **{
+                key: item
+                for key, item in event.items()
+                if key
+                not in {
+                    "event_type",
+                    "supersedes_state_sha256",
+                    "superseded_review_id",
+                    "supersession_reason",
+                }
+            },
+            "event_type": "reviewer_assessment",
+        },
+        existing_findings,
+    )
+    return {
+        **reduced,
+        "event_type": "terminal_supersession",
+        "supersedes_state_sha256": supersedes,
+        "superseded_review_id": reviewed,
+        "supersession_reason": reason,
     }
 
 
@@ -2130,6 +2218,22 @@ def _reframe_reduce(
     return state, reason
 
 
+def _terminal_supersession_reduce(
+    previous: Mapping[str, Any],
+    previous_sha256: str,
+    event: dict[str, Any],
+    event_digest: str,
+) -> tuple[dict[str, Any], str]:
+    """Override one foreign terminal carrier without a new authority receipt."""
+    if event["supersedes_state_sha256"] == previous_sha256:
+        raise ProtocolError(
+            "A terminal supersession cannot supersede its own prior review state."
+        )
+    state, reason = _review_reduce(cast(dict[str, Any], previous), event, event_digest)
+    state["supersedes_state_sha256"] = event["supersedes_state_sha256"]
+    return state, reason
+
+
 def _decision_required_author_refresh(
     previous: Mapping[str, Any], event: Mapping[str, Any]
 ) -> bool:
@@ -2617,6 +2721,10 @@ def _verify_state_history(expected: Mapping[str, Any]) -> None:
             event = _continued_review_event(raw_event, current["findings"])
         elif event_type == "human_decision":
             event = _human_event(raw_event)
+        elif event_type == "terminal_supersession":
+            event = _continued_terminal_supersession_event(
+                raw_event, current["findings"]
+            )
         else:
             raise ProtocolError(
                 "A current-exchange history cannot contain this event type."
@@ -2640,6 +2748,10 @@ def _verify_state_history(expected: Mapping[str, Any]) -> None:
         event_digest = _event_digest(event)
         if event_type == "author_response":
             current, _author_record, _ = _author_reduce(current, event, event_digest)
+        elif event_type == "terminal_supersession":
+            current, _ = _terminal_supersession_reduce(
+                current, cast(str, event["prior_state_sha256"]), event, event_digest
+            )
         elif event_type == "reviewer_assessment":
             current, _ = _review_reduce(current, event, event_digest)
         else:
@@ -2673,6 +2785,8 @@ def _event_for_replay(
         return _continued_author_event(value)
     if event_type == "human_decision":
         return _human_event(value)
+    if event_type == "terminal_supersession":
+        return _continued_terminal_supersession_event(value, current["findings"])
     if event_type == "reframe":
         return _reframe_event(value)
     return None
@@ -2717,6 +2831,10 @@ def reduce_request(value: object) -> dict[str, Any]:
         )
     elif event_type == "human_decision":
         event = _human_event(raw_event)
+    elif event_type == "terminal_supersession":
+        event = _continued_terminal_supersession_event(
+            raw_event, previous_envelope["state"]["findings"]
+        )
     elif event_type == "reframe":
         event = _reframe_event(raw_event)
     else:
@@ -2749,6 +2867,13 @@ def reduce_request(value: object) -> dict[str, Any]:
     elif event_type == "reviewer_assessment":
         state, reason = _review_reduce(
             cast(dict[str, Any], previous_envelope["state"]), event, event_digest
+        )
+    elif event_type == "terminal_supersession":
+        state, reason = _terminal_supersession_reduce(
+            cast(dict[str, Any], previous_envelope["state"]),
+            previous_envelope["state_sha256"],
+            event,
+            event_digest,
         )
     elif event_type == "reframe":
         state, reason = _reframe_reduce(
