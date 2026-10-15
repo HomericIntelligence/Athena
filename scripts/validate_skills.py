@@ -10,7 +10,7 @@ import re
 import sys
 from collections.abc import Collection
 from pathlib import Path
-from typing import NamedTuple, cast
+from typing import NamedTuple
 
 sys.dont_write_bytecode = True
 if __package__ in {None, ""}:
@@ -18,6 +18,8 @@ if __package__ in {None, ""}:
 
 from scripts.policies.agent_contract import validate_agent_contract
 from scripts.policies.agent_contract_release import tag_ruleset_errors
+from scripts.policies.repo_review import evaluate_scorecard
+from scripts.policies.ruleset import approved_ruleset_policy, evaluate_ruleset
 from scripts.semver import SEMVER_PATTERN
 from skills._cli import argument_parser
 
@@ -34,77 +36,6 @@ ECOSYSTEM_REPOSITORY = re.compile(
 )
 ALLOWED_ECOSYSTEM_REPOSITORY_KEYS = {
     repository.casefold() for repository in ALLOWED_ECOSYSTEM_REPOSITORIES
-}
-REPO_REVIEW_SECTION = re.compile(
-    r"^(?P<number>[1-9][0-9]*)\. \*\*(?P<name>[^*:]+):", re.MULTILINE
-)
-REPO_REVIEW_WEIGHT = re.compile(
-    r"(?P<name>[A-Za-z][A-Za-z/ ]*?) (?P<weight>[1-9][0-9]?)%"
-)
-APPROVED_RULESET_NAME = "homeric-main-baseline"
-APPROVED_RULESET_TARGET = "branch"
-APPROVED_RULESET_ENFORCEMENT = "active"
-APPROVED_RULESET_BYPASS_ACTORS: list[object] = []
-APPROVED_RULESET_CONDITIONS: dict[str, object] = {
-    "ref_name": {
-        "include": ["~DEFAULT_BRANCH"],
-        "exclude": [],
-    }
-}
-APPROVED_PULL_REQUEST_PARAMETERS: dict[str, object] = {
-    "required_approving_review_count": 0,
-    "dismiss_stale_reviews_on_push": False,
-    "required_reviewers": [],
-    "dismissal_restriction": {"enabled": False, "allowed_actors": []},
-    "require_code_owner_review": False,
-    "require_last_push_approval": False,
-    "required_review_thread_resolution": True,
-    "allowed_merge_methods": ["squash"],
-    "require_extra_approval_for_unattributed_changes": True,
-}
-APPROVED_MERGE_QUEUE_PARAMETERS: dict[str, object] = {
-    "check_response_timeout_minutes": 180,
-    "grouping_strategy": "HEADGREEN",
-    "max_entries_to_build": 10,
-    "max_entries_to_merge": 5,
-    "merge_method": "SQUASH",
-    "min_entries_to_merge": 1,
-    "min_entries_to_merge_wait_minutes": 5,
-}
-APPROVED_REQUIRED_STATUS_CHECKS_PARAMETERS: dict[str, object] = {
-    "strict_required_status_checks_policy": False,
-    "do_not_enforce_on_create": False,
-    "required_status_checks": [
-        {
-            "context": "required-checks-gate",
-            "integration_id": 15368,
-        }
-    ],
-}
-APPROVED_RULESET_POLICY: dict[str, object] = {
-    "name": APPROVED_RULESET_NAME,
-    "target": APPROVED_RULESET_TARGET,
-    "enforcement": APPROVED_RULESET_ENFORCEMENT,
-    "bypass_actors": APPROVED_RULESET_BYPASS_ACTORS,
-    "conditions": APPROVED_RULESET_CONDITIONS,
-    "rules": [
-        {"type": "deletion"},
-        {"type": "non_fast_forward"},
-        {"type": "required_linear_history"},
-        {
-            "type": "pull_request",
-            "parameters": APPROVED_PULL_REQUEST_PARAMETERS,
-        },
-        {
-            "type": "merge_queue",
-            "parameters": APPROVED_MERGE_QUEUE_PARAMETERS,
-        },
-        {
-            "type": "required_status_checks",
-            "parameters": APPROVED_REQUIRED_STATUS_CHECKS_PARAMETERS,
-        },
-        {"type": "required_signatures"},
-    ],
 }
 PI_PACKAGE_NAME = "@homericintelligence/athena"
 PI_SKILL_ROOT = ["./skills"]
@@ -621,139 +552,10 @@ def _validate_repo_review_scorecard(
                 True,
             )
         ]
-    sections = [match.group("name") for match in REPO_REVIEW_SECTION.finditer(criteria)]
-    expected_numbers = list(range(1, 16))
-    numbers = [
-        int(match.group("number")) for match in REPO_REVIEW_SECTION.finditer(criteria)
+    return [
+        ValidationError("repo-review", reason)
+        for reason in evaluate_scorecard(criteria, skill)
     ]
-    if numbers != expected_numbers or len(set(sections)) != len(sections):
-        return [
-            ValidationError(
-                "repo-review",
-                "The criteria must define each of the 15 uniquely numbered sections.",
-            )
-        ]
-    weight_line = re.search(r"^Weights: (?P<weights>.+)$", skill, re.MULTILINE)
-    if weight_line is None:
-        return [ValidationError("repo-review", "The scorecard weights are missing.")]
-    weights = [
-        (match.group("name"), int(match.group("weight")))
-        for match in REPO_REVIEW_WEIGHT.finditer(weight_line.group("weights"))
-    ]
-    errors: list[ValidationError] = []
-    if len(weights) != 15 or len({name for name, _ in weights}) != len(weights):
-        errors.append(
-            ValidationError(
-                "repo-review",
-                "The scorecard must assign one weight to each of 15 sections.",
-            )
-        )
-    for name, _ in weights:
-        if name not in sections:
-            errors.append(
-                ValidationError(
-                    "repo-review",
-                    f"The weight has no matching criteria section: '{name}'.",
-                )
-            )
-    missing_sections = sorted(set(sections).difference(name for name, _ in weights))
-    if missing_sections:
-        errors.append(
-            ValidationError(
-                "repo-review",
-                "The scorecard does not assign a weight to these criteria sections: "
-                + ", ".join(f"'{name}'" for name in missing_sections)
-                + ".",
-            )
-        )
-    if sum(weight for _, weight in weights) != 100:
-        errors.append(
-            ValidationError(
-                "repo-review", "The scorecard weights must total 100 percent."
-            )
-        )
-    return errors
-
-
-def _json_type_name(value: object) -> str:
-    """Return a stable JSON type name for validator diagnostics."""
-    return "null" if value is None else type(value).__name__
-
-
-def _validate_exact_json(
-    actual: object, expected: object, path: str
-) -> list[ValidationError]:
-    """Require one exact JSON value at the given path."""
-    if type(actual) is not type(expected):
-        return [
-            ValidationError(
-                "ruleset",
-                "The ruleset must match the approved live baseline from issue #173 "
-                f"at {path}. Expected {_json_type_name(expected)} but found "
-                f"{_json_type_name(actual)}.",
-            )
-        ]
-
-    if isinstance(expected, dict):
-        actual_dict = cast(dict[str, object], actual)
-        expected_dict = cast(dict[str, object], expected)
-        actual_keys = set(actual_dict)
-        expected_keys = set(expected_dict)
-        if actual_keys != expected_keys:
-            missing = sorted(expected_keys - actual_keys)
-            extra = sorted(actual_keys - expected_keys)
-            parts: list[str] = []
-            if missing:
-                parts.append("missing keys: " + ", ".join(missing))
-            if extra:
-                parts.append("unexpected keys: " + ", ".join(extra))
-            return [
-                ValidationError(
-                    "ruleset",
-                    "The ruleset must match the approved live baseline from issue "
-                    f"#173 at {path}. " + "; ".join(parts) + ".",
-                )
-            ]
-
-        for key in expected_dict:
-            nested = _validate_exact_json(
-                actual_dict[key], expected_dict[key], f"{path}.{key}"
-            )
-            if nested:
-                return nested
-        return []
-
-    if isinstance(expected, list):
-        actual_list = cast(list[object], actual)
-        expected_list = cast(list[object], expected)
-        if len(actual_list) != len(expected_list):
-            return [
-                ValidationError(
-                    "ruleset",
-                    "The ruleset must match the approved live baseline from issue "
-                    f"#173 at {path}. Expected {len(expected_list)} entries but found "
-                    f"{len(actual_list)}.",
-                )
-            ]
-        for index, (actual_item, expected_item) in enumerate(
-            zip(actual_list, expected_list)
-        ):
-            nested = _validate_exact_json(
-                actual_item, expected_item, f"{path}[{index}]"
-            )
-            if nested:
-                return nested
-        return []
-
-    if actual != expected:
-        return [
-            ValidationError(
-                "ruleset",
-                "The ruleset must match the approved live baseline from issue #173 "
-                f"at {path}. Expected {expected!r} but found {actual!r}.",
-            )
-        ]
-    return []
 
 
 def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
@@ -761,9 +563,24 @@ def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationErro
     path = repo_root / ".github" / "rulesets" / "homeric-main-baseline.json"
     document, errors = _read_json(path, "ruleset", repo_root)
     if document is not None:
-        errors.extend(
-            _validate_exact_json(document, APPROVED_RULESET_POLICY, "ruleset")
-        )
+        policy_path = repo_root / "docs" / "policies" / "required-checks.md"
+        try:
+            approved = approved_ruleset_policy(policy_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, ValueError) as error:
+            errors.append(
+                ValidationError(
+                    "ruleset",
+                    "The validator cannot read the approved merge-queue policy in "
+                    f"{policy_path.relative_to(repo_root)}. "
+                    f"The operation returned this diagnostic.\n{error}",
+                    True,
+                )
+            )
+        else:
+            errors.extend(
+                ValidationError("ruleset", reason)
+                for reason in evaluate_ruleset(document, approved, "ruleset")
+            )
     tag_path = repo_root / ".github" / "rulesets" / "homeric-agent-contract-tags.json"
     tag_document, tag_read_errors = _read_json(tag_path, "ruleset", repo_root)
     errors.extend(tag_read_errors)
