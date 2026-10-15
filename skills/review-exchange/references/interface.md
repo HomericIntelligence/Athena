@@ -916,6 +916,10 @@ and `body_sha256`. An authorized foreign source also has its exact `author_id`. 
 The issue-body replacement operation has `action`, `expected_issue_body_sha256`, `body`,
 `body_sha256`, `F`, and `operation_sha256`. `action` is `replace_body`. `F` binds the finalization
 marker template. `operation_sha256` is the digest of canonical JSON for the other five fields.
+`body` is the exact issue-body form that the provider publishes. For GitHub, that form has no final
+line feed, and `F`, `body_sha256`, and `operation_sha256` bind it. For every other provider, the
+digests bind the exact prepared bytes, which keep the generated terminal line feed. The readback
+comparison is byte-exact against `body`.
 
 The finalization precondition is the digest of canonical JSON with `schema_id` set to
 `athena.issue-exchange.finalize-precondition`, `schema_version` set to `1`, and these fields: exact

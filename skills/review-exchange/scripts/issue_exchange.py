@@ -2625,6 +2625,17 @@ def _requirements_context_sha256(snapshot: Mapping[str, Any]) -> str:
     )
 
 
+def _issue_body_publication_form(value: str, provider: str) -> str:
+    """Return the exact issue-body form that the provider publishes.
+
+    GitHub removes the final line feed when it stores an issue body. Every other
+    provider keeps the prepared bytes unchanged.
+    """
+    if provider == "github":
+        return value.removesuffix("\n")
+    return value
+
+
 def _withheld_finalize(
     requirements_sha256: str | None, code: str, message: str
 ) -> dict[str, Any]:
@@ -3178,10 +3189,15 @@ def verify_finalize(value: object) -> dict[str, Any]:
         f"{FINALIZE_MARKER_PREFIX}"
         f"R={requirements} P={p_source['token']} V={v_source['token']} F=<F> -->\n"
     )
-    template = f"{candidate.rstrip()}\n\n{marker_template}"
+    provider = snapshot["target"]["provider"]
+    template = _issue_body_publication_form(
+        f"{candidate.rstrip()}\n\n{marker_template}", provider
+    )
     final_digest = review_exchange.sha256_text(template)
     rendered_marker = marker_template.replace("F=<F>", f"F={final_digest}", 1)
-    body = f"{candidate.rstrip()}\n\n{rendered_marker}"
+    body = _issue_body_publication_form(
+        f"{candidate.rstrip()}\n\n{rendered_marker}", provider
+    )
     marker_status, marker_fields = _finalized_marker(body)
     if marker_status != "valid" or marker_fields != {
         "R": requirements,

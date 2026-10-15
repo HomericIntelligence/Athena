@@ -356,20 +356,22 @@ class IssueReviewExchangeTests(unittest.TestCase):
                 self.fail("The update target is absent from the fixture.")
         return result
 
-    def initial_plan_snapshot(self) -> tuple[dict[str, Any], dict[str, Any]]:
-        source = self.snapshot()
-        prepared = self.adapter.prepare_plan(self.plan_request(source))
-        return self.apply_operation(source, prepared, "plan-1"), prepared
+    def initial_plan_snapshot(
+        self, source: dict[str, Any] | None = None
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        snapshot = self.snapshot() if source is None else source
+        prepared = self.adapter.prepare_plan(self.plan_request(snapshot))
+        return self.apply_operation(snapshot, prepared, "plan-1"), prepared
 
-    def no_go_snapshot(self) -> dict[str, Any]:
-        with_plan, _ = self.initial_plan_snapshot()
+    def no_go_snapshot(self, source: dict[str, Any] | None = None) -> dict[str, Any]:
+        with_plan, _ = self.initial_plan_snapshot(source)
         prepared = self.adapter.prepare_review(
             self.review_request(with_plan, findings=[self.finding()])
         )
         return self.apply_operation(with_plan, prepared, "review-1")
 
-    def go_snapshot(self) -> dict[str, Any]:
-        no_go = self.no_go_snapshot()
+    def go_snapshot(self, source: dict[str, Any] | None = None) -> dict[str, Any]:
+        no_go = self.no_go_snapshot(source)
         response = {
             "finding_id": "F-001",
             "kind": "fix",
@@ -2841,6 +2843,97 @@ class IssueReviewExchangeTests(unittest.TestCase):
             {"snapshot": drifted, "prepared": prepared}
         )
         self.assertEqual("unknown_outcome", withheld["status"])
+
+    def test_github_finalization_binds_the_published_body_form(self) -> None:
+        snapshot = self.go_snapshot()
+        prepared = self.adapter.verify_finalize(
+            {"snapshot": snapshot, "candidate_body": "# Final plan\n\nBounded work."}
+        )
+        body = prepared["operation"]["body"]
+
+        self.assertFalse(body.endswith("\n"))
+        self.assertTrue(body.endswith("-->"))
+        status, marker = self.adapter._finalized_marker(body)
+        self.assertEqual("valid", status)
+        assert marker is not None
+        self.assertEqual(prepared["sources"]["R"], marker["R"])
+        self.assertEqual(prepared["sources"]["P"]["token"], marker["P"])
+        self.assertEqual(prepared["sources"]["V"]["token"], marker["V"])
+        self.assertEqual(prepared["operation"]["F"], marker["F"])
+        self.assertEqual(
+            prepared["operation"]["body_sha256"], self.adapter._body_sha256(body)
+        )
+
+        published = copy.deepcopy(snapshot)
+        published["issue"]["body"] = body
+        self.assertEqual(
+            prepared["operation"]["body_sha256"],
+            self.adapter._body_sha256(published["issue"]["body"]),
+        )
+        verified = self.adapter.verify_finalize(
+            {"snapshot": published, "prepared": prepared}
+        )
+
+        self.assertEqual("verified", verified["status"])
+        self.assertEqual(["plan-1", "review-1"], verified["deletion_allowlist"])
+
+    def test_finalize_readback_rejects_every_other_body_change(self) -> None:
+        snapshot = self.go_snapshot()
+        prepared = self.adapter.verify_finalize(
+            {"snapshot": snapshot, "candidate_body": "# Final plan\n\nBounded work."}
+        )
+        published = copy.deepcopy(snapshot)
+        published["issue"]["body"] = prepared["operation"]["body"]
+        body = prepared["operation"]["body"]
+        changed = {
+            "content_byte": body.replace("Bounded", "Unbound", 1),
+            "one_appended_line_feed": f"{body}\n",
+            "two_appended_line_feeds": f"{body}\n\n",
+            "removed_blank_line": body.replace("\n\n<!--", "\n<!--", 1),
+        }
+
+        for name, mutated in changed.items():
+            with self.subTest(change=name):
+                self.assertNotEqual(body, mutated)
+                drifted = copy.deepcopy(published)
+                drifted["issue"]["body"] = mutated
+                result = self.adapter.verify_finalize(
+                    {"snapshot": drifted, "prepared": prepared}
+                )
+                self.assertEqual("unknown_outcome", result["status"])
+                self.assertEqual(
+                    "finalize_readback_mismatch", result["diagnostics"][0]["code"]
+                )
+                self.assertIsNone(result["operation"])
+                self.assertEqual([], result["deletion_allowlist"])
+
+    def test_gitlab_finalization_keeps_the_terminal_line_feed(self) -> None:
+        source = self.snapshot()
+        source["target"] = {
+            **source["target"],
+            "provider": "gitlab",
+            "host": "gitlab.com",
+            "url": "https://gitlab.com/owner/repository/-/issues/210",
+        }
+        snapshot = self.go_snapshot(source)
+        prepared = self.adapter.verify_finalize(
+            {"snapshot": snapshot, "candidate_body": "# Final plan\n\nBounded work."}
+        )
+        body = prepared["operation"]["body"]
+
+        self.assertTrue(body.endswith("-->\n"))
+        self.assertFalse(body.endswith("-->\n\n"))
+        self.assertEqual(
+            prepared["operation"]["body_sha256"], self.adapter._body_sha256(body)
+        )
+        published = copy.deepcopy(snapshot)
+        published["issue"]["body"] = body
+        verified = self.adapter.verify_finalize(
+            {"snapshot": published, "prepared": prepared}
+        )
+
+        self.assertEqual("verified", verified["status"])
+        self.assertEqual(["plan-1", "review-1"], verified["deletion_allowlist"])
 
     def test_foreign_marker_comments_do_not_block_owned_finalization(self) -> None:
         snapshot = self.go_snapshot()

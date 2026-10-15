@@ -115,7 +115,10 @@ an unchanged planning epoch stale.
 
 The helper records exactly one marker in the rendered body:
 `<!-- HomericIntelligence:finalize-plan R=<R> P=<P> V=<V> F=<F> -->`. It calculates `F` from the
-canonical final body with the literal `<F>` placeholder. Do not add, edit, or move the returned
+canonical final body with the literal `<F>` placeholder. For GitHub, the canonical final body is the
+exact issue-body form that GitHub publishes. That form has no final line feed. `F`, `body`,
+`body_sha256`, and `operation_sha256` bind that exact form. Every other provider keeps the generated
+terminal line feed. Do not add, edit, or move the returned
 marker. The marker identifies the sealed source identities separately from the generated body. It
 also permits later readback verification without recursion.
 
@@ -217,6 +220,8 @@ Use controlled issue, comment, actor, and forge fixtures to demonstrate these be
 - Publication makes one body update. It verifies the exact readback. Then it deletes only the two
   sealed actor-owned comments.
 - A sealed epoch that did not change is idempotent.
+- A GitHub finalization binds a body without a final line feed. An unchanged GitHub readback returns
+  `verified`. Each other body change returns `unknown_outcome`.
 - Each absent, foreign, duplicate, mismatched, stale, `NO-GO`, required-finding, drift,
   unsupported-write, timeout, readback-mismatch, or deletion-uncertainty case stops before an unsafe
   mutation or retry.
