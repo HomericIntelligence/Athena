@@ -1,0 +1,32 @@
+{
+  "schema_id": "athena.review-exchange.fixture.manifest",
+  "schema_version": 1,
+  "source": "https://github.com/LLM360/comet/pull/1510",
+  "immutable": true,
+  "purpose": "Negative regression evidence for an unsupported semantic closure.",
+  "exchange_id": "comet-pr-1510-a3e3994d",
+  "finding_id": "comet-pr-1510-a3e3994d/F-001",
+  "round_1_head": "a3e3994d37f23366d16776d2e31a598ef9291dce",
+  "reviewed_head": "ebdea81d01b66b7fec40f4e55e7169cce21cff2c",
+  "round_1_state_sha256": "c22b33db4462594369cfe1c05321c059efe21a429fcf8b10c1cda7893c15dba6",
+  "author_review_id": 5204713543,
+  "author_event_state_sha256": "e4c82dd8303b2b116d5ef6292306b68794c1f76ea7f41665445cfbd662beff9a",
+  "author_visible_content_sha256": "8023ede1a568f6c42e4722f52d6c098c9e1af7d85bec2459b0f524a192ffd2cd",
+  "author_body_sha256": "900c4be6f68d7979684ea48b3677fa0c2fbbcd04c6cf3d6e5352f8abb84b0752",
+  "terminal_review_id": 5204741339,
+  "terminal_reviewer_visible_content_sha256": "4e693e4f0993ed84541999019e58170dafda2f8d628697b61e23906fa9dfa8da",
+  "terminal_body_sha256": "c665e4080d014964f555078d13369538fe7ad8bdadad052d82afcd8b2dfec0cb",
+  "terminal_state_sha256": "2c2feb9599906cf31fc90ccaabf3cdcb3967164a806ad017876af83f8dad8c78",
+  "carriers": [
+    {
+      "review_id": 5204713543,
+      "body": "author_review_body.md",
+      "defect": "The visible prose claims a completed rules-and-dictionary check."
+    },
+    {
+      "review_id": 5204741339,
+      "body": "terminal_reviewer_body.md",
+      "defect": "The round 2 resolve response repeats the adverse evidence."
+    }
+  ]
+}

@@ -143,8 +143,23 @@ A reviewer response has these fields:
 | --- | --- |
 | `finding_id` | Prior answered required-finding identity |
 | `kind` | `resolve`, `partial`, `still_present`, `withdraw`, `accept`, `counter`, `refute`, or `escalate` |
-| `evidence` | Nonempty list of unique, nonempty strings |
+| `evidence` | Nonempty list of unique, nonempty strings. At least one item must be absent from the finding evidence ledger for `resolve`, `counter`, or `refute` |
 | `closure_condition` | Revised nonempty condition for `counter`; otherwise `null` |
+
+A `resolve` response closes a finding. Its evidence must support that closure. It must add at
+least one item that is absent from the introducing evidence and from the author response evidence,
+because the finding ledger holds exactly those two sets. A response that only repeats the original
+adverse evidence is rejected. The stored evidence stays exact state evidence for the finding
+closure condition and for the reviewed head in `artifact_binding`, and a resolved finding whose
+`author_response.artifact_revision` differs from the current `artifact_binding.revision` is
+rejected.
+
+`extract_carrier_pair` also compares the visible content with the structured author response. When
+the latest accepted event is an `author_response` whose evidence states that a check was
+unavailable or not performed, a visible sentence that names the same check and claims that the check
+produced a result is rejected as a contradiction. A visible sentence that admits the same
+unavailability, and a visible claim about a different check, stay valid. The structured event stays
+the closure authority. The reducer never reads the visible prose for closure.
 
 A human decision has these fields:
 
