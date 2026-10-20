@@ -14,7 +14,7 @@ from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, BinaryIO, NoReturn, Protocol, cast
+from typing import TYPE_CHECKING, Any, BinaryIO, Final, NoReturn, Protocol, cast
 from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -74,6 +74,8 @@ else:
     _cli_spec.loader.exec_module(_cli)
     argument_parser = _cli.argument_parser
     run_command = _cli.run_command
+
+CORPUS_VERSION: Final[str] = "0.6.0"
 
 GO_LABEL = "state:implementation-go"
 NO_GO_LABEL = "state:implementation-no-go"
@@ -5359,6 +5361,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--schema-version", type=int, choices=(1,), default=1)
     args = parser.parse_args(argv)
     try:
+        review_exchange.verify_corpus(sys.modules[__name__])
         binding = _binding_from_args(args)
         forge = GitHubForge(binding, args.target_host)
         historical: tuple[dict[str, Any], ...] = ()
@@ -5571,6 +5574,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     format_only_inline_root_recovery=recovery,
                     terminal_duplicate_repair=repair,
                 )
+    except review_exchange.OperationalError as error:
+        print(review_exchange._single_line_diagnostic(error), file=sys.stderr)
+        return 2
     except (DeliveryError, RuntimeError, TypeError, ValueError) as error:
         if isinstance(error, DeliveryError) and error.report is not None:
             print(
