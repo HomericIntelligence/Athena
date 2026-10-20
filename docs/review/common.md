@@ -23,6 +23,8 @@ skill can add requirements. It must not copy or weaken this contract. See the
    interface, dependency, configuration path, state owner, or overlapping behavior. Also compare
    safe deletion, reuse, consolidation, and retention with evidence.
 7. Inspect behavior, error paths, boundary paths, and functional-test evidence.
+8. Map every applicable acceptance criterion and contract to implementation, tests, documentation,
+   and operation evidence before the verdict. Publish the material findings as one bounded batch.
 8. Remove duplicate findings.
 9. Assign severity and an independent disposition to each finding.
 10. Select the scope-specific delivery channel and identify any remaining coverage gaps.
@@ -467,8 +469,16 @@ decision accepts a new risk request first.
 A refresh has an empty response list only when it has no active or terminal required finding. A
 refresh in `awaiting_reviewer` stays in `awaiting_reviewer`. A refresh in `awaiting_evidence` or a
 conditional complete state moves to `awaiting_reviewer` when it revalidates a terminal required
-finding. Otherwise, it moves to `awaiting_evidence`. Each refresh invalidates review coverage. It
-does not change the reviewer round, reviewer progress, GO eligibility, or finding identifiers.
+finding. Otherwise, it moves to `awaiting_evidence`. It does not change the reviewer round, reviewer
+progress, GO eligibility, or finding identifiers.
+
+A refresh invalidates review coverage when it changes the requirements, the declared scope, or a
+content dependency of a reviewed section. When the exchange retains a requirement-evidence record,
+compare the reviewed section dependencies instead of the artifact identity. Keep the applicable
+sections, and record the retained, repeated, and changed section identifiers with the cause. A
+signature-only rewrite or a compatible base change keeps the applicable technical evidence. It does
+not keep approval, accepted-risk authority, a current-head test receipt, or merge permission. See the
+[requirement-to-evidence contract](requirement-evidence.md).
 
 If a correction reopens a revalidated terminal finding and the total active required finding count
 does not decrease, reassess the approach and record a viable continuation before another attempt.
