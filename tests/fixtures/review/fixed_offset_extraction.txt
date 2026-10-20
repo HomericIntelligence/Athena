@@ -1,0 +1,19 @@
+"""Model of a test that selects product source through stored line numbers."""
+
+from pathlib import Path
+
+REGISTRY = Path("src/comet/domain_registry.py")
+MODE_LINES = {"inventory": 1160, "writer": 1187}
+
+
+def registry_lines() -> list[str]:
+    """Return the registry source lines."""
+    return REGISTRY.read_text(encoding="utf-8").splitlines()
+
+
+def test_node_local_inventory_binds_modes_to_writer_expressions() -> None:
+    """Require each inventory mode to select the recorded writer expression."""
+    lines = registry_lines()
+    for mode, stored_line in MODE_LINES.items():
+        expression = lines[stored_line - 1].strip()
+        assert mode in expression
