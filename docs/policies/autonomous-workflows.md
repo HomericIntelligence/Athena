@@ -88,4 +88,6 @@ identified repository separately. Record the source commit and local review base
 
 An explicit cleanup request authorizes removal of verified merged branches and clean worktrees with
 no unique work. Preserve ambiguous, uncommitted, or unintegrated work. Prefer the guarded cleanup
-workflow. Do not treat ordinary delivery as a cleanup request.
+workflow. When a workflow contract declares post-delivery cleanup, that workflow can remove its own
+invocation-created worktree after verified remote delivery, provided the worktree is clean and
+fully integrated. Do not treat other ordinary delivery as a cleanup request.
