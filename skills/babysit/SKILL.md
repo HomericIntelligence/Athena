@@ -1,7 +1,7 @@
 ---
 name: babysit
 license: BSD-3-Clause
-description: Coordinate a set of long-lived agent sessions and automation loops to a completion boundary. Use this skill when the user asks you to watch, track, revive, babysit, or guide many agent sessions, when sessions or hephaestus-automation-loop runs do work that does not appear in commits or pull requests, or when supervision must continue until an external event such as a new product release. The coordinator keeps authority, instructs the owning agents, arms an event-driven monitor, answers agent questions, and escalates non-simple blockers to the user.
+description: Coordinate a set of long-lived agent sessions and automation loops to a completion boundary. Use this skill when the user asks you to watch, track, revive, babysit, or guide many agent sessions, when sessions or hephaestus-automation-loop runs do work that does not appear in commits or pull requests, or when supervision must continue until an external event such as a new product release. The coordinator keeps authority, instructs the owning agents, arms an event-driven monitor, answers agent questions, and escalates non-simple blockers to the user. The required session store and session-resume capabilities are host-specific; when the host does not have them, supervise loop processes by their operating-system evidence only and do each coordination step manually with the same contracts.
 argument-hint: "<optional: session selector and completion boundary>"
 allowed-tools: [Bash, Read]
 ---
@@ -63,10 +63,13 @@ workflow rules:
 
 ### 1. Inventory and classify (read-only)
 
-1. Resolve the agent session store. For OpenCode, read the SQLite store at
-   `~/.local/share/opencode/opencode.db` with `sqlite3 -readonly` and `SELECT` statements only.
+1. Resolve the agent session store. For OpenCode, resolve the store path with
+   `opencode debug paths db` (it applies XDG redirects, the `OPENCODE_DB` override, and the
+   release channel). When resolution is not available, use `~/.local/share/opencode/opencode.db`
+   and record the fallback. Read the store with `sqlite3 -readonly` and `SELECT` statements only.
    List the requested sessions from `session_v2` (identifier, title, directory, parent, idle
-   outcome, update times).
+   outcome, update times). When the host has no session store or session-resume capability, skip
+   store-based steps and classify from process, log, git, and forge evidence only.
 2. Classify each session against live evidence: running processes (`ps`, `pgrep`), loop logs, git
    worktrees and branches, pull requests, issues, and release state. A session is one of `live`,
    `idle`, `failed`, or `parked`.
@@ -99,7 +102,10 @@ Confirm with the user before you act on live infrastructure or on subordinate ag
 ### 4. Instruct subordinate sessions
 
 1. Resume each targeted session by its identifier with a bounded instruction, for example with
-   `opencode run -s <session-id> --auto "<instruction text>"`. Keep each instruction:
+   `opencode run -s <session-id> --auto "<instruction text>"`. The `--auto` grant approves each
+   permission that is not explicitly denied, so bind it: use `--auto` only when the user confirmed
+   the instruction policy in step 2. Without that confirmation, run the resume without `--auto` so
+   the session's own permission rules gate each action. Keep each instruction:
    - scoped to that session's ownership set, with explicit isolation guards against other live
      lanes (named directories, intake clones, or running loops);
    - explicit about the required artifacts and the delivery path of every pull request: the
