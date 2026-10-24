@@ -33,9 +33,8 @@ def _require_supported_interpreter(parser: argparse.ArgumentParser) -> None:
     detected = f"{major}.{minor}.{micro}"
     parser.exit(
         2,
-        f"{parser.prog}: error: The Athena helpers require Python {required} or "
-        f"newer. The detected interpreter is {detected}. Run this helper with "
-        f"Python {required} or newer.\n",
+        f"{parser.prog}: error: This helper requires Python {required} or newer. "
+        f"This interpreter is {detected}.\n",
     )
 
 
