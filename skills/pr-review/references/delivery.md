@@ -146,6 +146,19 @@ Carry reconciled earlier findings in the state ledger. Do not publish them as ne
 A terminal GO round must publish its carrier even when the `comments` array is empty. Do not post a
 different generic clean review.
 
+Before the request, run the pre-write gate:
+
+```text
+review_exchange.py verify-finding-batch <batch.json>
+publish_round.py --state-carrier-file <carrier.md> --batch-file <batch.json> <pull-request>
+```
+
+The gate checks the marker placement, the batch bounds, and the binding to the carrier before any
+forge call. Stop on any violation. A malformed batch is correctable only before its write. The
+publisher then makes the single atomic request and verifies the readback: review identity,
+`COMMENT` or `COMMENTED` state, reviewed commit, complete body carrier, and one root per expected
+path, side, line, body, and marker.
+
 Verify the returned review and fetched comments against the target, `COMMENT` or `COMMENTED` state,
 reviewed commit, complete body carrier, and each expected path, side, line, finding ID, and body. If
 verification fails or is uncertain, reconcile the exact readback before another write. Retry only
@@ -333,6 +346,42 @@ The recovery accepts one reviewer-owned root with one marker moved to its own
 final line. It does not accept changed finding text, a foreign root, another
 edit, an edited review, a reply, a changed source anchor, or GO delivery. The
 helper verifies the fixed root and carrier before and after the label write.
+
+### Misplaced-marker inline-root repair
+
+Use `--repair-misplaced-finding-marker <root-id>` for a batch that was published before the
+pre-write gate existed. The defect is one Athena-owned inline root whose finding marker is not the
+final line, for example the first line of the body. The operation reads the retained target, checks
+the unedited root, its immutable reviewer state message, its source anchor, and its ownership. It
+then moves that one marker to the final line and verifies the fetched result.
+
+The canonical body removes exactly one marker line and appends it as the final line. Every other
+byte must stay unchanged. The helper prints one canonical JSON receipt. A receipt records the state
+digest, exchange ID, finding ID, review identity, review head, root identity, path, side, original
+line, author, timestamps, both body digests, and `defect` as `marker_not_final`.
+
+Collect every receipt for the batch into one canonical JSON document
+`athena.pr-review.misplaced-finding-marker-recoveries` version 1 with a `binding` and a bounded
+`receipts` list. Retain that document with the exchange record. Supply it through
+`--misplaced-marker-recovery <file>` during later version-1 GO or NO-GO delivery. The helper accepts
+a receipt only when the binding, state chain, carrier, root, source anchor, body digests, marker,
+ownership, and edit timestamp match exactly. It accepts no other root edit. A supplied receipt that
+matches no live root withholds delivery.
+
+Order the operations as follows:
+
+1. Repair every malformed root and retain each receipt.
+2. Merge the receipts into one canonical document.
+3. Run `--prepare-manifest`.
+4. Run the ordinary version-1 GO or NO-GO delivery with `--misplaced-marker-recovery`.
+
+A manifest prepared before the repair records a stale conversation digest. After a successful
+repair, the edit is permanent and a second repair is refused. If preparation or delivery then fails,
+retain the receipt, read back instead of repairing again, and re-run delivery with the same receipt.
+
+The repair fails closed for no marker, a repeated marker, an already final marker, a foreign root,
+an edited root, an edited review, a reply before the exact terminal carrier, a second edit, or any
+text change. Delivery then runs the ordinary state-chain, thread, and label checks.
 
 ## Verified GO delivery
 
