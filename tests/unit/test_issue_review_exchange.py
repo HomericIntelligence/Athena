@@ -2522,19 +2522,7 @@ class IssueReviewExchangeTests(unittest.TestCase):
             visible, wrong_role, "state"
         )
 
-        requirements_drift = copy.deepcopy(plan_envelope["state"])
-        requirements_drift["requirements_sha256"] = "b" * 64
-        drift_envelope = self.adapter.review_exchange.make_envelope(
-            requirements_drift, self.adapter.review_exchange.AUTHOR_EVENT_SCHEMA_ID
-        )
-        drift_body = self.adapter.review_exchange.render_carrier(
-            visible, drift_envelope, "author-event"
-        )
-
-        cases = (
-            (wrong_role_body, "malformed_carrier"),
-            (drift_body, "requirements_drift"),
-        )
+        cases = ((wrong_role_body, "malformed_carrier"),)
         for body, code in cases:
             with self.subTest(code=code):
                 snapshot = copy.deepcopy(plan_snapshot)
@@ -2542,6 +2530,68 @@ class IssueReviewExchangeTests(unittest.TestCase):
                 inspected = self.adapter.inspect_snapshot(snapshot)
                 self.assertEqual("withheld", inspected["status"])
                 self.assertEqual(code, inspected["diagnostics"][0]["code"])
+
+    def test_history_bound_plan_carrier_rebinds_requirements_under_drift(
+        self,
+    ) -> None:
+        plan_snapshot, _ = self.initial_plan_snapshot()
+        plan_comment = plan_snapshot["comments"][0]
+        envelope = self.adapter.review_exchange.extract_carrier(plan_comment["body"])
+        visible = plan_comment["body"].split(
+            "\n\n<!-- HomericIntelligence:review-exchange:", 1
+        )[0]
+        drift_state = copy.deepcopy(envelope["state"])
+        drift_state["requirements_sha256"] = "b" * 64
+        drift_envelope = self.adapter.review_exchange.make_envelope(
+            drift_state, self.adapter.review_exchange.AUTHOR_EVENT_SCHEMA_ID
+        )
+        plan_comment["body"] = self.adapter.review_exchange.render_carrier(
+            visible, drift_envelope, "author-event"
+        )
+
+        inspected = self.adapter.inspect_snapshot(plan_snapshot)
+        self.assertEqual("ready", inspected["status"])
+        self.assertEqual("prepare_plan", inspected["next_action"])
+        self.assertEqual(
+            "plan_requirements_rebind", inspected["diagnostics"][0]["code"]
+        )
+
+        prepared = self.adapter.prepare_plan(self.plan_request(plan_snapshot))
+        self.assertEqual("ready", prepared["status"])
+        self.assertEqual("update", prepared["operation"]["action"])
+        self.assertEqual(plan_comment["id"], prepared["operation"]["comment_id"])
+        self.assertIsNone(prepared["state"])
+
+        rebound = self.apply_operation(plan_snapshot, prepared, "unused")
+        reinspected = self.adapter.inspect_snapshot(rebound)
+        self.assertEqual("ready", reinspected["status"])
+        self.assertEqual("prepare_review", reinspected["next_action"])
+        self.assertEqual([], reinspected["diagnostics"])
+
+    def test_requirements_drift_with_a_review_carrier_stays_withheld(self) -> None:
+        no_go = self.no_go_snapshot()
+        plan_comment = next(
+            comment for comment in no_go["comments"] if comment["id"] == "plan-1"
+        )
+        envelope = self.adapter.review_exchange.extract_carrier(plan_comment["body"])
+        visible = plan_comment["body"].split(
+            "\n\n<!-- HomericIntelligence:review-exchange:", 1
+        )[0]
+        drift_state = copy.deepcopy(envelope["state"])
+        drift_state["requirements_sha256"] = "b" * 64
+        drift_envelope = self.adapter.review_exchange.make_envelope(
+            drift_state, self.adapter.review_exchange.AUTHOR_EVENT_SCHEMA_ID
+        )
+        plan_comment["body"] = self.adapter.review_exchange.render_carrier(
+            visible, drift_envelope, "author-event"
+        )
+
+        inspected = self.adapter.inspect_snapshot(no_go)
+        self.assertEqual("withheld", inspected["status"])
+        self.assertEqual("requirements_drift", inspected["diagnostics"][0]["code"])
+        prepared = self.adapter.prepare_plan(self.plan_request(no_go))
+        self.assertEqual("withheld", prepared["status"])
+        self.assertIsNone(prepared["operation"])
 
     def test_publication_verifies_updates_and_peer_preconditions(self) -> None:
         source = self.no_go_snapshot()
