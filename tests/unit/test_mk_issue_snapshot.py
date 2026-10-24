@@ -434,6 +434,28 @@ class AcceptanceCriteriaTests(ProducerHarness):
         self.assertEqual("", errors)
         self.assertEqual([], json.loads(output)["issue"]["acceptance_criteria"])
 
+    def test_null_issue_body_becomes_an_empty_body_accepted_by_the_reducer(
+        self,
+    ) -> None:
+        issue = default_issue()
+        issue["body"] = None
+        dispatcher = Dispatcher(issue=issue)
+        code, output, errors = self.run_main(
+            dispatcher, "--repo", REPOSITORY, "--number", str(NUMBER)
+        )
+        self.assertEqual(0, code)
+        self.assertEqual("", errors)
+        snapshot = json.loads(output)
+        self.assertEqual("", snapshot["issue"]["body"])
+        self.assertEqual([], snapshot["issue"]["acceptance_criteria"])
+        inspection = self.reducer.inspect_snapshot(snapshot)
+        self.assertEqual("ready", inspection["status"])
+        self.assertEqual("prepare_plan", inspection["next_action"])
+        self.assertEqual(
+            self.reducer._requirements_sha256(self.reducer._snapshot(snapshot)),
+            inspection["requirements_sha256"],
+        )
+
 
 class AuthorityTests(ProducerHarness):
     """Authority needs the association and the repository permission."""

@@ -577,7 +577,7 @@ docstring pins these rules:
 - The endpoint family is the GitHub REST API through the GitHub CLI. There is no GraphQL read.
 - `target.issue_id` is the REST `node_id` of the issue.
 - The actor comes from `gh api user`. Every `id` is the stringified REST integer identity.
-- The issue title and body are the exact REST strings.
+- The issue title and body are the exact REST strings. A null REST body becomes the empty string.
 - The acceptance-criteria heading level is between 2 and 6. `ACCEPTANCE_HEADING_NAMES` and
   `ACCEPTANCE_ITEM_MARKERS` are pinned ordered tuples. The first matching heading wins. The section
   ends at the next heading whose level is less than or equal to the section level. An item line
@@ -590,6 +590,15 @@ docstring pins these rules:
 - One request timeout and one overall deadline bound the run.
 - The producer sets `comments_complete` to `true` only after a short final page.
 - A GitLab locator fails until an adapter lands.
+
+### Plan requirements rebind
+
+`inspect` reports the `plan_requirements_rebind` diagnostic for one plan-only epoch whose actor-owned
+initial plan carrier binds a different requirements digest. The result is `ready` with
+`next_action` `prepare_plan`. `prepare-plan` then returns one `update` of the retained plan comment.
+That update binds the current requirements digest and the existing visible plan content. The route
+requires the current target, one actor-owned plan comment, and no review comment. Any other
+requirements drift stays `withheld` with `requirements_drift`.
 
 ### Issue snapshot
 

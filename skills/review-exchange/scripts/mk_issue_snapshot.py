@@ -28,7 +28,8 @@ Comment pagination
 
 Issue body
     `issue.title` and `issue.body` are the exact REST strings. The helper trims
-    nothing, repairs nothing, and normalizes nothing.
+    nothing, repairs nothing, and normalizes nothing. GitHub returns a null body
+    for an issue without a description. A null body becomes the empty string.
 
 Acceptance criteria
     The helper reads one acceptance-criteria section. A heading is an ATX heading
@@ -297,7 +298,11 @@ def _issue_record(
             f"GitHub returned an unsupported issue state: {state!r}."
         )
     title = value.get("title")
+    # GitHub returns a null body for an issue without a description. The
+    # reducer accepts an empty body, so map null to the empty string.
     body = value.get("body")
+    if body is None:
+        body = ""
     if not isinstance(title, str) or not isinstance(body, str):
         raise OperationalError("GitHub returned an incomplete issue record.")
     target = {
