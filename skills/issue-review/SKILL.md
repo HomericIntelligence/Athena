@@ -234,8 +234,9 @@ readback. If the write or readback is uncertain, report `unknown_outcome` and re
 readback before any retry. Continue independent work.
 
 A `requirements_drift` diagnostic against a carrier that a historic ad-hoc producer published is a
-rebind condition. Do not rebuild the carrier. Report the diagnostic to the author. The author
-republishes the plan carrier from a producer snapshot. Then run this review again.
+rebind condition. Do not rebuild the carrier in this skill. Report the diagnostic to the author. The
+author deletes the stale plan comment through `plan-issue` authority, prepares a new plan from a
+producer snapshot, and publishes and verifies it. Then run this review again.
 
 ## Failed approaches
 

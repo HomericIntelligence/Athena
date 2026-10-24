@@ -199,10 +199,12 @@ decision remains unresolved. Do not infer a response or approval from old prose.
 
 ## Migration
 
-A plan carrier that a historic ad-hoc producer published reports `requirements_drift` under the
-canonical producer. The remediation is one rebind. The author republishes the plan carrier from a
-producer snapshot. The exchange treats that republication as a new epoch. A completed exchange needs
-no action.
+A plan carrier that a historic ad-hoc producer published can report `requirements_drift` or a
+`plan_requirements_rebind` diagnostic under the canonical producer. A plan-only epoch has no review
+comment, so a needs-reframe route cannot apply. The author confirms that the plan comment is the
+single actor-owned plan, deletes that plan comment through the invoking workflow, builds a fresh
+producer snapshot, prepares a new plan, and publishes and verifies it. A completed exchange needs no
+action.
 
 ## Result
 

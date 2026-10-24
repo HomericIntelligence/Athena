@@ -8,8 +8,10 @@ allowed-tools: [Read, Bash]
 
 # Review exchange
 
-Use the shared executable contract to continue an author-and-reviewer exchange. The helpers validate
-state and prepare artifacts. They do not read from a forge, write to a forge, or modify a repository.
+Use the shared executable contract to continue an author-and-reviewer exchange. The reducer helpers
+validate state and prepare artifacts. They do not read from a forge, write to a forge, or modify a
+repository. The issue snapshot producer reads issue data from the forge, and it writes nothing to the
+forge.
 
 Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to all
 prose that it produces.
@@ -41,8 +43,10 @@ recovery, resources, validation, and delivery.
   `issue_exchange.py`.
 - Use the installed helper from the current Athena skill corpus. Do not import a source checkout.
 
-Each command accepts one file path or `-` for standard input. Give `review_exchange.py extract` one
-UTF-8 Markdown carrier document. Give each other command one JSON document. The helper writes only
+Each `review_exchange.py` and `issue_exchange.py` command accepts one file path or `-` for standard
+input. Give `review_exchange.py extract` one UTF-8 Markdown carrier document. Give each other command
+one JSON document. `mk_issue_snapshot.py` takes no file path and no standard input. It accepts only
+`--repo`, `--number`, `--host`, and `--provider`. The helper writes only
 canonical JSON or the requested canonical carrier to standard output. Exit code `0` is a valid
 result. Exit code `1` is a protocol rejection. Exit code `2` is an operational failure.
 
@@ -127,6 +131,20 @@ producer decodes each response with a strict UTF-8 decode and applies one reques
 overall deadline. A GitLab locator fails until an adapter lands. See the
 [command interface](references/interface.md) for the exact pinned rules.
 
-Migration: a plan carrier that a historic ad-hoc producer published reports `requirements_drift`
-under this producer. The author rebinds it by republishing the plan carrier from a producer snapshot.
+Migration: a plan carrier that a historic ad-hoc producer published can report
+`requirements_drift` under the canonical producer. A plan-only epoch has no review comment, so no
+reframe verifier can rebind it. Use one of these routes:
+
+- If `inspect` reports `requirements_drift` with `next_action` `human_decision`, confirm that the
+  plan comment is the single actor-owned plan comment and that the issue has no review comment.
+  Delete that plan comment through the invoking workflow. Then build a fresh producer snapshot,
+  run `prepare-plan` to create the current plan comment, publish it, read it again, and run
+  `verify-publication`.
+- If `inspect` reports the `plan_requirements_rebind` diagnostic with `next_action` `prepare_plan`,
+  run `prepare-plan` with the same plan content and the retained target set. The helper returns an
+  update of the retained plan comment that binds the current requirements digest. Publish that
+  update, read it again, and run `verify-publication`. The helper prepares this update only for one
+  actor-owned, initial plan carrier and only when the issue has no review comment. Any other drift
+  keeps the withheld result, and you use the first route.
+
 A completed exchange needs no action.

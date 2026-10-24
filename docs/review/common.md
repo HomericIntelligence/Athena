@@ -585,13 +585,15 @@ by hand. Use a canonical prepared operation to replace a carrier in its retained
 state machine. `mk_issue_snapshot.py --repo OWNER/REPOSITORY --number NUMBER` builds one issue
 snapshot, and `issue_exchange.py inspect|prepare-plan|prepare-review|verify-publication|verify-finalize`
 verifies that snapshot and prepares or verifies the exact permitted issue operation. The producer
-owns snapshot normalization. The reducer owns verification. Both helpers accept one input file or
-standard input. The `extract` command accepts one UTF-8 Markdown
+owns snapshot normalization. The reducer owns verification. Each command of
+`review_exchange.py`, `issue_exchange.py`, and their batch forms accepts one input file or standard
+input. The `extract` command accepts one UTF-8 Markdown
 carrier. Batch commands use the bounded NDJSON interface. Other commands accept JSON. Commands
 write only canonical results to standard output.
 Exit code `0` identifies a valid result. Exit code `1` identifies a protocol rejection. Exit code
-`2` identifies an operational failure. The helpers do not use a network, write to a forge, or write
-repository state.
+`2` identifies an operational failure. The reducer helpers do not use a network, write to a forge,
+or write repository state. `mk_issue_snapshot.py` reads the GitHub REST API through an authenticated
+`gh`. It takes only command-line options: `--repo`, `--number`, `--host`, and `--provider`.
 
 The versioned envelope has exactly these fields:
 
