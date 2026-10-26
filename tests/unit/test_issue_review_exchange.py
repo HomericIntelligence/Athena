@@ -2556,6 +2556,13 @@ class IssueReviewExchangeTests(unittest.TestCase):
             "plan_requirements_rebind", inspected["diagnostics"][0]["code"]
         )
 
+        with self.assertRaisesRegex(
+            self.adapter.ProtocolError, "retained visible plan content"
+        ):
+            self.adapter.prepare_plan(
+                self.plan_request(plan_snapshot, content="## Plan\n\nReplaced plan.")
+            )
+
         prepared = self.adapter.prepare_plan(self.plan_request(plan_snapshot))
         self.assertEqual("ready", prepared["status"])
         self.assertEqual("update", prepared["operation"]["action"])

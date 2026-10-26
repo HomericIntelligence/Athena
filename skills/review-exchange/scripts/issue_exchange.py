@@ -1501,6 +1501,10 @@ def _prepare_plan_rebind(
     )
     visible = _visible(PLAN_MARKER, content)
     visible_sha256 = review_exchange.sha256_text(visible)
+    if visible_sha256 != plan_state["artifact_binding"]["visible_content_sha256"]:
+        raise ProtocolError(
+            "A plan rebind keeps the retained visible plan content exactly."
+        )
     author_record = {
         "event_type": "author_response",
         "exchange_id": exchange_id,
