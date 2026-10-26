@@ -511,6 +511,49 @@ The helper uses this order:
 9. Read the pull request again. Require the unchanged head, one matching terminal ledger, zero open
    threads, the unchanged live requirements binding, and the exclusive GO label.
 
+### Recovering a foreign-published terminal carrier
+
+This helper is the only terminal publisher for an exchange. When a same-round terminal state
+carrier is released through the general reviewer-round path first, the helper refuses every later
+terminal delivery, because the exchange can no longer accept a second terminal record.
+
+Recover with one explicit invocation and the unchanged closure manifest:
+
+```bash
+<installed-skill>/scripts/deliver_go.py \
+  --target-host github.com \
+  --target-repository <owner/repository> \
+  --expected-pr-url <canonical-pr-url> \
+  --expected-base-oid <base-oid> \
+  --expected-head-oid <head-oid> \
+  --response-manifest <closure-manifest.json> \
+  --supersede-foreign-terminal \
+  <number>
+```
+
+The helper then publishes one overriding terminal report. This report binds the superseded review
+identifier, the superseded state digest, and the reason `foreign-publication`. It carries the
+canonical closure ledger and any publication-anchor annex as the authoritative terminal content. It
+adds a supersession edge to the exchange history, so the history stays one chain. The prior record
+remains immutable on the forge. The override is an auditable declaration, not a deletion and not an
+edit. The helper then performs the normal terminal side effects: labels, generated closure
+responses, thread resolutions, and the delivery journal entry that names the superseded review.
+A later run without the flag adopts the published override and verifies it again.
+
+Four safety bounds apply:
+
+- The flag is required. Without it, the current fail-closed rejection stays.
+- Only one parsed terminal `GO` carrier for the same exchange, target, and head is supersedeable.
+  More than one such carrier, or a carrier that does not parse, fails closed with a diagnostic that
+  names each candidate.
+- A superseded digest that is already inside the verified chain is the self-duplicate case. The
+  helper does not supersede it.
+- The flag is valid only during final delivery. It is a hard error with `--prepare-manifest`,
+  `--verify-legacy-go`, `--deliver-no-go`, or `--repair-format-only-inline-root`.
+
+Supersession is permanent. There is no un-supersede path. A wrong invocation leaves an immutable
+override record on the forge. Recovery is escalation to the owner.
+
 Recompute the retained requirements binding at preflight, immediately before each write, and after
 the final readback. A scope change, closing-reference change, selected-URL change, linked-issue
 content or comment change, incomplete evidence, or provider failure withholds delivery.

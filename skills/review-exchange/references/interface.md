@@ -225,7 +225,7 @@ A state record has these fields:
 | `accepted_event_sha256` | Accepted-event digest |
 | `accepted_events` | Complete normalized event ledger for the current exchange |
 | `supersedes_state_sha256` | Superseded state digest or `null` |
-| `supersession_authority_receipt` | Authority receipt for a reframe, or `null` when `supersedes_state_sha256` is `null` |
+| `supersession_authority_receipt` | Authority receipt for a reframe; `null` when `supersedes_state_sha256` is `null` or when the last accepted event is a `terminal_supersession` |
 | `coverage_complete` | Boolean |
 | `progress` | One progress record for each reviewer round |
 | `findings` | Ordered list of 0 through 100 stored findings |
@@ -272,6 +272,11 @@ findings, authority, and progress history must agree with this replay. Do not co
 state record manually. A reframe genesis event also has `superseded_exchange_ids`. This is the
 complete ordered list of earlier exchange identifiers from the oldest exchange through the direct
 predecessor.
+
+A non-null `supersedes_state_sha256` normally requires a non-null
+`supersession_authority_receipt`. A `null` receipt is valid only when the last accepted event is a
+`terminal_supersession` and the genesis event is not a `reframe`. A `reframe` state always keeps its
+exact authority receipt.
 
 ### Envelopes
 
@@ -370,6 +375,21 @@ The result state stores this receipt in `supersession_authority_receipt`. A fres
 `supersedes_state_sha256=null` and `supersession_authority_receipt=null`. A reframe has non-null
 values for both fields.
 
+A terminal supersession overrides one foreign-published terminal carrier for the same exchange.
+It has the fields of a continued reviewer assessment, including the optional `reassessment` string,
+plus three required fields. It has these different values:
+
+- `event_type` is `terminal_supersession`.
+- `supersedes_state_sha256` is the digest of the foreign carrier. It must not equal
+  `prior_state_sha256`.
+- `superseded_review_id` is the nonempty identifier of the foreign carrier review.
+- `supersession_reason` is `foreign-publication`.
+
+The outer request's `previous` field is the exact retained state envelope before the terminal
+reviewer event. A supersession keeps the same exchange identity, the same requirements digest, the
+same surface, and the same target. The result state stores `supersedes_state_sha256` from the event
+and keeps `supersession_authority_receipt` as `null`.
+
 A continued author response has these fields:
 
 | Field | Type and value |
@@ -452,6 +472,7 @@ An authoritative human event has these fields:
 | `decisions` | Nonempty list of unique human decisions |
 
 A terminal GO cannot accept an author response or a reviewer assessment. A reframe remains valid.
+A superseding state is itself terminal. It accepts no later event.
 
 An authorized `select_closure` can continue after round 5. A requirements reframe is
 the only event that can change the exchange identity.

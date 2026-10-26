@@ -1998,6 +1998,166 @@ class ReviewExchangeTests(unittest.TestCase):
         with self.assertRaises(self.exchange.ProtocolError):
             self.exchange.verify_envelope(fresh_with_authority)
 
+    def supersession_event(
+        self,
+        state: dict[str, Any],
+        *,
+        supersedes_state_sha256: str = HEX_A,
+        superseded_review_id: str = "review-foreign",
+        supersession_reason: str = "foreign-publication",
+        artifact_binding: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return one continued terminal supersession event for a prior state."""
+        event = self.review_event(
+            state,
+            "resolve",
+            round_number=state["state"]["round"] + 1,
+        )
+        return {
+            **event,
+            "event_type": "terminal_supersession",
+            "artifact_binding": (
+                state["state"]["artifact_binding"]
+                if artifact_binding is None
+                else artifact_binding
+            ),
+            "supersedes_state_sha256": supersedes_state_sha256,
+            "superseded_review_id": superseded_review_id,
+            "supersession_reason": supersession_reason,
+        }
+
+    def superseding_state(self, **kwargs: Any) -> dict[str, Any]:
+        """Return one accepted superseding terminal state."""
+        requested = self.answered_state("fix")
+        return cast(
+            dict[str, Any],
+            self.reduce(self.supersession_event(requested, **kwargs), requested)[
+                "envelope"
+            ],
+        )
+
+    def test_terminal_supersession_reduces_to_one_overriding_terminal(self) -> None:
+        requested = self.answered_state("fix")
+
+        result = self.reduce(self.supersession_event(requested), requested)
+
+        self.assertEqual("accepted", result["status"])
+        state = result["envelope"]["state"]
+        self.assertEqual("complete", state["phase"])
+        self.assertEqual("GO", state["verdict"])
+        self.assertEqual(HEX_A, state["supersedes_state_sha256"])
+        self.assertIsNone(state["supersession_authority_receipt"])
+        self.assertEqual(
+            "terminal_supersession",
+            state["accepted_events"][-1]["event_type"],
+        )
+        self.assertEqual(
+            "review-foreign",
+            state["accepted_events"][-1]["superseded_review_id"],
+        )
+        self.assertEqual(requested["state_sha256"], state["prior_state_sha256"])
+        self.assertEqual(
+            result["envelope"]["state_sha256"],
+            self.exchange.verify_envelope(result["envelope"])["state_sha256"],
+        )
+
+    def test_terminal_supersession_requires_one_known_reason(self) -> None:
+        requested = self.answered_state("fix")
+
+        with self.assertRaises(self.exchange.ProtocolError):
+            self.reduce(
+                self.supersession_event(requested, supersession_reason="manual"),
+                requested,
+            )
+
+    def test_terminal_supersession_accepts_the_optional_reassessment(self) -> None:
+        requested = self.answered_state("fix")
+        event = {
+            **self.supersession_event(requested),
+            "reassessment": "Rework the carrier.",
+        }
+
+        result = self.reduce(event, requested)
+
+        self.assertEqual("accepted", result["status"])
+        self.assertEqual(
+            "Rework the carrier.",
+            result["envelope"]["state"]["accepted_events"][-1]["reassessment"],
+        )
+
+    def test_terminal_supersession_rejects_an_unknown_field(self) -> None:
+        requested = self.answered_state("fix")
+        event = {**self.supersession_event(requested), "note": "not a field"}
+
+        with self.assertRaises(self.exchange.ProtocolError):
+            self.reduce(event, requested)
+
+    def test_terminal_supersession_cannot_name_its_own_prior_state(self) -> None:
+        requested = self.answered_state("fix")
+
+        with self.assertRaises(self.exchange.ProtocolError):
+            self.reduce(
+                self.supersession_event(
+                    requested, supersedes_state_sha256=requested["state_sha256"]
+                ),
+                requested,
+            )
+
+    def test_terminal_supersession_has_no_authority_receipt(self) -> None:
+        requested = self.answered_state("fix")
+        event = self.supersession_event(requested)
+
+        with self.assertRaises(self.exchange.ProtocolError):
+            self.reduce(
+                {**event, "authority_receipt": {"reference": "x", "sha256": HEX_B}},
+                requested,
+            )
+
+    def test_reframe_supersession_receipt_pairing_stays_strict(self) -> None:
+        requested = self.answered_state("fix")
+        escalated = self.reduce(self.review_event(requested, "escalate"), requested)[
+            "envelope"
+        ]
+        reframed = self.reduce(self.reframe_event(escalated), escalated)["envelope"]
+
+        unpaired = copy.deepcopy(reframed)
+        unpaired["state"]["supersession_authority_receipt"] = None
+        unpaired["state_sha256"] = self.exchange.sha256_json(unpaired["state"])
+        with self.assertRaises(self.exchange.ProtocolError):
+            self.exchange.verify_envelope(unpaired)
+
+    def test_terminal_supersession_replay_rejects_a_tampered_digest(self) -> None:
+        state = self.superseding_state()
+        tampered = copy.deepcopy(state)
+        tampered["state"]["supersedes_state_sha256"] = HEX_B
+        tampered["state_sha256"] = self.exchange.sha256_json(tampered["state"])
+
+        with self.assertRaises(self.exchange.ProtocolError):
+            self.exchange.verify_envelope(tampered)
+
+    def test_terminal_supersession_replay_is_idempotent_and_terminal(self) -> None:
+        requested = self.answered_state("fix")
+        event = self.supersession_event(requested)
+        state = self.reduce(event, requested)["envelope"]
+
+        replay = self.reduce(event, state)
+
+        self.assertEqual("replayed", replay["status"])
+        self.assertEqual(state, replay["envelope"])
+        with self.assertRaises(self.exchange.ProtocolError):
+            self.reduce(self.review_event(state, "resolve", round_number=3), state)
+
+    def test_terminal_supersession_binds_the_current_reviewed_head(self) -> None:
+        requested = self.answered_state("fix")
+
+        with self.assertRaises(self.exchange.ProtocolError):
+            self.reduce(
+                self.supersession_event(
+                    requested, artifact_binding=self.artifact("revision-other")
+                ),
+                requested,
+            )
+
     def test_authority_record_parser_and_context_are_strict(self) -> None:
         parser = self.exchange.parse_authority_record
         verifier = self.exchange.verify_authority_record
