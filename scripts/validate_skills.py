@@ -566,7 +566,7 @@ def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationErro
         policy_path = repo_root / "docs" / "policies" / "required-checks.md"
         try:
             approved = approved_ruleset_policy(policy_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, ValueError) as error:
+        except (OSError, UnicodeError, ValueError, TypeError) as error:
             errors.append(
                 ValidationError(
                     "ruleset",

@@ -65,7 +65,7 @@ class ApprovedMergeQueueParameterTests(unittest.TestCase):
         )
         for name, text, literal in cases:
             with self.subTest(name=name):
-                with self.assertRaises(ValueError) as caught:
+                with self.assertRaises((ValueError, TypeError)) as caught:
                     ruleset.approved_merge_queue_parameters(text)
                 self.assertIn(literal, str(caught.exception))
 

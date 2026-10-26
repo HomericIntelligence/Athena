@@ -22,8 +22,10 @@ def evaluate_scorecard(criteria: str, skill: str) -> list[str]:
     ]
     if numbers != expected_numbers or len(set(sections)) != len(sections):
         return [
-            f"The criteria must define each of the {REQUIRED_SECTION_COUNT} uniquely "
-            "numbered sections."
+            (
+                f"The criteria must define each of the {REQUIRED_SECTION_COUNT} "
+                "uniquely numbered sections."
+            )
         ]
     weight_line = re.search(r"^Weights: (?P<weights>.+)$", skill, re.MULTILINE)
     if weight_line is None:

@@ -64,7 +64,7 @@ def approved_merge_queue_parameters(policy_text: str) -> dict[str, Any]:
             f"The operation returned this diagnostic.\n{error}"
         ) from error
     if not isinstance(parameters, dict):
-        raise ValueError(
+        raise TypeError(
             "The merge-queue policy must be one JSON object of parameter names "
             "and values."
         )
@@ -109,8 +109,10 @@ def evaluate_ruleset(document: object, expected: object, path: str) -> list[str]
     """Require one exact JSON value at the given path."""
     if type(document) is not type(expected):
         return [
-            f"The ruleset must match the approved policy at {path}. Expected "
-            f"{_json_type_name(expected)} but found {_json_type_name(document)}."
+            (
+                f"The ruleset must match the approved policy at {path}. Expected "
+                f"{_json_type_name(expected)} but found {_json_type_name(document)}."
+            )
         ]
 
     if isinstance(expected, dict):
@@ -145,8 +147,10 @@ def evaluate_ruleset(document: object, expected: object, path: str) -> list[str]
         expected_list = cast(list[object], expected)
         if len(actual_list) != len(expected_list):
             return [
-                f"The ruleset must match the approved policy at {path}. Expected "
-                f"{len(expected_list)} entries but found {len(actual_list)}."
+                (
+                    f"The ruleset must match the approved policy at {path}. Expected "
+                    f"{len(expected_list)} entries but found {len(actual_list)}."
+                )
             ]
         for index, (actual_item, expected_item) in enumerate(
             zip(actual_list, expected_list)
@@ -158,7 +162,9 @@ def evaluate_ruleset(document: object, expected: object, path: str) -> list[str]
 
     if document != expected:
         return [
-            f"The ruleset must match the approved policy at {path}. Expected "
-            f"{expected!r} but found {document!r}."
+            (
+                f"The ruleset must match the approved policy at {path}. Expected "
+                f"{expected!r} but found {document!r}."
+            )
         ]
     return []
