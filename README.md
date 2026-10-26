@@ -22,22 +22,29 @@ obey this rule.
 The current official ASD-STE100 standard is the complete authority. Athena checks do not certify
 conformance to the standard.
 
-## Required repositories
+## Repository integrations
 
-Athena has two required repositories:
+Athena has two repository integrations:
 
 | Purpose | Default | Owner override | Checkout |
 | --- | --- | --- | --- |
 | Knowledge | `HomericIntelligence/Mnemosyne` | `HOMERIC_INTELLIGENCE_MNEMOSYNE_OWNER` | `$HOME/.agent_brain/knowledge` |
 | Automation | `HomericIntelligence/Hephaestus` | `HOMERIC_INTELLIGENCE_HEPHAESTUS_OWNER` | `$HOME/.agent_brain/automation` |
 
-Athena resolves a trusted, current dependency checkout under the
-[`dependency-resolution` contract](docs/dependency-resolution.md). An invalid override, a trust or
-authentication failure, a checkout mismatch, or an update failure is fatal. The knowledge backend
-is mandatory. If `learn` has a verified, non-duplicate lesson and direct write authority, it uses an
-isolated worktree and a pull request. In all other conditions, it reports without a mutation.
+Read-only Mnemosyne use is local-first under the
+[`dependency-resolution` contract](docs/dependency-resolution.md). Athena validates the local
+checkout first, reports the revision and limits, and can refresh it when `gh`, authentication, and
+network access are available. If refresh cannot run or fails, Athena keeps the validated local
+revision and reports the freshness limit. Missing local knowledge, authentication failure, network
+failure, and update failure do not stop the primary task.
 
-Script-backed skills require Git and Python 3.13 on the host. Dependency resolution and the GitHub
+Mnemosyne delivery and Hephaestus execution use trusted, current dependency checkouts. At these
+boundaries, an invalid override, a trust or authentication failure, a checkout mismatch, or an
+update failure is fatal. If `learn` has an evidence-backed, non-duplicate lesson and direct write
+authority, it uses an isolated worktree and a pull request. In all other conditions, it reports
+without a mutation.
+
+Script-backed skills require Git and Python 3.12 or newer on the host. Dependency resolution and the GitHub
 pull-request route also require authenticated GitHub CLI (`gh`) access. GitHub issue and repository
 routes require the authenticated GitHub capability that their skill selects.
 
@@ -54,12 +61,12 @@ commit or a supported release tag. Then, restart or reload the harness so that i
 skills.
 
 opencode installs Athena as the scoped npm plugin `@homericintelligence/athena-opencode`. Add this
-plugin to the `plugin` array of your `opencode.json`:
+plugin to the `plugins` array of your `opencode.json`:
 
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@homericintelligence/athena-opencode"]
+  "plugins": ["@homericintelligence/athena-opencode"]
 }
 ```
 
@@ -78,7 +85,7 @@ are unavailable, Athena uses sequential work where supported or reports the capa
 any required third-party extensions through the harness's own package mechanism and review their
 source before installing them.
 
-Mnemosyne and Hephaestus remain Athena's repository dependencies under the contract above. They are
+Mnemosyne and Hephaestus remain Athena's repository integrations under the contract above. They are
 not copied into or represented as coding-harness packages.
 
 ## Release archives
@@ -107,8 +114,9 @@ The archive excludes these items:
 ## Skills
 
 - Architecture-first review: `change-review`, `repo-review`, and `pr-review`.
+- Review support: `review-exchange`.
 - Issue planning, review, and finalization: `plan-issue`, `issue-review`, and `finalize-plan`.
-- Engineering: `brainstorm`, `implement`, `address-review`, `realign`, `systematic-debugging`, and
+- Engineering: `brainstorm`, `implement`, `address-review`, `realign`, `simplify`, `systematic-debugging`, and
   `test-driven-development`.
 - Coordination: `myrmidon-swarm`, `git-worktrees`, and `tidy`.
 - Knowledge and enablement: `advise` and `learn`.
@@ -118,7 +126,10 @@ sequentially with the current agent.
 
 ## Develop
 
-Prerequisites are Git, uv, Just, and Python 3.13 for repository validation only.
+Prerequisites are Git, uv, Just, and Python 3.12 or newer for repository validation only. The checked-in
+`.python-version` file pins the default repository-tooling interpreter to Python 3.14.8.
+Set `UV_PYTHON` to another interpreter within the `>=3.12,<3.15` contract for compatibility
+tests.
 [Full environment setup lives in CONTRIBUTING.md](CONTRIBUTING.md#environment-setup).
 
 ## Layout

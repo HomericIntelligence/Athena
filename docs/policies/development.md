@@ -6,9 +6,19 @@ Apply the [ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.m
 prose in this document. Do not remove or weaken a technical, safety, security, evidence, permission,
 or failure requirement to make text shorter.
 
+Use the [autonomous workflow policy](autonomous-workflows.md) for recovery and continuation.
+
 ## Git
 
 - `main` is protected. Send all changes through short-lived feature branches and pull requests.
+- Before you start feature work, fetch `origin/main`. Create the isolated worktree and feature
+  branch at that exact commit. Record the commit as the worktree start commit and initial review
+  base.
+- After work starts, do not rebase because `main` changes or because the branch is behind. Rebase
+  only when required content from `main` blocks the work, or after the work is complete when the
+  forge reports a merge conflict that the agent must resolve.
+- A configured merge queue owns normal target integration and merge-group validation. A branch that
+  is behind but has no reported merge conflict does not require an agent rebase.
 - Use Conventional Commit subjects.
 - Sign each commit cryptographically. Include a Developer Certificate of Origin (DCO)
   `Signed-off-by` trailer.
@@ -23,19 +33,30 @@ or failure requirement to make text shorter.
 
 ## Pull requests
 
-- Target `main`.
+- Target `main` by default. For dependent knowledge changes, use a documented PR stack that
+  preserves each existing change.
 - Keep the scope aligned with one issue or one coherent maintenance objective.
+- You can publish a pull request before validation finishes. Report pending, failed, and unavailable
+  checks accurately. Publication does not establish completion or merge readiness.
+- Run each new or changed test with a focused command on an approved local or hosted runner. Confirm
+  that the command selects that test. Require a successful result before completion or merge.
+- Continuous integration and continuous delivery (CI/CD) workflows, not pre-commit, run the
+  automatic pytest tiers. Focused local validation does not replace CI/CD validation.
 - If an issue tracks the work, put `Closes #N` on its own line in the body.
 - Run required checks against the current head revision. The checks must be successful, current, and
   not incorrectly skipped.
-- Before auto-merge or merge, get an independent strict review.
+- Do not say that a check passed in the PR description unless the description can cite the current
+  head receipt that supports the claim.
+- Before auto-merge or merge, get an independent strict review. If review is unavailable, complete
+  preparation and withhold only auto-merge or merge.
 - Use a merge method that the repository supports. Do not guess or impose an organization-wide
   fallback.
 
 ## Safety
 
 - Never commit credentials, tokens, `.env` files, private keys, or personal data.
-- Get explicit user authority before a filesystem-destructive command or before you discard changes.
+- Use existing explicit cleanup authority for verified merged branches and clean worktrees with no
+  unique work. Get authority before other destructive actions or before you discard changes.
 - Never use `git reset --hard`.
 - You can use constructive Git, GitHub command-line interface (CLI), and Hephaestus operations when
   both conditions are true:
@@ -44,7 +65,7 @@ or failure requirement to make text shorter.
   - The repository contract permits the operation.
 
 - For branch and worktree cleanup, prefer guarded Hephaestus tools.
-- Preserve unrelated worktree changes. If safe isolation is not possible, stop.
+- Preserve unrelated worktree changes. Integrate compatible edits; withhold only conflicting writes.
 - Never bypass a failed validation, security, review, or policy gate.
 - Apply the canonical [engineering principles](../principles/README.md) as decision rules. Select only
   the principles that apply to the change. For routine Athena development, use these groups:
@@ -90,10 +111,17 @@ or failure requirement to make text shorter.
 
 - Add such an artifact only when a current consumer requires it. The owner and update method must be
   explicit.
+- The marked development-principles block in root `AGENTS.md` is generated data that the fleet
+  agent-contract validator consumes. `docs/principles/README.md` owns its content. The
+  agent-contract renderer owns its update method. Do not edit the block manually.
+- Use this sequence for each change: remove, reuse, consolidate, simplify, then add. Add only when
+  the earlier choices cannot meet the requirement.
 - Tests must verify computable behavior, data contracts, security properties, or executable artifact
   structure.
 - Do not test prose wording, headings, paragraph presence, document counts, or duplicated text
   strings.
+- Exact machine-consumed fields are data contracts, not editorial prose. This exception includes
+  the root `CLAUDE.md` pointer and the generated development-principles block.
 - Markdown lint and link checks can verify document syntax and link resolution. They must not freeze
   editorial content.
 - Prefer stable public outcomes to these types of assertions:
@@ -113,5 +141,6 @@ or failure requirement to make text shorter.
 
 Human review and Code Owner review are optional for Athena changes. They are not required.
 `CODEOWNERS` records advisory ownership. The baseline ruleset does not require an approval count or a
-Code Owner approval. Workflow, release, dependency, and security-control changes remain subject to
-the required checks and requested-scope boundaries of the repository.
+Code Owner approval. The baseline ruleset still requires extra approval for unattributed changes.
+Workflow, release, dependency, and security-control changes remain subject to the required checks
+and requested-scope boundaries of the repository.

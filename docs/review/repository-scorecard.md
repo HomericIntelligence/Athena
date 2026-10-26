@@ -165,6 +165,5 @@ The abbreviation `CI/CD` means continuous integration and continuous delivery. T
       [security, authority, and external writes](common.md#security-authority-and-external-writes), and
       [execution and integrity](common.md#execution-and-integrity) profiles.
 
-For each section, record the inventory evidence, commands that you ran, earned points, findings, N/A
-reasons, and coverage gaps. If a failed or sampled section is available, run it again. Do not mark it
-complete before that run.
+For each section, record the inventory evidence, earned points, findings, N/A reasons, and
+source-coverage gaps. Do not run validation or use CI/CD state to complete a review section.

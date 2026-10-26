@@ -13,7 +13,7 @@ Before you change the repository:
 
 ## Environment setup
 
-Install Git, uv, Just, and Python 3.13. Athena uses these tools only for repository validation.
+Install Git, uv, Just, and Python 3.12 or newer. Athena uses these tools only for repository validation.
 
 ```bash
 git clone https://github.com/HomericIntelligence/Athena
@@ -34,6 +34,10 @@ just all
 
 It does not build Python distribution artifacts.
 
+Pre-commit does not run pytest. Pull-request continuous integration (CI) uses `just test-fast`. This
+command excludes tests that have the `nightly` marker. Use `just test` to run all tests and the
+coverage policy. The daily nightly workflow and each release run use `just test`.
+
 ## Add or change a skill
 
 1. File or identify a tracking issue with example invocations and an output contract.
@@ -46,11 +50,14 @@ It does not build Python distribution artifacts.
    [`engineering principles catalog`](docs/principles/README.md).
 8. Apply the [ASD-STE100 technical-English policy](skills/TECHNICAL_ENGLISH.md) to all English
    technical prose.
-9. Run `just all`.
-10. Commit with a signed Conventional Commit that includes a Developer Certificate of Origin (DCO)
+9. Select focused commands for each new or changed test. Use an approved local or hosted runner.
+10. Run the applicable checks. You can open a pull request before validation finishes. Record
+    pending, failed, or unavailable checks and the remaining work.
+11. Commit with a signed Conventional Commit that includes a Developer Certificate of Origin (DCO)
    attestation.
-11. Open a pull request.
-12. If a tracking issue exists, include `Closes #N` on its own line.
+12. Open a pull request. Required CI runs the fast pytest tier. Nightly and release workflows run
+    the complete suite and coverage policy.
+13. If a tracking issue exists, include `Closes #N` on its own line.
 
 Do not enable auto-merge or merge without explicit maintainer authority.
 
@@ -63,15 +70,78 @@ requires focused maintainer review and validator coverage.
 ## Release process
 
 After required checks pass, a maintainer creates a signed `vX.Y.Z` tag. The release workflow
-revalidates the repository, builds a portable plugin archive, and publishes a GitHub release. No
-Python wheel or source distribution is produced.
+revalidates the repository, builds a portable plugin archive, and publishes a GitHub release. Both
+publish jobs use the protected `release` environment. A maintainer must approve the environment
+deployment before GitHub or npm publication starts. No Python wheel or source distribution is
+produced.
+
+Before the first release, a repository administrator must create the `release` environment in
+Settings > Environments. Add at least one required reviewer. Add tag policies for `v*` and
+`agent-contract-v*`. Keep the environment name exactly `release`.
+GitHub can create a missing environment without these protection rules. Before a release tag is
+created, verify the configuration with the GitHub CLI. Replace `<OWNER>/<REPOSITORY>` with the
+repository name:
+
+```bash
+gh api repos/<OWNER>/<REPOSITORY>/environments/release \
+  --jq '{reviewers: (.protection_rules | map(select(.type == "required_reviewers")) | length), policy: .deployment_branch_policy}'
+gh api repos/<OWNER>/<REPOSITORY>/environments/release/deployment-branch-policies \
+  --jq '.branch_policies[] | {name, type}'
+```
+
+The first command must show at least one required-reviewer rule and a custom deployment policy.
+The second command must show `v*` and `agent-contract-v*` with type `tag`. Do not create a release
+tag when either check does not show the required result.
+
+If a published release is defective, use this rollback procedure:
+
+1. Delete the GitHub release and its assets. Keep the tag for the next step:
+   `gh release delete vX.Y.Z --cleanup-tag=false`.
+2. Invalidate the published version by deleting the remote tag:
+   `git push origin :refs/tags/vX.Y.Z`. Delete the matching local tag with `git tag -d vX.Y.Z`.
+   Never re-create a version after its assets were published publicly.
+3. Fix the defect on `main` through the normal pull request and merge queue process.
+4. Create the next patch version as a fresh signed annotated tag on the fixed, queue-merged
+   commit, then run the full release gate. For example: `vX.Y.(Z+1)`.
+
+npm does not provide a safe, general unpublish path after its short unpublish window. Deprecate the
+published package version, then publish the next patch version:
+`npm deprecate @homericintelligence/athena-opencode@X.Y.Z "Defective release; use X.Y.(Z+1)"`.
+
+### Agent-contract release
+
+Package `v*` tags and agent-contract `agent-contract-v*` tags use different release gates. An
+implementation pull request must not create an agent-contract tag. After that pull request merges,
+use the [agent-contract v1.0.0 release runbook](docs/runbooks/agent-contract-v1.0.0-release.md) to
+apply and read back tag protection, create the signed tag, verify all tagged principle URLs, test
+update and deletion rejection, and publish the GitHub Release record.
+
+## Definition of done
+
+A change is done when:
+
+- Each new or changed test passed in a focused run on an approved local or hosted runner that
+  selected that test.
+- Each completion claim has runnable evidence that follows the
+  [evidence integrity policy](docs/policies/evidence-integrity.md).
+- Documentation and skill frontmatter follow `AGENTS.md` and the
+  [development policy](docs/policies/development.md).
+- Commits are signed Conventional Commits with a Developer Certificate of Origin (DCO)
+  attestation.
+- The pull request passes the current-head [required checks](docs/policies/required-checks.md).
+
+Pre-commit does not run pytest. Continuous integration and continuous delivery (CI/CD) workflows
+own the automatic fast and complete pytest runs. A contributor can run `just test` or `just all`
+locally. Neither a complete local suite nor a focused local pass is a condition for publication.
+Focused validation of each new or changed test does not replace required CI/CD validation.
+Publication with pending validation does not establish completion or merge readiness.
 
 ## Rejection criteria
 
 Athena rejects a pull request that does one or more of these actions:
 
 - It introduces a duplicate skill tree.
-- It makes the knowledge backend optional.
+- It bypasses dependency identity checks for knowledge access or durable writes.
 - It silently uses a fallback after an invalid dependency override.
 - It fabricates evidence.
 - It bypasses checks.

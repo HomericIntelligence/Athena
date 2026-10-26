@@ -7,7 +7,6 @@ import json
 import posixpath
 import re
 import shutil
-import subprocess
 import sys
 from collections.abc import Iterator, Sequence
 from pathlib import Path, PurePosixPath
@@ -18,7 +17,7 @@ sys.dont_write_bytecode = True
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scripts.package_plugin import PackageError, forbidden_name
+from scripts.package_plugin import PackageError, _repository_root, forbidden_name
 from scripts.semver import SEMVER_PATTERN
 from skills._cli import argument_parser
 
@@ -36,10 +35,15 @@ LEGAL_FILES: Final[tuple[PurePosixPath, ...]] = (
 SKILLS_ROOT: Final[PurePosixPath] = PurePosixPath("skills")
 REQUIRED_SKILL_FILES: Final[tuple[PurePosixPath, ...]] = (
     SKILLS_ROOT / "TECHNICAL_ENGLISH.md",
+    SKILLS_ROOT / "review-exchange" / "SKILL.md",
+    SKILLS_ROOT / "review-exchange" / "references" / "interface.md",
+    SKILLS_ROOT / "review-exchange" / "scripts" / "issue_exchange.py",
+    SKILLS_ROOT / "review-exchange" / "scripts" / "review_exchange.py",
 )
 STAGED_SUPPORT_ROOT: Final[PurePosixPath] = SKILLS_ROOT / "_support"
 SUPPORT_ROOTS: Final[tuple[PurePosixPath, ...]] = (
     PurePosixPath("docs") / "dependency-resolution.md",
+    PurePosixPath("docs") / "policies" / "autonomous-workflows.md",
     PurePosixPath("docs") / "policies" / "development.md",
     PurePosixPath("docs") / "policies" / "evidence-integrity.md",
     PurePosixPath("docs") / "principles",
@@ -162,6 +166,8 @@ def _copy_staged_file(
     """Copy one package file and rebase its local Markdown links."""
     if source_path.suffix.casefold() != ".md":
         shutil.copyfile(source_path, target)
+        if source_path.stat().st_mode & 0o111:
+            target.chmod(target.stat().st_mode | 0o111)
         return
     markdown = source_path.read_text(encoding="utf-8")
     rewritten = _rewrite_local_markdown_links(
@@ -193,7 +199,7 @@ def _staging_entries(
         ),
     ]
     source_to_staged: dict[Path, PurePosixPath] = {}
-    staged_paths: set[PurePosixPath] = set()
+    staged_paths: set[PurePosixPath] = {SKILLS_ROOT / "_plugin.json"}
     for source_path, staged_path in entries:
         source_relative = _relative(source_path, repo_root)
         _validate_source(source_path, source_relative)
@@ -251,6 +257,10 @@ def stage_package(repo_root: Path, output_directory: Path | None = None) -> Path
                 staged_path,
                 source_to_staged,
             )
+    (destination / "skills" / "_plugin.json").write_text(
+        json.dumps({"version": manifest_version}, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     return destination
 
 
@@ -269,23 +279,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     arguments = parser.parse_args(argv)
     try:
-        repo_root = arguments.root.resolve() if arguments.root else _git_root()
+        repo_root = (
+            arguments.root.resolve() if arguments.root else _repository_root(None)
+        )
         staged = stage_package(repo_root, arguments.output)
     except (PackageError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
     print(f"The tool staged the opencode npm package at '{staged}'.")
     return 0
-
-
-def _git_root() -> Path:
-    result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return Path(result.stdout.strip()).resolve()
 
 
 if __name__ == "__main__":

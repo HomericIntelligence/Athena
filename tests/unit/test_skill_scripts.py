@@ -13,11 +13,15 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
+
+import pytest
 
 from skills._cli import argument_parser, git_read_arguments, git_read_environment
 
 ROOT = Path(__file__).resolve().parents[2]
+pytestmark = pytest.mark.nightly
 
 
 def executable_scripts() -> list[Path]:
@@ -209,6 +213,12 @@ class ScriptConventionTests(unittest.TestCase):
                 1,
             ),
             (
+                "skills/realign/scripts/resolve_assessment.py",
+                ("bind",),
+                "git",
+                1,
+            ),
+            (
                 "skills/systematic-debugging/scripts/repository_evidence.py",
                 ("pattern",),
                 "git",
@@ -217,7 +227,7 @@ class ScriptConventionTests(unittest.TestCase):
             (
                 "skills/tidy/scripts/run_tidy.py",
                 ("/tmp/automation",),
-                "uv",
+                "git",
                 127,
             ),
         )
@@ -234,6 +244,34 @@ class ScriptConventionTests(unittest.TestCase):
                     result = run_script(path, *arguments, cwd=root, env=environment)
 
                     assert_cli_failure(self, result, returncode, missing_command)
+
+    def test_run_tidy_reports_missing_uv_after_a_successful_git_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            bin_directory = root / "bin"
+            bin_directory.mkdir()
+            (bin_directory / "python3").symlink_to(sys.executable)
+            git_stub = bin_directory / "git"
+            git_stub.write_text(
+                "#!/usr/bin/env python3\nimport sys\nsys.exit(0)\n",
+                encoding="utf-8",
+            )
+            git_stub.chmod(0o755)
+            environment = os.environ.copy()
+            environment["PATH"] = str(bin_directory)
+
+            result = run_script(
+                "skills/tidy/scripts/run_tidy.py",
+                "/tmp/automation",
+                cwd=root,
+                env=environment,
+            )
+
+        assert_cli_failure(self, result, 127, "uv")
+        self.assertIn(
+            "The required command is not available: 'uv'.",
+            result.stderr,
+        )
 
 
 class RetrievableSkillSelectorTests(unittest.TestCase):
@@ -432,11 +470,60 @@ class FakeGitHubCliFixtureTests(unittest.TestCase):
                 "",
             ),
             (
-                ("repo", "view"),
-                {"FAKE_GH_REPOSITORY": "owner/alternative"},
+                ("auth", "status", "--hostname", "github.com"),
+                {},
                 0,
-                {"nameWithOwner": "owner/alternative"},
+                "github.com\n  ✓ Logged in to github.com as fake-user\n",
                 "",
+            ),
+            (
+                ("auth", "status", "--hostname", "github.com"),
+                {
+                    "FAKE_GH_AUTH_STATUS_EXIT": "1",
+                    "FAKE_GH_AUTH_STATUS_STDERR": "authentication failed",
+                },
+                1,
+                "github.com\n  ✓ Logged in to github.com as fake-user\n",
+                "authentication failed\n",
+            ),
+            (
+                (
+                    "repo",
+                    "view",
+                    "owner/repository",
+                    "--json",
+                    "nameWithOwner,defaultBranchRef",
+                ),
+                {
+                    "FAKE_GH_REQUIRE_REPOSITORY": "owner/repository",
+                    "FAKE_GH_REPOSITORY": "owner/alternative",
+                },
+                0,
+                {
+                    "defaultBranchRef": {"name": "main"},
+                    "nameWithOwner": "owner/alternative",
+                },
+                "",
+            ),
+            (
+                (
+                    "repo",
+                    "view",
+                    "owner/repository",
+                    "--json",
+                    "nameWithOwner,defaultBranchRef",
+                ),
+                {
+                    "FAKE_GH_REQUIRE_REPOSITORY": "owner/repository",
+                    "FAKE_GH_REPO_VIEW_EXIT": "2",
+                    "FAKE_GH_REPO_VIEW_STDERR": "repository lookup failed",
+                },
+                2,
+                {
+                    "defaultBranchRef": {"name": "main"},
+                    "nameWithOwner": "owner/repository",
+                },
+                "repository lookup failed\n",
             ),
             (
                 ("repo", "view"),
@@ -466,6 +553,27 @@ class FakeGitHubCliFixtureTests(unittest.TestCase):
                 {"FAKE_GH_FILES_JSON": json.dumps({"filename": "ignored.py"})},
                 0,
                 "",
+                "",
+            ),
+            (
+                (
+                    "api",
+                    "--hostname",
+                    "github.com",
+                    "--method",
+                    "GET",
+                    "-H",
+                    "Accept: application/vnd.github+json",
+                    f"repos/owner/repository/commits/{'b' * 40}/check-runs?per_page=100&page=1",
+                ),
+                {
+                    "FAKE_GH_EXPECTED_CHECK_HEAD": "b" * 40,
+                    "FAKE_GH_CHECK_RUNS_JSON": json.dumps(
+                        {"total_count": 0, "check_runs": []}
+                    ),
+                },
+                0,
+                {"total_count": 0, "check_runs": []},
                 "",
             ),
             (("unknown",), {}, 2, "", "unexpected gh invocation: ['unknown']\n"),
@@ -970,7 +1078,7 @@ class PullRequestScriptTests(unittest.TestCase):
 
                     assert_cli_failure(self, result, 1)
 
-    def test_collect_evidence_combines_pr_metadata_files_and_checks(self) -> None:
+    def test_collect_evidence_combines_pr_metadata_and_source_paths(self) -> None:
         requested_fields = ""
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -987,6 +1095,13 @@ class PullRequestScriptTests(unittest.TestCase):
                     "number": 9,
                     "title": "Portable Athena",
                     "author": {"login": "reviewer"},
+                    "reviewDecision": "REVIEW_REQUIRED",
+                    "reviews": [
+                        {
+                            "author": {"login": "independent-reviewer"},
+                            "state": "COMMENTED",
+                        }
+                    ],
                     "statusCheckRollup": [{"name": "required-checks-gate"}],
                 }
             )
@@ -1013,11 +1128,107 @@ class PullRequestScriptTests(unittest.TestCase):
             [{"name": "required-checks-gate"}],
             evidence["pull_request"]["statusCheckRollup"],
         )
+        self.assertNotIn("merge_readiness", evidence)
+        self.assertNotIn("reviewDecision", evidence["pull_request"])
+        self.assertEqual(
+            [
+                {
+                    "author": {"login": "independent-reviewer"},
+                    "state": "COMMENTED",
+                }
+            ],
+            evidence["pull_request"]["reviews"],
+        )
         self.assertEqual(["skills/pr-review/SKILL.md"], evidence["changed_files"])
         self.assertEqual(evidence["changed_files"], evidence["changed_paths"])
-        self.assertEqual("SUCCESS", evidence["checks"][0]["state"])
+        self.assertNotIn("checks", evidence)
         self.assertNotIn("commits", requested_fields.split(","))
         self.assertNotIn("files", requested_fields.split(","))
+        self.assertIn("reviews", requested_fields.split(","))
+
+    def test_collect_evidence_preserves_review_records_as_review_context(
+        self,
+    ) -> None:
+        outputs: dict[str, dict[str, Any]] = {}
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            repository = root / "repo"
+            initialize_repository(repository)
+            base_oid = git(repository, "rev-parse", "HEAD")
+            (repository / "reviewed.txt").write_text("exact head\n", encoding="utf-8")
+            git(repository, "add", "reviewed.txt")
+            git(repository, "commit", "--quiet", "-m", "test: exact review head")
+            head_oid = git(repository, "rev-parse", "HEAD")
+            check_runs = {
+                "total_count": 1,
+                "check_runs": [
+                    {
+                        "id": 1,
+                        "name": "required-checks-gate",
+                        "head_sha": head_oid,
+                        "status": "completed",
+                        "conclusion": "success",
+                    }
+                ],
+            }
+            review_payloads = {
+                "empty": [],
+                "approved": [
+                    {
+                        "author": {"login": "reviewer"},
+                        "state": "APPROVED",
+                    }
+                ],
+            }
+
+            for label, reviews in review_payloads.items():
+                with self.subTest(label=label):
+                    case_root = root / label
+                    case_root.mkdir()
+                    env = self.make_fake_tools(case_root, [])
+                    env["FAKE_GH_VIEW_JSON"] = json.dumps(
+                        {
+                            "number": 9,
+                            "body": "",
+                            "isDraft": False,
+                            "baseRefOid": base_oid,
+                            "headRefOid": head_oid,
+                            "closingIssuesReferences": [],
+                            "reviewDecision": "REVIEW_REQUIRED",
+                            "reviews": reviews,
+                        }
+                    )
+                    env["FAKE_GH_REQUIRE_REPOSITORY"] = "owner/repository"
+                    env["FAKE_GH_EXPECTED_CHECK_HEAD"] = head_oid
+                    env["FAKE_GH_CHECK_RUNS_JSON"] = json.dumps(check_runs)
+                    result = run_script(
+                        "skills/pr-review/scripts/collect_evidence.py",
+                        "--expected-base-oid",
+                        base_oid,
+                        "--expected-head-oid",
+                        head_oid,
+                        "--expected-host",
+                        "github.com",
+                        "--expected-repository",
+                        "owner/repository",
+                        "--expected-pr-number",
+                        "9",
+                        "--expected-pr-url",
+                        "https://github.com/owner/repository/pull/9",
+                        "9",
+                        cwd=repository,
+                        env=env,
+                    )
+
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    outputs[label] = json.loads(result.stdout)
+
+        self.assertNotEqual(outputs["empty"], outputs["approved"])
+        self.assertEqual([], outputs["empty"]["pull_request"]["reviews"])
+        self.assertEqual(
+            review_payloads["approved"],
+            outputs["approved"]["pull_request"]["reviews"],
+        )
 
     def test_collect_evidence_rejects_pr_from_another_repository(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1065,28 +1276,6 @@ class PullRequestScriptTests(unittest.TestCase):
         self.assertEqual("incomplete PR metadata", error["error"])
         self.assertIn("title", error["details"])
 
-    def test_collect_evidence_preserves_pending_and_failed_checks(self) -> None:
-        for exit_code, state in ((8, "PENDING"), (1, "FAILURE")):
-            with self.subTest(exit_code=exit_code):
-                with tempfile.TemporaryDirectory() as temporary_directory:
-                    root = Path(temporary_directory)
-                    env = self.make_fake_tools(root, [])
-                    env["FAKE_GH_VIEW_JSON"] = json.dumps({"number": 9})
-                    env["FAKE_GH_FILES_JSON"] = "[]"
-                    env["FAKE_GH_CHECKS"] = json.dumps(
-                        [{"name": "gate", "state": state}]
-                    )
-                    env["FAKE_GH_CHECKS_EXIT"] = str(exit_code)
-                    result = run_script(
-                        "skills/pr-review/scripts/collect_evidence.py",
-                        "9",
-                        cwd=root,
-                        env=env,
-                    )
-
-                self.assertEqual(0, result.returncode, result.stderr)
-                self.assertEqual(state, json.loads(result.stdout)["checks"][0]["state"])
-
     def test_collect_evidence_does_not_use_size_limited_pr_diff(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -1105,26 +1294,6 @@ class PullRequestScriptTests(unittest.TestCase):
         self.assertEqual(
             ["large/change.py"], json.loads(result.stdout)["changed_files"]
         )
-
-    def test_collect_evidence_rejects_usage_and_invalid_check_evidence(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            root = Path(temporary_directory)
-            env = self.make_fake_tools(root, [])
-            usage = run_script(
-                "skills/pr-review/scripts/collect_evidence.py", cwd=root, env=env
-            )
-            env["FAKE_GH_VIEW_JSON"] = json.dumps({"number": 9})
-            env["FAKE_GH_CHECKS"] = json.dumps({"state": "SUCCESS"})
-            invalid = run_script(
-                "skills/pr-review/scripts/collect_evidence.py",
-                "9",
-                cwd=root,
-                env=env,
-            )
-
-        self.assertEqual(2, usage.returncode)
-        self.assertIn("usage:", usage.stderr)
-        assert_cli_failure(self, invalid, 1)
 
 
 class ChangeReviewScriptTests(unittest.TestCase):
@@ -1823,7 +1992,9 @@ class WorktreeScriptTests(unittest.TestCase):
             json.loads(result.stdout)["path"],
         )
 
-    def test_prepare_worktree_fails_when_local_directory_is_not_ignored(self) -> None:
+    def test_prepare_worktree_plans_default_directory_without_ignore_change(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             repository = Path(temporary_directory) / "repo"
             initialize_repository(repository)
@@ -1839,7 +2010,11 @@ class WorktreeScriptTests(unittest.TestCase):
             )
             self.assertFalse(target.exists())
 
-        assert_cli_failure(self, result, 1, "worktrees")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            str((repository / ".worktrees" / "feature-two").resolve()),
+            json.loads(result.stdout)["path"],
+        )
 
     def test_prepare_worktree_rejects_symlinked_local_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -2038,6 +2213,294 @@ class WorktreeScriptTests(unittest.TestCase):
 
 
 class TidyDelegationTests(unittest.TestCase):
+    REQUIRED_HEPHAESTUS_TIDY_REVISION = "aa357098e5d72178d248e4188e7f5e5f843cdd3f"
+
+    @staticmethod
+    def _write_executable(path: Path, source: str) -> None:
+        path.write_text(source, encoding="utf-8")
+        path.chmod(0o755)
+
+    def _write_git_revision_gate(
+        self,
+        path: Path,
+        automation_checkout: Path,
+        *,
+        exit_code: int,
+        hostile_environment: dict[str, str] | None = None,
+    ) -> None:
+        self._write_executable(
+            path,
+            "#!/usr/bin/env python3\n"
+            "import os\n"
+            "import sys\n"
+            "arguments = sys.argv[1:]\n"
+            f"expected_checkout = {str(automation_checkout)!r}\n"
+            f"required_revision = {self.REQUIRED_HEPHAESTUS_TIDY_REVISION!r}\n"
+            f"hostile_environment = {hostile_environment or {}!r}\n"
+            "safe_environment = {\n"
+            "    'GIT_ATTR_NOSYSTEM': '1',\n"
+            "    'GIT_CONFIG_GLOBAL': os.devnull,\n"
+            "    'GIT_CONFIG_NOSYSTEM': '1',\n"
+            "    'GIT_CONFIG_SYSTEM': os.devnull,\n"
+            "    'GIT_GRAFT_FILE': os.devnull,\n"
+            "    'GIT_NO_LAZY_FETCH': '1',\n"
+            "    'GIT_NO_REPLACE_OBJECTS': '1',\n"
+            "    'GIT_OPTIONAL_LOCKS': '0',\n"
+            "    'GIT_TERMINAL_PROMPT': '0',\n"
+            "}\n"
+            "if (\n"
+            "    arguments[:3] != ['-c', 'core.commitGraph=false', '--no-replace-objects']\n"
+            "    or len(arguments) != 9\n"
+            "    or arguments[3] != '-C'\n"
+            "    or arguments[4] != expected_checkout\n"
+            "    or arguments[5] != 'merge-base'\n"
+            "    or arguments[6] != '--is-ancestor'\n"
+            "    or arguments[7] != required_revision\n"
+            "    or arguments[8] != 'HEAD'\n"
+            "    or any(os.environ.get(key) == value for key, value in hostile_environment.items())\n"
+            "    or any(os.environ.get(key) != value for key, value in safe_environment.items())\n"
+            "):\n"
+            "    raise SystemExit(2)\n"
+            f"raise SystemExit({exit_code})\n",
+        )
+
+    def test_tidy_revision_gate_ignores_hostile_git_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            automation_checkout = root / "trusted automation"
+            automation_checkout.mkdir()
+            target_repository = root / "target repository"
+            target_repository.mkdir()
+            bin_directory = root / "bin"
+            bin_directory.mkdir()
+            hostile_environment = {
+                "GIT_ALTERNATE_OBJECT_DIRECTORIES": str(root / "alternate objects"),
+                "GIT_DIR": str(root / "hostile.git"),
+                "GIT_OBJECT_DIRECTORY": str(root / "objects"),
+                "GIT_REPLACE_REF_BASE": "refs/hostile/replace/",
+                "GIT_WORK_TREE": str(root / "hostile worktree"),
+            }
+            self._write_git_revision_gate(
+                bin_directory / "git",
+                automation_checkout,
+                exit_code=0,
+                hostile_environment=hostile_environment,
+            )
+            self._write_executable(
+                bin_directory / "uv",
+                "#!/usr/bin/env python3\n"
+                "import os\n"
+                f"hostile_environment = {hostile_environment!r}\n"
+                "if any(os.environ.get(key) != value for key, value in hostile_environment.items()):\n"
+                "    raise SystemExit(98)\n"
+                "raise SystemExit(37)\n",
+            )
+            environment = os.environ.copy()
+            environment.update(hostile_environment)
+            environment["PATH"] = f"{bin_directory}{os.pathsep}{environment['PATH']}"
+
+            result = run_script(
+                "skills/tidy/scripts/run_tidy.py",
+                str(automation_checkout),
+                cwd=target_repository,
+                env=environment,
+            )
+
+        self.assertEqual(37, result.returncode, result.stderr)
+
+    def test_tidy_rejects_stale_hephaestus_checkout_before_delegation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            automation_checkout = root / "trusted automation"
+            automation_checkout.mkdir()
+            target_repository = root / "target repository"
+            target_repository.mkdir()
+            bin_directory = root / "bin"
+            bin_directory.mkdir()
+            self._write_git_revision_gate(
+                bin_directory / "git", automation_checkout, exit_code=1
+            )
+            self._write_executable(
+                bin_directory / "uv",
+                "#!/usr/bin/env python3\nraise SystemExit(99)\n",
+            )
+            environment = os.environ.copy()
+            environment["PATH"] = f"{bin_directory}{os.pathsep}{environment['PATH']}"
+
+            result = run_script(
+                "skills/tidy/scripts/run_tidy.py",
+                str(automation_checkout),
+                cwd=target_repository,
+                env=environment,
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("stale", result.stderr)
+        self.assertNotIn("All branches rebased cleanly", result.stdout)
+        self.assertNotIn("All branches rebased cleanly", result.stderr)
+
+    def test_tidy_propagates_partial_cleanup_failure_without_success_conclusion(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            automation_checkout = root / "trusted automation"
+            automation_checkout.mkdir()
+            automation_bin = automation_checkout / "bin"
+            automation_bin.mkdir()
+            target_repository = root / "target repository"
+            target_repository.mkdir()
+            bin_directory = root / "bin"
+            bin_directory.mkdir()
+            self._write_git_revision_gate(
+                bin_directory / "git", automation_checkout, exit_code=0
+            )
+            # Model the fixed Hephaestus boundary. `uv` runs the project-local
+            # tidy shim, and the shim returns the delegated `gh tidy` status.
+            self._write_executable(
+                bin_directory / "gh",
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "print('partial cleanup: rebase conflict remains unresolved')\n"
+                "print('checked-out worktree skipped', file=sys.stderr)\n"
+                "raise SystemExit(128)\n",
+            )
+            self._write_executable(
+                automation_bin / "hephaestus-tidy",
+                "#!/usr/bin/env python3\n"
+                "import subprocess\n"
+                "import sys\n"
+                "command = [\n"
+                "    'gh',\n"
+                "    'tidy',\n"
+                "    '--rebase-all',\n"
+                "    '--auto-delete-merged',\n"
+                "    '--trunk',\n"
+                "    'main',\n"
+                "    '--skip-gc',\n"
+                "]\n"
+                "result = subprocess.run(command, check=False)\n"
+                "raise SystemExit(result.returncode)\n",
+            )
+            self._write_executable(
+                bin_directory / "uv",
+                "#!/usr/bin/env python3\n"
+                "import subprocess\n"
+                "import sys\n"
+                "from pathlib import Path\n"
+                "arguments = sys.argv[1:]\n"
+                "if (\n"
+                "    len(arguments) < 5\n"
+                "    or arguments[0] != 'run'\n"
+                "    or arguments[1] != '--project'\n"
+                "    or arguments[3] != '--locked'\n"
+                "    or arguments[4] != 'hephaestus-tidy'\n"
+                "):\n"
+                "    raise SystemExit(2)\n"
+                "project = Path(arguments[2])\n"
+                "command = [str(project / 'bin' / 'hephaestus-tidy'), *arguments[5:]]\n"
+                "result = subprocess.run(command, check=False)\n"
+                "raise SystemExit(result.returncode)\n",
+            )
+            environment = os.environ.copy()
+            environment["PATH"] = f"{bin_directory}{os.pathsep}{environment['PATH']}"
+
+            result = run_script(
+                "skills/tidy/scripts/run_tidy.py",
+                str(automation_checkout),
+                cwd=target_repository,
+                env=environment,
+            )
+
+        self.assertEqual(128, result.returncode)
+        self.assertEqual(
+            "partial cleanup: rebase conflict remains unresolved\n", result.stdout
+        )
+        self.assertEqual("checked-out worktree skipped\n", result.stderr)
+        self.assertNotIn("All branches rebased cleanly", result.stdout)
+        self.assertNotIn("All branches rebased cleanly", result.stderr)
+
+    def test_tidy_zero_exit_passes_output_through_transparently(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            automation_checkout = root / "trusted automation"
+            automation_checkout.mkdir()
+            automation_bin = automation_checkout / "bin"
+            automation_bin.mkdir()
+            target_repository = root / "target repository"
+            target_repository.mkdir()
+            bin_directory = root / "bin"
+            bin_directory.mkdir()
+            self._write_git_revision_gate(
+                bin_directory / "git", automation_checkout, exit_code=0
+            )
+            # The shim keeps stdin attached and passes the dependency exit code
+            # back without adding its own summary.
+            self._write_executable(
+                bin_directory / "gh",
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "print(sys.stdin.read(), end='')\n"
+                "print('delegated success', file=sys.stderr)\n",
+            )
+            self._write_executable(
+                automation_bin / "hephaestus-tidy",
+                "#!/usr/bin/env python3\n"
+                "import subprocess\n"
+                "command = [\n"
+                "    'gh',\n"
+                "    'tidy',\n"
+                "    '--rebase-all',\n"
+                "    '--auto-delete-merged',\n"
+                "    '--trunk',\n"
+                "    'main',\n"
+                "    '--skip-gc',\n"
+                "]\n"
+                "result = subprocess.run(command, check=False)\n"
+                "raise SystemExit(result.returncode)\n",
+            )
+            self._write_executable(
+                bin_directory / "uv",
+                "#!/usr/bin/env python3\n"
+                "import subprocess\n"
+                "import sys\n"
+                "from pathlib import Path\n"
+                "arguments = sys.argv[1:]\n"
+                "if (\n"
+                "    len(arguments) < 5\n"
+                "    or arguments[0] != 'run'\n"
+                "    or arguments[1] != '--project'\n"
+                "    or arguments[3] != '--locked'\n"
+                "    or arguments[4] != 'hephaestus-tidy'\n"
+                "):\n"
+                "    raise SystemExit(2)\n"
+                "project = Path(arguments[2])\n"
+                "command = [str(project / 'bin' / 'hephaestus-tidy'), *arguments[5:]]\n"
+                "result = subprocess.run(command, check=False)\n"
+                "raise SystemExit(result.returncode)\n",
+            )
+            environment = os.environ.copy()
+            environment["PATH"] = f"{bin_directory}{os.pathsep}{environment['PATH']}"
+
+            result = run_script(
+                "skills/tidy/scripts/run_tidy.py",
+                str(automation_checkout),
+                cwd=target_repository,
+                env=environment,
+                input_text="interactive sentinel\n",
+            )
+
+        self.assertEqual(0, result.returncode)
+        self.assertEqual("interactive sentinel\n", result.stdout)
+        self.assertEqual("delegated success\n", result.stderr)
+
+    def test_tidy_delegate_remains_process_replacement_without_capture(self) -> None:
+        source = (ROOT / "skills/tidy/scripts/run_tidy.py").read_text(encoding="utf-8")
+
+        self.assertIn("os.execvp(", source)
+        self.assertIn("subprocess.run(", source)
+        self.assertNotIn("capture_output", source)
+
     def test_tidy_delegate_preserves_process_contract(self) -> None:
         delegate = ROOT / "skills/tidy/scripts/run_tidy.py"
         self.assertTrue(delegate.is_file(), "the thin tidy delegate must exist")
@@ -2050,6 +2513,9 @@ class TidyDelegationTests(unittest.TestCase):
             target_repository.mkdir()
             bin_directory = root / "bin"
             bin_directory.mkdir()
+            self._write_git_revision_gate(
+                bin_directory / "git", automation_checkout, exit_code=0
+            )
             fake_uv = bin_directory / "uv"
             fake_uv.write_text(
                 "#!/usr/bin/env python3\n"

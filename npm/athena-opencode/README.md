@@ -10,7 +10,7 @@ for its English technical prose.
 
 ## Install
 
-Add the package to the `plugin` array in the opencode configuration. Use one of these configuration
+Add the package to the `plugins` array in the opencode configuration. Use one of these configuration
 files:
 
 - `~/.config/opencode/opencode.json`; or
@@ -19,7 +19,7 @@ files:
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@homericintelligence/athena-opencode"]
+  "plugins": ["@homericintelligence/athena-opencode"]
 }
 ```
 
@@ -42,13 +42,13 @@ Use the native opencode skill mechanism. For example, ask opencode to use the `r
 [`README.md`](https://github.com/HomericIntelligence/Athena#readme) for this information:
 
 - the full skill catalog;
-- dependency requirements for Git and Python 3.13;
+- dependency requirements for Git and Python 3.12 or newer;
 - the authenticated GitHub CLI (`gh`) requirement for forge routes; and
 - capability fallbacks.
 
 ## Uninstall
 
-1. Remove `"@homericintelligence/athena-opencode"` from the `plugin` array.
+1. Remove `"@homericintelligence/athena-opencode"` from the `plugins` array.
 2. Restart opencode.
 3. To remove the files immediately, delete `opencode/skills/athena/` from your configuration
    directory.

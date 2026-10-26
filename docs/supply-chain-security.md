@@ -32,8 +32,10 @@ inventories for Grype.
 The job does not scan example lockfiles or build-time compiler binaries. These items are not in the
 installed runtime surface. The native inventories are continuous integration (CI) evidence and not
 release assets. Athena never includes those third-party packages in its archive.
-[Issue #74](https://github.com/HomericIntelligence/Athena/issues/74) tracks restoration of a broader
-source inventory. This restoration can occur when the upstream runtime corrects the excluded inputs.
+The advisory `security/pi-upstream-inventory-watch` job scans the full upstream Pi source tree each
+week with the same Syft and Grype policy. It keeps a separate record for upstream inventory
+evidence for tracking only. It does not change `required-checks-gate` or the shipped dependency
+contract.
 
 Host capabilities, the runner operating system, and commands used only in examples are outside the
 dependency scope. Athena remains a plugin distribution. It does not add a Python package or runtime
@@ -91,6 +93,10 @@ Each entry in `security/vulnerability-exceptions.yaml` must identify these value
 The scan verifies the linked issue through GitHub. It fails closed if the issue is missing,
 inaccessible, closed, or outside Athena. A Critical exception can last for a maximum of 7 days from
 approval. A High exception can last for a maximum of 30 days from approval.
+
+The linked issue must stay open for the whole lifetime of the exception. Close the linked issue only
+when its entries leave `security/vulnerability-exceptions.yaml`. Do not add a `Closes` line to a pull
+request that edits that file, because it closes the tracking issue of the entries it writes.
 
 The scan fails closed for these exception conditions:
 

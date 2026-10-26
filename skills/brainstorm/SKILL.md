@@ -1,7 +1,7 @@
 ---
 name: brainstorm
 license: BSD-3-Clause
-description: Use before complex creative work. Examine intent and requirements. Stop if `advise` cannot prepare Mnemosyne.
+description: Use before complex creative work. Examine intent and requirements. Use available Mnemosyne advice; missing guidance does not stop otherwise authorized work.
 argument-hint: <idea or feature description>
 allowed-tools: [Read, Write, Bash, Grep, Glob, Agent]
 ---
@@ -19,7 +19,10 @@ requirement remains unresolved.
 
 **DESIGN CHECKPOINT:** Before a complex implementation, present a design that has sufficient detail
 for the scope. Use this checkpoint to confirm shared understanding. It is not a permission gate.
-Stop only for an unresolved requirement or a filesystem-destructive action.
+Ask only for an unresolved requirement or an action outside existing task authority.
+
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
+recovery, resources, validation, and delivery.
 
 ## Engineering principles
 
@@ -58,8 +61,8 @@ implementation, the design must show its assumptions and constraints.
 
 Complete in order:
 
-1. **Advise retrieval.** Run `advise` with the feature description to check the required knowledge
-   backend.
+1. **Advise retrieval.** Run `advise` with the feature description. If guidance is missing, stale,
+   or not verifiable, report the limit and continue otherwise authorized work with project evidence.
 2. **Project evidence.** Read applicable files, documents, and recent commits.
 3. **Clarification.** Ask one question in each message to identify the purpose, constraints, and
    success criteria.
@@ -73,7 +76,7 @@ Complete in order:
 10. **Design review.** Check the design for placeholders, contradictions, ambiguities, and scope
     errors.
 11. **Saved path.** If you saved a specification, report its path.
-12. **User review.** Ask the user to review a saved specification.
+12. **User review.** Make the saved specification available for review and continue authorized work.
 13. **Continuation.** Do not stop unless a requirement remains unresolved.
 14. **Implementation.** Start the requested implementation.
 15. **Complex work.** For a complex implementation, invoke `myrmidon-swarm`.
@@ -99,10 +102,13 @@ Complete in order:
 - Propose two or three different approaches with trade-offs.
 - Put your recommended option first. Explain the reason for the recommendation.
 - Refer to existing patterns in the target codebase.
+- For each approach that adds code or structure, name one credible subtractive or reuse
+  alternative first.
+- If no subtractive or reuse alternative can meet the requirement, say why with evidence.
 
 ### Present the design
 
-- Present the design in sections. Ask after each section if it is correct.
+- Present the design in sections. Ask only about material unresolved decisions.
 - Give each section sufficient detail for its complexity.
 - Include architecture, components, data flow, error handling, and the test strategy.
 - Use these principles to define component responsibilities and boundaries:
@@ -184,17 +190,6 @@ implementation unless the user requests changes. Use this message:
 - If a planning skill is installed, use it to track the task. Otherwise, write the numbered plan in
   the conversation.
 - For complex multi-agent work, invoke `myrmidon-swarm`.
-
-## Rules
-
-- **Ask one question at a time.** Do not put multiple questions in one message.
-- **Apply [P002 — YAGNI — You Ain't Gonna Need It](../../docs/principles/README.md#p002).** Remove
-  unnecessary features from all designs.
-- **Compare alternatives.** Always propose two or three approaches.
-- **Validate in increments.** Present the design in sections. Resolve material ambiguity before you
-  continue.
-- **Invoke `advise` first.** Do not duplicate an existing solution. Do not repeat a problem that prior
-  guidance already resolved.
 
 ---
 

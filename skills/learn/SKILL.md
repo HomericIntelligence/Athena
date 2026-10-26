@@ -1,20 +1,26 @@
 ---
 name: learn
 license: BSD-3-Clause
-description: Preserve a verified Mnemosyne lesson without a duplicate. Store prior versions in `.history` and evidence in `.notes.md`. Discovery requires a usable checkout. Read-only work can use a stale checkout. A new pull request requires an isolated worktree from a synchronized current default-branch base. An existing pull request uses only its bound head. Otherwise, report without changes.
+description: Preserve an evidence-backed Mnemosyne lesson without a duplicate. Local discovery is best effort and can use a stale checkout. Specificity is not a rejection reason when a case adds a reusable decision branch. A durable write uses an isolated worktree and pull request with write-boundary validation.
 argument-hint: <lesson or session summary>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 ---
 
 # Learn
 
-Purpose: Preserve one concise general rule. Do not preserve many copies that apply to only one
-session. First, determine if the source contains a verified change that can help future work. Then
-put current guidance, history, and supporting notes in their specified artifacts. If the user
-requests a write, deliver it through a pull request (PR) from an isolated worktree.
+Purpose: Preserve one concise reusable rule. Do not preserve many copies that have the same intent.
+First, determine if the source contains an evidence-backed change that can help future work. Then
+put current guidance and supporting notes in their specified artifacts. Use Git for prior versions
+and provenance. A direct `$athena:learn` invocation is a durable-learning request: after discovery,
+deliver an eligible
+`create`, `amend`, or `consolidate` disposition through a pull request (PR) from an isolated
+worktree. Do not require a second write-confirmation message.
 
 Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to all
 prose that it produces.
+
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
+recovery, resources, validation, and delivery.
 
 ## Engineering principles
 
@@ -22,13 +28,20 @@ Use the [canonical engineering-principles catalog](../../docs/principles/README.
 workflow-specific rules:
 
 - [P003 — DRY — Don't Repeat Yourself](../../docs/principles/README.md#p003): Keep one canonical
-  entry for each retrieval intent. Put current guidance, history, and evidence in their specified
-  artifacts. Do not make copies.
+  entry for each retrieval intent. Keep current guidance in the entry, evidence in notes, and
+  prior versions in Git. Do not make copies.
+- [P009 — General Mechanisms Over Special Cases](../../docs/principles/README.md#p009): Put cases
+  with the same decision rule in one entry. Keep a specific case when it has a different trigger,
+  constraint, failure mode, or result.
+- [P013 — AHA — Avoid Hasty Abstractions](../../docs/principles/README.md#p013): Do not reject a
+  lesson only because one case supplies its evidence. Generalize only the invariant that the
+  evidence supports.
 - [P012 — Evidence Before Modification](../../docs/principles/README.md#p012): Before you select a
-  disposition, examine current entries, companion files, Git history, and all related open pull
-  requests.
-- [P020 — Executable Architecture](../../docs/principles/README.md#p020): Use the repository's tested
-  selector, schema, size budget, and validation to prevent retrieval outside the boundary.
+  write disposition, examine available current entries, companion files, Git history, and related
+  open pull requests.
+- [P020 — Executable Architecture](../../docs/principles/README.md#p020): Use the installed tested
+  selector or its documented bounded fallback. Use the delivery repository's schema, size budget,
+  and validation before a write.
 - [P050 — Least Privilege](../../docs/principles/README.md#p050): Give each writer an isolated
   worktree and an allowlist of approved paths. Do not let the writer use a path outside this
   allowlist. Give the writer only the necessary delivery capabilities.
@@ -42,107 +55,153 @@ workflow-specific rules:
 - [P078 — Single Source of Truth](../../docs/principles/README.md#p078): Keep only one active
   authoritative entry for each intent. Record the owner of each related artifact.
 
-## Prepare the knowledge repository
+## Inspect local knowledge
 
-Use the canonical [`dependency-resolution` contract](../../docs/dependency-resolution.md) to prepare
-Mnemosyne at `$HOME/.agent_brain/knowledge`. Report the resolved repository, commit identifier, and
-trust basis. Before discovery or a write, require a usable knowledge checkout. Normal preparation
-can create the checkout under the dependency-resolution contract. If checkout or inspection fails,
-stop `learn`. During read-only discovery, you can delay upstream resolution, authentication, update,
-and revalidation. At the delivery boundary, you must complete these actions.
+Use the read-only path in the
+[`dependency-resolution` contract](../../docs/dependency-resolution.md). Resolve the installed
+`advise` skill directory. Then run
+`python3 "<installed-advise-skill-directory>/scripts/resolve_knowledge_checkout.py" --mode read-only --knowledge-root "$HOME/.agent_brain/knowledge" --json`
+before you classify the corpus. Inspect Mnemosyne at the reported checkout path. If the checkout
+has a readable `HEAD`, bind discovery to that commit. If the helper reports a freshness limit, keep
+that limit in the lesson.
 
-### Use read-only discovery
-
-Require the existing checkout. Do not require upstream resolution, fetch, fast-forward, or
-automatic-fork revalidation. Bind discovery to the current `HEAD`. Use the checked-out content as a
-best effort. Report these items:
+Report these items when they are available:
 
 - repository;
 - revision;
 - origin and trust status; and
 - each freshness or verification limit.
 
-If no usable checkout exists or inspection fails, report `blocked`. In that case, stop. Do not substitute a
-different repository. Do not continue to analyze possible duplicates.
+If the checkout is missing or inspection fails, continue to classify the source lesson. Report that
+corpus comparison is not available. Do not substitute a different repository. For a read-only
+request, return an `undelivered candidate` when a reusable change exists. Do not report a duplicate
+decision that you could not check.
 
-Before you create a new PR, complete the normal dependency-resolution update and revalidation. Use
-the canonical default branch. Bind the delivery worktree to that exact current commit identifier.
-Planning and read-only discovery can use a stale checkout. PR delivery cannot use a stale checkout.
+Before remote publication, complete normal dependency resolution and revalidation. This step can create
+or update the checkout. Then repeat duplicate and open-PR discovery against the resolved delivery
+revision. Run
+`python3 "<installed-advise-skill-directory>/scripts/resolve_knowledge_checkout.py" --mode write --knowledge-root "$HOME/.agent_brain/knowledge" --json`
+and record the result. Prefer the synchronized canonical default branch for a new PR. If remote
+access fails, prepare the local change from the recorded revision and identify pending duplicate
+checks. Supply exact publication commands. Do not claim remote delivery succeeded.
 
 ## Decide before you write
 
 This phase is read-only.
 
-The steps below require the existing checkout. In read-only discovery, if the required checkout is
-not available, do not select a durable write disposition. Stop.
-
-1. Run `advise` with the proposed lesson and its planning-mode best-effort behavior.
+1. Run `advise` with the proposed lesson. Treat `no-local-guidance` as a limit, not a blocker.
 2. Define retrieval intent by the trigger, context, desired outcome, constraints, and failure mode.
 3. Do not use a title, issue number, or session wording as identity.
-4. Resolve the installed `advise/scripts/list_retrievable_skills.py` helper.
-5. Run the helper by its absolute path against the knowledge checkout.
-6. If the selector is missing or fails, report `blocked`.
-7. If the selector is missing or fails, stop.
-8. Do not replace the selector with a custom file-pattern search. A replacement can change the
-   retrieval boundary.
-9. Group only the returned main-skill paths by intent.
-10. Inspect each selected candidate, its `.history`, its applicable `.notes.md`, and Git history.
+4. Run `python3 "<installed-advise-skill-directory>/scripts/resolve_knowledge_checkout.py" --mode read-only --knowledge-root "$HOME/.agent_brain/knowledge" --json`.
+5. Resolve the installed `advise/scripts/list_retrievable_skills.py` helper.
+6. Run the helper by its absolute path against the reported knowledge checkout.
+7. If the helper is missing or fails, report the selector limit. Use the bounded fallback from
+   `advise`: direct regular `*.md` children of `skills/`, with notes and history companions excluded.
+   Do not recurse.
+8. If neither selector can list the corpus, continue source classification without a duplicate
+   decision. Before publication, repeat this step and require a bounded corpus list.
+9. Group only the selected main-skill paths by intent.
+10. Inspect each selected candidate, its applicable `.notes.md`, and available Git history.
+    Read legacy `.history` files only when they help establish provenance. Their absence or
+    incomplete snapshots do not block a lesson.
 11. Use this inspection to find provenance and prior consolidation.
-12. Enumerate the changed flat `skills/*.md` artifacts in each open PR in the resolved Mnemosyne
-    repository.
-13. Derive intent from the changed content.
-14. Do not use a title or path as sufficient duplicate evidence. A title or path can identify a
-    candidate.
-15. Before a write, record exactly one disposition.
+12. During read-only discovery, inspect open PRs when the remote capability is available. Report a
+    failure as a limit. Before remote publication, enumerate the changed flat `skills/*.md` artifacts
+    in each open PR in the resolved Mnemosyne repository.
+13. Derive intent from changed content. Do not use a title or path as sufficient duplicate evidence.
+    A title or path can identify a candidate.
+14. Before a write, record exactly one disposition.
+
+Use available corpus and remote evidence to select a provisional disposition. Complete missing
+duplicate checks before publication. Remote failure does not prevent safe local preparation.
+
+## Keep specific decision value
+
+Do not reject a lesson only because it starts with one repository, session, error, or example. First,
+extract its trigger, context, desired outcome, constraint, and failure mode. Then compare that rule
+with the canonical candidates.
+
+Treat a specific case as a material change when it adds at least one of these items:
+
+- a trigger or constraint that changes when the rule applies;
+- a distinct decision branch or outcome;
+- a failure mode or diagnostic that changes recovery;
+- a command, parameter, or value that changes execution; or
+- a short example that is necessary to make one of these differences clear.
+
+Amend the applicable general entry when it has the same intent but does not contain that decision
+value. Create a new entry only when the intent is materially different. Reject the case as already
+covered only when the general rule and its current examples cause the same decision and no item in
+the list above remains. State which rule and example cover it.
+
+Prefer zero through three concise examples. Add more only when each changes a decision. Show materially
+different decision branches. Do not add another example only because a new project produced the
+same branch.
 
 The available dispositions are:
 
 | Disposition | Use when | Action |
 | --- | --- | --- |
-| `amend` | One canonical entry has a material verified change. | Update that canonical artifact set only. |
+| `amend` | One canonical entry has the same intent, and the source adds material decision value. | Update that canonical artifact set only. |
 | `consolidate` | Two or more current entries share intent. | Select one canonical artifact set. Merge all rules that were not superseded. Retire duplicates in the same PR. |
 | `create` | Intent is materially distinct. | Add one precisely named artifact set. |
-| `reject` | No verified change remains useful after this session. | Report `no learnable change`; leave Mnemosyne unchanged. |
+| `reject` | No safe reusable change remains, or the canonical rule and its examples already produce the same decision. | Report `no learnable change`; leave Mnemosyne unchanged. |
 | `blocked` | A blocking condition applies. | Leave Mnemosyne unchanged and request direction. |
+
+Use `blocked` only for the affected action when a material conflict or missing authority remains
+after recovery. Prepare safe work independently of that action. Do not create a near-duplicate to
+avoid consolidation.
 
 Select `blocked` if one of these conditions applies:
 
-- provenance is uncertain;
+- provenance required for a write remains uncertain after delivery checks;
 - more than one open PR targets the selected canonical entry;
 - the selected PR is not safe to write; or
+- the selected canonical artifact set, or any prior version bound to the delivery base commit, contains a secret, credential, regulated record, or material
+  that is subject to an erasure request; or
 - retirement is unsafe.
 
-Do not create a near-duplicate to avoid a blocked consolidation. If exactly one open PR changes the
-selected canonical entry, use that PR as the delivery target. Enter Existing-PR mode. Add the
-verified change to that PR. Do not create a competing PR. If multiple open PRs target the entry,
-stop. Do not guess. Do not report `learn` complete after `reject` or `blocked`.
+Protected material does not block preparation of a safe generalized lesson. Withhold only actions
+that would copy, expose, or require unauthorized alteration of that material.
 
 Use `repo-review` for repository audits. Use `pr-review` for PR audits. Select the review depth for
 the active mode.
 
 ## Keep retrieval bounded
 
-Store each lesson in three artifact types. Do not use the main skill as an append-only record.
+Store current guidance in the main skill and optional supporting notes. Use Git commits for prior
+versions and provenance. Do not use the main skill as an append-only record.
 
 | Artifact | Contains | Excludes |
 | --- | --- | --- |
-| `skills/<name>.md` | Current general triggers, decision rules, workflow, failures, parameters, and zero to three short examples. Each example must materially change a decision. | Prior versions, changelog text, session history, transcripts, and repeated project cases. |
-| `skills/<name>.history` | Superseded main-skill versions and append-only records for version, change, and provenance. | Active instructions that exist only in this file. |
+| `skills/<name>.md` | Current reusable triggers, decision rules, workflow, failures, parameters, and zero to three short examples. Each example must materially change a decision. | Prior versions, changelog text, session history, transcripts, and repeated project cases. |
+| Git history | Prior versions, change summaries, and provenance from the reviewed commits. | New copies of sensitive source material. |
 | `skills/<name>.notes.md` | Source details that pass privacy checks, long examples, commands, measurements, verification reports, and useful supporting evidence. | Rules that the skill requires for operation. |
 
-For each amendment, rewrite the main entry around the smallest reusable change. Do not append the
-session. Merge overlapping rules. Remove superseded guidance. Keep no more than three examples. Each
-example must show a materially different decision branch. It must be shorter than the rule that it
-shows. A repository name, issue narrative, transcript, or another instance of an established pattern
-is evidence. It is not a new main-skill example.
+Rewrite the main entry around the smallest reusable change. Merge overlapping rules and remove
+superseded guidance. Use examples only when they show different decision branches. Keep the current
+schema-required version in frontmatter. Treat 30,000 bytes as an editorial guideline, not a write
+blocker. If a lesson grows, improve its structure without splitting one retrieval intent merely to
+pass a byte count.
 
-If `.history` does not contain the version, archive the complete prior retrievable content before you
-replace the main entry. Add the new version and provenance record to `.history`. Put useful detailed
-evidence for the current rule in `.notes.md`. Do not move prohibited sensitive content to another
-artifact.
+Before you replace a main entry, inspect its complete current content against the private and
+proprietary information rules, and also screen the complete prior content you retrieve from Git
+history for the same rules. Bind the prior content to the delivery base commit. Inspect relevant
+Git commits to establish provenance and prior consolidation. If a shallow checkout lacks necessary
+history, use the bounded, trusted knowledge-checkout helper as a read-only check and report the
+evidence limit when it reports one. Do not run an unqualified `git fetch` from the writable
+checkout. Do not invent provenance.
 
-Keep only the schema-required current version identifier in the main-file frontmatter. Put prior
-versions, change summaries, provenance, and other version-control information in `.history`. Obey
+Do not create, repair, or require companion `.history` files, snapshots, or privacy-redaction
+records. A legacy archive repair is not a prerequisite for a learning amendment.
+Keep existing legacy files unchanged unless their migration or removal is separately in scope.
+Record the change and its privacy-safe rationale in the commit and PR. Put useful supporting
+evidence in `.notes.md`. Do not copy sensitive prior content or publish retrieval pointers to it.
+The incident stop condition below still applies. Git provenance does not authorize a history
+rewrite, purge, or disclosure.
+
+Keep only the schema-required current version identifier in the main-file frontmatter. Use Git for
+prior versions, change summaries, provenance, and other version-control information. Obey
 the main-skill size limit of the resolved repository. For Mnemosyne, a new or changed retrievable main
 file must not be more than 30,000 bytes. Keep notes and history outside normal retrieval.
 
@@ -160,6 +219,12 @@ in a main skill, notes, history, filename, frontmatter, example, commit, or PR d
 - proprietary source, configuration, prompts, logs, data, metrics, or operational details; or
 - secrets, credentials, tokens, or other access material.
 
+If the selected canonical artifact set, or any prior version bound to the delivery base commit,
+contains a secret, credential, regulated record, or material that is subject to an erasure request,
+select `blocked` before a durable write. Do not copy it into guidance, notes, provenance, commits, or
+delivery text. Report only a safe summary and route the material to an authorized
+incident-remediation process. `learn` does not authorize a Git-history rewrite or purge.
+
 Replace sensitive details with a correct general pattern. For example, use "an isolated checkout"
 instead of a local path. If public information gives an equivalent example, cite or describe it. Do
 not copy internal evidence. Do not invent an equivalent public example, a result, or verification
@@ -175,8 +240,10 @@ tests, or artifacts that have no consumer only to support a lesson.
 
 Read-only discovery does not increase the requested scope. If the task requests durable learning,
 you can use the resolved repository and full delivery path. Use a new PR or the single Existing-PR
-target that discovery selected. A recommendation or indirect invocation is read-only. For read-only
-work, return the proposed repository, base, branch, files, and PR target.
+target that discovery selected. Only an explicitly read-only request is read-only. A direct
+`$athena:learn` invocation without that qualifier must complete the durable PR workflow when an
+eligible lesson exists. For explicitly read-only work, return the candidate rule, the likely
+disposition if known, and each corpus or remote limit.
 
 ## Use an existing PR
 
@@ -194,9 +261,9 @@ change the shared checkout or default branch.
 
 Immediately before publication, fetch the same identity and head again. Push only to the bound PR
 source ref. Use lease protection that binds the push to the expected head. If the ref moves, the
-source repository is not safe to write, or a binding is different, preserve the worktree. Then stop.
-Do not create a branch. Do not open another PR. Do not change the target of the work. Use the
-disposition-specific write allowlist below.
+source repository is not writable, or a binding changed, preserve the worktree. Refresh the binding
+and integrate compatible edits. Use an owned dependent branch when necessary; preserve the original
+PR and document the stack. Use the disposition-specific write allowlist below.
 
 ## Coordinate safely
 
@@ -213,15 +280,16 @@ does not overlap. Read-only work items must not edit. The coordinator must do th
 
 Only the coordinator can commit, push, and open a new PR when applicable.
 
-If ownership overlaps, the base changes, or the scope is not expected, stop.
+If ownership overlaps or the base changes, reconcile ownership and refresh affected evidence.
+Continue compatible work. Ask only about unresolved conflicts or scope changes.
 
 If native isolation is not available, use the installed
 `../git-worktrees/scripts/prepare_worktree.py` by its absolute path only for new-PR work. Keep the
 resolved checkout as the current directory. Use these exact values:
 
 - branch `skill/<slug>`;
-- `--path $HOME/.agent_brain/worktrees/knowledge-<slug>`;
-- `--path-root $HOME/.agent_brain/worktrees`; and
+- `--path <primary-project>/.worktrees/knowledge-<slug>`;
+- `--path-root <primary-project>/.worktrees`; and
 - `--start-point <resolved-default-SHA>`.
 
 Do not use this fallback to reconstruct an Existing-PR worktree.
@@ -242,11 +310,11 @@ Do not use this fallback to reconstruct an Existing-PR worktree.
    - a value that starts with `-`.
 
 6. If necessary, add a suffix that prevents a collision.
-7. For new-PR work, before creation, resolve `$HOME/.agent_brain/worktrees/knowledge-<slug>`.
-8. Require the path to be directly below `$HOME/.agent_brain/worktrees`.
+7. For new-PR work, before creation, resolve `<primary-project>/.worktrees/knowledge-<slug>`.
+8. Require the path to be directly below `<primary-project>/.worktrees`.
 9. Reject each parent or destination that is a symbolic link.
 10. For new-PR work, create `skill/<slug>` at
-    `$HOME/.agent_brain/worktrees/knowledge-<slug>` from the resolved default-branch commit
+    `<primary-project>/.worktrees/knowledge-<slug>` from the resolved default-branch commit
     identifier.
 11. Use this path for new-PR `create` and `consolidate` work.
 12. Do not use this path for Existing-PR mode.
@@ -256,26 +324,28 @@ Do not use this fallback to reconstruct an Existing-PR worktree.
 
    | Disposition | Allowed paths |
    | --- | --- |
-   | `amend` | The canonical `.md`, its `.history`, and its `.notes.md` if supporting detail exists. |
-   | `create` | One new `.md`, its initial `.history`, and its `.notes.md` if supporting detail exists. |
-   | `consolidate` | The three canonical artifacts, each named duplicate for retirement, and each verified active consumer that must migrate. |
+   | `amend` | The canonical `.md` and its `.notes.md` if supporting detail exists. |
+   | `create` | One new `.md` and its `.notes.md` if supporting detail exists. |
+   | `consolidate` | The canonical `.md`, its `.notes.md`, each named duplicate `.md` and `.notes.md` for retirement, and each verified active consumer that must migrate. |
 
 15. Name each companion and retirement in the list.
-16. Do not add write paths after an edit starts.
+16. Update the path allowlist when a necessary in-scope dependency is found. Record the reason.
 17. For `create`, read the resolved Mnemosyne template, schema, and validation rules before you make a
     draft.
+    Use the contract in the resolved delivery revision. Do not require its version to agree with the
+    installed Athena version.
 18. For `create`, use each required frontmatter field. These fields include `name`, `description`,
     `category`, `date`, and the current `version`.
 19. For `create`, use the required section structure.
 20. For `create`, keep searchable intent, generalized use, workflow, applicable failed approaches,
     and parameters in the main entry.
-21. For `create`, make the initial version-and-provenance record in `.history`.
+21. For `create`, record the initial change and privacy-safe provenance in the commit and PR.
 22. For `create`, put useful supporting details in `.notes.md`.
 23. Apply the selected disposition only to paths in its allowlist.
-24. For `amend` or `consolidate`, archive each superseded canonical version before you rewrite the
-    main entry.
-25. Except for the required historical snapshot, do not copy content between artifact types.
-26. Give current rules, history records, and notes evidence one owner each.
+24. For `amend` or `consolidate`, inspect the prior content and relevant Git history before you
+    rewrite the main entry. Apply the privacy and incident rules. Do not require an archive repair.
+25. Do not duplicate content between artifact types or copy prohibited content into provenance.
+26. Give current rules, Git provenance, and notes evidence one owner each.
 27. During consolidation, migrate verified active consumers.
 28. After the consumer migration, retire each named duplicate.
 29. Before you commit, review each proposed artifact and delivery text against the private and
@@ -287,10 +357,11 @@ Do not use this fallback to reconstruct an Existing-PR worktree.
 34. Verify these conditions:
 
     - exactly one active entry remains for the intent;
-    - its main file is in the configured size limit;
+    - its main file is concise; report its size as editorial information;
     - notes and history are not in normal retrieval;
     - there is no duplicate intent;
     - there is no version history in the main entry; and
+    - existing prior content is bound to a Git commit, and the change rationale is recorded; and
     - there is no stale consolidated name.
 
 35. Create a signed commit with a Developer Certificate of Origin (DCO) attestation.
@@ -304,13 +375,14 @@ Do not use this fallback to reconstruct an Existing-PR worktree.
     - disposition;
     - bound or new PR URL;
     - main-file byte size;
-    - archived version;
+    - delivery base and change commit identifiers, when safe to disclose;
     - companion files;
     - retired entries, if any; and
     - exact validation evidence.
 
-A write disposition succeeds only if it has a PR URL. If validation, push, or PR creation fails,
-preserve the isolated worktree. In that case, report the blocker. Do not use Athena, a default branch, or a
+A published disposition requires a verified PR URL. If validation, push, or PR creation fails,
+preserve completed local work. Attempt recovery, then provide exact remaining commands and prepared
+artifacts. Report local preparation separately from remote delivery. Do not use Athena, a default branch, or a
 different repository as a fallback. Preserve delegated and delivery worktrees until their unique
 work is integrated or explicitly rejected.
 
@@ -322,9 +394,16 @@ discard changes. Do not force removal. Do not change a pre-existing worktree.
 
 ## Failed approaches
 
-- If delivery requires a synchronized default-branch base, do not write from an unsynchronized
-  checkout.
+- Do not block read-only lesson classification because the local checkout is stale, missing, or not
+  verifiable.
+- Do not reject a lesson only because its source is specific. Test whether it adds reusable decision
+  value.
+- Do not create another example when a general rule and its examples already produce the same
+  decision.
+- Do not make the installed selector the only bounded discovery method.
+- Do not claim a local revision is synchronized when remote verification was unavailable.
 - Do not bypass the private and proprietary information rules. Do not invent a public equivalent if
   safe generalization is not possible.
-- Do not put prior versions in the main entry. Archive them in `.history`.
+- Do not put prior versions in the main entry or recreate companion `.history` files. Use Git
+  provenance. Do not block a lesson only because a legacy snapshot is missing or incomplete.
 - If an open PR targets the selected canonical entry, do not create a competing PR.

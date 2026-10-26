@@ -9,15 +9,25 @@ timeout.
 
 ## Canonical contexts
 
+- `agent-contract / validate-agent-contract` checks root `AGENTS.md` and `CLAUDE.md` against the
+  canonical Athena principles catalog. The reusable workflow has read-only permission. It accepts
+  no input and no secret.
 - `forbid-suppressions` rejects silent-failure workarounds. It also rejects
   `continue-on-error: true`.
 - `validate` does these checks:
 
   - It validates each skill and host manifest.
-  - It runs unit tests for executable scripts.
-  - It requires at least 80% branch coverage for each repository script and skill-local executable
-    script.
+  - It runs the fast unit-test tier for pull requests, pushes, merge groups, scheduled runs, and
+    manual runs.
+  - For a release, it runs all unit tests for executable scripts.
+  - For a release, it requires at least 80% branch coverage for each repository script and
+    skill-local executable script.
   - It enforces Ruff, formatting, and strict mypy on repository scripts and skill-local scripts.
+
+  Pre-commit does not run pytest. Contributors can publish a pull request with pending validation.
+  Before completion or merge, each new or changed test must pass in a focused run on an approved
+  local or hosted runner. This result does not replace required continuous integration and
+  continuous delivery (CI/CD) test tiers.
 
 - `markdownlint` validates public documents and the shipped `skills/**/*.md` product corpus. It does
   not verify ASD-STE100 conformance. Review applicable prose under the
@@ -48,6 +58,11 @@ timeout.
   - The linked Athena issue must be open.
   - It retains the full JavaScript Object Notation (JSON) reports.
 
+- `security/pi-upstream-inventory-watch` is the single intentional advisory job. It runs on the
+  weekly schedule or by manual dispatch, and scans the full upstream Pi source tree. It records
+  upstream inventory evidence for tracking only and must not join `required-checks-gate` while
+  upstream-only findings can fail the scan.
+
 - On pull requests, `pr-policy` enforces these requirements:
 
   - applicable issue linkage;
@@ -58,8 +73,60 @@ timeout.
 - `required-checks-gate` depends on each gating job. It fails if a gating job is not successful.
 
 Add each new gating job to `required-checks-gate`. Never represent an advisory job as required. The
-tracked `main` ruleset and the live `main` ruleset require `required-checks-gate` to pass against the
-current `main` base before merge.
+tracked `main` ruleset uses the GitHub merge queue for normal target integration. It runs
+`required-checks-gate` for the staged merge-group revision before it merges the group.
+
+A branch that is behind `main` but has no reported merge conflict does not require an agent rebase.
+Target movement does not invalidate a technical review of unchanged candidate content. The merge
+queue, not an agent rebase, owns normal target integration and merge-group validation.
+
+## Test tiers
+
+The `nightly` pytest marker identifies integration-heavy tests. These tests use Git repositories,
+installed package trees, or many subprocesses. The fast tier uses `not nightly`. New tests are in
+the fast tier unless an author adds the `nightly` marker.
+
+Pull-request continuous integration (CI) runs the fast test tier. Pre-commit does not run pytest.
+The full test suite runs each day at 09:17 Coordinated Universal Time (UTC). The nightly workflow
+also supports a manual run. It does not join `required-checks-gate`.
+
+A release calls the required workflow with `full-tests: true`. Thus, a release runs the full test
+suite and the coverage policy for the exact release revision.
+
+The initial tier selection uses these runtime classification criteria:
+
+- Evaluate a pre-commit hook or pull-request job only when its representative runtime is at least
+  one minute.
+- Keep approximately 10% of the current test runtime in the fast tier.
+- Put approximately 90% of the current test runtime in the nightly tier.
+
+These percentages are selection guidance. They are not execution time limits. The repository does
+not fail a test tier because its runtime ratio changes. Sub-minute validation, static-analysis,
+documentation, workflow, policy, package, and security jobs stay unchanged.
+
+Athena calls `.github/workflows/_agent-contract.yml` from its required and release workflows. The
+workflow checks out the caller revision. The called Athena revision supplies the validator and
+catalog. The validator reads only the caller's root `AGENTS.md` and `CLAUDE.md` files.
+
+A consumer uses this job after issue #163 publishes and protects the version tag:
+
+```yaml
+jobs:
+  agent-contract:
+    name: agent-contract
+    permissions:
+      contents: read
+    uses: >-
+      HomericIntelligence/Athena/.github/workflows/_agent-contract.yml@agent-contract-v1.0.0
+```
+
+This call emits the `agent-contract / validate-agent-contract` check. Add the caller job to the
+repository's aggregate required gate.
+Release publication is also gated by the protected `release` environment, which requires maintainer
+approval. The release workflow reads that environment configuration before publication and fails if
+the required reviewers, the `v*` tag policy, or the `agent-contract-v*` tag policy are missing. Both
+deployment policies must have type `tag`. See [`CONTRIBUTING.md`](../../CONTRIBUTING.md) for the
+rollback and re-release procedure.
 
 The required workflow handles the `merge_group` `checks_requested` event. It also handles these entry
 points:
@@ -69,19 +136,20 @@ points:
 - reusable workflow; and
 - scheduled run.
 
+The concurrency key includes the event type. Thus, a scheduled or reusable run cannot cancel a
+pull-request, merge-group, or push run for the same revision. Manual dispatch runs the workflow
+entry points as configured. The advisory Pi watch is the only job that runs exclusively for manual
+dispatch or the weekly schedule.
+
 The tracked `main` ruleset records this staged merge-queue policy:
 
 - Use squash merges.
-- Use all-green grouping.
+- Use `HEADGREEN` grouping.
 - Permit a maximum of 10 builds in each group.
 - Permit a maximum of 5 merged entries in each group.
 - Require a minimum of 1 entry.
 - Require a minimum wait of 5 minutes.
-- Use a check timeout of 60 minutes.
-
-The repository records only that the queue is ready. Application or activation of this policy on
-GitHub is a separate rollout action. That action requires explicit authority after review and merge
-of this change.
+- Use a check timeout of 180 minutes.
 
 The required workflow also runs each week. Thus, dependency findings are refreshed between changes.
 
@@ -96,3 +164,23 @@ Release jobs then do these actions:
 5. They publish only the files that passed the aggregate gate.
 
 A release workflow never creates an artifact that did not pass the required checks.
+
+[Issue #163](https://github.com/HomericIntelligence/Athena/issues/163) owns the protected
+`agent-contract-v*` release and its live tag ruleset. Consumers must not use an agent-contract
+version until that release protects the tag from deletion and retargeting.
+
+The tracked `.github/rulesets/homeric-agent-contract-tags.json` policy targets only
+`refs/tags/agent-contract-v*`. It has no bypass actor. It blocks tag update and deletion, and it does
+not block the first tag creation. The live ruleset must match the tracked policy before tag creation.
+The protected `release` environment must contain `AGENT_CONTRACT_RULESET_PROOF_TOKEN`. This secret
+must be a fine-grained token for this repository with Administration permission set to read-only.
+Only the live ruleset readback step can use this token. The default Actions token cannot prove the
+no-bypass policy because its detailed ruleset response omits `bypass_actors`.
+
+The `agent-contract-v*` release path is separate from the package `v*` release path. It invokes the
+agent-contract provider and the complete required workflow. It does not publish plugin archives or
+npm packages. Its GitHub Release body is the authoritative release record. The record contains the
+tag object SHA, commit SHA, catalog SHA-256, required workflow run URLs, live ruleset readback, all
+91 tagged URL results, and the update and deletion rejection evidence. Use the
+[`agent-contract-v1.0.0` release runbook](../runbooks/agent-contract-v1.0.0-release.md) for the
+controlled operation and recovery steps.

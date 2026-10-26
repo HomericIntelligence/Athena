@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import io
 import json
@@ -13,7 +14,8 @@ import unittest
 from collections.abc import Callable
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / "scripts" / "validate_skills.py"
@@ -21,6 +23,59 @@ SPEC = importlib.util.spec_from_file_location("athena_validate_skills", MODULE_P
 assert SPEC is not None and SPEC.loader is not None
 validator = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(validator)
+
+
+def _ruleset_path(root: Path) -> Path:
+    return root / ".github" / "rulesets" / "homeric-main-baseline.json"
+
+
+def _ruleset_document(root: Path) -> dict[str, Any]:
+    return cast(
+        dict[str, Any], json.loads(_ruleset_path(root).read_text(encoding="utf-8"))
+    )
+
+
+def _write_ruleset_document(root: Path, document: dict[str, Any]) -> None:
+    _ruleset_path(root).write_text(json.dumps(document), encoding="utf-8")
+
+
+def _ruleset_rule(document: dict[str, Any], rule_type: str) -> dict[str, Any]:
+    rules = cast(list[dict[str, Any]], document["rules"])
+    return next(rule for rule in rules if rule["type"] == rule_type)
+
+
+def _ruleset_set_path(
+    document: dict[str, Any], path: tuple[str | int, ...], value: Any
+) -> None:
+    target: Any = document
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+
+
+def _ruleset_delete_path(document: dict[str, Any], path: tuple[str | int, ...]) -> None:
+    target: Any = document
+    for key in path[:-1]:
+        target = target[key]
+    del target[path[-1]]
+
+
+def _ruleset_insert_path(
+    document: dict[str, Any], path: tuple[str | int, ...], value: Any
+) -> None:
+    target: Any = document
+    for key in path[:-1]:
+        target = target[key]
+    target.insert(int(path[-1]), value)
+
+
+def _ruleset_append_path(
+    document: dict[str, Any], path: tuple[str | int, ...], value: Any
+) -> None:
+    target: Any = document
+    for key in path:
+        target = target[key]
+    target.append(value)
 
 
 class DistributionTests(unittest.TestCase):
@@ -63,6 +118,42 @@ class DistributionTests(unittest.TestCase):
 
     def test_repository_is_valid(self) -> None:
         self.assertEqual(validator.validate_repository(self.fixture), [])
+
+    def test_repository_requires_the_exact_root_claude_pointer(self) -> None:
+        (self.fixture / "CLAUDE.md").write_bytes(b"@AGENTS.md")
+
+        errors = validator.validate_repository(self.fixture)
+
+        self.assertTrue(
+            any(
+                error.surface == "agent-contract" and "CLAUDE.md" in error.reason
+                for error in errors
+            ),
+            errors,
+        )
+
+    def test_repository_requires_the_generated_principles_block(self) -> None:
+        path = self.fixture / "AGENTS.md"
+        text = path.read_text(encoding="utf-8")
+        start_marker = (
+            "<!-- BEGIN ATHENA DEVELOPMENT PRINCIPLES: agent-contract-v1.0.0 -->"
+        )
+        end_marker = "<!-- END ATHENA DEVELOPMENT PRINCIPLES -->"
+        start = text.find(start_marker)
+        end = text.find(end_marker)
+        if start >= 0 and end >= start:
+            text = text[:start] + text[end + len(end_marker) :]
+        path.write_text(text, encoding="utf-8")
+
+        errors = validator.validate_repository(self.fixture)
+
+        self.assertTrue(
+            any(
+                error.surface == "agent-contract" and "AGENTS.md" in error.reason
+                for error in errors
+            ),
+            errors,
+        )
 
     def test_frontmatter_parser(self) -> None:
         self.assertEqual(
@@ -126,7 +217,7 @@ class DistributionTests(unittest.TestCase):
             check=False,
         )
 
-        self.assertEqual(2, result.returncode)
+        self.assertEqual(1, result.returncode)
         self.assertIn(".codex-plugin/plugin.json", result.stderr)
         self.assertNotIn("Traceback", result.stderr)
 
@@ -192,6 +283,28 @@ class DistributionTests(unittest.TestCase):
         manifest.write_text(json.dumps(document), encoding="utf-8")
 
         self.assert_validation_errors(validator._validate_opencode, "opencode")
+
+    def test_opencode_package_needs_no_plugin_sdk_dependency(self) -> None:
+        manifest = self.fixture / "npm" / "athena-opencode" / "package.json"
+        original = json.loads(manifest.read_text(encoding="utf-8"))
+        cases: tuple[tuple[str, dict[str, str] | None], ...] = (
+            ("absent", None),
+            ("empty", {}),
+            ("pinned", {"@opencode/plugin": "2.0.24"}),
+        )
+        try:
+            for label, dependencies in cases:
+                with self.subTest(dependencies=label):
+                    document = dict(original)
+                    if dependencies is None:
+                        document.pop("dependencies", None)
+                    else:
+                        document["dependencies"] = dependencies
+                    manifest.write_text(json.dumps(document), encoding="utf-8")
+
+                    self.assertEqual([], validator._validate_opencode(self.fixture))
+        finally:
+            manifest.write_text(json.dumps(original), encoding="utf-8")
 
     def test_opencode_manifest_version_must_match_the_host_manifests(self) -> None:
         manifest = self.fixture / "npm" / "athena-opencode" / "package.json"
@@ -303,6 +416,20 @@ class DistributionTests(unittest.TestCase):
 
         self.assertEqual(validator.validate_repository(self.fixture), [])
 
+    def test_local_pixi_cache_is_not_inspected(self) -> None:
+        """A local pixi environment must not produce distribution findings.
+
+        A developer runs pixi to obtain the optional SBOM and SCA tooling. The
+        environment carries third-party sources and binary files that the
+        validator would report, so it must skip that directory.
+        """
+        cache = self.fixture / ".pixi" / "envs" / "security"
+        cache.mkdir(parents=True, exist_ok=True)
+        self.addCleanup(shutil.rmtree, self.fixture / ".pixi", ignore_errors=True)
+        (cache / "font.woff").write_bytes(b"\x00\xb8\x00\x80font")
+
+        self.assertEqual(validator.validate_repository(self.fixture), [])
+
     def test_executable_scripts_must_use_shared_argparse_convention(self) -> None:
         script = self.fixture / "skills" / "pr-review" / "scripts" / "resolve_pr.py"
         script.write_text(
@@ -368,6 +495,110 @@ class DistributionTests(unittest.TestCase):
             "self-contained",
             literal=repository,
         )
+
+    def test_validator_checks_its_own_file_for_ecosystem_references(self) -> None:
+        path = self.fixture / "scripts" / "validate_skills.py"
+        path.write_text(
+            "homericintelligence" + "/" + "forbidden-" + "repository\n",
+            encoding="utf-8",
+        )
+
+        errors = validator._validate_layout_and_policy(self.fixture)
+
+        self.assertEqual(["self-contained"], [error.surface for error in errors])
+
+    def test_cli_reports_validator_read_failures_as_exit_two(self) -> None:
+        original_read_text = Path.read_text
+        cases = (
+            (
+                validator._validate_skills,
+                self.fixture / "skills" / "advise" / "SKILL.md",
+            ),
+            (
+                validator._validate_cli_conventions,
+                self.fixture / "scripts" / "validate_skills.py",
+            ),
+            (
+                validator._validate_repo_review_scorecard,
+                self.fixture / "docs" / "review" / "repository-scorecard.md",
+            ),
+        )
+
+        for validate, unreadable_path in cases:
+            with self.subTest(validate=validate.__name__):
+
+                def fail_selected_path(
+                    path: Path,
+                    *args: Any,
+                    selected_path: Path = unreadable_path,
+                    **kwargs: Any,
+                ) -> str:
+                    if path == selected_path:
+                        raise OSError("read failed")
+                    return original_read_text(path, *args, **kwargs)
+
+                with patch.object(Path, "read_text", fail_selected_path):
+                    validation_errors = validate(self.fixture)
+
+                self.assertEqual(1, len(validation_errors), validation_errors)
+                self.assertTrue(validation_errors[0].operational)
+
+                errors = io.StringIO()
+                with (
+                    patch.object(
+                        validator,
+                        "validate_repository",
+                        return_value=validation_errors,
+                    ),
+                    redirect_stderr(errors),
+                ):
+                    result = validator.main(["--root", str(self.fixture)])
+
+                self.assertEqual(2, result)
+                self.assertIn("read failed", errors.getvalue())
+
+    def test_cli_reports_agent_contract_content_failures_as_exit_one(self) -> None:
+        (self.fixture / "CLAUDE.md").write_text("@not-agents.md\n", encoding="utf-8")
+        errors = io.StringIO()
+
+        with redirect_stderr(errors):
+            result = validator.main(["--root", str(self.fixture)])
+
+        self.assertEqual(1, result)
+        self.assertIn("CLAUDE.md", errors.getvalue())
+        self.assertNotIn("Traceback", errors.getvalue())
+
+    def test_cli_reports_agent_contract_read_failures_as_exit_two(self) -> None:
+        cases = (
+            ("missing file", None),
+            ("invalid UTF-8", b"\xff"),
+        )
+
+        for name, content in cases:
+            with (
+                self.subTest(name=name),
+                tempfile.TemporaryDirectory() as temporary_directory,
+            ):
+                root = Path(temporary_directory) / "repository"
+                shutil.copytree(self.fixture, root)
+                path = root / "CLAUDE.md"
+                if content is None:
+                    path.unlink()
+                else:
+                    path.write_bytes(content)
+                errors = io.StringIO()
+
+                with (
+                    patch.object(
+                        validator, "_validate_layout_and_policy", return_value=[]
+                    ),
+                    redirect_stderr(errors),
+                ):
+                    result = validator.main(["--root", str(root)])
+
+                self.assertEqual(2, result)
+                self.assertIn("CLAUDE.md", errors.getvalue())
+                self.assertNotIn("Traceback", errors.getvalue())
 
     def test_distributable_coverage_prefixed_file_is_inspected(self) -> None:
         repository = "HomericIntelligence/" + "UnapprovedRepository"
@@ -471,69 +702,281 @@ class DistributionTests(unittest.TestCase):
             validator._validate_repo_review_scorecard, "repo-review"
         )
 
-    def test_ruleset_requires_a_current_main_merge_gate(self) -> None:
-        path = self.fixture / ".github" / "rulesets" / "homeric-main-baseline.json"
-        document = json.loads(path.read_text(encoding="utf-8"))
-        status_checks = next(
-            rule
-            for rule in document["rules"]
-            if rule["type"] == "required_status_checks"
+    def test_ruleset_matches_the_approved_live_baseline(self) -> None:
+        self.assertEqual(validator._validate_ruleset_policy(self.fixture), [])
+
+    def test_ruleset_rejects_policy_drift_in_all_required_surfaces(self) -> None:
+        original_document = _ruleset_document(self.fixture)
+        cases: tuple[
+            tuple[str, str, tuple[str | int, ...], Any, str | None],
+            ...,
+        ] = (
+            (
+                "missing top-level key",
+                "delete",
+                ("bypass_actors",),
+                None,
+                "bypass_actors",
+            ),
+            (
+                "extra top-level key",
+                "set",
+                ("unexpected",),
+                True,
+                "unexpected",
+            ),
+            (
+                "wrong target",
+                "set",
+                ("target",),
+                "repository",
+                "target",
+            ),
+            (
+                "wrong enforcement",
+                "set",
+                ("enforcement",),
+                "evaluate",
+                "enforcement",
+            ),
+            (
+                "non-empty bypass actors",
+                "set",
+                ("bypass_actors",),
+                [{"actor_id": 1, "actor_type": "Integration", "bypass_mode": "always"}],
+                "bypass_actors",
+            ),
+            (
+                "missing default branch target",
+                "delete",
+                ("conditions", "ref_name", "include"),
+                None,
+                "include",
+            ),
+            (
+                "wrong branch target",
+                "set",
+                ("conditions", "ref_name", "include"),
+                ["refs/heads/main"],
+                "refs/heads/main",
+            ),
+            (
+                "missing rule",
+                "delete",
+                ("rules", 6),
+                None,
+                None,
+            ),
+            (
+                "duplicate rule",
+                "insert",
+                ("rules", 0),
+                copy.deepcopy(_ruleset_rule(original_document, "deletion")),
+                None,
+            ),
+            (
+                "unknown rule",
+                "append",
+                ("rules",),
+                {"type": "copilot"},
+                None,
+            ),
+            (
+                "pull request extra approval missing",
+                "set",
+                (
+                    "rules",
+                    3,
+                    "parameters",
+                    "require_extra_approval_for_unattributed_changes",
+                ),
+                False,
+                "require_extra_approval_for_unattributed_changes",
+            ),
+            (
+                "pull request mistyped merge method",
+                "set",
+                ("rules", 3, "parameters", "allowed_merge_methods"),
+                ["squash", True],
+                "allowed_merge_methods",
+            ),
+            (
+                "queue timeout too low",
+                "set",
+                ("rules", 4, "parameters", "check_response_timeout_minutes"),
+                179,
+                "check_response_timeout_minutes",
+            ),
+            (
+                "queue timeout too high",
+                "set",
+                ("rules", 4, "parameters", "check_response_timeout_minutes"),
+                181,
+                "check_response_timeout_minutes",
+            ),
+            (
+                "queue build concurrency too low",
+                "set",
+                ("rules", 4, "parameters", "max_entries_to_build"),
+                9,
+                "max_entries_to_build",
+            ),
+            (
+                "queue build concurrency too high",
+                "set",
+                ("rules", 4, "parameters", "max_entries_to_build"),
+                11,
+                "max_entries_to_build",
+            ),
+            (
+                "queue merge size too low",
+                "set",
+                ("rules", 4, "parameters", "min_entries_to_merge"),
+                0,
+                "min_entries_to_merge",
+            ),
+            (
+                "queue merge size too high",
+                "set",
+                ("rules", 4, "parameters", "min_entries_to_merge"),
+                6,
+                "min_entries_to_merge",
+            ),
+            (
+                "queue wait too low",
+                "set",
+                ("rules", 4, "parameters", "min_entries_to_merge_wait_minutes"),
+                4,
+                "min_entries_to_merge_wait_minutes",
+            ),
+            (
+                "queue wait too high",
+                "set",
+                ("rules", 4, "parameters", "min_entries_to_merge_wait_minutes"),
+                6,
+                "min_entries_to_merge_wait_minutes",
+            ),
+            (
+                "queue mistyped build concurrency",
+                "set",
+                ("rules", 4, "parameters", "max_entries_to_build"),
+                True,
+                "bool",
+            ),
+            (
+                "status check missing integration",
+                "delete",
+                (
+                    "rules",
+                    5,
+                    "parameters",
+                    "required_status_checks",
+                    0,
+                    "integration_id",
+                ),
+                None,
+                "integration_id",
+            ),
+            (
+                "status check wrong context",
+                "set",
+                ("rules", 5, "parameters", "required_status_checks", 0, "context"),
+                "required-checks",
+                "required-checks",
+            ),
+            (
+                "status check wrong integration",
+                "set",
+                (
+                    "rules",
+                    5,
+                    "parameters",
+                    "required_status_checks",
+                    0,
+                    "integration_id",
+                ),
+                1,
+                "integration_id",
+            ),
+            (
+                "status check mistyped integration",
+                "set",
+                (
+                    "rules",
+                    5,
+                    "parameters",
+                    "required_status_checks",
+                    0,
+                    "integration_id",
+                ),
+                True,
+                "bool",
+            ),
+            (
+                "status check extra entry",
+                "append",
+                ("rules", 5, "parameters", "required_status_checks"),
+                {"context": "smoke-test", "integration_id": 15368},
+                None,
+            ),
         )
-        status_checks["parameters"]["strict_required_status_checks_policy"] = True
-        path.write_text(json.dumps(document), encoding="utf-8")
+        for name, action, path, value, literal in cases:
+            with self.subTest(name=name):
+                document = copy.deepcopy(original_document)
+                if action == "delete":
+                    _ruleset_delete_path(document, path)
+                elif action == "set":
+                    _ruleset_set_path(document, path, value)
+                elif action == "insert":
+                    _ruleset_insert_path(document, path, value)
+                elif action == "append":
+                    _ruleset_append_path(document, path, value)
+                else:
+                    self.fail(f"Unsupported action: {action}")
 
-        self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
+                try:
+                    _write_ruleset_document(self.fixture, document)
+                    self.assert_validation_errors(
+                        validator._validate_ruleset_policy,
+                        "ruleset",
+                        literal=literal,
+                    )
+                finally:
+                    _write_ruleset_document(self.fixture, original_document)
 
-        status_checks["parameters"]["strict_required_status_checks_policy"] = False
-        status_checks["parameters"]["required_status_checks"] = []
-        path.write_text(json.dumps(document), encoding="utf-8")
-
-        self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
-
-    def test_ruleset_requires_squash_only_pull_request_merges(self) -> None:
-        path = self.fixture / ".github" / "rulesets" / "homeric-main-baseline.json"
-        document = json.loads(path.read_text(encoding="utf-8"))
-        pull_request = next(
-            rule for rule in document["rules"] if rule["type"] == "pull_request"
+    def test_ruleset_requires_immutable_agent_contract_tag_protection(self) -> None:
+        path = (
+            self.fixture / ".github" / "rulesets" / "homeric-agent-contract-tags.json"
         )
-        pull_request["parameters"]["allowed_merge_methods"] = ["merge", "squash"]
-        path.write_text(json.dumps(document), encoding="utf-8")
-
-        self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
-
-    def test_ruleset_requires_the_approved_staged_merge_queue_policy(self) -> None:
-        path = self.fixture / ".github" / "rulesets" / "homeric-main-baseline.json"
         original = path.read_text(encoding="utf-8")
-        document = json.loads(original)
-        document["rules"] = [
-            rule for rule in document["rules"] if rule.get("type") != "merge_queue"
-        ]
-        path.write_text(json.dumps(document), encoding="utf-8")
+        mutations: dict[str, Callable[[dict[str, Any]], None]] = {
+            "target": lambda value: value.update(target="branch"),
+            "enforcement": lambda value: value.update(enforcement="evaluate"),
+            "pattern": lambda value: value["conditions"]["ref_name"].update(
+                include=["refs/tags/*"]
+            ),
+            "bypass": lambda value: value.update(bypass_actors=[{"actor_id": 1}]),
+            "missing-update": lambda value: value.update(
+                rules=[rule for rule in value["rules"] if rule["type"] != "update"]
+            ),
+            "missing-deletion": lambda value: value.update(
+                rules=[rule for rule in value["rules"] if rule["type"] != "deletion"]
+            ),
+            "creation": lambda value: value["rules"].append({"type": "creation"}),
+            "status": lambda value: value["rules"].append(
+                {"type": "required_status_checks", "parameters": {}}
+            ),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(name=name):
+                document = json.loads(original)
+                mutate(document)
+                path.write_text(json.dumps(document), encoding="utf-8")
+                self.assert_validation_errors(
+                    validator._validate_ruleset_policy, "ruleset"
+                )
 
-        self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
-
-        document = json.loads(original)
-        merge_queue = next(
-            (rule for rule in document["rules"] if rule.get("type") == "merge_queue"),
-            None,
-        )
-        if merge_queue is None:
-            merge_queue = {
-                "type": "merge_queue",
-                "parameters": {
-                    "check_response_timeout_minutes": 60,
-                    "grouping_strategy": "ALLGREEN",
-                    "max_entries_to_build": 10,
-                    "max_entries_to_merge": 5,
-                    "merge_method": "SQUASH",
-                    "min_entries_to_merge": 1,
-                    "min_entries_to_merge_wait_minutes": 5,
-                },
-            }
-            document["rules"].append(merge_queue)
-        merge_queue["parameters"]["merge_method"] = "MERGE"
-        path.write_text(json.dumps(document), encoding="utf-8")
-
+        path.unlink()
         self.assert_validation_errors(validator._validate_ruleset_policy, "ruleset")
 
     def test_obsolete_distribution_path_fails(self) -> None:
@@ -550,12 +993,188 @@ class DistributionTests(unittest.TestCase):
         self.assertEqual(output.getvalue(), "")
 
     def test_cli_failure_is_actionable(self) -> None:
-        shutil.rmtree(self.fixture / "skills")
+        (self.fixture / "athena").mkdir()
         errors = io.StringIO()
         with redirect_stderr(errors):
             result = validator.main(["--root", str(self.fixture)])
-        self.assertEqual(result, 2)
+        self.assertEqual(result, 1)
         self.assertTrue(errors.getvalue().strip())
+
+
+class IgnoredTopLevelsTests(unittest.TestCase):
+    """Cover the consumer-supplied skip list for the repository walk."""
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.fixture = Path(self.temporary_directory.name) / "Athena"
+        shutil.copytree(
+            ROOT,
+            self.fixture,
+            ignore=shutil.ignore_patterns(
+                ".git",
+                ".venv",
+                "dist",
+                "build",
+                "__pycache__",
+                "*.pyc",
+                ".coverage*",
+            ),
+        )
+
+    def _seed_runtime_cache(self) -> Path:
+        cache = self.fixture / ".fleet-runtime" / "athena-uv" / "archive-v0"
+        cache.mkdir(parents=True)
+        (cache / "module.cpython-314-aarch64-linux-gnu.so").write_bytes(
+            b"\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+        )
+        (cache / "seed-1.0-py3-none-any.whl").write_bytes(b"PK\x03\x04\xff\xfe\x01")
+        return self.fixture / ".fleet-runtime"
+
+    def test_binary_payload_under_runtime_cache_fails_without_the_skip(self) -> None:
+        runtime = self._seed_runtime_cache()
+        repository = "HomericIntelligence/" + "UnapprovedRepository"
+        (runtime / "athena-uv" / "lexers").mkdir(parents=True)
+        (runtime / "athena-uv" / "lexers" / "vendored.py").write_text(
+            f"depends on {repository}", encoding="utf-8"
+        )
+
+        errors = validator._validate_layout_and_policy(self.fixture)
+
+        reasons = "\n".join(error.reason for error in errors)
+        self.assertIn("cannot inspect", reasons, errors)
+        self.assertIn(repository, reasons, errors)
+
+    def test_declared_runtime_cache_is_skipped(self) -> None:
+        self._seed_runtime_cache()
+
+        errors = validator._validate_layout_and_policy(
+            self.fixture, (".fleet-runtime",)
+        )
+
+        self.assertEqual([], errors)
+
+    def test_declared_skip_does_not_hide_repository_content(self) -> None:
+        repository = "HomericIntelligence/" + "UnapprovedRepository"
+        (self.fixture / "docs" / "bad.md").write_text(
+            f"depends on {repository}", encoding="utf-8"
+        )
+
+        errors = validator._validate_layout_and_policy(
+            self.fixture, (".fleet-runtime",)
+        )
+
+        self.assertEqual(
+            ["self-contained"], [error.surface for error in errors], errors
+        )
+        self.assertEqual(1, sum(repository in e.reason for e in errors), errors)
+
+    def test_nested_payload_under_declared_cache_is_skipped(self) -> None:
+        self._seed_runtime_cache()
+        (self.fixture / ".fleet-runtime" / "athena-uv" / "a" / "b").mkdir(parents=True)
+        (
+            self.fixture / ".fleet-runtime" / "athena-uv" / "a" / "b" / "x.bin"
+        ).write_bytes(b"\xff\xfe\x01\x02")
+
+        self.assertEqual(
+            [], validator._validate_layout_and_policy(self.fixture, (".fleet-runtime",))
+        )
+
+    def test_validate_repository_forwards_the_skip(self) -> None:
+        self._seed_runtime_cache()
+
+        self.assertEqual(
+            [], validator.validate_repository(self.fixture, [".fleet-runtime"])
+        )
+
+
+class ParseIgnoredTopLevelsTests(unittest.TestCase):
+    """Cover the parsing rules for the skip-list setting."""
+
+    def test_blank_and_empty_entries_are_dropped(self) -> None:
+        self.assertEqual(
+            (".fleet-runtime", "scratch"),
+            validator.parse_ignored_top_levels(" .fleet-runtime , ,scratch "),
+        )
+
+    def test_empty_setting_yields_no_entries(self) -> None:
+        self.assertEqual((), validator.parse_ignored_top_levels(""))
+        self.assertEqual((), validator.parse_ignored_top_levels("  ,  "))
+
+    def test_multi_segment_entry_is_rejected(self) -> None:
+        for entry in ("a/b", "a\\b", "../a", "..", ".", "*", "-rf"):
+            with self.subTest(entry=entry), self.assertRaises(ValueError):
+                validator.parse_ignored_top_levels(entry)
+
+    def test_environment_variable_is_honoured_by_main(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            fixture = Path(temporary_directory) / "Athena"
+            shutil.copytree(
+                ROOT,
+                fixture,
+                ignore=shutil.ignore_patterns(
+                    ".git",
+                    ".venv",
+                    "dist",
+                    "build",
+                    "__pycache__",
+                    "*.pyc",
+                    ".coverage*",
+                ),
+            )
+            cache = fixture / ".fleet-runtime" / "athena-uv"
+            cache.mkdir(parents=True)
+            (cache / "m.so").write_bytes(b"\x7fELF\xff\xfe\x01\x02")
+
+            with (
+                patch.dict(
+                    "os.environ",
+                    {
+                        validator.IGNORED_TOP_LEVELS_ENVIRONMENT_VARIABLE: ".fleet-runtime"
+                    },
+                ),
+                redirect_stdout(io.StringIO()),
+                redirect_stderr(io.StringIO()),
+            ):
+                self.assertEqual(0, validator.main(["--root", str(fixture)]))
+
+    def test_repeated_flag_extends_the_skip(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            fixture = Path(temporary_directory) / "Athena"
+            shutil.copytree(
+                ROOT,
+                fixture,
+                ignore=shutil.ignore_patterns(
+                    ".git",
+                    ".venv",
+                    "dist",
+                    "build",
+                    "__pycache__",
+                    "*.pyc",
+                    ".coverage*",
+                ),
+            )
+            for name in (".fleet-runtime", ".scratch"):
+                (fixture / name).mkdir()
+                (fixture / name / "m.so").write_bytes(b"\x7fELF\xff\xfe\x01\x02")
+
+            with (
+                redirect_stdout(io.StringIO()),
+                redirect_stderr(io.StringIO()),
+            ):
+                self.assertEqual(
+                    0,
+                    validator.main(
+                        [
+                            "--root",
+                            str(fixture),
+                            "--ignore-path",
+                            ".fleet-runtime",
+                            "--ignore-path",
+                            ".scratch",
+                        ]
+                    ),
+                )
 
 
 if __name__ == "__main__":

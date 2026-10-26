@@ -1,0 +1,44 @@
+name: Nightly Tests
+
+"on":
+  workflow_dispatch: {}
+  schedule:
+    - cron: "17 9 * * *"
+
+concurrency:
+  group: nightly-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  agent-contract:
+    name: agent-contract
+    permissions:
+      contents: read
+    uses: $/.github/workflows/_agent-contract.yml
+
+  nightly-tests:
+    name: nightly-tests
+    needs: agent-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: "1.36.0"
+      - name: Cache Podman container storage
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.local/share/containers/storage
+          key: podman-athena-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            podman-athena-${{ runner.os }}-
+      - name: Build CI image with Podman
+        run: podman build -f ci/Containerfile -t athena-ci:local .
+      - name: Run all contract tests with the coverage threshold in the container
+        run: just ci-test

@@ -6,7 +6,6 @@ import io
 import json
 import os
 import posixpath
-import re
 import shutil
 import subprocess
 import tarfile
@@ -16,59 +15,22 @@ from contextlib import redirect_stderr, redirect_stdout
 from hashlib import sha256
 from pathlib import Path
 from unittest.mock import patch
-from urllib.parse import unquote, urlsplit
 
+from scripts import package_plugin
 from scripts.package_plugin import (
     ARCHIVE_ROOTS,
     REQUIRED_MEMBERS,
     PackageError,
+    PackageOperationalError,
     build_package,
     inspect_archive,
     main,
     read_plugin_version,
 )
 
+from . import package_markdown_helpers as md
+
 ROOT = Path(__file__).resolve().parents[2]
-MARKDOWN_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
-
-
-def technical_english_targets(markdown: str) -> list[str]:
-    """Return local links to the shipped technical-English policy."""
-    targets: list[str] = []
-    for target in MARKDOWN_LINK.findall(markdown):
-        path = target.split("#", 1)[0]
-        normalized_name = Path(path).name.lower().replace("-", "_")
-        if normalized_name == "technical_english.md":
-            targets.append(path)
-    return targets
-
-
-def local_markdown_targets(markdown: str) -> list[tuple[str, str]]:
-    """Return paths and fragments from local Markdown links."""
-    targets: list[tuple[str, str]] = []
-    for target in MARKDOWN_LINK.findall(markdown):
-        parsed = urlsplit(target)
-        if parsed.scheme or parsed.netloc or (not parsed.path and not parsed.fragment):
-            continue
-        targets.append((unquote(parsed.path), unquote(parsed.fragment)))
-    return targets
-
-
-def markdown_anchors(markdown: str) -> set[str]:
-    """Return GitHub-style anchors for the headings in a Markdown document."""
-    anchors: set[str] = set()
-    counts: dict[str, int] = {}
-    for line in markdown.splitlines():
-        match = re.match(r"^#{1,6}\s+(.+?)\s*#*\s*$", line)
-        if match is None:
-            continue
-        heading = re.sub(r"\[([^]]+)\]\([^)]+\)", r"\1", match.group(1))
-        heading = heading.replace("`", "")
-        base = re.sub(r"[^\w -]", "", heading.casefold()).replace(" ", "-")
-        occurrence = counts.get(base, 0)
-        counts[base] = occurrence + 1
-        anchors.add(base if occurrence == 0 else f"{base}-{occurrence}")
-    return anchors
 
 
 def create_repository(root: Path, *, version: str = "1.2.3") -> None:
@@ -353,6 +315,26 @@ if (
         with tarfile.open(archive_path, mode="r:gz") as archive:
             self.assertIsNotNone(archive.getmember("skills/finalize-plan/SKILL.md"))
 
+    def test_source_archive_requires_the_review_exchange_helpers(self) -> None:
+        """Every packaged harness receives the executable exchange contract."""
+        members = {
+            "skills/review-exchange/SKILL.md",
+            "skills/review-exchange/references/interface.md",
+            "skills/review-exchange/scripts/issue_exchange.py",
+            "skills/review-exchange/scripts/review_exchange.py",
+        }
+        self.assertLessEqual(members, REQUIRED_MEMBERS)
+
+        archive_path, checksum_path = build_package(ROOT)
+        self.addCleanup(archive_path.unlink, missing_ok=True)
+        self.addCleanup(checksum_path.unlink, missing_ok=True)
+
+        with tarfile.open(archive_path, mode="r:gz") as archive:
+            for member in sorted(members):
+                packaged = archive.getmember(member)
+                if member.endswith(".py"):
+                    self.assertEqual(0o755, packaged.mode)
+
     def test_source_archive_requires_the_principles_catalog(self) -> None:
         """Every packaged harness receives the shared principles authority."""
         member = "docs/principles/README.md"
@@ -384,7 +366,7 @@ if (
                     continue
                 source = archive.extractfile(name)
                 assert source is not None
-                targets = technical_english_targets(source.read().decode("utf-8"))
+                targets = md.technical_english_targets(source.read().decode("utf-8"))
                 if name.endswith("/SKILL.md"):
                     self.assertTrue(targets, f"{name} has no policy link")
                 for target in targets:
@@ -410,7 +392,7 @@ if (
                     continue
                 source = archive.extractfile(name)
                 assert source is not None
-                for target, fragment in local_markdown_targets(
+                for target, fragment in md.local_markdown_targets(
                     source.read().decode("utf-8")
                 ):
                     checked += 1
@@ -428,7 +410,9 @@ if (
                     elif fragment and resolved.endswith(".md"):
                         target_source = archive.extractfile(resolved)
                         assert target_source is not None
-                        anchors = markdown_anchors(target_source.read().decode("utf-8"))
+                        anchors = md.markdown_anchors(
+                            target_source.read().decode("utf-8")
+                        )
                         if fragment.casefold() not in anchors:
                             unresolved.append(
                                 f"{name} -> {target}#{fragment} (anchor does not exist)"
@@ -515,6 +499,22 @@ if (
 
             with tarfile.open(archive_path, mode="r:gz") as archive:
                 member = archive.getmember("skills/repo-review/scripts/review.py")
+            self.assertEqual(0o755, member.mode)
+
+    def test_realign_assessment_helper_is_packaged_as_executable(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            create_repository(root)
+            script = root / "skills/realign/scripts/resolve_assessment.py"
+            script.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+            script.chmod(0o755)
+
+            archive_path, _ = build_package(root)
+
+            with tarfile.open(archive_path, mode="r:gz") as archive:
+                member = archive.getmember(
+                    "skills/realign/scripts/resolve_assessment.py"
+                )
             self.assertEqual(0o755, member.mode)
 
     def test_secret_documentation_name_is_allowed(self) -> None:
@@ -612,6 +612,64 @@ if (
                     with self.assertRaises(PackageError):
                         read_plugin_version(root)
 
+    def test_read_plugin_version_reports_read_failure_as_operational(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as temporary_directory,
+            self.assertRaises(PackageOperationalError),
+        ):
+            read_plugin_version(Path(temporary_directory))
+
+    def test_read_plugin_version_reports_malformed_json_as_policy_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            create_repository(root)
+            (root / ".codex-plugin" / "plugin.json").write_text(
+                "{not valid json}\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(PackageError) as raised:
+                read_plugin_version(root)
+
+            self.assertIs(type(raised.exception), PackageError)
+
+    def test_inspect_archive_reports_read_failure_as_operational(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as temporary_directory,
+            self.assertRaises(PackageOperationalError),
+        ):
+            inspect_archive(Path(temporary_directory) / "missing.tar.gz")
+
+    def test_validate_repository_maps_exit_one_to_package_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            completed = subprocess.CompletedProcess(
+                ["python"], 1, stdout="", stderr="validation failed"
+            )
+
+            with (
+                patch("scripts.package_plugin.subprocess.run", return_value=completed),
+                self.assertRaises(PackageError) as raised,
+            ):
+                package_plugin._validate_repository(root)
+
+            self.assertIs(type(raised.exception), PackageError)
+
+    def test_validate_repository_maps_exit_two_to_package_operational_error(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            completed = subprocess.CompletedProcess(
+                ["python"], 2, stdout="", stderr="validation could not complete"
+            )
+
+            with (
+                patch("scripts.package_plugin.subprocess.run", return_value=completed),
+                self.assertRaises(PackageOperationalError),
+            ):
+                package_plugin._validate_repository(root)
+
     def test_cli_validates_and_builds_explicit_repository(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -644,6 +702,75 @@ if (
 
             self.assertEqual(1, result)
             self.assertIn("validation-sentinel-42", errors.getvalue())
+
+    def test_cli_reports_malformed_plugin_metadata_as_exit_one(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            create_repository(root)
+            (root / ".codex-plugin" / "plugin.json").write_text(
+                "{not valid json}\n",
+                encoding="utf-8",
+            )
+            errors = io.StringIO()
+
+            with (
+                patch("scripts.package_plugin._validate_repository"),
+                redirect_stderr(errors),
+            ):
+                result = main(["--root", str(root)])
+
+            self.assertEqual(1, result)
+            self.assertIn("not valid JSON", errors.getvalue())
+
+    def test_cli_reports_unreadable_plugin_metadata_as_exit_two(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            create_repository(root)
+            errors = io.StringIO()
+
+            with (
+                patch("scripts.package_plugin._validate_repository"),
+                patch.object(Path, "read_text", side_effect=OSError("read failed")),
+                redirect_stderr(errors),
+            ):
+                result = main(["--root", str(root)])
+
+            self.assertEqual(2, result)
+            self.assertIn("read failed", errors.getvalue())
+
+    def test_cli_reports_operational_build_failure_as_exit_two(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            errors = io.StringIO()
+            with (
+                patch("scripts.package_plugin._validate_repository"),
+                patch(
+                    "scripts.package_plugin.build_package",
+                    side_effect=OSError("output is not writable"),
+                ),
+                redirect_stderr(errors),
+            ):
+                result = main(["--root", str(root)])
+
+        self.assertEqual(2, result)
+        self.assertIn("output is not writable", errors.getvalue())
+
+    def test_cli_reports_operational_validation_failure_as_exit_two(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            errors = io.StringIO()
+            with (
+                patch(
+                    "scripts.package_plugin._validate_repository",
+                    side_effect=PackageOperationalError("validation-sentinel-42"),
+                ),
+                redirect_stderr(errors),
+            ):
+                result = main(["--root", str(root)])
+
+        self.assertEqual(2, result)
+        self.assertIn("validation-sentinel-42", errors.getvalue())
+        self.assertNotIn("Traceback", errors.getvalue())
 
 
 if __name__ == "__main__":

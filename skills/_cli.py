@@ -114,11 +114,14 @@ def require_unambiguous_git_merge_base(
 
 
 def plugin_version() -> str:
-    """Return the version from the canonical Codex plugin manifest."""
-    manifest = PLUGIN_ROOT / ".codex-plugin" / "plugin.json"
+    """Return this corpus's generated version or its adjacent canonical manifest."""
+    corpus = Path(__file__).resolve().parent
+    manifest = corpus / "_plugin.json"
+    if not manifest.exists() and corpus.name == "skills":
+        manifest = PLUGIN_ROOT / ".codex-plugin" / "plugin.json"
     document = json.loads(manifest.read_text(encoding="utf-8"))
     version = document.get("version") if isinstance(document, dict) else None
-    if not isinstance(version, str):
+    if not isinstance(version, str) or not version.strip():
         raise TypeError(
             f"The plugin manifest does not contain a string version: '{manifest}'."
         )
@@ -138,7 +141,7 @@ class _PluginVersionAction(argparse.Action):
         del namespace, values, option_string
         try:
             version = plugin_version()
-        except (OSError, TypeError, json.JSONDecodeError) as error:
+        except (OSError, TypeError, UnicodeError, json.JSONDecodeError) as error:
             parser.exit(
                 1,
                 f"{parser.prog}: error: The tool cannot read the plugin version: "

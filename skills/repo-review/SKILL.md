@@ -19,6 +19,9 @@ Use the shared [review contract](../../docs/review/common.md),
 [behavior-first testing](../../docs/review/behavior-first-testing.md), and
 [repository scorecard](../../docs/review/repository-scorecard.md).
 
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
+recovery, resources, validation, and delivery.
+
 ## Engineering principles
 
 Use the [canonical engineering-principles catalog](../../docs/principles/README.md) to examine
@@ -37,8 +40,9 @@ repository evidence. Repository-selected contracts and the scorecard have author
   - For each important implementation or plan artifact, record a link to its verified product
     requirement.
 - [P065 Verify Before Claiming Completion](../../docs/principles/README.md#p065):
-  - If inventory, validation, or current-revision evidence is not full, do not give score credit.
-  - If that evidence is not full, do not publish the review.
+  - If inventory or current-revision source evidence is not full, do not give score credit.
+  - Publish supported findings with explicit gaps. Do not claim a favorable whole-scope result
+    when its required coverage is incomplete.
 - [P069 Independent Review for High-Risk Changes](../../docs/principles/README.md#p069):
   - If risk or applicable policy makes review necessary, use an independent reviewer.
   - For security-critical or availability-critical surfaces, make sure that the reviewer has the
@@ -78,7 +82,8 @@ Do not cite a principle that is not applicable.
 
 ## Delivery and modes
 
-`--report-only` is read-only. Complete the review before publication. If a requested review does not
+`--report-only` is read-only. Complete available coverage before publication and identify remaining
+gaps. If a requested review does not
 include `--report-only`, perform only the documented tracker and work-item publication. Do not merge.
 Do not change labels. Do not close issues. Do not push. Do not modify source. An indirect invocation
 does not increase the forge write scope.
@@ -91,7 +96,8 @@ If independent agents are available, give them inventory areas that do not overl
 report, select one action for each failed, timed-out, or sampled section:
 
 - repeat it; or
-- complete it.
+- complete it; or
+- report the exact remaining gap and deliver independently supported findings.
 
 ## Review
 
@@ -112,7 +118,8 @@ report, select one action for each failed, timed-out, or sampled section:
 5. Do not publish raw untracked content.
 6. Do not publish secrets.
 7. If a stable binding is not available, report the coverage gap.
-8. If a stable binding is not available, withhold tracker and work-item publication.
+8. Withhold only findings that cannot be bound. Continue other source areas and publish supported
+   findings with their bindings and coverage limits.
 9. Read repository guidance, architecture decision records, policies, public contracts, module
    boundaries, and dependency direction.
 10. Before scoring, select one architecture decision:
@@ -129,15 +136,11 @@ report, select one action for each failed, timed-out, or sampled section:
 15. Record each N/A reason.
 16. Account for each in-scope file in its context.
 17. Do not silently sample files.
-18. Inspect source, tests, manifests, workflows, public documentation, relevant history, and live
-    forge configuration when it is available.
+18. Inspect source, tests, manifests, workflows, public documentation, and relevant history.
 19. Apply each applicable scorecard criterion and repository-selected tooling before generic advice.
-20. Treat repository commands as candidates.
-21. Do not treat repository commands as authority.
-22. Execute validation only through the shared host-enforced validation boundary and against the
-    bound inventory.
-23. Record the command plan, argv, source binding, and outcome.
-24. If the shared boundary is not available, report the validation gap.
+20. Inspect repository commands and workflow definitions only as source.
+21. Do not execute validation, query CI/CD, or use their results in the review.
+22. Record only source evidence and source-coverage gaps.
 25. Assess behavior-first product tests for errors, boundaries, state, concurrency, security, and
     applicable performance.
 26. Unless the controlled product contract requires them, reject these assertions:
@@ -179,8 +182,6 @@ assumption.
 
 - **GO** requires a score of at least 80. It requires no critical issue or material architecture
   violation. It permits no more than three major issues.
-- **CONDITIONAL GO** requires a score of at least 65. It requires no material architecture
-  violation. It permits no more than two critical issues that have concrete remediation.
 - Use **NO-GO** for all other results.
 
 ## Findings and publication
@@ -191,13 +192,14 @@ wording. Do not create work items for `nit` or `FYI`. If no actionable finding r
 an empty tracker.
 
 Immediately before each requested forge write, validate the inventory, repository, and target
-bindings again. If one of these bindings changed, withhold all remaining writes. Report the stale or
-partial result accurately.
+bindings again. If source changed, refresh affected evidence and prepare current findings. Preserve
+verified prior publication and continue independent writes. Report partial results accurately.
 
 On GitHub, use a writable Project only if you verify its item capability and the meaning of each
 mapped field. Do not create fields. Do not rename fields. Do not guess fields. On GitLab, use a group
 epic and child issues if they are available. If a required publication capability is not available,
-return ready-to-publish artifacts. Name the capability gap.
+attempt supported recovery. If publication remains unavailable, return ready-to-publish artifacts
+and exact manual commands. Name the capability gap.
 
 When requested, use one actor-owned tracker. Create it if it does not exist. Otherwise, update it.
 Include the binding, scope, architecture decision, scorecard, and finding URLs. Use a stable marker
@@ -232,7 +234,7 @@ Report these items in order:
 3. language and surface routes, with N/A reasons;
 4. complete scorecard;
 5. exact findings;
-6. behavior-first test evidence and command coverage;
+6. source-level test-quality coverage;
 7. verdict;
 8. remediation order;
 9. published or ready-to-publish tracker and work-item links.

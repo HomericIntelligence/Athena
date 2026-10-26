@@ -7,9 +7,20 @@ technical-English, and governance contracts. Do not copy these contracts for eac
 
 - [`adr/0001-plugin-distro-scope-policy.md`](adr/0001-plugin-distro-scope-policy.md): the accepted
   plugin-only distribution boundary.
+- [`adr/0002-local-first-knowledge-retrieval.md`](adr/0002-local-first-knowledge-retrieval.md): the
+  local-first read boundary and strict mutation boundary for repository integrations.
+- [`adr/0003-best-effort-read-only-knowledge-refresh.md`](adr/0003-best-effort-read-only-knowledge-refresh.md):
+  the best-effort refresh rule for read-only Mnemosyne access.
+- [`adr/0004-ci-owned-full-test-suite.md`](adr/0004-ci-owned-full-test-suite.md): CI/CD owns
+  automatic pytest execution.
+- [`adr/0005-publication-before-validation.md`](adr/0005-publication-before-validation.md): publish a
+  pull request before validation finishes; require success before completion or merge.
+- [`adr/0006-public-agent-contract-workflow.md`](adr/0006-public-agent-contract-workflow.md): the
+  reusable public agent-contract workflow.
 - [`host-compatibility.md`](host-compatibility.md): coding-harness capability mapping.
-- [`dependency-resolution.md`](dependency-resolution.md): mandatory Mnemosyne and Hephaestus owner
-  and checkout resolution.
+- [`dependency-resolution.md`](dependency-resolution.md): local-first Mnemosyne reads with
+  best-effort refresh and mandatory repository resolution for Mnemosyne delivery and Hephaestus
+  execution.
 
 ## Policies
 
@@ -34,8 +45,8 @@ technical-English, and governance contracts. Do not copy these contracts for eac
 
 - [`review/README.md`](review/README.md): why the review system exists, its high-level flow, and
   the right contract to read for each review scope.
-- [`review/common.md`](review/common.md): architecture-first shared contract, findings, and
-  delivery boundaries.
+- [`review/common.md`](review/common.md): architecture-first shared contract, bounded exchange,
+  findings, and delivery boundaries.
 - [`review/language-routing.md`](review/language-routing.md): language and toolchain profiles.
 - [`review/behavior-first-testing.md`](review/behavior-first-testing.md): functional-test quality
   and false-confidence rules.

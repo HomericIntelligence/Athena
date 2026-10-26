@@ -21,7 +21,7 @@ and review output.
   [P071 Consistency Over Personal Preference](../../../docs/principles/README.md#p071),
   [P072 Technical Evidence Over Preference](../../../docs/principles/README.md#p072), and
   [P074 Prefer Existing Mechanisms](../../../docs/principles/README.md#p074) when you inspect prior
-  work. Use history and current-base behavior to decide if work is necessary, duplicate,
+  work. Use history and behavior at the recorded initial local review base to decide if work is necessary, duplicate,
   superseded, or safe to remove. Do not use title similarity or reviewer preference for this
   decision.
 - Apply [P021 Evolutionary and Reversible Design](../../../docs/principles/README.md#p021),
@@ -32,6 +32,9 @@ and review output.
   [P089 Delete Obsolete Configuration and Dependencies](../../../docs/principles/README.md#p089)
   when you assess integration and repository condition. Review compatibility, dependencies, gates,
   cleanup, and release evidence as one safe handoff.
+
+An unapproved but technically clean review can earn GO. Report approval state separately because the
+forge owns repository acceptance and merging.
 
 ## Requirements and prior work
 
@@ -44,7 +47,7 @@ and review output.
 - Search these locations for already-landed, superseded, duplicate, or zombie
   work:
   - issue comments;
-  - current-base source;
+  - source at the recorded initial local review base;
   - default-branch commits; and
   - all-state pull or merge requests on the configured forge.
 - Map each changed path to the stated scope.
@@ -53,7 +56,7 @@ and review output.
   verification.
 - Compare proposed follow-ups with the backlog.
 - If work is genuinely outside the scope, recommend a linked follow-up.
-- Do not create the follow-up without separate authority.
+- Use existing task authority for the follow-up. Do not ask again when that authority is sufficient.
 
 ## Integration and hygiene
 

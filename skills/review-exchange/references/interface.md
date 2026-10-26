@@ -1,0 +1,1059 @@
+# Version 1 command interface
+
+Use the [ASD-STE100 technical-English policy](../../TECHNICAL_ENGLISH.md) for prose that uses this
+interface. Use the [shared review contract](../../../docs/review/common.md) for transition policy.
+This reference specifies the complete version 1 input and output interface for the two installed
+helpers.
+
+## Data rules
+
+Each JSON object has exactly the fields in this reference. Include a nullable field with the JSON
+value `null`. The helpers reject an omitted field, an unknown field, a duplicate key, a duplicate
+identity, a nonfinite number, and a value with the wrong JSON type.
+
+Use UTF-8. A digest is 64 lowercase hexadecimal characters. The digest algorithm is SHA-256.
+Canonical JSON has sorted object keys, no insignificant space, and no ASCII substitution for Unicode
+characters. A JSON-list order is significant unless this reference identifies the list as a set.
+The helper sorts each scope set and rejects duplicate values.
+
+A single operation accepts up to 1 MiB and one batch contains up to 100 findings. Use the streaming
+batch commands below for larger tasks. These bounds do not limit the complete review. The maximum
+carrier body size is 65,536 UTF-8 bytes for `github` and 1,000,000 UTF-8 bytes for `gitlab`.
+
+Each command has this form:
+
+```bash
+<installed-skill>/scripts/review_exchange.py <command> <input-path-or-dash>
+<installed-skill>/scripts/issue_exchange.py <command> <input-path-or-dash>
+```
+
+Use `-` to read standard input. A valid result has exit code `0`. A protocol rejection has exit code
+`1` and one diagnostic on standard error. An input-read or output-write failure has exit code `2`
+and one diagnostic on standard error. Except for `review_exchange.py render`, a successful command
+writes one canonical JSON value and a line feed to standard output. `render` writes the exact
+carrier document.
+
+## Common records
+
+### Target and binding records
+
+A review target has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `provider` | `github` or `gitlab` |
+| `repository` | Nonempty string |
+| `number` | Integer of at least 1 |
+| `url` | Nonempty string |
+
+An `artifact_binding` has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `revision` | Nonempty immutable revision or comment identity |
+| `sha256` | Digest of the reviewed artifact |
+| `visible_content_sha256` | Digest of the exact visible carrier content |
+
+An `authority_receipt` has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `reference` | Nonempty authority-record identity |
+| `sha256` | Digest of the authority record |
+
+The common reducer validates the receipt shape and digest binding. It does not authenticate the
+record. Before reduction, the surface workflow must resolve one exact live forge record, verify its
+body digest and repository authority, and make sure that it authorizes the target, exchange,
+applicable findings, and decision. The issue-snapshot producer must derive `is_authority` from
+provider authority metadata. The issue adapter then verifies the exact comment and digest from the
+normalized current snapshot. A pull-request workflow must do the equivalent verification from its
+exact-head forge snapshot.
+
+An action-bound authority record is the complete comment body. It is one canonical JSON object with
+these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `schema_id` | `athena.review-exchange.authority` |
+| `schema_version` | Integer `1` |
+| `action` | `human_decision` or `reframe` |
+| `target` | Exact review target |
+| `exchange_id` | Exchange that receives the authorized result |
+| `requirements_sha256` | Requirements digest for that exchange |
+| `prior_state_sha256` | Exact state that receives a `human_decision`; `null` for `reframe` |
+| `supersedes_state_sha256` | Exact superseded state digest for `reframe`; otherwise `null` |
+| `decisions` | Exact human-decision list for `human_decision`; empty list for `reframe` |
+
+For `human_decision`, `prior_state_sha256` is non-null and `supersedes_state_sha256` is `null`. For
+`reframe`, `prior_state_sha256` is `null` and `supersedes_state_sha256` is non-null.
+
+The shared parser rejects noncanonical JSON, unknown fields, and a context that does not match the
+event or result state. The event verifier requires the exact decision list. The durable-state
+verifier requires one exact accepted human-decision event for the receipt. It permits extra original
+decisions in the record only when all decisions that the current state attributes to that receipt
+remain present. A later reviewer counter removes a superseded selected-closure receipt from that
+finding. The authority record digest must equal `authority_receipt.sha256`.
+
+### Finding input
+
+For new GitHub adoptions, use the GraphQL root comment ID. The GitHub delivery adapter can resolve
+an existing canonical positive decimal `fullDatabaseId` through the same root object in a complete
+snapshot. This read-only compatibility alias does not change the carrier or the generic grammar.
+An ambiguous alias is invalid. The adapter retains all origin, carrier-ownership, and conversation
+checks. Adoption can name another actor's root; it does not grant thread-resolution authority.
+For GitHub native locations and delivery recovery, follow the
+[delivery contract](../../pr-review/references/delivery.md#verified-go-delivery).
+
+A finding input has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `id` | Consecutive `F-001` through `F-100` identity. A pull-request import can use `native:<root-comment-id>`. The native token contains 1 through 256 characters from `[A-Za-z0-9._~:/+=-]`. |
+| `severity` | `critical`, `major`, `minor`, `nit`, or `FYI` |
+| `disposition` | `required`, `suggestion`, `nit`, or `FYI` |
+| `category` | `simplification` or `null` |
+| `material_architecture` | Boolean |
+| `location` | Nonempty exact carrier location |
+| `impact` | Nonempty impact statement |
+| `evidence` | Nonempty list of unique, nonempty strings |
+| `closure_condition` | Nonempty string for `required`; otherwise `null` |
+| `introduction` | `initial`, `introduced_by_correction`, `new_evidence`, `missed_high_risk`, `missed_security`, `missed_correctness`, or `nonblocking_follow_up` |
+
+A `critical` finding, `major` finding, or material architecture finding has the `required`
+disposition. A `minor` finding has the `required` or `suggestion` disposition. A `nit` or `FYI`
+severity has its matching disposition. A native finding is a required pull-request finding.
+A later native import must satisfy the existing later-finding policy and cannot use the `initial`
+basis. It retains the exchange history and requires an author response before reviewer resolution.
+A later nonblocking finding has the `nonblocking_follow_up` basis.
+
+### Response input
+
+An author response has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `finding_id` | Existing required-finding identity that the current transition must answer |
+| `kind` | `fix`, `fix_with_tradeoff`, `contest`, or `risk_acceptance` |
+| `evidence` | Nonempty list of unique, nonempty strings |
+| `tradeoff` | Nonempty string for `fix_with_tradeoff` or `risk_acceptance`; otherwise `null` |
+
+A reviewer response has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `finding_id` | Prior answered required-finding identity |
+| `kind` | `resolve`, `partial`, `still_present`, `withdraw`, `accept`, `counter`, `refute`, or `escalate` |
+| `evidence` | Nonempty list of unique, nonempty strings |
+| `closure_condition` | Revised nonempty condition for `counter`; otherwise `null` |
+
+A human decision has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `finding_id` | Active required-finding identity |
+| `kind` | `accept_risk` or `select_closure` |
+| `closure_condition` | New nonempty condition for `select_closure`; otherwise `null` |
+
+### Stored state
+
+A stored finding contains all finding-input fields and these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `closure_revision` | Integer of at least 0 |
+| `introduced_round` | Integer of at least 1 |
+| `state` | `open`, `answered_fix`, `answered_tradeoff`, `contested`, `partial`, `still_present`, `countered`, `resolved`, `withdrawn`, `accepted_risk`, `escalated`, or `nonblocking` |
+| `author_response` | `null`, or an object with `kind`, `evidence`, `tradeoff`, and `artifact_revision` |
+| `reviewer_response` | `null`, or an object with `kind`, `evidence`, `closure_condition`, and `round` |
+| `authority_receipt` | `null` or an authority receipt |
+
+The stored author and reviewer records use the response values in this reference. They omit
+`finding_id`. `artifact_revision` is a nonempty string. `round` is an integer of at least 1.
+
+A progress record has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `round` | Consecutive integer of at least 1 |
+| `artifact_revision` | Nonempty string |
+| `scope` | Sorted, nonempty list of unique target strings |
+| `scope_size` | Integer equal to the number of values in `scope` |
+| `required_remaining` | Nonnegative integer |
+| `accepted_event_sha256` | Digest of the accepted event |
+
+A state record has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `exchange_id` | Nonempty stable exchange identity |
+| `surface` | `issue` or `pull_request` |
+| `target` | Review target |
+| `requirements_sha256` | Requirements digest |
+| `round` | Current reviewer round, at least 1 |
+| `round_limit` | Integer `5`, the hard reviewer-round limit |
+| `phase` | `awaiting_author`, `awaiting_reviewer`, `awaiting_evidence`, `complete`, or `decision_required` |
+| `artifact_binding` | Artifact binding |
+| `scope` | Sorted, nonempty list of unique target strings |
+| `prior_state_sha256` | Prior state digest or `null` |
+| `accepted_event_sha256` | Accepted-event digest |
+| `accepted_events` | Complete normalized event ledger for the current exchange |
+| `supersedes_state_sha256` | Superseded state digest or `null` |
+| `supersession_authority_receipt` | Authority receipt for a reframe, or `null` when `supersedes_state_sha256` is `null` |
+| `coverage_complete` | Boolean |
+| `progress` | One progress record for each reviewer round |
+| `findings` | Ordered list of 0 through 100 stored findings |
+| `verdict` | `GO` or `NO-GO` |
+| `next_action` | `author_response`, `review_assessment`, `finalize`, `human_decision`, or `none` |
+
+The accepted-event ledger starts with the initial reviewer assessment or reframe. It contains at
+most 509 events. The helper replays the complete ledger, verifies each prior-state binding, and
+requires the replayed result to equal all current state fields. The phase, verdict, next action,
+findings, authority, and progress history must agree with this replay. Do not construct or edit a
+state record manually. A reframe genesis event also has `superseded_exchange_ids`. This is the
+complete ordered list of earlier exchange identifiers from the oldest exchange through the direct
+predecessor.
+
+### Envelopes
+
+Each envelope has exactly these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `schema_id` | `athena.review-exchange.state` or `athena.review-exchange.author-event` |
+| `schema_version` | Integer `2` |
+| `state` | State record or author-event record |
+| `state_sha256` | Digest of canonical JSON for `state` |
+
+The verifier accepts a valid version 1 envelope and returns a version 2 envelope. For a version 1
+state that contains `go_eligible`, it first validates the original digest and the complete original
+accepted-event replay. Fresh round-1 compatibility remains available. Later states require an
+ordinary ledger of reviewer assessments and author responses, with `go_eligible: true` on each
+reviewer event. This migration does not support conditional histories, authority events, or
+reframes. Incomplete histories and invalid original digest links are rejected.
+
+The migration derives version 2 links only after it proves the original links and exact state
+fields, including JSON types. It preserves finding identities, closure conditions, evidence,
+requirements, scope, rounds, and event order. It does not reset the exchange or authorize a new
+verdict.
+
+`extract_carrier_pair(document)` returns the verified original envelope and its normalized envelope.
+It uses the same canonical JSON, marker, visible-content, framing, duplicate-key, and size checks as
+`extract_carrier`. The `extract` command still returns only the normalized envelope. Neither API
+changes the original document.
+
+`normalize_author_transition(previous, author)` verifies an original predecessor and a separate
+author-event envelope. It returns the derived source-state envelope and the normalized author-event
+envelope. For an old digest link, both inputs must use the supported version 1 history. The helper
+checks the target, requirements, exchange, phase, artifact, scope, answers, and original predecessor.
+It then verifies that the complete derived source state normalizes to the same current result.
+This permits consecutive legacy author refreshes. A version 2 author event must use the normalized
+predecessor. The delivery consumer retains the original forge records and uses one normalized
+graph for its existing ownership, order, fork, and complete-chain checks. A history conversion does
+not convert an authority record or a historical anchor proof.
+
+An author-event record has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `event_type` | `author_response` |
+| `exchange_id` | Nonempty exchange identity |
+| `prior_state_sha256` | Prior state digest or `null` for the initial issue plan |
+| `target` | Review target |
+| `requirements_sha256` | Requirements digest |
+| `artifact_binding` | Artifact binding |
+| `scope` | Sorted, nonempty list of unique target strings |
+| `scope_change_reason` | Nonempty string or `null` |
+| `responses` | Ordered list of unique author responses |
+
+## `review_exchange.py`
+
+### `reduce`
+
+The request has exactly `previous` and `event`. `previous` is `null` for an initial assessment.
+Otherwise, it is a state envelope. `event` is one event from the following tables.
+
+An initial reviewer assessment has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `event_type` | `reviewer_assessment` |
+| `exchange_id` | Nonempty new exchange identity |
+| `prior_state_sha256` | `null` |
+| `round` | Integer `1` |
+| `surface` | `issue` or `pull_request` |
+| `target` | Review target |
+| `requirements_sha256` | Requirements digest |
+| `supersedes_state_sha256` | `null` |
+| `artifact_binding` | Artifact binding |
+| `scope` | Nonempty list of unique target strings |
+| `coverage_complete` | Boolean |
+| `responses` | Empty list |
+| `new_findings` | Ordered list of finding inputs |
+| `stop_reason` | `null` or a stop reason from the list below |
+
+A requirements reframe has the same fields as an initial assessment, plus the required
+`authority_receipt` and `superseded_exchange_ids` fields. It has these different values:
+
+- `event_type` is `reframe`.
+- The outer request's `previous` field is the exact retained state envelope. This envelope
+  can be in any phase, including `complete`.
+- `exchange_id` differs from the prior exchange identity.
+- `prior_state_sha256` and `supersedes_state_sha256` equal the prior envelope digest.
+- `requirements_sha256` differs from the prior requirements digest.
+- `surface` and `target` equal the prior values.
+- `authority_receipt` is the normalized receipt that authorizes the supersession.
+- `superseded_exchange_ids` is a nonempty list of unique strings. It equals the prior reframe
+  genesis list plus the prior exchange identifier. For the first reframe, it contains only the prior
+  exchange identifier. The new exchange identifier must not occur in this list.
+
+The result state stores this receipt in `supersession_authority_receipt`. A fresh exchange has
+`supersedes_state_sha256=null` and `supersession_authority_receipt=null`. A reframe has non-null
+values for both fields.
+
+A continued author response has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `event_type` | `author_response` |
+| `exchange_id` | Prior exchange identity |
+| `prior_state_sha256` | Prior envelope digest |
+| `artifact_binding` | New author artifact binding |
+| `scope` | Complete nonempty scope set |
+| `scope_change_reason` | Nonempty reason when the scope differs; otherwise `null` |
+| `responses` | One author response for each required finding that the transition must answer |
+
+Normally, a continued author response applies to `awaiting_author`. For a pull request, it can also
+refresh a changed head in `awaiting_reviewer` or `awaiting_evidence`. A refresh must change `artifact_binding.revision`. A different artifact digest with
+the same revision is not sufficient.
+
+A pull-request author can also refresh `decision_required` before round 5 when the latest accepted
+reviewer assessment explicitly has `stop_reason=replacement_blocker`. The artifact revision must
+change. A reason that the reducer derives does not qualify. The exchange identity, requirements
+digest, and reviewer round must stay unchanged. The author must answer each active required finding
+and revalidate each terminal required finding. The refresh invalidates prior coverage and moves to
+`awaiting_reviewer` with `next_action=review_assessment`. Human-decision and reframe authority
+requirements stay unchanged.
+
+An older reducer cannot verify history that contains this transition. If a rollback is necessary,
+keep the accepted history and use a reducer that supports the transition. Do not remove accepted
+events to make an older reducer accept the history.
+
+On both review surfaces, each response that changes the artifact revision or digest must answer all
+active required findings and all required findings in `resolved`, `withdrawn`, or `accepted_risk`
+state. It uses the same finding identifiers. A terminal-finding response replaces the prior author
+answer and reviewer response. The finding returns to the answered or contested state for the new
+response. For `accepted_risk`, the transition also clears the prior authority receipt. The new risk
+request needs a new authoritative decision. Nonblocking findings keep their state and do not need a
+response.
+
+When a correction reopens a revalidated terminal finding without a net decrease in active required
+findings, the assessment stops with `replacement_blocker`. A clean revalidation can complete. If
+the active required finding count decreases, the exchange can continue.
+
+In `awaiting_reviewer`, a refresh stays in `awaiting_reviewer`. In `awaiting_evidence` or a
+conditional complete state, the result moves to `awaiting_reviewer` when it revalidates a terminal
+required finding. When it has no active or terminal required finding, `responses` is empty and the
+result moves to `awaiting_evidence`. Each refresh has `verdict=NO-GO`,
+`next_action=review_assessment`, and `coverage_complete=false`. It keeps the reviewer round,
+progress records, and finding identifiers. It appends one accepted event. Thus, the
+509-event ledger limit bounds repeated refreshes.
+
+A corrective reviewer assessment has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `event_type` | `reviewer_assessment` |
+| `exchange_id` | Prior exchange identity |
+| `prior_state_sha256` | Prior envelope digest |
+| `round` | Prior round plus 1 |
+| `artifact_binding` | Exact author artifact revision and artifact digest, with the visible-content digest for the new reviewer carrier |
+| `scope` | Exact author scope set |
+| `coverage_complete` | Boolean |
+| `responses` | One reviewer response for each prior author answer |
+| `new_findings` | Ordered list of permitted later finding inputs |
+| `stop_reason` | `null` or a stop reason from the list below |
+
+The stop reasons are `closure_conflict`, `replacement_blocker`,
+`scope_growth_without_progress`, `no_consensus`, and `requirements_reframe`.
+The reducer selects `scope_growth_without_progress` automatically only when one or more active
+required findings remain. A clean assessment after a zero-finding artifact refresh can complete
+after scope growth.
+
+An authoritative human event has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `event_type` | `human_decision` |
+| `exchange_id` | Prior exchange identity |
+| `prior_state_sha256` | Prior envelope digest |
+| `artifact_binding` | Prior artifact revision and artifact digest, with the visible-content digest for the new carrier |
+| `authority_receipt` | Authority receipt |
+| `decisions` | Nonempty list of unique human decisions |
+
+A terminal GO cannot accept an author response or a reviewer assessment. A reframe remains valid.
+
+An authorized `select_closure` can continue after round 5. A requirements reframe is
+the only event that can change the exchange identity.
+
+The result has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `schema_id` | `athena.review-exchange.reduce-result` |
+| `schema_version` | Integer `1` |
+| `status` | `accepted` or `replayed` |
+| `decision` | Decision record |
+| `author_event` | Author-event envelope for an accepted author response; otherwise `null` |
+| `envelope` | Result state envelope |
+
+The decision record has `phase`, `reason`, `next_role`, `review_round`, `rounds_remaining`, and
+`required_remaining`. `next_role` is `author`, `reviewer`, `human`, or `null`. The last three count
+fields are nonnegative integers, except that `review_round` is at least 1.
+
+### `verify`
+
+The input is one complete state or author-event envelope. The result is its normalized canonical
+envelope. The command rejects a wrong digest or a state that no valid transition can produce.
+
+### `extract`
+
+The input is one UTF-8 Markdown carrier document, not JSON. The result is its normalized canonical
+envelope. The document must contain exactly one final carrier section. The plain form is:
+
+````text
+<exact visible content>
+
+<!-- HomericIntelligence:review-exchange:v1 kind=<state|author-event> sha256=<digest> -->
+```json
+<one-line canonical envelope JSON>
+```
+````
+
+The compressed form keeps the same marker. It replaces the `json` fence with
+`athena-json-zlib-base64-v1`. The fence contains one line of canonical, padded Base64. The decoded
+bytes contain exactly one complete zlib stream. That stream expands to the exact canonical envelope
+UTF-8 bytes from the plain form. Compression does not change the envelope schema, accepted-event
+ledger, event order, state digest, or any retained artifact receipt.
+
+Both the complete input document and the expanded envelope have a 1 MiB limit. The reader bounds
+decompression before JSON parsing. It rejects invalid Base64, noncanonical padding, an invalid or
+truncated stream, concatenated streams, trailing bytes, and an oversized result. It then applies
+the existing strict canonical JSON, envelope, digest, and full-ledger checks. A different valid zlib
+representation can encode the same canonical envelope; compressed bytes are not a logical identity.
+
+The marker digest, envelope digest, carrier kind, visible-content digest, and provider body limit
+must agree. The marker and its payload fence must be a top-level final section. The visible content
+cannot leave a top-level fenced code block open at the carrier boundary.
+For a supported version 1 envelope, the reader checks the original canonical bytes and marker
+digest before it returns the normalized version 2 envelope. The original carrier does not change.
+Only the documented version conversion can change the state representation. All other wire state
+must already have canonical semantic order.
+The final payload fence must end with a line feed or at the end of input.
+No text, spaces, or extra blank lines can follow that fence. The reader preserves
+all input bytes for digest and size checks. The renderer continues to emit a final line feed.
+
+Readers that support only the plain form reject the new fence. They must not infer state from its
+marker. Upgrade the consumer before publication of a compressed carrier. Existing plain carriers
+remain valid and do not need republication.
+
+### `render`
+
+The JSON request has exactly these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `visible_content` | Exact string before the carrier; an empty string is valid |
+| `envelope` | State or author-event envelope |
+| `kind` | `state` or `author-event`, as applicable to the envelope |
+
+The output is the exact carrier document. It ends with a line feed. `visible_content` cannot contain
+a review-exchange marker. Its digest must equal `artifact_binding.visible_content_sha256`.
+The renderer preserves the existing plain form byte for byte when that form fits the provider body
+limit. Otherwise, it tries the compressed form. It rejects a compressed result that still exceeds
+the provider limit, or an envelope that exceeds the expanded-input limit. It never shortens visible
+content, removes ledger entries, or divides the carrier into multiple publications.
+
+For recovery of an existing compressed pull-request carrier, the delivery adapter verifies the
+decoded canonical envelope and exact visible bytes. It also retains the review identity, actor,
+head, no-edit, uniqueness, and historical body-receipt checks. The adapter does not require another
+compressor to produce identical bytes. Recovery of a plain carrier keeps its exact-body comparison.
+A new publication still requires exact readback of its prepared body. After selection of the
+original review, subsequent reads must retain its identity and body bytes before another write.
+
+## Pull-request terminal closure manifest
+
+The pull-request delivery helper accepts one canonical JSON closure manifest. It has exactly these
+fields:
+
+| Field | Type and value |
+| --- | --- |
+| `schema_id` | `athena.pr-review.closure-manifest` |
+| `schema_version` | Integer `1` |
+| `binding` | Exact repository, pull-request number and URL, base object identifier, and head object identifier |
+| `state` | Complete terminal pull-request state envelope |
+| `terminal_visible_content` | Exact visible content before the terminal reviewer state message |
+| `entries` | Ordered list of existing finding-thread closure entries |
+| `requirements_binding` | Exact live pull-request scope and linked-requirements binding |
+| `comments` | Ordered list of terminal inline finding entries |
+| `summary_finding_ids` | Ordered list of terminal-round nonanchorable finding identities |
+
+A `requirements_binding` has exactly these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `reviewed_scope_sha256` | Digest of the canonical live pull-request scope |
+| `requirements_sha256` | Aggregate digest of the canonical linked requirements |
+| `requirement_issue_urls` | Canonical sorted set of selected requirement-issue URLs |
+
+For pull-request delivery, the state `artifact_binding.sha256` equals
+`reviewed_scope_sha256`, and the state `requirements_sha256` equals the binding
+`requirements_sha256`. The surface adapter recomputes this binding at preflight, immediately before
+each write, and after final readback. A mismatch, coverage gap, or operational failure withholds the
+state-dependent write or favorable result.
+
+The terminal closure manifest requires `phase=complete`, `verdict=GO`,
+`next_action=finalize`. A current exact terminal state is valid evidence
+only for the exclusive implementation `NO-GO` label path.
+
+A closure entry has exactly these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `thread_id` | Exact review-thread identity |
+| `finding_id` | Exact state finding identity |
+| `finding_exchange_id` | Exchange that owns the finding identity |
+| `finding_state_sha256` | Exact selected state that contains the finding |
+| `superseding_state_sha256` | Exact direct reframe-child state for a historical withdrawal, or `null` for a current finding |
+| `origin_comment_id` | Exact root-comment identity |
+| `origin_review_head_oid` | Exact head that the root comment reviewed |
+| `conversation_sha256` | Digest of the complete current thread conversation |
+| `finding_disposition` | Exact state finding disposition |
+| `author_event_review_id` | Exact author-event review identity, or `null` |
+| `author_answer` | Exact stored author-answer kind, or `null` |
+| `author_artifact_revision` | Exact stored corrective revision, or `null` |
+| `reviewer_disposition` | `resolved`, `withdrawn`, `accepted_risk`, or `nonblocking` |
+| `closure_evidence` | Nonempty exact state evidence list |
+| `authority_receipt` | Exact stored authority receipt, or `null` |
+
+The pair of `finding_exchange_id` and `finding_id` is unique in the manifest. A current finding uses
+the terminal state digest as `finding_state_sha256` and has no superseding digest. A historical
+finding uses one state from the selected terminal supersession ancestry and names its exact direct
+reframe child. Its reviewer disposition is `withdrawn`. Its authority receipt equals the child's
+verified supersession receipt. Its closure evidence identifies the superseded state. Preserve an
+exact author answer when the selected source state has one. Otherwise, all author-answer fields are
+`null`; do not infer an answer from prose. Omit an already-resolved historical thread. An unrelated,
+foreign, or ambiguous open thread withholds terminal delivery.
+
+A terminal inline finding entry has exactly these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `path` | Nonempty safe relative repository path |
+| `side` | `LEFT` or `RIGHT` |
+| `line` | Positive integer causal line |
+| `body` | Nonempty finding body with one final exact exchange and finding marker |
+
+Replay the terminal event to determine which findings it introduced. An anchorable finding has an
+exact state location of `<relative-path>:<positive-line>`. Put each anchorable terminal-round
+finding in `comments` with the same path and line. Put each other terminal-round finding identity in
+`summary_finding_ids`. Both lists are ordered by finding identity and contain no duplicate. They do
+not overlap, and their union is the exact terminal-round finding set. Both lists can be empty.
+
+The delivery helper publishes `terminal_visible_content`, its reviewer state message, and the complete
+`comments` list in one exact-head `COMMENT` review. Readback must bind each inline root to that
+review, head, path, side, line, body, exchange, and finding. The helper derives new thread identities
+after readback. It then generates the closure responses. It does not accept arbitrary closure prose.
+The current forge record for each authority receipt must pass the common action-bound record check
+and prove `ADMIN` or `MAINTAIN` repository permission before a state-dependent write.
+
+## `issue_exchange.py`
+
+### Issue snapshot
+
+The `inspect` command takes an issue snapshot directly. Each other issue command contains a snapshot
+in its request. The snapshot has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `schema_id` | `athena.issue-exchange.snapshot` |
+| `schema_version` | Integer `1` |
+| `target` | Issue target |
+| `actor` | Authenticated actor |
+| `issue` | Issue record |
+| `comments` | Ordered list of complete top-level issue comments |
+| `comments_complete` | Exact Boolean `true` after complete provider pagination |
+
+An issue target has `provider`, `host`, `repository`, `issue_id`, `number`, and `url`. `provider` is
+`github` or `gitlab`. `number` is an integer of at least 1. Each other field is a nonempty string.
+The reducer uses `provider`, `repository`, `number`, and `url` as the common review target.
+
+An actor has `id` and `login`. `id` is a nonempty stable actor identity. `login` is a string and can
+be empty. An issue record has `state`, `title`, `body`, and `acceptance_criteria`. `state` is `open`
+or `closed`. `title` and `body` are strings and can be empty. Each acceptance criterion has the
+nonempty string fields `id`, `text`, and `source`. Criterion identities are unique.
+
+Each comment has `id`, `url`, `author`, and `body`. `id` and `url` are nonempty strings. A comment
+author has `id`, `login`, and `is_authority`. The first two fields have the same rules as the snapshot
+actor fields. `is_authority` is a Boolean. `body` is a string and can be empty. Comment identities
+are unique. The snapshot producer must exhaust the provider's bounded comment pagination and then
+set `comments_complete` to `true`. A missing or false value rejects the snapshot. The helper does
+not infer completeness from an empty or short list. The snapshot must contain all top-level
+comments that can own a canonical plan or review marker.
+
+The current requirements digest is the digest of canonical JSON with `schema_id` set to
+`athena.issue-exchange.requirements`, `schema_version` set to `1`, and the exact `target`, issue
+`title`, issue `body`, and `acceptance_criteria` from the normalized snapshot.
+
+### Issue artifact records
+
+An issue artifact summary has `id`, `author_id`, and `body_sha256`. The first two values are nonempty
+strings. `body_sha256` is the exact body digest.
+
+A prepared comment operation has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `action` | `create` or `update` |
+| `artifact` | `plan` or `review` |
+| `comment_id` | `null` for `create`; retained comment identity for `update` |
+| `expected_body_sha256` | `null` for `create`; retained body digest for `update` |
+| `body` | Exact body to publish |
+| `body_sha256` | Digest of `body` |
+| `operation_sha256` | Digest of canonical JSON for the other six fields |
+
+A prepared issue-comment result has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `schema_id` | `athena.issue-exchange.prepare-result` |
+| `schema_version` | Integer `1` |
+| `status` | `ready` or `withheld` |
+| `requirements_sha256` | Current requirements digest |
+| `precondition_sha256` | Digest of the exact issue-comment precondition |
+| `target` | Exact issue target |
+| `actor_id` | Authenticated stable actor identity |
+| `peer` | Other canonical artifact summary or `null` |
+| `state` | Result state record or `null` |
+| `state_sha256` | Digest of `state` or `null` |
+| `authority_receipt` | Reframe-plan authority receipt, or `null` for all other results |
+| `recovery_authority_receipt` | Carrier-recovery authority receipt when the operation replaces the recovered carrier, or `null` |
+| `next_action` | `prepare_plan`, `prepare_review`, `author_response`, `review_assessment`, `finalize`, `human_decision`, or `none` |
+| `operation` | Prepared comment operation or `null` |
+| `diagnostics` | List of diagnostic records |
+
+A diagnostic record has the nonempty string fields `code` and `message`. A `ready` result has an
+operation and an empty diagnostic list. A `withheld` result has no operation and has a diagnostic.
+
+The issue-comment precondition is the digest of canonical JSON with `schema_id` set to
+`athena.issue-exchange.precondition`, `schema_version` set to `1`, and these fields: exact issue
+`target`, `actor_id`, `requirements_sha256`, canonical plan summary or `null`, canonical review
+summary or `null`, `authority_receipt`, and `recovery_authority_receipt`. The action authority
+receipt is non-null only for a reframe-plan operation. The recovery authority receipt is non-null
+only when the operation replaces a recovered carrier. Thus, publication verification can detect
+authority-comment drift during the applicable mutation.
+
+### `inspect`
+
+The input is one issue snapshot. The result has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `schema_id` | `athena.issue-exchange.inspect-result` |
+| `schema_version` | Integer `1` |
+| `status` | `ready`, `withheld`, or `finalized` |
+| `requirements_sha256` | Current requirements digest |
+| `precondition_sha256` | Current issue-comment precondition digest |
+| `plan` | Canonical plan summary or `null` |
+| `review` | Canonical review summary or `null` |
+| `envelope` | Current reduced state envelope or `null` |
+| `state` | Current state record or `null` |
+| `state_sha256` | Current state digest or `null` |
+| `next_action` | `prepare_plan`, `prepare_review`, `finalize`, `human_decision`, or `none` |
+| `diagnostics` | List of diagnostic records |
+
+The command does not infer answers from unversioned prose. It returns `withheld` for a malformed,
+duplicate, stale, or conflicting selected canonical artifact. Actor-owned artifacts take precedence
+over foreign marker comments. A foreign selected artifact requires the explicit finalization
+authority extension for an issue-body update. A valid finalized issue returns `finalized` and
+`next_action=none`.
+
+One historical exception applies only in the issue adapter. The generic carrier parser stays
+strict. The issue adapter can read at most one actor-owned carrier that has exactly one additional
+final line feed. The adapter requires one live authority comment with this exact canonical JSON
+record:
+
+| Field | Type and value |
+| --- | --- |
+| `schema_id` | `athena.issue-exchange.carrier-recovery-authority` |
+| `schema_version` | Integer `1` |
+| `action` | `supersede_malformed_carrier` |
+| `target` | Exact issue review target |
+| `comment_id` | Exact malformed comment identity |
+| `body_sha256` | Digest of the unchanged malformed body |
+| `canonical_body_sha256` | Digest after removal of only the additional final line feed |
+| `carrier_state_sha256` | Digest from the strict parse of that canonical body |
+
+The authority comment author must have repository authority. The adapter rechecks the complete
+record at each read. It rejects a foreign carrier, two recoverable carriers, two matching authority
+comments, a different suffix, or a record with a different digest. New publication stays canonical.
+The exception does not make an unknown publication result successful. Reframe and human-decision
+operations still require their separate action-bound authority records.
+
+An unchanged finalized body stays terminal. A body that keeps a finalization marker but no longer
+matches its `F` digest is malformed and stays withheld. After an authoritative person replaces the
+sealed body with clean requirements and removes the obsolete finalization marker, `inspect` starts a
+new round-1 epoch. It does not treat the generated finalized plan or sealed provenance as new
+requirements.
+
+After a verified reframe-plan publication, the plan contains the new author review message while the
+review still contains the exact old retained state. `inspect` recognizes only this narrow
+pending-reframe pair. It requires the deterministic new exchange identity, current requirements,
+same target and comment identities, empty responses, an exact prior-state binding, and one live
+action-bound authority record for the reframe. It returns `ready` and
+`next_action=prepare_review`, with the old envelope as the reframe context. The next `prepare-review`
+request must still supply and verify that live authority receipt explicitly.
+
+### `prepare-plan`
+
+The request has exactly `snapshot`, `content`, and `event`. `snapshot` is an issue snapshot.
+`content` is nonempty visible plan content without an Athena artifact marker. A normal plan event
+has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `scope` | Nonempty list of unique scope-target objects |
+| `scope_change_reason` | Nonempty string when a continued plan changes scope; otherwise `null` |
+| `responses` | Empty list for the initial plan; otherwise one response for each required finding that the transition must answer |
+
+Each scope target has `kind` and `value`. `value` is a nonempty string. `kind` is `path`, `module`,
+`interface`, `workflow`, `dependency`, `migration`, or `command`. The helper normalizes it to
+`<kind>:<value>` in the common state scope.
+
+A reframe plan event has exactly these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `event_type` | `reframe` |
+| `previous` | Exact retained review-state envelope, including a `complete` review |
+| `authority_receipt` | Exact live authority receipt for the requirements supersession |
+| `scope` | Nonempty list of unique scope-target objects for the new requirements |
+
+A legacy-reframe plan event has the same fields. Its `event_type` is `legacy_reframe`. Use this
+event only for one complete imported legacy exchange. The retained plan must have no author
+review message. The retained review must have one version 1 terminal `GO` state.
+
+For GitHub, the retained plan and review must each use a positive REST numeric comment identity.
+Each identity must equal the numeric identity in its issue-comment URL. The helper rejects a
+GraphQL identity, mixed identity forms, and an identity that does not match its URL. The helper does
+not convert an identity.
+
+The reframe snapshot must contain the same retained plan and review comments, with changed
+requirements. The helper verifies the receipt against one noncanonical comment in the normalized
+current snapshot whose author has `is_authority=true`. The comment body must be an exact `reframe`
+authority record for the new exchange, new requirements, current target, and old state digest. The
+helper makes a new exchange identity and binds it to the prior state digest. The plan author review
+message does not persist the receipt. The prepared result carries the receipt only for publication
+verification. `prepare-review` must receive and verify the authority receipt again.
+
+The retained review envelope must be the current logical state of the old exchange. The plan-source
+token in the retained review must bind the retained plan. If the plan contains a valid pending author
+event that the review has not accepted, `prepare-plan` rejects the reframe. Complete and verify a
+reviewer assessment before the requirements change. The adapter does not overwrite the sole
+pending-event carrier or supersede a stale persisted state.
+
+For `legacy_reframe`, the helper also requires the exact retained review envelope, changed
+requirements, one canonical plan, one canonical review, and the exact live reframe authority. The
+prepared operation updates only the retained plan. It preserves the retained review and authority
+comments. An exact repeat gives the same prepared operation. After publication, a second legacy
+migration request is invalid because the plan now has an author review message.
+
+The result is a prepared issue-comment result. A ready initial result prepares one `create` operation
+for the canonical plan comment. A ready continued result prepares one `update` operation for that
+same comment. Its body has the latest author review message. The helper does not prepare a plan when
+the exchange awaits a reviewer, is complete, or requires a human decision, unless the request is an
+authorized reframe with changed requirements.
+
+Before a review exists, an initial plan carrier can use only the exact plan-comment identity or
+`pending:<visible_content_sha256>` as its artifact revision. If the requirements change before any
+review exists, `inspect` can select `prepare_plan` for a fresh initial exchange on the same plan
+comment. This case has no prior review state to supersede.
+
+### `prepare-review`
+
+The request has exactly `snapshot`, `content`, and `event`. `snapshot` is an issue snapshot.
+`content` is nonempty visible review content without an Athena artifact marker. `event` is one of
+these three exact event forms.
+
+A reviewer-assessment event has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `event_type` | `reviewer_assessment` |
+| `coverage_complete` | Boolean |
+| `responses` | Empty for round 1; otherwise one reviewer response for each prior author answer |
+| `new_findings` | Ordered list of finding inputs |
+| `stop_reason` | `null` or a common stop reason |
+| `legacy_import` | Boolean; use `true` only for an explicit in-place import of an active unversioned review |
+| `scope` | List of scope-target objects. An empty list selects the targets from a versioned plan. A nonempty list must equal those targets. A legacy import requires a nonempty list. |
+
+An authoritative-human event has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `event_type` | `human_decision` |
+| `authority_receipt` | Authority receipt |
+| `decisions` | Nonempty list of unique human decisions |
+
+The authority reference must identify one exact live noncanonical issue comment by its identity or
+URL. That comment must have `is_authority=true`. Its body digest must equal
+`authority_receipt.sha256`. Its body must be an exact `human_decision` authority record for the
+current target, exchange, requirements, prior state, and decision list. The helper derives the
+prior state and artifact binding from the canonical comments.
+
+A reframe review event has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `event_type` | `reframe` |
+| `previous` | Same verified old state envelope that the reframe plan used |
+| `authority_receipt` | Exact live authority receipt for the requirements supersession |
+| `coverage_complete` | Boolean |
+| `responses` | Empty list |
+| `new_findings` | Ordered list of initial finding inputs for the new exchange |
+| `stop_reason` | `null` or a common stop reason |
+| `legacy_import` | Boolean `false` |
+| `scope` | Nonempty list of scope-target objects that equals the reframe plan targets |
+
+The helper verifies the exact action-bound reframe record again from the current snapshot. The
+resulting state stores the verified receipt in `supersession_authority_receipt`.
+
+The result is a prepared issue-comment result. Round 1 creates the canonical review comment only
+when it is absent. A continuation updates that same comment. The helper inserts this generated
+top-level marker in the visible content:
+
+```text
+<!-- HomericIntelligence:reviewed-plan:v1 token=<source-token> -->
+```
+
+The source token is the digest of canonical JSON with the exact `comment_id` and `body_sha256` of
+the plan. The review body then ends with the complete reviewer state message. A terminal review still
+produces this update when it has no new finding.
+
+### `verify-publication`
+
+The request has exactly `prepared` and `snapshot`. `prepared` is the exact ready result from
+`prepare-plan` or `prepare-review`. `snapshot` is the complete readback after the caller makes the
+one prepared comment operation.
+
+The result has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `schema_id` | `athena.issue-exchange.publication-result` |
+| `schema_version` | Integer `1` |
+| `status` | `verified` or `unknown_outcome` |
+| `state` | Prepared result state or `null` |
+| `state_sha256` | Prepared state digest or `null` |
+| `receipt` | Publication receipt or `null` |
+| `diagnostics` | List of diagnostic records |
+
+A publication receipt has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `operation_sha256` | Prepared operation digest |
+| `action` | Prepared `create` or `update` action |
+| `artifact` | Prepared `plan` or `review` role |
+| `comment_id` | Nonempty readback comment identity |
+| `url` | Nonempty readback comment URL |
+| `body_sha256` | Prepared and read-back body digest |
+| `verified_precondition_sha256` | Prepared precondition digest |
+
+These values bind the exact prepared operation and readback. An `unknown_outcome` result has no
+receipt. It does not authorize a retry. Readback repeats canonical marker identity checks and live
+action-bound authority verification. For a reframe-plan publication, it uses the ephemeral prepared
+`authority_receipt` and requires `inspect` to recognize the exact live peer as the superseded state
+of the pending reframe. When an operation replaces a recovered carrier, verification also requires
+the exact live `recovery_authority_receipt`. For a review publication, it uses the receipts in the
+result state.
+
+For a corrective plan publication, verification reduces the exact live retained review state with
+the published author review message. The derived state and digest must equal the prepared result.
+Thus, a separately valid result state cannot replace the prepared continuation.
+
+### `verify-finalize`
+
+The command has two request forms. To prepare finalization, use exactly `snapshot` and
+`candidate_body`. `snapshot` is the current issue snapshot. `candidate_body` is nonempty final plan
+content without a finalization marker. To verify issue-body readback, use exactly `snapshot` and
+`prepared`. `prepared` is the exact ready finalization result. The helper selects the request form by
+its exact field set.
+
+A ready or verified finalization result has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `schema_id` | `athena.issue-exchange.finalize-result` |
+| `schema_version` | Integer `1` |
+| `status` | `ready` or `verified` |
+| `requirements_sha256` | Current requirements digest |
+| `requirements_context_sha256` | Digest of the target, issue state, title, and acceptance criteria |
+| `target` | Exact issue target |
+| `actor_id` | Authenticated stable actor identity |
+| `precondition_sha256` | Exact finalization precondition digest |
+| `state` | Exact terminal issue state record |
+| `state_sha256` | Terminal state digest |
+| `sources` | Exact `R`, `P`, and `V` source record |
+| `operation` | Prepared issue-body replacement operation |
+| `deletion_allowlist` | Exact plan and review comment identities |
+| `remaining_comment_ids` | Empty list |
+| `diagnostics` | Empty list |
+
+`sources.R` is the requirements digest. `sources.P` and `sources.V` each have `token`, `comment_id`,
+and `body_sha256`. An authorized foreign source also has its exact `author_id`. The source token is the digest of canonical JSON with `comment_id` and
+`body_sha256`.
+
+The issue-body replacement operation has `action`, `expected_issue_body_sha256`, `body`,
+`body_sha256`, `F`, and `operation_sha256`. `action` is `replace_body`. `F` binds the finalization
+marker template. `operation_sha256` is the digest of canonical JSON for the other five fields.
+`body` is the exact issue-body form that the provider publishes. For GitHub, that form has no final
+line feed, and `F`, `body_sha256`, and `operation_sha256` bind it. For every other provider, the
+digests bind the exact prepared bytes, which keep the generated terminal line feed. The readback
+comparison is byte-exact against `body`.
+
+The finalization precondition is the digest of canonical JSON with `schema_id` set to
+`athena.issue-exchange.finalize-precondition`, `schema_version` set to `1`, and these fields: exact
+issue `target`, `actor_id`, `requirements_sha256`, `requirements_context_sha256`, `state_sha256`,
+plan summary, review summary, and `expected_issue_body_sha256`. Thus, changing the expected issue
+body and recomputing only the operation digest does not make a valid prepared finalization.
+`requirements_context_sha256` binds the issue workflow state through preparation and readback. The
+helper permits an open or closed issue and does not change that state.
+
+A non-ready finalization result has these fields:
+
+| Field | Type and value |
+| --- | --- |
+| `schema_id` | `athena.issue-exchange.finalize-result` |
+| `schema_version` | Integer `1` |
+| `status` | `withheld`, `unknown_outcome`, `partial_cleanup`, or `no_change` |
+| `requirements_sha256` | Requirements digest or `null` |
+| `state` | `null`, except that an unknown outcome retains the prepared state |
+| `state_sha256` | `null`, except that an unknown outcome retains the prepared digest |
+| `sources` | `null`, except that an unknown outcome retains the prepared sources |
+| `operation` | `null` |
+| `deletion_allowlist` | Empty list |
+| `remaining_comment_ids` | Sealed intermediate-comment identities only for `partial_cleanup`; otherwise empty |
+| `diagnostics` | Nonempty list of diagnostic records |
+
+Finalization requires a current matching requirements digest, plan source, review source, exact GO
+state, complete coverage, terminal ledger, and each required authority receipt. The current plan
+carrier must equal the last accepted author response in that ledger. For a round-1 GO with no author
+response, it must equal the initial plan event that the first assessment binds. Finalization does
+not make a review assessment. Readback verifies each live action-bound authority record again before
+it returns `verified`. A verified result authorizes cleanup only for `deletion_allowlist`. After an
+unknown outcome, do not retry the body replacement.
+
+
+## Bounded task batches
+
+Use `prepare-batches` when the findings or input exceed one operation. Its input is UTF-8 JSON
+lines. The first line is `{"event": <initial-reviewer-event>}` with no findings and no supersession.
+Each subsequent line is one finding input. The helper retains at most one batch, assigns local
+consecutive finding IDs, and suffixes the initial exchange ID with `-1`, `-2`, and so on. Identify a
+finding by its exchange ID and local finding ID together. Native thread identities remain unchanged.
+
+The output contains one complete envelope per line and one final `athena.review-exchange.batch-end`
+receipt. The receipt has `schema_version: 1`, `batch_count`, and `batches_sha256`. The digest covers
+the canonical envelope lines, including each line feed, in order. A partial output has no completion
+receipt. Do not deliver GO from a partial output.
+
+Use `verify-batches` to consume this output. It reads and verifies one bounded line at a time. Each
+batch must bind the same surface, target, requirements, source revision, source digest, and scope.
+The helper rejects missing or repeated batch identities, changed source bindings, an incorrect end
+receipt, and data after the receipt. Its aggregate result gives the total findings, required findings,
+batch count, digest, completion status, and verdict. GO requires the receipt and complete GO ledgers
+for all batches. An interrupted stream returns NO-GO with its completed count and digest.
+
+Render each envelope with the existing `render` command. Publish the bounded carriers separately.
+Keep the batch receipt with the task record. Use the aggregate verdict before task-wide delivery;
+a GO for one batch is not approval of the full task. If a provider body is too small for a batch,
+prepare smaller batches. Keep actual provider limits. Refresh affected batches when the source
+changes and verify the complete set again before delivery.
+
+## Reassessment and continuation
+
+A corrective reviewer event can include the optional `reassessment` string. It records the evidence
+for a viable next step. The field is evidence for the human decision at the round limit; it does
+not extend the limit. The fifth reviewer round is the hard cap: a fifth-round assessment with an
+active required finding or a coverage gap results in `decision_required`, and no sixth automated
+reviewer assessment is valid. Explicit stop reasons and unresolved architecture findings retain
+their existing effect. Rounds remain consecutive, and the accepted-event digest and replay include
+reassessment text. Existing events without this field remain valid. The `round_limit` wire field
+remains five.
+
+When another actor has comments with canonical markers, preserve them. A unique actor-owned
+artifact takes precedence for updates and cleanup. Conflicting actor-owned artifacts still require
+reconciliation from source evidence.
+
+
+## Conversation authority provenance
+
+When forge authority cannot be retrieved, `conversation_authority_record` can prepare an authority
+body from an explicit user decision. Its optional `conversation` object contains the actual
+`log_id`, `message_id`, `decision_sha256`, and `forge_unavailable_reason`. The decision digest binds
+the exact decision text. The host must verify the user identity, decision, target, and scope from
+the referenced conversation. Never invent a log or message identifier.
+
+The existing action-bound fields remain mandatory. The receipt digest includes conversation
+provenance. Publish the prepared body to the forge when available. The delivery adapters retain
+repository-authority checks on the published record. An offline body is preparation evidence; it
+is not a forge publication receipt or a delivered result.
+
+
+## Authorized foreign-source finalization
+
+The `verify-finalize` preparation request can include `source_authority_receipt`. This extension
+permits an issue-body update from foreign source comments only after a live repository-authoritative
+record authorizes the exact update. Without that record, the existing source-ownership check applies.
+
+The authority body is canonical JSON with `schema_id: athena.issue-exchange.finalize-authority`,
+`schema_version: 1`, and `action: finalize_foreign_sources`. It binds `target`, `actor_id`, `plan`,
+`review`, `issue_body_sha256`, and `candidate_body_sha256`. Each source summary contains `id`,
+`author_id`, and `body_sha256`. The candidate digest covers the candidate body after trailing white
+space is removed. The issue digest covers the exact body before the update. Use the existing receipt
+fields `reference` and `sha256` to identify this authority comment.
+
+The helper preserves foreign source authors in the prepared source records and in the precondition.
+It excludes their comments from the deletion allowlist. Readback verifies the source records and
+live authority again, using the recorded pre-update issue digest. A changed actor, source, candidate,
+authority record, or repository-authority status prevents cleanup. A sealed finalized issue does not
+require deletion of retained foreign comments.
+
+
+### Batch delivery manifest
+
+A pull-request closure manifest can include `batch_manifest: {"path": "batches.jsonl", "sha256":
+"<digest>"}`. The path identifies the terminal NDJSON envelopes and complete receipt. Relative paths
+resolve from the closure manifest directory. The digest is the verified `batches_sha256`, which
+covers the canonical envelope lines and excludes the final receipt.
+
+All batches must have the same exact source, target, requirements, and scope, and all must have GO.
+All terminal batch carriers except the selected carrier must already be published and verified.
+The selected terminal carrier is the final publication. Each delivery read checks the stream and
+its digest again. Existing thread, evidence, and repository-authority checks remain applicable.
+
+
+Publish earlier batch carriers as COMMENT state records. Do not run GO finalization or change GO
+labels for an individual batch. Invoke delivery once for the selected final terminal carrier with
+the complete batch manifest and closure entries from all batches. The adapter verifies all published
+carriers and closure identities before it changes the task's implementation label.
+
+### Verified format recovery
+
+For an actor-owned issue carrier with exactly one additional final line feed, the coordinator can
+prepare and publish the existing scoped recovery authority record under the task's existing
+authority. It need not request the same permission again. The helper verifies the canonical envelope,
+state digest, original source body, and action-bound recovery receipt before it continues. Preserve
+the receipt and reconcile publication through readback. If the authority record cannot be published,
+continue unaffected work and provide the prepared record and exact publication command. Do not
+infer state from broader corruption or claim that an unverified publication succeeded.

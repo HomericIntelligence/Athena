@@ -10,6 +10,8 @@ import re
 from hashlib import sha256
 from pathlib import Path
 
+from scripts.semver import BUILD_ARTIFACT_NAME
+
 SEMVER_TAG = re.compile(r"^v([0-9]+\.[0-9]+\.[0-9]+)$")
 
 
@@ -61,7 +63,7 @@ def _verify_checksum(artifact: Path, checksum: Path) -> None:
 def _verify_spdx(path: Path, *, expected_name: str, version: str) -> None:
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, ValueError) as error:
         raise ValueError(
             f"The tool cannot parse SPDX document '{path.name}'. "
             f"The operation returned this diagnostic.\n{error}"
@@ -117,7 +119,7 @@ def verify_release_assets(directory: Path) -> list[str]:
     artifacts = [
         archive,
         directory / f"athena-plugin-{version}.spdx.json",
-        directory / f"athena-build-linux-64-{version}.spdx.json",
+        directory / f"{BUILD_ARTIFACT_NAME}-{version}.spdx.json",
     ]
     expected = {
         path.name
@@ -138,5 +140,5 @@ def verify_release_assets(directory: Path) -> list[str]:
     _verify_spdx(
         artifacts[1], expected_name=f"athena-plugin-{version}", version=version
     )
-    _verify_spdx(artifacts[2], expected_name="athena-build-linux-64", version=version)
+    _verify_spdx(artifacts[2], expected_name=BUILD_ARTIFACT_NAME, version=version)
     return sorted(expected)

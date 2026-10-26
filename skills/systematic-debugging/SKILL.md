@@ -1,12 +1,15 @@
 ---
 name: systematic-debugging
 license: BSD-3-Clause
-description: Investigate root cause before you repair a bug or unexpected behavior. This skill requires the Mnemosyne knowledge backend through advise. Stop if the backend cannot be prepared.
+description: Investigate root cause before you repair a bug or unexpected behavior. Use available Mnemosyne advice; missing guidance does not stop otherwise authorized work.
 argument-hint: <description of the bug or failure>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 ---
 
 # Systematic debugging
+
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
+recovery, resources, validation, and delivery.
 
 ## Overview
 
@@ -48,8 +51,9 @@ principle definitions. Use these principles in this workflow:
 
 ## Before you start
 
-Run `advise` with the error description. If you cannot prepare the required knowledge backend,
-stop. Do not skip the prior-knowledge search.
+Run `advise` with the error description. If guidance is missing, stale, or not verifiable, report
+the limit and continue otherwise authorized investigation with source and failure evidence.
+Do not skip the best-effort retrieval attempt.
 
 ## Required sequence
 
@@ -150,6 +154,8 @@ Use this method to test a hypothesis:
 Repair the root cause.
 
 Do not repair only the symptom.
+Before you add code, check whether removal, reuse, consolidation, or deletion of an obsolete
+workaround is the smallest safe repair. If that repair preserves the contract, choose it.
 
 1. Use the `test-driven-development` skill to create a regression test.
 2. Under [P026 — Regression Before Repair](../../docs/principles/README.md#p026), create the test
@@ -198,7 +204,7 @@ Review the evidence for these conditions:
 - A repair requires a large refactor.
 - Each repair creates a new symptom in another component.
 
-Before another repair attempt, discuss the collected evidence with the user. If the evidence shows
+Before another repair attempt, reassess the collected evidence and select a viable approach. If the evidence shows
 an incorrect hypothesis, return to phase 1. Propose an architecture change only if the evidence
 supports it.
 
@@ -211,7 +217,7 @@ Stop if one of these conditions applies:
 - You plan to make multiple changes before a test.
 - You select a probable cause without evidence.
 - You do not understand the issue but plan a repair.
-- You plan another repair after two failed repairs.
+- You plan another repair without reassessing failed attempts.
 - Each repair reveals a new problem in a different component.
 
 After you stop, return to phase 1.

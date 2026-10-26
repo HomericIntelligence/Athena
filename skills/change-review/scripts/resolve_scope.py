@@ -4,28 +4,44 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
+import sqlite3
 import stat
 import subprocess
 import sys
 import tempfile
 from collections.abc import Callable, Iterable, Sequence
+from contextlib import closing
 from dataclasses import dataclass
 from hashlib import sha256
 from operator import index
 from pathlib import Path
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
-if __package__ in {None, ""}:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-
-from skills._cli import (
-    argument_parser,
-    git_read_arguments,
-    git_read_environment,
-    run_command,
-)
+if TYPE_CHECKING or __package__ not in {None, ""}:
+    from skills._cli import (
+        argument_parser,
+        git_read_arguments,
+        git_read_environment,
+        run_command,
+    )
+else:
+    _cli_path = Path(__file__).resolve().parents[2] / "_cli.py"
+    _cli_spec = importlib.util.spec_from_file_location(
+        "athena_installed_cli", _cli_path
+    )
+    if _cli_spec is None or _cli_spec.loader is None:
+        raise RuntimeError(
+            f"The installed Athena CLI helper is unavailable: '{_cli_path}'."
+        )
+    _cli = importlib.util.module_from_spec(_cli_spec)
+    _cli_spec.loader.exec_module(_cli)
+    argument_parser = _cli.argument_parser
+    git_read_arguments = _cli.git_read_arguments
+    git_read_environment = _cli.git_read_environment
+    run_command = _cli.run_command
 
 READ_CHUNK_SIZE = 1024 * 1024
 ERROR_OUTPUT_LIMIT = 16 * 1024
@@ -257,6 +273,35 @@ def pathspec_arguments(arguments: list[str], paths: Sequence[str]) -> list[str]:
     return [*arguments, "--", *literal_paths]
 
 
+def diff_arguments(
+    revision: str,
+    *,
+    cached: bool = False,
+    binary: bool = False,
+    extra: Sequence[str] = (),
+) -> list[str]:
+    """Build one guarded `diff` argument list for every scope path.
+
+    Every caller must use this builder. The filter and smudge guards decide
+    which content the review can observe, so a scope path that omits one
+    silently disagrees with the others. `--ignore-submodules=none` in
+    particular: without it a repository with a local `diff.ignoreSubmodules`
+    setting hides submodule paths from one mode and not the other.
+    """
+    arguments = ["-c", "diff.autoRefreshIndex=false", "diff"]
+    if cached:
+        arguments.append("--cached")
+    arguments.extend(
+        ["--no-ext-diff", "--no-textconv", "--ignore-submodules=none", "--no-renames"]
+    )
+    arguments.append("--binary" if binary else "--name-only")
+    if not binary:
+        arguments.append("-z")
+    arguments.extend(extra)
+    arguments.append(revision)
+    return arguments
+
+
 def normalized_paths(repository_root: Path, paths: Sequence[str]) -> list[str]:
     """Keep lexical filters inside the repository without following symbolic links."""
     root = Path(os.path.abspath(os.fspath(repository_root)))
@@ -311,32 +356,9 @@ def tracked_paths(
     if scope == "worktree":
         return list(worktree_tracked_capture(head, paths, repository_root).paths)
     elif scope == "staged":
-        arguments = [
-            "-c",
-            "diff.autoRefreshIndex=false",
-            "diff",
-            "--cached",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--ignore-submodules=none",
-            "--name-only",
-            "-z",
-            "--no-renames",
-            head,
-        ]
+        arguments = diff_arguments(head, cached=True)
     else:
-        arguments = [
-            "-c",
-            "diff.autoRefreshIndex=false",
-            "diff",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--ignore-submodules=none",
-            "--name-only",
-            "-z",
-            "--no-renames",
-            f"{base}..{head}",
-        ]
+        arguments = diff_arguments(f"{base}..{head}")
     return path_list(
         git_bytes(
             *pathspec_arguments(arguments, paths), repository_root=repository_root
@@ -355,30 +377,9 @@ def tracked_diff(
     if scope == "worktree":
         return worktree_tracked_capture(head, paths, repository_root).fingerprint
     elif scope == "staged":
-        arguments = [
-            "-c",
-            "diff.autoRefreshIndex=false",
-            "diff",
-            "--cached",
-            "--binary",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--ignore-submodules=none",
-            "--no-renames",
-            head,
-        ]
+        arguments = diff_arguments(head, cached=True, binary=True)
     else:
-        arguments = [
-            "-c",
-            "diff.autoRefreshIndex=false",
-            "diff",
-            "--binary",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--ignore-submodules=none",
-            "--no-renames",
-            f"{base}..{head}",
-        ]
+        arguments = diff_arguments(f"{base}..{head}", binary=True)
     return git_stream_fingerprint(
         *pathspec_arguments(arguments, paths), repository_root=repository_root
     )
@@ -594,6 +595,26 @@ def index_path_entries(
     return tuple(entries.get(path, PathEntry(path, "absent")) for path in paths)
 
 
+def parse_head_tree_record(record: bytes) -> PathEntry:
+    """Decode one streamed `git ls-tree -z` record."""
+    try:
+        header, raw_path = record.split(b"\t", maxsplit=1)
+        raw_mode, raw_type, raw_object_id = header.split()
+    except ValueError as error:
+        raise RuntimeError(
+            "The Git tree entry is not valid for scope resolution."
+        ) from error
+    path = os.fsdecode(raw_path)
+    mode = raw_mode.decode("ascii")
+    object_type = raw_type.decode("ascii")
+    return PathEntry(
+        path,
+        git_object_kind(mode, object_type),
+        object_id=raw_object_id.decode("ascii"),
+        mode=mode,
+    )
+
+
 def head_tree_entry_map(
     head: str, paths: Sequence[str], repository_root: Path
 ) -> dict[str, PathEntry]:
@@ -605,22 +626,8 @@ def head_tree_entry_map(
             *pathspec_arguments(arguments, paths), repository_root=repository_root
         )
     ):
-        try:
-            header, raw_path = record.split(b"\t", maxsplit=1)
-            raw_mode, raw_type, raw_object_id = header.split()
-        except ValueError as error:
-            raise RuntimeError(
-                "The Git tree entry is not valid for scope resolution."
-            ) from error
-        path = os.fsdecode(raw_path)
-        mode = raw_mode.decode("ascii")
-        object_type = raw_type.decode("ascii")
-        entries[path] = PathEntry(
-            path,
-            git_object_kind(mode, object_type),
-            object_id=raw_object_id.decode("ascii"),
-            mode=mode,
-        )
+        entry = parse_head_tree_record(record)
+        entries[entry.path] = entry
     return entries
 
 
@@ -654,26 +661,6 @@ def add_worktree_candidate(candidates: set[str], path: str) -> None:
             "Run the command again with narrower PATH arguments."
         )
     candidates.add(path)
-
-
-def parse_head_tree_record(record: bytes) -> PathEntry:
-    """Decode one streamed `git ls-tree -z` record."""
-    try:
-        header, raw_path = record.split(b"\t", maxsplit=1)
-        raw_mode, raw_type, raw_object_id = header.split()
-    except ValueError as error:
-        raise RuntimeError(
-            "The Git tree entry is not valid for scope resolution."
-        ) from error
-    path = os.fsdecode(raw_path)
-    mode = raw_mode.decode("ascii")
-    object_type = raw_type.decode("ascii")
-    return PathEntry(
-        path,
-        git_object_kind(mode, object_type),
-        object_id=raw_object_id.decode("ascii"),
-        mode=mode,
-    )
 
 
 def parse_tagged_index_record(record: bytes) -> tuple[PathEntry, bool]:
@@ -747,20 +734,7 @@ def worktree_metadata(
     )
     consume_git_nul_records(
         pathspec_arguments(
-            [
-                "-c",
-                "diff.autoRefreshIndex=false",
-                "diff",
-                "--cached",
-                "--no-ext-diff",
-                "--no-textconv",
-                "--ignore-submodules=none",
-                "--name-only",
-                "-z",
-                "--no-renames",
-                "--ita-invisible-in-index",
-                head,
-            ],
+            diff_arguments(head, cached=True, extra=("--ita-invisible-in-index",)),
             paths,
         ),
         repository_root,
@@ -1232,6 +1206,104 @@ def resolve_scope(
     }
 
 
+def resolve_scope_batches(
+    scope: str, range_value: str | None, selected_paths: Sequence[str], batch_size: int
+) -> Iterable[dict[str, object]]:
+    """Spool complete path discovery and resolve each bounded path batch."""
+    if not 1 <= batch_size <= MAX_WORKTREE_CANDIDATES:
+        raise RuntimeError("The path batch size must fit the operation path limit.")
+    root = Path(git_text("rev-parse", "--show-toplevel")).resolve()
+    paths = normalized_paths(root, selected_paths)
+    if scope == "range":
+        if range_value is None:
+            raise RuntimeError("The range scope requires 'BASE..HEAD'.")
+        base, head = range_revisions(range_value, root)
+        bound_range: str | None = f"{base}..{head}"
+    else:
+        head = verified_commit("HEAD", root)
+        bound_range = None
+    with (
+        tempfile.TemporaryDirectory(prefix="athena-scope-batches-") as directory,
+        closing(sqlite3.connect(str(Path(directory) / "paths.sqlite"))) as database,
+    ):
+        database.execute("PRAGMA temp_store=FILE")
+        database.execute("PRAGMA cache_size=-1024")
+        database.execute("CREATE TABLE paths (path BLOB PRIMARY KEY)")
+        database.execute(
+            "CREATE TABLE batches (number INTEGER PRIMARY KEY, paths TEXT, digest TEXT)"
+        )
+
+        def record(path: bytes) -> None:
+            database.execute("INSERT OR IGNORE INTO paths VALUES (?)", (path,))
+
+        if scope == "range":
+            commands = [diff_arguments(f"{base}..{head}")]
+        else:
+            commands = [
+                ["ls-tree", "-r", "--name-only", "-z", head],
+                ["ls-files", "--cached", "-z"],
+            ]
+            if scope == "worktree":
+                commands.append(["ls-files", "--others", "--exclude-standard", "-z"])
+        for command in commands:
+            consume_git_nul_records(pathspec_arguments(command, paths), root, record)
+        database.commit()
+        cursor = database.execute("SELECT path FROM paths ORDER BY path")
+        batch_number = 0
+        manifests = sha256()
+        while records := cursor.fetchmany(batch_size):
+            if scope != "range" and verified_commit("HEAD", root) != head:
+                raise RuntimeError("HEAD changed during batched scope resolution.")
+            selected = [os.fsdecode(row[0]) for row in records]
+            manifest = resolve_scope(scope, bound_range, selected)
+            batch_number += 1
+            manifests.update(str(manifest["scope_digest"]).encode("ascii"))
+            database.execute(
+                "INSERT INTO batches VALUES (?, ?, ?)",
+                (batch_number, json.dumps(selected), manifest["scope_digest"]),
+            )
+            database.commit()
+            yield {"batch": batch_number, "complete": False, "manifest": manifest}
+        if scope != "range":
+            for number, selected_json, expected_digest in database.execute(
+                "SELECT number, paths, digest FROM batches ORDER BY number"
+            ):
+                refreshed = resolve_scope(scope, bound_range, json.loads(selected_json))
+                if refreshed["scope_digest"] != expected_digest:
+                    raise RuntimeError(
+                        f"The content of scope batch {number} changed during collection."
+                    )
+            database.execute("CREATE TABLE final_paths (path BLOB PRIMARY KEY)")
+
+            def final_record(path: bytes) -> None:
+                database.execute(
+                    "INSERT OR IGNORE INTO final_paths VALUES (?)", (path,)
+                )
+
+            for command in commands:
+                consume_git_nul_records(
+                    pathspec_arguments(command, paths), root, final_record
+                )
+            added = database.execute(
+                "SELECT path FROM final_paths EXCEPT SELECT path FROM paths LIMIT 1"
+            ).fetchone()
+            removed = database.execute(
+                "SELECT path FROM paths EXCEPT SELECT path FROM final_paths LIMIT 1"
+            ).fetchone()
+            if added is not None or removed is not None:
+                raise RuntimeError(
+                    "The path inventory changed during batched scope resolution."
+                )
+            if verified_commit("HEAD", root) != head:
+                raise RuntimeError("HEAD changed during batched scope resolution.")
+        yield {
+            "complete": True,
+            "batches": batch_number,
+            "batch_digests_sha256": manifests.hexdigest(),
+            "head": head,
+        }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Parse the requested review scope and return its JSON manifest."""
     parser = argument_parser(description=__doc__)
@@ -1240,6 +1312,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     scope_group.add_argument("--staged", action="store_true")
     scope_group.add_argument("--range", dest="range_value", metavar="BASE..HEAD")
     parser.add_argument("paths", metavar="PATH", nargs="*")
+    parser.add_argument("--batch-size", type=int, metavar="COUNT")
     arguments = parser.parse_args(argv)
     scope = (
         "range"
@@ -1249,13 +1322,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         else "worktree"
     )
     try:
+        if arguments.batch_size is not None:
+            for batch in resolve_scope_batches(
+                scope, arguments.range_value, arguments.paths, arguments.batch_size
+            ):
+                print(json.dumps(batch, sort_keys=True), flush=True)
+            return 0
         print(
             json.dumps(
                 resolve_scope(scope, arguments.range_value, arguments.paths),
                 sort_keys=True,
             )
         )
-    except (OSError, RuntimeError) as error:
+    except (OSError, RuntimeError, sqlite3.Error) as error:
         print(error, file=sys.stderr)
         return 1
     return 0

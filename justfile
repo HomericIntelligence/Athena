@@ -10,6 +10,12 @@ bootstrap:
 validate:
     uv run python scripts/validate_skills.py
 
+agent-contract:
+    uv run python scripts/validate_agent_contract.py
+
+test-fast:
+    PYTHONDONTWRITEBYTECODE=1 uv run pytest -q -m "not nightly"
+
 test:
     uv run coverage erase
     PYTHONDONTWRITEBYTECODE=1 ATHENA_COVERAGE=1 uv run coverage run --branch --parallel-mode --source=scripts,skills -m pytest -q
@@ -33,7 +39,7 @@ static:
     just typecheck
 
 markdownlint:
-    uv run pymarkdown -d MD013,MD024,MD033,MD041,MD046 scan README.md AGENTS.md CLAUDE.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md docs skills
+    uv run pymarkdown -d MD013,MD024,MD033,MD041,MD046 scan README.md AGENTS.md CLAUDE.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md .github docs skills
 
 workflow-lint:
     uv run yamllint .github/workflows
@@ -41,6 +47,9 @@ workflow-lint:
 workflow-check:
     just workflow-lint
     uv run check-jsonschema --builtin-schema vendor.github-workflows .github/workflows/*.yml
+
+uv-pins:
+    uv run python scripts/ci_policy.py uv-pins
 
 package:
     uv run python scripts/package_plugin.py
@@ -58,6 +67,7 @@ check:
     just static
     just markdownlint
     just workflow-check
+    just uv-pins
 
 all:
     just check
@@ -88,6 +98,10 @@ ci-validate:
 ci-test:
     ./scripts/run_ci_local.sh test
 
+# Run the fast CI contract tests in the container.
+ci-test-fast:
+    ./scripts/run_ci_local.sh test-fast
+
 # Run Ruff, the format check, and the mypy type check in the container.
 ci-static:
     ./scripts/run_ci_local.sh static
@@ -99,6 +113,10 @@ ci-markdownlint:
 # Validate workflow syntax and schemas in the container.
 ci-workflow:
     ./scripts/run_ci_local.sh workflow
+
+# Check uv version consistency in the CI container.
+ci-uv-pins:
+    ./scripts/run_ci_local.sh uv-pins
 
 # Run all supported local CI checks in the container.
 ci-all:

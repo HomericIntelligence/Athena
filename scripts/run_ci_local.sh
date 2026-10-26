@@ -9,9 +9,11 @@
 #   ./scripts/run_ci_local.sh              # Run all supported local CI checks.
 #   ./scripts/run_ci_local.sh validate     # Validate the plugin distribution.
 #   ./scripts/run_ci_local.sh test         # Run contract tests with the minimum coverage requirement.
+#   ./scripts/run_ci_local.sh test-fast    # Run the fast contract tests.
 #   ./scripts/run_ci_local.sh static       # Run lint, format, and type checks.
 #   ./scripts/run_ci_local.sh markdownlint # Lint the documentation.
 #   ./scripts/run_ci_local.sh workflow     # Validate workflow syntax and schemas.
+#   ./scripts/run_ci_local.sh uv-pins      # Check uv version consistency.
 #
 # The script selects a container engine. It tries Podman before Docker.
 # To select the engine, set CONTAINER_ENGINE. For example:
@@ -148,6 +150,11 @@ run_test() {
         uv run coverage report --show-missing'
 }
 
+run_test_fast() {
+    log_step "Run the fast contract tests."
+    run_in_container uv run pytest -q -m "not nightly"
+}
+
 run_static() {
     log_step "Run Ruff, the format check, and the mypy type check."
     run_in_container uv run ruff check scripts tests skills &&
@@ -157,13 +164,18 @@ run_static() {
 
 run_markdownlint() {
     log_step "Check Markdown in public documents and skills."
-    run_in_container uv run pymarkdown -d MD013,MD024,MD033,MD041,MD046 scan README.md AGENTS.md CLAUDE.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md docs skills
+    run_in_container uv run pymarkdown -d MD013,MD024,MD033,MD041,MD046 scan README.md AGENTS.md CLAUDE.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md .github docs skills
 }
 
 run_workflow() {
     log_step "Validate workflow syntax and schemas."
     run_in_container uv run yamllint .github/workflows &&
     run_in_container uv run check-jsonschema --builtin-schema vendor.github-workflows .github/workflows/*.yml
+}
+
+run_uv_pins() {
+    log_step "Check uv version consistency."
+    run_in_container uv run python scripts/ci_policy.py uv-pins
 }
 
 # ============================================================================
@@ -194,6 +206,9 @@ case "${SUBSET}" in
     test)
         run_step "test" run_test
         ;;
+    test-fast)
+        run_step "test-fast" run_test_fast
+        ;;
     static)
         run_step "static" run_static
         ;;
@@ -203,17 +218,21 @@ case "${SUBSET}" in
     workflow)
         run_step "workflow" run_workflow
         ;;
+    uv-pins)
+        run_step "uv-pins" run_uv_pins
+        ;;
     all)
         run_step "validate" run_validate
         run_step "test" run_test
         run_step "static" run_static
         run_step "markdownlint" run_markdownlint
         run_step "workflow" run_workflow
+        run_step "uv-pins" run_uv_pins
         ;;
     *)
         log_error "The subset is not valid: '${SUBSET}'."
         log_error "Use one of these values:"
-        log_error "all, validate, test, static, markdownlint, workflow"
+        log_error "all, validate, test, test-fast, static, markdownlint, workflow, uv-pins"
         exit 1
         ;;
 esac

@@ -16,8 +16,12 @@ prose that it produces.
 
 Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
 [review contract](../../docs/review/common.md),
+[review-exchange mechanism](../review-exchange/SKILL.md),
 [language routing](../../docs/review/language-routing.md), and
 [behavior-first testing](../../docs/review/behavior-first-testing.md).
+
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
+recovery, resources, validation, and delivery.
 
 ## Engineering principles
 
@@ -45,11 +49,14 @@ decisions:
 
 Use the issue as the requirements source. Review only its current canonical plan. Use the
 issue-planning contract to identify the plan owner, marker, presence or absence, and identity. Use
-historical plans and reviews only as background information.
+historical plans and reviews only as background information. For explicit legacy adoption, give the
+helper the exact current unversioned plan and optional review in the normalized snapshot. Do not
+interpret edit history or other prose as current requirements or proof of closure.
 
 If the request includes `--report-only`, this skill is read-only. Do not publish a comment. If the
 request does not include this option, first compare the required identities. Then, confirm a safe
-forge capability. You can then publish exactly one actor-owned structured review comment. Do not
+forge capability. Create the canonical review comment only when it is absent. Each later reviewer
+round updates that exact actor-owned comment. Never create a second review marker. Do not
 expand the scope to these items:
 
 - labels;
@@ -62,6 +69,28 @@ expand the scope to these items:
 - issue closure.
 
 ## Review
+
+Before the substantive review, exhaust bounded provider pagination for issue comments. Normalize
+the issue snapshot, set `comments_complete` to `true`, and run `issue_exchange.py inspect`.
+Withhold on an absent plan or an identity error. Use the inspect result and the caller's explicit
+event to select exactly one path. Evaluate these paths in order:
+
+- For the verified `pending_reframe` diagnostic with `next_action=prepare_review`, require an
+  explicit `reframe` event and go directly to the reframe transition below.
+- For a verified pending-reframe result with any other or no event, stop and report the event
+  mismatch. Do not do a substantive reviewer assessment.
+- For an explicit `human_decision` event when `next_action` is `prepare_plan`, `prepare_review`, or
+  `human_decision`, go directly to the human-decision transition below. Do not do a substantive
+  reviewer assessment. The reducer rejects a decision that is not valid for the retained finding
+  state.
+- For any other `next_action=prepare_review` result without an authority event, do the substantive
+  review below.
+- For each other result, continue through the workflow that owns the next transition. Do not
+  publish a reviewer comment for a different transition.
+
+Reject an event that does not match the selected path. Do not infer an authority event or decision
+from the retained state, an authority comment, or other prose. For an active unversioned plan or
+review, set `legacy_import` only when the issue-planning contract permits explicit round-1 adoption.
 
 1. Read the issue, linked work, canonical plan, repository guidance, architecture decision records
    (ADRs), applicable code, tests, and public contracts.
@@ -104,8 +133,18 @@ expand the scope to these items:
    - Use [P048 Secure by Design](../../docs/principles/README.md#p048) for security or new trust
      boundaries.
 
-9. Confirm that each applicable prior finding is resolved. Acknowledgment alone does not resolve a
-   finding.
+9. Reconcile every active prior finding before you add a finding. This set includes each stable
+   finding identifier that `plan-issue` revalidated after an artifact change. Use these response
+   rules:
+
+   - For `fix` or `fix_with_tradeoff`, select `resolve`, `partial`, `still_present`, `withdraw`, or
+     `escalate` from current evidence.
+   - For `contest`, select `accept`, `counter`, `refute`, or `escalate`. A counter supplies a revised
+     closure condition and new evidence. A refutation supplies new evidence.
+   - For `risk_acceptance`, select `withdraw`, `still_present`, or `escalate`. Only an authoritative
+     `accept_risk` decision produces `accepted_risk`.
+
+   Acknowledgment alone does not resolve a finding.
 
 Give priority to these findings:
 
@@ -120,22 +159,78 @@ Give priority to these findings:
 - unsupported claims.
 
 After a finalized epoch, do not treat generated plan text or sealed provenance as new requirements.
-Review only a later material issue change and its current canonical plan. An unchanged finalized
-epoch is not a new review target.
+An unchanged finalized epoch is not a new review target. A stale or malformed finalization marker
+must withhold the review. Review a later material issue change only after an authoritative person
+replaces the sealed body with clean requirements, removes the obsolete marker, and publishes its
+new canonical plan.
 
-Immediately before you publish the requested comment, resolve the canonical planning identity again.
-If one of these conditions is true, withhold the comment:
+Build one reviewer event with complete coverage status, responses for every active prior required
+finding, new findings, an applicable stop reason, and the declared scope. Supply scope for a first or
+legacy round. Preserve it on later rounds.
+
+Run `issue_exchange.py prepare-review`. For `--report-only`, return the prepared result and stop.
+Immediately before publication, get a fresh snapshot and prepare the operation again. Require the
+same precondition and exact create or update operation. If one of these conditions is true, withhold
+the comment:
 
 - identity drift;
-- a foreign marker;
-- multiple markers;
+- an unresolved canonical marker identity;
+- multiple unresolved actor-owned canonical markers;
 - a change to verified absence; or
 - no safe forge capability.
 
-If you withhold the comment, report the `stale` status.
+Remote target-branch movement is not identity drift. It does not make an unchanged plan review
+stale. Repeat the review only if the issue requirements or canonical plan content changes.
 
-Otherwise, publish exactly one actor-owned structured comment. Include a clean result or verified
-absent-plan coverage gap.
+If prepared identity changed, refresh affected evidence and prepare again. Select the actor-owned
+canonical comment and preserve foreign comments. Withhold only an unresolved identity or write
+capability after recovery.
+
+Otherwise, publish only the exact prepared comment operation. Read the issue again and run
+`issue_exchange.py verify-publication`. After a verified result, continue to the applicable author-response or
+finalization workflow. Ask only for a human decision not already given. If the write or readback result is indeterminate, report
+`unknown_outcome`. Preserve the operation and receipts; reconcile exact readback before retrying.
+The reducer selects the verdict. At the fifth reviewer round, supply `reassessment` with the
+assessed continuation as decision evidence. The fifth round is the hard limit: an unresolved
+exchange at that round requires a human decision. Continue through distinct author and reviewer
+transitions within the limit.
+
+After a verified `legacy_reframe` plan update, use the normal `reframe` reviewer event. Set
+`legacy_import` to `false`. Verify the same old state, authority receipt, and target set. Do not
+import or change the old state.
+
+### Authority transitions
+
+Use these paths only when the action dispatch selects them. The selected authority transition owns
+the one retained-review update and its readback. It must not also prepare a reviewer-assessment
+event.
+
+For a human decision, accept only an explicit `human_decision` event that the reducer permits for
+the retained nonterminal state. This includes an accepted recorded-risk request before the state
+has `next_action=human_decision`. Prefer forge-owned permission data and one exact live authority
+comment. If unavailable, use explicit conversation authority with its actual log ID under the
+autonomous workflow policy. Use `prepare-review` to bind the
+decision to the current state and finding. This event does not increment the reviewer round. It can
+accept only a recorded risk request or select one active closure condition. A round-5 closure
+selection cannot start another round.
+
+Before a requirements reframe, require the retained plan and review to identify the same current
+logical state. If the plan has a pending author event that the review has not accepted, complete and
+verify one reviewer assessment before the requirements change. Do not overwrite the pending author
+event or supersede the older persisted review state.
+
+For the second step of an explicit requirements reframe, require the reframed plan, the same exact
+old retained v1 state, the same live authority receipt, and the same declared target set that
+`plan-issue` used. Call `prepare-review` with the `reframe` event. Update the retained review comment
+with round 1 of the new exchange. The new state must store the `supersession_authority_receipt` and
+superseded state digest. Do not create a new review comment or carry old finding identities into the
+new exchange.
+
+For either authority transition, `--report-only` returns the prepared update and stops. Otherwise,
+get a fresh snapshot and run `prepare-review` again. Require the same precondition and exact retained
+comment update. Publish only that update and run `verify-publication` against an exact readback. If
+the write or readback is uncertain, report `unknown_outcome` and reconcile exact readback before
+any retry. Continue independent work.
 
 ## Failed approaches
 
@@ -145,7 +240,7 @@ absent-plan coverage gap.
   the structured review comment. For `--report-only`, return the findings without publication.
 - Do not invent acceptance criteria that the reporter did not state. Do not accept an unresolved
   prior finding only because someone acknowledged it.
-- After drift, do not publish the comment again. Withhold it. Report `stale`.
+- After drift, refresh affected evidence and prepare the current comment before publication.
 
 ## Result
 
@@ -157,7 +252,9 @@ Return these items:
 - severity-ranked findings;
 - test-quality coverage;
 - `N/A` sections;
-- residual risks; and
+- residual risks;
+- exchange round, state digest, verdict, and next action;
+- publication receipt or helper diagnostics; and
 - whether you published or withheld the comment.
 
 Do not expand the review scope to implementation or merge.

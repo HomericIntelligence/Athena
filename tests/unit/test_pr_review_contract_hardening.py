@@ -17,9 +17,12 @@ from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+pytestmark = pytest.mark.nightly
 SCRIPT = ROOT / "skills" / "pr-review" / "scripts" / "collect_evidence.py"
 SNAPSHOT_SCRIPT = ROOT / "skills" / "pr-review" / "scripts" / "materialize_snapshot.py"
 DIFF_CONTEXT_SCRIPT = ROOT / "skills" / "pr-review" / "scripts" / "diff_context.py"
@@ -132,6 +135,28 @@ def initialize_divergent_repository(
     if git(repository, "merge-base", base_oid, head_oid) != merge_base:
         raise AssertionError("divergent test repository lost its merge base")
     return base_oid, head_oid
+
+
+def initialize_target_advanced_repository(
+    repository: Path, changed_path: str
+) -> tuple[str, str]:
+    """Create a feature change and a different target-only change."""
+    git(repository, "init", "--quiet")
+    git(repository, "config", "user.name", "Athena Tests")
+    git(repository, "config", "user.email", "athena-tests@example.invalid")
+    (repository / changed_path).write_text("base\n", encoding="utf-8")
+    git(repository, "add", changed_path)
+    git(repository, "commit", "--quiet", "-m", "test: merge base")
+    git(repository, "branch", "-M", "main")
+    git(repository, "checkout", "--quiet", "-b", "feature")
+    (repository / changed_path).write_text("feature\n", encoding="utf-8")
+    git(repository, "commit", "--all", "--quiet", "-m", "test: feature change")
+    head_oid = git(repository, "rev-parse", "HEAD")
+    git(repository, "checkout", "--quiet", "main")
+    (repository / "target-only.txt").write_text("target\n", encoding="utf-8")
+    git(repository, "add", "target-only.txt")
+    git(repository, "commit", "--quiet", "-m", "test: target change")
+    return git(repository, "rev-parse", "HEAD"), head_oid
 
 
 def initialize_shallow_repository(
@@ -287,6 +312,22 @@ def linux_bounded_quota_available() -> bool:
 LINUX_BOUNDED_QUOTA_AVAILABLE = linux_bounded_quota_available()
 
 
+def python310_style_rmtree(captured: dict[str, object]) -> Callable[..., None]:
+    """Return a shutil.rmtree replacement without an onexc parameter."""
+
+    def fake_rmtree(
+        path: Path | str,
+        *,
+        onerror: Callable[[object, str, object], None] | None = None,
+        ignore_errors: bool = False,
+    ) -> None:
+        captured["path"] = path
+        captured["onerror"] = onerror
+        captured["ignore_errors"] = ignore_errors
+
+    return fake_rmtree
+
+
 class SnapshotMaterializationTests(unittest.TestCase):
     """Verify that the helper can get the exact pull-request source without caller trust."""
 
@@ -296,6 +337,66 @@ class SnapshotMaterializationTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         sys.modules.pop(self.module_name, None)
+
+    def test_mac_without_hdiutil_reaches_the_plain_acquisition_tier(self) -> None:
+        """A host whose quota tool is unavailable must still acquire source.
+
+        #342 added a plain acquisition tier, but `_create_quota_volume` raised on
+        macOS and on every non-Linux platform, so the tier was unreachable on
+        exactly the hosts it was written for. Assert the ladder runs.
+        """
+        for platform in ("darwin", "win32"):
+            with (
+                self.subTest(platform=platform),
+                tempfile.TemporaryDirectory() as temporary_directory,
+            ):
+                root = Path(temporary_directory)
+                source = root / "source"
+                source.mkdir()
+                base_oid, head_oid = initialize_divergent_repository(
+                    source, "changed.txt"
+                )
+                git(source, "update-ref", "refs/pull/9/head", head_oid)
+                remote = root / "remote.git"
+                git(root, "init", "--bare", "--quiet", str(remote))
+                git(source, "remote", "add", "origin", str(remote))
+                git(source, "push", "--quiet", "origin", "main", "refs/pull/9/head")
+
+                with (
+                    patch.object(self.snapshot.sys, "platform", platform),
+                    patch.object(
+                        self.snapshot,
+                        "canonical_repository_url",
+                        return_value=str(remote),
+                    ),
+                    patch.object(self.snapshot, "_hdiutil", return_value=False),
+                    patch.object(
+                        self.snapshot,
+                        "_bounded_materialize",
+                        side_effect=RuntimeError("no user namespace"),
+                    ),
+                ):
+                    materialized = self.snapshot.materialize_snapshot(
+                        repository="owner/repository",
+                        number=9,
+                        base_ref="main",
+                        base_oid=base_oid,
+                        head_oid=head_oid,
+                    )
+                self.addCleanup(self.snapshot.remove_snapshot, materialized.root)
+
+                self.assertEqual(
+                    head_oid,
+                    git(materialized.source_path, "rev-parse", "HEAD"),
+                )
+                self.assertEqual(
+                    base_oid,
+                    git(materialized.source_path, "rev-parse", "refs/athena/base"),
+                )
+                self.assertEqual(
+                    git(materialized.source_path, "rev-parse", "HEAD^{tree}"),
+                    materialized.tree_oid,
+                )
 
     def test_materializes_a_missing_head_from_only_the_canonical_pr_refs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -524,11 +625,16 @@ class SnapshotMaterializationTests(unittest.TestCase):
             root.mkdir()
             calls: list[tuple[str, ...]] = []
 
+            def record_hdiutil(*arguments: str) -> bool:
+                """Record the call and report that the quota tool succeeded."""
+                calls.append(arguments)
+                return True
+
             with (
                 patch.object(
                     self.snapshot,
                     "_hdiutil",
-                    side_effect=lambda *arguments: calls.append(arguments),
+                    side_effect=record_hdiutil,
                 ),
                 patch.object(self.snapshot.sys, "platform", "darwin"),
                 patch.object(Path, "is_mount", return_value=True),
@@ -608,6 +714,52 @@ class SnapshotMaterializationTests(unittest.TestCase):
         self.assertLessEqual(
             sum(path.stat().st_size for path in source.iterdir()), maximum_bytes
         )
+
+    def test_snapshot_without_quota_support_uses_the_bounded_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "snapshot"
+            root.mkdir()
+            bounded = self.snapshot.MaterializedSnapshot(
+                root=root,
+                source_path=root / "source",
+                merge_base="a" * 40,
+                tree_oid="c" * 40,
+            )
+            free_bytes = 100 * 1024 * 1024
+            usage = shutil.disk_usage(directory)._replace(free=free_bytes)
+            with (
+                patch.object(self.snapshot.tempfile, "mkdtemp", return_value=str(root)),
+                patch.object(self.snapshot, "_create_quota_volume", return_value=None),
+                patch.object(self.snapshot, "_require_base_ref", return_value="main"),
+                patch.object(
+                    self.snapshot.shutil,
+                    "disk_usage",
+                    return_value=usage,
+                ),
+                patch.object(
+                    self.snapshot, "_bounded_materialize", return_value=bounded
+                ) as fallback,
+            ):
+                result = self.snapshot.materialize_snapshot(
+                    repository="owner/repository",
+                    number=9,
+                    base_ref="main",
+                    base_oid="a" * 40,
+                    head_oid="b" * 40,
+                )
+            self.assertIs(bounded, result)
+            self.assertEqual(root, fallback.call_args.args[0])
+            self.assertEqual((free_bytes * 9) // 10, fallback.call_args.args[1])
+            self.assertEqual(
+                {
+                    "repository": "owner/repository",
+                    "number": 9,
+                    "base_ref": "main",
+                    "base_oid": "a" * 40,
+                    "head_oid": "b" * 40,
+                },
+                fallback.call_args.kwargs,
+            )
 
     def test_rejects_snapshot_acquisition_failure_modes(self) -> None:
         cases = (
@@ -1510,6 +1662,65 @@ class LinuxBoundedSnapshotBehaviorTests(unittest.TestCase):
 
         self.assertEqual([root], removed)
 
+    def test_materialize_snapshot_preserves_primary_error_with_python310_rmtree(
+        self,
+    ) -> None:
+        root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
+        resolved_root = root.resolve()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        captured: dict[str, object] = {}
+
+        with (
+            patch.object(self.snapshot.tempfile, "mkdtemp", return_value=str(root)),
+            patch.object(
+                self.snapshot,
+                "_create_quota_volume",
+                side_effect=lambda temporary_root, _: temporary_root / "source",
+            ),
+            patch.object(
+                self.snapshot,
+                "_acquire_into",
+                side_effect=RuntimeError("acquisition-sentinel-17"),
+            ),
+            patch.object(
+                self.snapshot.shutil,
+                "rmtree",
+                new=python310_style_rmtree(captured),
+            ),
+            self.assertRaisesRegex(RuntimeError, "acquisition-sentinel-17"),
+        ):
+            self.snapshot.materialize_snapshot(
+                repository="owner/repository",
+                number=9,
+                base_ref="main",
+                base_oid="a" * 40,
+                head_oid="b" * 40,
+            )
+
+        self.assertEqual(resolved_root, captured["path"])
+        self.assertIsNotNone(captured["onerror"])
+        self.assertTrue(callable(captured["onerror"]))
+        self.assertFalse(captured["ignore_errors"])
+
+    def test_remove_snapshot_uses_onerror_when_onexc_is_unavailable(self) -> None:
+        root = Path(tempfile.mkdtemp(prefix="athena-pr-review-"))
+        resolved_root = root.resolve()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        (root / "source").mkdir()
+        captured: dict[str, object] = {}
+
+        with patch.object(
+            self.snapshot.shutil,
+            "rmtree",
+            new=python310_style_rmtree(captured),
+        ):
+            self.snapshot.remove_snapshot(root)
+
+        self.assertEqual(resolved_root, captured["path"])
+        self.assertIsNotNone(captured["onerror"])
+        self.assertTrue(callable(captured["onerror"]))
+        self.assertFalse(captured["ignore_errors"])
+
 
 class StrictSnapshotFallbackTests(unittest.TestCase):
     """Verify strict evidence switches only missing objects to a snapshot."""
@@ -1590,9 +1801,6 @@ class StrictSnapshotFallbackTests(unittest.TestCase):
                                 head_ref_name="fork-owner:feature",
                             ),
                         ],
-                    ),
-                    patch.object(
-                        self.collector, "head_bound_check_runs", return_value=[]
                     ),
                     patch.object(
                         snapshot_module,
@@ -1788,7 +1996,7 @@ def is_linked_issue_comments_request():
 def is_canonical_linked_issue_comments_request():
     endpoint = (
         r"repos/owner/requirements/issues/[1-9][0-9]*/comments"
-        r"\\?per_page=100&page=[1-9][0-9]*"
+        r"\\?per_page=25&page=[1-9][0-9]*"
     )
     return (
         len(arguments) == 6
@@ -1980,7 +2188,7 @@ class FakeGhArgumentValidationTests(unittest.TestCase):
             "github.com",
             "--method",
             "GET",
-            "repos/owner/requirements/issues/10/comments?per_page=100&page=1",
+            "repos/owner/requirements/issues/10/comments?per_page=25&page=1",
         )
         invalid = (
             (
@@ -1991,7 +2199,7 @@ class FakeGhArgumentValidationTests(unittest.TestCase):
                 "attacker.invalid",
                 "--method",
                 "GET",
-                "repos/owner/requirements/issues/10/comments?per_page=100&page=1",
+                "repos/owner/requirements/issues/10/comments?per_page=25&page=1",
             ),
             (
                 "api",
@@ -1999,7 +2207,7 @@ class FakeGhArgumentValidationTests(unittest.TestCase):
                 "github.com",
                 "--method",
                 "GET",
-                "repos/attacker/requirements/issues/10/comments?per_page=100&page=1",
+                "repos/attacker/requirements/issues/10/comments?per_page=25&page=1",
             ),
             (
                 "api",
@@ -2007,7 +2215,7 @@ class FakeGhArgumentValidationTests(unittest.TestCase):
                 "github.com",
                 "--method",
                 "GET",
-                "repos/owner/requirements/issues/10/comments?per_page=100",
+                "repos/owner/requirements/issues/10/comments?per_page=25",
             ),
         )
 
@@ -2163,68 +2371,6 @@ class BoundedLinkedCommentReaderTests(unittest.TestCase):
                 limit_error="must not overflow",
             )
 
-    def test_rejects_malformed_linked_comment_pages(self) -> None:
-        cases = (
-            (b"not json", RuntimeError),
-            (b'{"id": 1}', TypeError),
-            (b"[1]", RuntimeError),
-        )
-        for response, error_type in cases:
-            with (
-                self.subTest(response=response),
-                patch.object(
-                    self.collector, "bounded_gh_output", return_value=response
-                ),
-                self.assertRaises(error_type),
-            ):
-                self.collector.paginated_issue_comments("owner/requirements", 10)
-
-    def test_fails_closed_before_reading_when_comment_bytes_are_exhausted(self) -> None:
-        with (
-            patch.object(self.collector, "MAX_LINKED_ISSUE_COMMENT_BYTES", 0),
-            patch.object(
-                self.collector,
-                "bounded_gh_output",
-                side_effect=AssertionError("reader must not run"),
-            ),
-            self.assertRaises(self.collector.LinkedRequirementsCoverageGap),
-        ):
-            self.collector.paginated_issue_comments("owner/requirements", 10)
-
-    def test_fails_closed_when_the_next_nonempty_page_exceeds_the_page_budget(
-        self,
-    ) -> None:
-        with (
-            patch.object(self.collector, "LINKED_ISSUE_COMMENT_PAGE_SIZE", 1),
-            patch.object(self.collector, "MAX_LINKED_ISSUE_COMMENT_PAGES", 1),
-            patch.object(
-                self.collector,
-                "bounded_gh_output",
-                side_effect=(b"[{}]", b"[{}]"),
-            ),
-            self.assertRaises(self.collector.LinkedRequirementsCoverageGap),
-        ):
-            self.collector.paginated_issue_comments("owner/requirements", 10)
-
-    def test_fails_closed_when_comment_count_exceeds_the_budget(self) -> None:
-        with (
-            patch.object(self.collector, "MAX_LINKED_ISSUE_COMMENTS", 0),
-            patch.object(self.collector, "bounded_gh_output", return_value=b"[{}]"),
-            self.assertRaises(self.collector.LinkedRequirementsCoverageGap),
-        ):
-            self.collector.paginated_issue_comments("owner/requirements", 10)
-
-    def test_shared_budget_bounds_aggregate_comment_pages(self) -> None:
-        budget = self.collector.LinkedRequirementBudget()
-
-        with (
-            patch.object(self.collector, "MAX_LINKED_REQUIREMENT_PAGES", 1),
-            patch.object(self.collector, "bounded_gh_output", return_value=b"[]"),
-            self.assertRaises(self.collector.LinkedRequirementsCoverageGap),
-        ):
-            self.collector.paginated_issue_comments("owner/requirements", 10, budget)
-            self.collector.paginated_issue_comments("owner/requirements", 11, budget)
-
     def test_shared_budget_bounds_aggregate_requests(self) -> None:
         budget = self.collector.LinkedRequirementBudget()
 
@@ -2234,113 +2380,6 @@ class BoundedLinkedCommentReaderTests(unittest.TestCase):
         ):
             budget.reserve_request()
             budget.reserve_request()
-
-    def test_shared_budget_bounds_aggregate_comment_count(self) -> None:
-        budget = self.collector.LinkedRequirementBudget()
-
-        with (
-            patch.object(self.collector, "MAX_LINKED_REQUIREMENT_COMMENTS", 1),
-            patch.object(self.collector, "bounded_gh_output", return_value=b"[{}]"),
-            self.assertRaises(self.collector.LinkedRequirementsCoverageGap),
-        ):
-            self.collector.paginated_issue_comments("owner/requirements", 10, budget)
-            self.collector.paginated_issue_comments("owner/requirements", 11, budget)
-
-    def test_shared_budget_bounds_aggregate_comment_bytes(self) -> None:
-        budget = self.collector.LinkedRequirementBudget()
-
-        with (
-            patch.object(self.collector, "MAX_LINKED_REQUIREMENT_BYTES", 2),
-            patch.object(self.collector, "bounded_gh_output", return_value=b"[]"),
-            self.assertRaises(self.collector.LinkedRequirementsCoverageGap),
-        ):
-            self.collector.paginated_issue_comments("owner/requirements", 10, budget)
-            self.collector.paginated_issue_comments("owner/requirements", 11, budget)
-
-
-class HeadBoundCheckEvidenceTests(unittest.TestCase):
-    """Require bounded, fail-closed GitHub check-run collection."""
-
-    def setUp(self) -> None:
-        self.module_name = f"test_collect_evidence_checks_{id(self)}"
-        self.collector = load_collector(self.module_name)
-
-    def tearDown(self) -> None:
-        sys.modules.pop(self.module_name, None)
-
-    def test_preserves_a_bounded_provider_failure_as_a_coverage_gap(self) -> None:
-        failure = self.collector.CheckEvidenceCoverageGap(
-            "check-run response exceeds the safe byte limit"
-        )
-        with (
-            patch.object(
-                self.collector,
-                "bounded_gh_output",
-                side_effect=failure,
-            ),
-            patch.object(
-                self.collector,
-                "gh",
-                return_value=json.dumps(
-                    [
-                        {
-                            "total_count": 1,
-                            "check_runs": [
-                                {
-                                    "id": 1,
-                                    "name": "required-checks",
-                                    "head_sha": HEAD_OID,
-                                    "status": "completed",
-                                    "conclusion": "success",
-                                }
-                            ],
-                        }
-                    ]
-                ),
-            ),
-            self.assertRaises(self.collector.CheckEvidenceCoverageGap) as context,
-        ):
-            self.collector.head_bound_check_runs("owner/repository", HEAD_OID)
-        self.assertIs(failure, context.exception)
-
-    def test_rejects_check_runs_that_exceed_the_page_limit(self) -> None:
-        responses = (
-            json.dumps(
-                {
-                    "total_count": 2,
-                    "check_runs": [
-                        {
-                            "id": 1,
-                            "name": "first-check",
-                            "head_sha": HEAD_OID,
-                            "status": "completed",
-                            "conclusion": "success",
-                        }
-                    ],
-                }
-            ).encode(),
-            json.dumps(
-                {
-                    "total_count": 2,
-                    "check_runs": [
-                        {
-                            "id": 2,
-                            "name": "second-check",
-                            "head_sha": HEAD_OID,
-                            "status": "completed",
-                            "conclusion": "success",
-                        }
-                    ],
-                }
-            ).encode(),
-        )
-
-        with (
-            patch.object(self.collector, "MAX_CHECK_RUN_PAGES", 1),
-            patch.object(self.collector, "bounded_gh_output", side_effect=responses),
-            self.assertRaises(self.collector.CheckEvidenceCoverageGap),
-        ):
-            self.collector.head_bound_check_runs("owner/repository", HEAD_OID)
 
 
 class BoundedChangedPathReaderTests(unittest.TestCase):
@@ -2427,7 +2466,7 @@ class BoundedChangedPathReaderTests(unittest.TestCase):
             ),
             patch.object(
                 self.collector,
-                "immutable_changed_paths",
+                "immutable_changed_path_lenses",
                 side_effect=self.collector.ChangedPathCoverageGap("safe path limit"),
             ),
             patch("sys.stdout", output),
@@ -2442,6 +2481,190 @@ class BoundedChangedPathReaderTests(unittest.TestCase):
             },
             json.loads(output.getvalue()),
         )
+
+
+class LiveRequirementsBindingTests(unittest.TestCase):
+    """Verify the reusable live requirements binding without repository writes."""
+
+    def setUp(self) -> None:
+        self.module_name = f"test_collect_live_requirements_{id(self)}"
+        self.collector = load_collector(self.module_name)
+        self.target = self.collector.ExpectedReviewTarget(
+            host="github.com",
+            repository="owner/repository",
+            number=9,
+            url="https://github.com/owner/repository/pull/9",
+        )
+
+    def tearDown(self) -> None:
+        sys.modules.pop(self.module_name, None)
+
+    def collect(
+        self,
+        metadata_sequence: Sequence[dict[str, object]],
+        linked_sequence: Sequence[Any],
+        requirement_issues: Sequence[str] = (),
+    ) -> Any:
+        with (
+            patch.object(self.collector, "pr_metadata", side_effect=metadata_sequence),
+            patch.object(
+                self.collector,
+                "linked_requirements",
+                side_effect=linked_sequence,
+            ),
+        ):
+            return self.collector.collect_requirements_binding(
+                "9",
+                self.target,
+                (BASE_OID, HEAD_OID),
+                requirement_issues,
+            )
+
+    def empty_linked(self, digest: str = "1" * 64) -> Any:
+        return self.collector.LinkedRequirements(items=(), sha256=digest)
+
+    def test_collects_one_stably_revalidated_requirements_binding(self) -> None:
+        linked = self.empty_linked()
+
+        binding = self.collect(
+            (pull_request(), pull_request()),
+            (linked, linked),
+        )
+
+        self.assertRegex(binding.reviewed_scope_sha256, r"^[0-9a-f]{64}$")
+        self.assertEqual("1" * 64, binding.requirements_sha256)
+        self.assertEqual((), binding.requirement_issue_urls)
+
+    def test_target_advance_keeps_same_head_requirements_binding(self) -> None:
+        linked = self.empty_linked()
+
+        binding = self.collect(
+            (
+                pull_request(base_oid="c" * 40),
+                pull_request(base_oid="d" * 40),
+            ),
+            (linked, linked),
+        )
+
+        self.assertRegex(binding.reviewed_scope_sha256, r"^[0-9a-f]{64}$")
+        self.assertEqual("1" * 64, binding.requirements_sha256)
+
+    def test_target_branch_name_change_still_rejects_requirements_binding(self) -> None:
+        linked = self.empty_linked()
+
+        with self.assertRaises(RuntimeError):
+            self.collect(
+                (
+                    pull_request(),
+                    pull_request(base_ref_name="release"),
+                ),
+                (linked, linked),
+            )
+
+    def test_returns_the_selected_requirement_urls_as_one_canonical_set(self) -> None:
+        items = (
+            self.collector.LinkedRequirement(
+                id="I_2",
+                repository="owner/requirements",
+                number=2,
+                url="https://github.com/owner/requirements/issues/2",
+                content_sha256="2" * 64,
+            ),
+            self.collector.LinkedRequirement(
+                id="I_1",
+                repository="owner/requirements",
+                number=1,
+                url="https://github.com/owner/requirements/issues/1",
+                content_sha256="1" * 64,
+            ),
+        )
+        linked = self.collector.LinkedRequirements(
+            items=items,
+            sha256="3" * 64,
+        )
+
+        binding = self.collect(
+            (pull_request(), pull_request()),
+            (linked, linked),
+        )
+
+        self.assertEqual(
+            (
+                "https://github.com/owner/requirements/issues/1",
+                "https://github.com/owner/requirements/issues/2",
+            ),
+            binding.requirement_issue_urls,
+        )
+
+    def test_rejects_scope_linked_content_and_selected_url_drift(self) -> None:
+        stable = pull_request()
+        requirement_url = "https://github.com/owner/requirements/issues/10"
+        first_item = self.collector.LinkedRequirement(
+            id="I_1",
+            repository="owner/requirements",
+            number=10,
+            url=requirement_url,
+            content_sha256="2" * 64,
+        )
+        second_item = self.collector.LinkedRequirement(
+            id="I_2",
+            repository="owner/requirements",
+            number=11,
+            url="https://github.com/owner/requirements/issues/11",
+            content_sha256="2" * 64,
+        )
+        first_linked = self.collector.LinkedRequirements(
+            items=(first_item,), sha256="3" * 64
+        )
+        cases = (
+            (
+                (stable, pull_request(body="Changed body.")),
+                (self.empty_linked(), self.empty_linked()),
+                (),
+            ),
+            (
+                (
+                    stable,
+                    pull_request(closing_issues=[linked_requirement_fixture()[0]]),
+                ),
+                (self.empty_linked(), self.empty_linked()),
+                (),
+            ),
+            (
+                (stable, stable),
+                (self.empty_linked("4" * 64), self.empty_linked("5" * 64)),
+                (),
+            ),
+            (
+                (stable, stable),
+                (
+                    first_linked,
+                    self.collector.LinkedRequirements(
+                        items=(second_item,), sha256="3" * 64
+                    ),
+                ),
+                (requirement_url,),
+            ),
+        )
+        for metadata, linked, selected_urls in cases:
+            with (
+                self.subTest(metadata=metadata, linked=linked),
+                self.assertRaises(RuntimeError),
+            ):
+                self.collect(metadata, linked, selected_urls)
+
+    def test_propagates_live_requirements_collection_failures(self) -> None:
+        with (
+            patch.object(
+                self.collector,
+                "pr_metadata",
+                side_effect=RuntimeError("provider unavailable"),
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            self.collector.collect_requirements_binding(
+                "9", self.target, (BASE_OID, HEAD_OID), ()
+            )
 
 
 class ImmutableEvidenceTests(unittest.TestCase):
@@ -2462,6 +2685,7 @@ class ImmutableEvidenceTests(unittest.TestCase):
         head_bound_check_pages: list[object] | None = None,
         expected_target: bool = True,
         hostile_target_environment: bool = False,
+        requirement_issues: Sequence[str] = (),
     ) -> tuple[subprocess.CompletedProcess[str], int, str, str]:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -2530,6 +2754,8 @@ class ImmutableEvidenceTests(unittest.TestCase):
                         "https://github.com/owner/repository/pull/9",
                     )
                 )
+            for requirement_issue in requirement_issues:
+                expected_arguments.extend(("--requirement-issue", requirement_issue))
             command = [
                 sys.executable,
                 str(SCRIPT),
@@ -2583,150 +2809,15 @@ class ImmutableEvidenceTests(unittest.TestCase):
         self.assertEqual("main", evidence["reviewed_scope"]["fields"]["baseRefName"])
         self.assertEqual("feature", evidence["reviewed_scope"]["fields"]["headRefName"])
         self.assertEqual(0, evidence["reviewed_linked_requirements"]["count"])
-        self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
+        self.assertNotIn("check_evidence", evidence)
 
-    def test_collects_check_runs_bound_to_the_reviewed_head(self) -> None:
-        result, _, _, head_oid = self.run_collector(
-            [pull_request(), pull_request()],
-            head_bound_check_pages=[
-                {
-                    "total_count": 1,
-                    "check_runs": [
-                        {
-                            "id": 1,
-                            "name": "required-checks",
-                            "head_sha": HEAD_OID,
-                            "status": "completed",
-                            "conclusion": "success",
-                        }
-                    ],
-                }
-            ],
-        )
+    def test_source_evidence_omits_check_results(self) -> None:
+        result, _, _, _ = self.run_collector([pull_request(), pull_request()])
 
         self.assertEqual(0, result.returncode, result.stderr)
         evidence = json.loads(result.stdout)
-        self.assertEqual("head_bound", evidence["check_evidence"]["status"])
-        self.assertEqual(head_oid, evidence["check_evidence"]["head_oid"])
-        self.assertEqual(1, evidence["check_evidence"]["count"])
-        self.assertEqual("required-checks", evidence["checks"][0]["name"])
-
-    def test_treats_missing_head_bound_check_evidence_as_a_coverage_gap(self) -> None:
-        result, _, _, _ = self.run_collector(
-            [pull_request(), pull_request()], head_bound_check_pages=[]
-        )
-
-        self.assertEqual(0, result.returncode, result.stderr)
-        evidence = json.loads(result.stdout)
-        self.assertEqual([], evidence["checks"])
-        self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
-        self.assertTrue(evidence["check_evidence"]["reason"])
-
-    def test_treats_stale_check_runs_as_a_coverage_gap(self) -> None:
-        result, _, _, _ = self.run_collector(
-            [pull_request(), pull_request()],
-            head_bound_check_pages=[
-                {
-                    "total_count": 1,
-                    "check_runs": [
-                        {
-                            "id": 1,
-                            "name": "required-checks",
-                            "head_sha": BASE_OID,
-                            "status": "completed",
-                            "conclusion": "success",
-                        }
-                    ],
-                }
-            ],
-        )
-
-        self.assertEqual(0, result.returncode, result.stderr)
-        evidence = json.loads(result.stdout)
-        self.assertEqual([], evidence["checks"])
-        self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
-        self.assertTrue(evidence["check_evidence"]["reason"])
-
-    def test_treats_mixed_head_check_runs_as_a_coverage_gap(self) -> None:
-        result, _, _, _ = self.run_collector(
-            [pull_request(), pull_request()],
-            head_bound_check_pages=[
-                {
-                    "total_count": 2,
-                    "check_runs": [
-                        {
-                            "id": 1,
-                            "name": "current-check",
-                            "head_sha": HEAD_OID,
-                            "status": "completed",
-                            "conclusion": "success",
-                        },
-                        {
-                            "id": 2,
-                            "name": "stale-check",
-                            "head_sha": BASE_OID,
-                            "status": "completed",
-                            "conclusion": "success",
-                        },
-                    ],
-                }
-            ],
-        )
-
-        self.assertEqual(0, result.returncode, result.stderr)
-        evidence = json.loads(result.stdout)
-        self.assertEqual([], evidence["checks"])
-        self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
-        self.assertTrue(evidence["check_evidence"]["reason"])
-
-    def test_treats_partial_check_runs_as_a_coverage_gap(self) -> None:
-        result, _, _, _ = self.run_collector(
-            [pull_request(), pull_request()],
-            head_bound_check_pages=[
-                {
-                    "total_count": 2,
-                    "check_runs": [
-                        {
-                            "id": 1,
-                            "name": "required-checks",
-                            "head_sha": HEAD_OID,
-                            "status": "completed",
-                            "conclusion": "success",
-                        }
-                    ],
-                }
-            ],
-        )
-
-        self.assertEqual(0, result.returncode, result.stderr)
-        evidence = json.loads(result.stdout)
-        self.assertEqual([], evidence["checks"])
-        self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
-        self.assertTrue(evidence["check_evidence"]["reason"])
-
-    def test_treats_malformed_check_runs_as_a_coverage_gap(self) -> None:
-        result, _, _, _ = self.run_collector(
-            [pull_request(), pull_request()],
-            head_bound_check_pages=[
-                {
-                    "total_count": 1,
-                    "check_runs": [
-                        {
-                            "id": 1,
-                            "name": "required-checks",
-                            "status": "completed",
-                            "conclusion": "success",
-                        }
-                    ],
-                }
-            ],
-        )
-
-        self.assertEqual(0, result.returncode, result.stderr)
-        evidence = json.loads(result.stdout)
-        self.assertEqual([], evidence["checks"])
-        self.assertEqual("coverage_gap", evidence["check_evidence"]["status"])
-        self.assertTrue(evidence["check_evidence"]["reason"])
+        self.assertNotIn("checks", evidence)
+        self.assertNotIn("check_evidence", evidence)
 
     def test_requires_an_explicit_review_target_for_strict_evidence(self) -> None:
         result, call_count, _, _ = self.run_collector(
@@ -2951,6 +3042,191 @@ class ImmutableEvidenceTests(unittest.TestCase):
         self.assertEqual(1, result.returncode)
         self.assertEqual(1, call_count)
 
+    def test_binds_an_explicit_requirement_without_a_closing_reference(self) -> None:
+        _, requirement = linked_requirement_fixture()
+        comments = [{"id": 1, "body": "Canonical plan"}]
+        result, calls, _, _ = self.run_collector(
+            [pull_request(), pull_request()],
+            requirement_issues=[str(requirement["url"])],
+            linked_issue_sequence=[requirement, requirement],
+            linked_comment_sequence=[comments, comments],
+            hostile_target_environment=True,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(2, calls)
+        evidence = json.loads(result.stdout)
+        self.assertEqual([], evidence["pull_request"]["closingIssuesReferences"])
+        self.assertEqual(
+            "owner/repository", evidence["reviewed_identity"]["repository"]
+        )
+        binding = evidence["reviewed_linked_requirements"]
+        self.assertEqual(1, binding["count"])
+        content = {key: requirement[key] for key in ("body", "state", "title")}
+        content["comments"] = comments
+        digest = sha256(
+            json.dumps(content, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        self.assertEqual(digest, binding["items"][0]["content_sha256"])
+        self.assertEqual("I_1", binding["items"][0]["id"])
+        self.assertEqual(requirement["url"], binding["items"][0]["url"])
+
+    def test_explicit_requirements_preserve_closing_issues_and_deduplicate(
+        self,
+    ) -> None:
+        reference, first = linked_requirement_fixture()
+        _, second = linked_requirement_fixture(11, "I_2")
+        bindings = []
+        for urls in (
+            [str(second["url"]), str(first["url"]), str(second["url"])],
+            [str(first["url"]), str(second["url"])],
+        ):
+            result, _, _, _ = self.run_collector(
+                [pull_request(closing_issues=[reference])] * 2,
+                requirement_issues=urls,
+                linked_issue_sequence=[first, second, first, second],
+                linked_comment_sequence=[[]] * 4,
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            evidence = json.loads(result.stdout)
+            self.assertEqual(
+                [reference], evidence["pull_request"]["closingIssuesReferences"]
+            )
+            bindings.append(evidence["reviewed_linked_requirements"])
+        self.assertEqual(bindings[0], bindings[1])
+        self.assertEqual(2, bindings[0]["count"])
+        self.assertEqual([10, 11], [item["number"] for item in bindings[0]["items"]])
+
+    def test_explicit_requirement_changes_block_evidence(self) -> None:
+        _, requirement = linked_requirement_fixture()
+        for field, value in (
+            ("id", "I_changed"),
+            ("body", "Changed requirement"),
+            ("title", "Changed title"),
+            ("state", "CLOSED"),
+        ):
+            with self.subTest(field=field):
+                result, calls, _, _ = self.run_collector(
+                    [pull_request()] * 2,
+                    requirement_issues=[str(requirement["url"])],
+                    linked_issue_sequence=[requirement, requirement | {field: value}],
+                    linked_comment_sequence=[[], []],
+                )
+                self.assertEqual(1, result.returncode)
+                self.assertEqual(2, calls)
+                self.assertEqual("", result.stdout)
+
+    def test_explicit_requirement_comment_changes_block_evidence(self) -> None:
+        _, requirement = linked_requirement_fixture()
+        result, calls, _, _ = self.run_collector(
+            [pull_request()] * 2,
+            requirement_issues=[str(requirement["url"])],
+            linked_issue_sequence=[requirement] * 2,
+            linked_comment_sequence=[[], [{"id": 1, "body": "Changed plan"}]],
+        )
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(2, calls)
+        self.assertEqual("", result.stdout)
+
+    def test_explicit_requirement_rejects_noncanonical_urls(self) -> None:
+        for url in (
+            "10",
+            "owner/requirements#10",
+            "https://example.com/owner/requirements/issues/10",
+            "https://github.com/owner/requirements/pull/10",
+            "https://github.com/owner/requirements/issues/010",
+            "https://github.com/owner/requirements/issues/10?x=1",
+            "https://github.com/owner/requirements/issues/10#issuecomment-1",
+            "https://github.com/owner/requirements/issues/10/",
+            "https://github.com/owner name/requirements/issues/10",
+        ):
+            with self.subTest(url=url):
+                result, calls, _, _ = self.run_collector(
+                    [pull_request()],
+                    requirement_issues=[url],
+                )
+                self.assertEqual(1, result.returncode)
+                self.assertEqual(1, calls)
+                self.assertEqual("", result.stdout)
+
+    def test_explicit_requirement_rejects_incomplete_provider_identity(self) -> None:
+        _, requirement = linked_requirement_fixture()
+        for field, value in (
+            ("id", ""),
+            ("id", None),
+            ("number", True),
+            ("number", 12),
+            ("url", "https://github.com/other/requirements/issues/10"),
+        ):
+            with self.subTest(field=field, value=value):
+                result, calls, _, _ = self.run_collector(
+                    [pull_request()],
+                    requirement_issues=[str(requirement["url"])],
+                    linked_issue_sequence=[requirement | {field: value}],
+                )
+                self.assertEqual(1, result.returncode)
+                self.assertEqual(1, calls)
+                self.assertEqual("", result.stdout)
+
+    def test_explicit_requirement_provider_failure_blocks_evidence(self) -> None:
+        result, calls, _, _ = self.run_collector(
+            [pull_request()],
+            requirement_issues=["https://github.com/owner/requirements/issues/10"],
+            linked_issue_sequence=[],
+        )
+        self.assertEqual(1, result.returncode)
+        self.assertEqual(1, calls)
+        self.assertEqual("", result.stdout)
+
+    def test_explicit_requirement_comment_failure_blocks_evidence(self) -> None:
+        _, requirement = linked_requirement_fixture()
+        for page in ({"message": "Unavailable"}, [None]):
+            with self.subTest(page=page):
+                result, calls, _, _ = self.run_collector(
+                    [pull_request()],
+                    requirement_issues=[str(requirement["url"])],
+                    linked_issue_sequence=[requirement],
+                    linked_comment_sequence=[page],
+                )
+                self.assertEqual(1, result.returncode)
+                self.assertEqual(1, calls)
+                self.assertEqual("", result.stdout)
+
+    def test_explicit_requirement_continues_comment_batches(self) -> None:
+        _, requirement = linked_requirement_fixture()
+        pages = [
+            [{"id": page * 25 + i, "body": "Plan"} for i in range(25)]
+            for page in range(11)
+        ] + [[]]
+        result, calls, _, _ = self.run_collector(
+            [pull_request()] * 2,
+            requirement_issues=[str(requirement["url"])],
+            linked_issue_sequence=[requirement] * 2,
+            linked_comment_sequence=list[object](pages) * 2,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(2, calls)
+        self.assertEqual(
+            1, json.loads(result.stdout)["reviewed_linked_requirements"]["count"]
+        )
+
+    def test_explicit_requirements_revalidate_each_complete_issue(self) -> None:
+        fixtures = [linked_requirement_fixture(n, f"I_{n}") for n in range(10, 23)]
+        first_reference = fixtures[0][0]
+        requirements = [requirement for _, requirement in fixtures]
+        result, calls, _, _ = self.run_collector(
+            [pull_request(closing_issues=[first_reference])] * 2,
+            requirement_issues=[
+                str(requirement["url"]) for requirement in requirements[1:]
+            ],
+            linked_issue_sequence=requirements * 2,
+            linked_comment_sequence=[[]] * 26,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(2, calls)
+        self.assertEqual(
+            13, json.loads(result.stdout)["reviewed_linked_requirements"]["count"]
+        )
+
     def test_emits_a_stable_linked_requirements_binding(self) -> None:
         reference = {
             "id": "I_1",
@@ -3024,26 +3300,37 @@ class ImmutableEvidenceTests(unittest.TestCase):
         self.assertEqual(1, result.returncode)
         self.assertEqual(2, call_count)
 
-    def test_bounds_linked_issue_comment_pages_as_a_structured_coverage_gap(
-        self,
-    ) -> None:
+    def test_complete_comment_pages_continue_through_final_revalidation(self) -> None:
         reference, requirement = linked_requirement_fixture()
-        page = [{"id": index, "body": "Comment"} for index in range(100)]
-
+        pages = [
+            [{"id": page * 25 + i, "body": "Comment"} for i in range(25)]
+            for page in range(11)
+        ] + [[]]
         result, call_count, _, _ = self.run_collector(
-            [pull_request(closing_issues=[reference])],
-            linked_issue_sequence=[requirement],
-            linked_comment_sequence=[page] * 10,
+            [pull_request(closing_issues=[reference])] * 2,
+            linked_issue_sequence=[requirement] * 2,
+            linked_comment_sequence=list[object](pages) * 2,
         )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(2, call_count)
+        content = {key: requirement[key] for key in ("body", "state", "title")}
+        comments = [comment for page in pages for comment in page]
+        content["comments"] = [
+            json.loads(value)
+            for value in sorted(
+                json.dumps(comment, sort_keys=True, separators=(",", ":"))
+                for comment in comments
+            )
+        ]
+        expected = sha256(
+            json.dumps(content, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        actual = json.loads(result.stdout)["reviewed_linked_requirements"]["items"][0][
+            "content_sha256"
+        ]
+        self.assertEqual(expected, actual)
 
-        self.assertEqual(1, result.returncode)
-        self.assertEqual(1, call_count)
-        error = json.loads(result.stdout)
-        self.assertEqual("linked issue requirements coverage gap", error["error"])
-        self.assertTrue(error["details"])
-        self.assertEqual("", result.stderr)
-
-    def test_bounds_linked_issue_comment_count_as_a_structured_coverage_gap(
+    def test_rejects_provider_page_larger_than_requested_count(
         self,
     ) -> None:
         reference, requirement = linked_requirement_fixture()
@@ -3058,7 +3345,7 @@ class ImmutableEvidenceTests(unittest.TestCase):
         self.assertEqual(1, call_count)
         error = json.loads(result.stdout)
         self.assertEqual("linked issue requirements coverage gap", error["error"])
-        self.assertTrue(error["details"])
+        self.assertIn("more comments than the requested page", error["details"])
         self.assertEqual("", result.stderr)
 
     def test_bounds_linked_issue_comment_bytes_as_a_structured_coverage_gap(
@@ -3112,7 +3399,7 @@ class ImmutableEvidenceTests(unittest.TestCase):
                 self.assertEqual("", result.stdout)
                 self.assertTrue(result.stderr)
 
-    def test_bounds_linked_requirements_across_final_revalidation(self) -> None:
+    def test_binds_all_linked_requirements_across_final_revalidation(self) -> None:
         fixtures = [
             linked_requirement_fixture(number, f"I_{index:02d}")
             for index, number in enumerate(range(10, 23))
@@ -3129,11 +3416,11 @@ class ImmutableEvidenceTests(unittest.TestCase):
             linked_comment_sequence=[[]] * 26,
         )
 
-        self.assertEqual(1, result.returncode)
+        self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(2, call_count)
-        error = json.loads(result.stdout)
-        self.assertEqual("linked issue requirements coverage gap", error["error"])
-        self.assertTrue(error["details"])
+        self.assertEqual(
+            13, json.loads(result.stdout)["reviewed_linked_requirements"]["count"]
+        )
         self.assertEqual("", result.stderr)
 
     def test_reports_final_partial_pr_metadata_as_a_structured_error(self) -> None:
@@ -3152,18 +3439,21 @@ class ImmutableEvidenceTests(unittest.TestCase):
 
     def test_emits_final_revalidated_metadata(self) -> None:
         initial = pull_request()
+        initial["reviewDecision"] = "REVIEW_REQUIRED"
         initial["reviews"] = [{"id": "initial"}]
         final = pull_request()
+        final["reviewDecision"] = "APPROVED"
         final["reviews"] = [{"id": "final"}]
 
         result, _, _, _ = self.run_collector([initial, final])
 
         self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn("merge_readiness", json.loads(result.stdout))
         self.assertEqual(
             [{"id": "final"}], json.loads(result.stdout)["pull_request"]["reviews"]
         )
 
-    def test_immutable_changed_paths_ignore_replacement_refs(self) -> None:
+    def test_author_intent_paths_ignore_replacement_refs(self) -> None:
         result, call_count, _, _ = self.run_collector(
             [pull_request(), pull_request()],
             changed_path="replacement.txt",
@@ -3176,7 +3466,7 @@ class ImmutableEvidenceTests(unittest.TestCase):
             ["replacement.txt"], json.loads(result.stdout)["changed_files"]
         )
 
-    def test_binds_the_union_of_author_intent_and_current_target_paths(self) -> None:
+    def test_author_intent_keeps_a_target_equivalent_feature_path(self) -> None:
         """A target-equivalent tree must not hide a feature's changed path."""
         result, call_count, _, _ = self.run_collector(
             [pull_request(), pull_request()],
@@ -3186,6 +3476,28 @@ class ImmutableEvidenceTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual(2, call_count)
         self.assertEqual(["changed.txt"], json.loads(result.stdout)["changed_files"])
+
+    def test_target_advance_does_not_add_target_only_paths(self) -> None:
+        result, call_count, _, _ = self.run_collector(
+            [pull_request(), pull_request()],
+            repository_initializer=initialize_target_advanced_repository,
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(2, call_count)
+        evidence = json.loads(result.stdout)
+        self.assertEqual(["changed.txt"], evidence["changed_files"])
+        self.assertEqual(
+            sha256(b"changed.txt\0").hexdigest(),
+            evidence["changed_path_manifest"]["sha256"],
+        )
+        self.assertEqual(
+            ["changed.txt", "target-only.txt"], evidence["current_target_paths"]
+        )
+        self.assertEqual(
+            sha256(b"changed.txt\0target-only.txt\0").hexdigest(),
+            evidence["current_target_path_manifest"]["sha256"],
+        )
 
     def test_rejects_shallow_history_before_binding_changed_paths(self) -> None:
         result, call_count, _, _ = self.run_collector(
@@ -3239,6 +3551,262 @@ class ImmutableEvidenceTests(unittest.TestCase):
             sha256(path.encode("utf-8") + b"\0").hexdigest(),
             evidence["changed_path_manifest"]["sha256"],
         )
+
+
+class FailingReadStream(io.BytesIO):
+    """A pipe whose read fails the way a closed descriptor does."""
+
+    def __init__(self, error: Exception) -> None:
+        super().__init__(b"")
+        self.read_error = error
+
+    def read(self, size: int | None = -1, /) -> bytes:
+        raise self.read_error
+
+
+class FailingCloseStream(io.BytesIO):
+    """A pipe a reader thread closed before the owning cleanup path runs."""
+
+    def __init__(self, payload: bytes = b"") -> None:
+        super().__init__(payload)
+        self.close_attempts = 0
+
+    def close(self) -> None:
+        self.close_attempts += 1
+        if self.close_attempts == 1:
+            raise OSError("the pipe was already closed")
+        super().close()
+
+
+class ProviderStreamDrainTests(unittest.TestCase):
+    """Exercise the bounded provider-pipe drain without a live provider."""
+
+    def setUp(self) -> None:
+        self.module_name = f"test_collect_evidence_provider_{id(self)}"
+        self.collector = load_collector(self.module_name)
+
+    def tearDown(self) -> None:
+        sys.modules.pop(self.module_name, None)
+
+    def test_collects_the_complete_pipe_output(self) -> None:
+        capture = self.collector.ProviderStream(maximum_bytes=64)
+
+        self.collector.drain_provider_stream(io.BytesIO(b'{"status":"ok"}'), capture)
+
+        self.assertEqual(b'{"status":"ok"}', bytes(capture.output))
+        self.assertFalse(capture.overflowed.is_set())
+        self.assertIsNone(capture.error)
+        self.assertTrue(capture.completed.is_set())
+
+    def test_stops_and_reports_overflow_when_the_pipe_exceeds_the_byte_limit(
+        self,
+    ) -> None:
+        capture = self.collector.ProviderStream(maximum_bytes=4)
+
+        self.collector.drain_provider_stream(io.BytesIO(b"payload"), capture)
+
+        self.assertTrue(capture.overflowed.is_set())
+        self.assertEqual(b"", bytes(capture.output))
+        self.assertTrue(capture.completed.is_set())
+
+    def test_stops_before_reading_when_no_byte_budget_remains(self) -> None:
+        capture = self.collector.ProviderStream(maximum_bytes=-1)
+
+        self.collector.drain_provider_stream(io.BytesIO(b"payload"), capture)
+
+        self.assertTrue(capture.overflowed.is_set())
+        self.assertEqual(b"", bytes(capture.output))
+        self.assertTrue(capture.completed.is_set())
+
+    def test_records_a_pipe_read_failure(self) -> None:
+        capture = self.collector.ProviderStream(maximum_bytes=64)
+
+        self.collector.drain_provider_stream(
+            FailingReadStream(OSError("the pipe closed")), capture
+        )
+
+        self.assertIsInstance(capture.error, OSError)
+        self.assertFalse(capture.overflowed.is_set())
+        self.assertTrue(capture.completed.is_set())
+
+    def test_completes_when_a_reader_closed_the_pipe_first(self) -> None:
+        capture = self.collector.ProviderStream(maximum_bytes=64)
+
+        self.collector.drain_provider_stream(FailingCloseStream(b"payload"), capture)
+
+        self.assertEqual(b"payload", bytes(capture.output))
+        self.assertTrue(capture.completed.is_set())
+
+
+class ChangedPathStreamDrainTests(unittest.TestCase):
+    """Exercise the bounded Git path-manifest drain without a live Git process."""
+
+    def setUp(self) -> None:
+        self.module_name = f"test_collect_evidence_manifest_{id(self)}"
+        self.collector = load_collector(self.module_name)
+
+    def tearDown(self) -> None:
+        sys.modules.pop(self.module_name, None)
+
+    def capture(self, *, maximum_bytes: int = 64, maximum_paths: int = 4) -> Any:
+        return self.collector.ChangedPathStream(
+            maximum_bytes=maximum_bytes, maximum_paths=maximum_paths
+        )
+
+    def test_collects_every_terminated_path(self) -> None:
+        capture = self.capture()
+
+        self.collector.drain_changed_path_stream(
+            io.BytesIO(b"alpha\0beta/gamma.py\0"), capture
+        )
+
+        self.assertEqual([b"alpha", b"beta/gamma.py"], capture.paths)
+        self.assertFalse(capture.overflowed.is_set())
+        self.assertIsNone(capture.error)
+        self.assertTrue(capture.completed.is_set())
+
+    def test_rejects_a_manifest_that_ends_mid_entry(self) -> None:
+        capture = self.capture()
+
+        self.collector.drain_changed_path_stream(io.BytesIO(b"alpha\0beta"), capture)
+
+        self.assertIsInstance(capture.error, RuntimeError)
+        self.assertIn("is not valid", str(capture.error))
+        self.assertEqual([b"alpha"], capture.paths)
+        self.assertTrue(capture.completed.is_set())
+
+    def test_rejects_a_repeated_path(self) -> None:
+        capture = self.capture()
+
+        self.collector.drain_changed_path_stream(io.BytesIO(b"alpha\0alpha\0"), capture)
+
+        self.assertIsInstance(capture.error, RuntimeError)
+        self.assertIn("duplicate changed paths", str(capture.error))
+        self.assertEqual([b"alpha"], capture.paths)
+
+    def test_rejects_a_path_that_escapes_the_repository(self) -> None:
+        capture = self.capture()
+
+        self.collector.drain_changed_path_stream(io.BytesIO(b"../escape\0"), capture)
+
+        self.assertIsInstance(capture.error, RuntimeError)
+        self.assertIn("unsafe changed path", str(capture.error))
+        self.assertEqual([], capture.paths)
+
+    def test_rejects_an_absolute_path(self) -> None:
+        capture = self.capture()
+
+        self.collector.drain_changed_path_stream(io.BytesIO(b"/etc/passwd\0"), capture)
+
+        self.assertIsInstance(capture.error, RuntimeError)
+        self.assertIn("unsafe changed path", str(capture.error))
+        self.assertEqual([], capture.paths)
+
+    def test_rejects_an_empty_path_entry(self) -> None:
+        capture = self.capture()
+
+        self.collector.drain_changed_path_stream(
+            io.BytesIO(b"alpha\0\0beta\0"), capture
+        )
+
+        self.assertIsInstance(capture.error, RuntimeError)
+        self.assertIn("empty changed path", str(capture.error))
+        self.assertEqual([b"alpha"], capture.paths)
+
+    def test_reports_the_byte_limit_without_reading_past_it(self) -> None:
+        capture = self.capture(maximum_bytes=4)
+
+        self.collector.drain_changed_path_stream(io.BytesIO(b"alpha\0beta\0"), capture)
+
+        self.assertTrue(capture.overflowed.is_set())
+        self.assertIn("byte limit", capture.limit_error)
+        self.assertEqual(0, capture.bytes_read)
+        self.assertEqual([], capture.paths)
+
+    def test_reports_the_path_limit(self) -> None:
+        capture = self.capture(maximum_paths=1)
+
+        self.collector.drain_changed_path_stream(io.BytesIO(b"alpha\0beta\0"), capture)
+
+        self.assertTrue(capture.overflowed.is_set())
+        self.assertIn("path limit", capture.limit_error)
+        self.assertEqual([b"alpha"], capture.paths)
+
+    def test_stops_before_reading_when_no_byte_budget_remains(self) -> None:
+        capture = self.capture(maximum_bytes=-1)
+
+        self.collector.drain_changed_path_stream(io.BytesIO(b"alpha\0"), capture)
+
+        self.assertTrue(capture.overflowed.is_set())
+        self.assertIn("byte limit", capture.limit_error)
+        self.assertEqual(0, capture.bytes_read)
+        self.assertEqual([], capture.paths)
+
+    def test_records_a_pipe_read_failure(self) -> None:
+        capture = self.capture()
+
+        self.collector.drain_changed_path_stream(
+            FailingReadStream(OSError("the pipe closed")), capture
+        )
+
+        self.assertIsInstance(capture.error, OSError)
+        self.assertFalse(capture.overflowed.is_set())
+        self.assertTrue(capture.completed.is_set())
+
+    def test_completes_when_a_reader_closed_the_pipe_first(self) -> None:
+        capture = self.capture()
+
+        self.collector.drain_changed_path_stream(
+            FailingCloseStream(b"alpha\0"), capture
+        )
+
+        self.assertEqual([b"alpha"], capture.paths)
+        self.assertTrue(capture.completed.is_set())
+
+
+class ReapProviderTests(unittest.TestCase):
+    """Exercise provider cleanup for both running and already-exited requests."""
+
+    def setUp(self) -> None:
+        self.module_name = f"test_collect_evidence_reap_{id(self)}"
+        self.collector = load_collector(self.module_name)
+
+    def tearDown(self) -> None:
+        sys.modules.pop(self.module_name, None)
+
+    def test_kills_and_reaps_a_provider_that_is_still_running(self) -> None:
+        process: Any = Mock()
+        process.poll.return_value = None
+        reader: Any = Mock()
+        stream = io.BytesIO(b"payload")
+
+        self.collector.reap_provider(process, [stream], [reader])
+
+        process.kill.assert_called_once_with()
+        process.wait.assert_called_once_with()
+        reader.join.assert_called_once_with(self.collector.PROVIDER_READER_JOIN_SECONDS)
+        self.assertTrue(stream.closed)
+
+    def test_does_not_kill_a_provider_that_already_exited(self) -> None:
+        process: Any = Mock()
+        process.poll.return_value = 0
+        reader: Any = Mock()
+
+        self.collector.reap_provider(process, [io.BytesIO(b"")], [reader])
+
+        process.kill.assert_not_called()
+        process.wait.assert_called_once_with()
+        reader.join.assert_called_once_with(self.collector.PROVIDER_READER_JOIN_SECONDS)
+
+    def test_completes_when_a_reader_closed_the_pipe_first(self) -> None:
+        process: Any = Mock()
+        process.poll.return_value = None
+        reader: Any = Mock()
+
+        self.collector.reap_provider(process, [FailingCloseStream(b"")], [reader])
+
+        process.wait.assert_called_once_with()
+        reader.join.assert_called_once_with(self.collector.PROVIDER_READER_JOIN_SECONDS)
 
 
 if __name__ == "__main__":

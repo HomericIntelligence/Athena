@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import importlib.util
+import inspect
 import json
 import shutil
 import stat
@@ -12,18 +14,32 @@ import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-
-if __package__ in {None, ""}:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from typing import TYPE_CHECKING
 
 from pr_identity import COMMIT_OID, require_commit_oid, require_github_repository
 
-from skills._cli import (
-    argument_parser,
-    git_read_arguments,
-    git_read_environment,
-    run_command,
-)
+if TYPE_CHECKING or __package__ not in {None, ""}:
+    from skills._cli import (
+        argument_parser,
+        git_read_arguments,
+        git_read_environment,
+        run_command,
+    )
+else:
+    _cli_path = Path(__file__).resolve().parents[2] / "_cli.py"
+    _cli_spec = importlib.util.spec_from_file_location(
+        "athena_installed_cli", _cli_path
+    )
+    if _cli_spec is None or _cli_spec.loader is None:
+        raise RuntimeError(
+            f"The installed Athena CLI helper is unavailable: '{_cli_path}'."
+        )
+    _cli = importlib.util.module_from_spec(_cli_spec)
+    _cli_spec.loader.exec_module(_cli)
+    argument_parser = _cli.argument_parser
+    git_read_arguments = _cli.git_read_arguments
+    git_read_environment = _cli.git_read_environment
+    run_command = _cli.run_command
 
 SNAPSHOT_COMMAND_TIMEOUT_SECONDS = 30.0
 BOUNDED_MATERIALIZE_TIMEOUT_SECONDS = 600.0
@@ -88,8 +104,12 @@ def _git(
     return result.stdout.strip() if isinstance(result.stdout, str) else ""
 
 
-def _hdiutil(*arguments: str) -> None:
-    """Run the macOS disk-image tool or fail closed when it cannot enforce a quota."""
+def _hdiutil(*arguments: str) -> bool:
+    """Run the macOS disk-image tool. Return False when it cannot enforce a quota.
+
+    Report unavailability instead of raising. The caller selects the next
+    acquisition tier, so an unavailable `hdiutil` must not end acquisition.
+    """
     try:
         result = run_command(
             ["hdiutil", *arguments],
@@ -98,10 +118,9 @@ def _hdiutil(*arguments: str) -> None:
             text=True,
             check=False,
         )
-    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
-        raise RuntimeError(QUOTA_ERROR) from error
-    if result.returncode != 0:
-        raise RuntimeError(QUOTA_ERROR)
+    except (OSError, RuntimeError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
 
 
 def _mount_tmpfs(source: Path, maximum_bytes: int) -> bool:
@@ -149,13 +168,15 @@ def _mount_tmpfs(source: Path, maximum_bytes: int) -> bool:
 
 
 def _create_quota_volume(root: Path, maximum_bytes: int) -> Path | None:
-    """Return a bounded source directory, or None for the Linux bounded fallback.
+    """Return a bounded source directory, or None to select a later tier.
 
     On macOS, attach a sparse HFS+ volume whose total capacity is the quota.
-    On Linux, mount a tmpfs when the host has the required authority. Otherwise,
-    return None so the caller can materialize the snapshot inside a bounded user
-    and mount namespace. On other systems, fail closed because the host cannot
-    enforce the snapshot size limit.
+    On Linux, mount a tmpfs when the host has the required authority. Return
+    None whenever the host cannot provide a quota volume, so the caller can
+    select the next acquisition tier.
+
+    Only a host with no usable disk fails closed here. Every other host
+    continues to a tier that does not need a quota volume.
     """
     maximum_kibibytes = maximum_bytes // 1024
     if maximum_kibibytes < 1:
@@ -166,7 +187,7 @@ def _create_quota_volume(root: Path, maximum_bytes: int) -> Path | None:
         image = root / "snapshot.sparseimage"
         source = root / "source"
         source.mkdir()
-        _hdiutil(
+        created = _hdiutil(
             "create",
             "-quiet",
             "-type",
@@ -180,7 +201,7 @@ def _create_quota_volume(root: Path, maximum_bytes: int) -> Path | None:
             "-nospotlight",
             str(image),
         )
-        _hdiutil(
+        attached = created and _hdiutil(
             "attach",
             "-quiet",
             "-nobrowse",
@@ -188,8 +209,10 @@ def _create_quota_volume(root: Path, maximum_bytes: int) -> Path | None:
             str(source),
             str(image),
         )
-        if not source.is_mount():
-            raise RuntimeError(QUOTA_ERROR)
+        if not attached or not source.is_mount():
+            # The host cannot provide a quota volume. Return None so the caller
+            # selects the next acquisition tier instead of ending the review.
+            return None
         return source
     if sys.platform.startswith("linux"):
         source = root / "source"
@@ -202,13 +225,16 @@ def _create_quota_volume(root: Path, maximum_bytes: int) -> Path | None:
             # If rmdir fails, the caller uses None to select the other method.
             pass
         return None
-    raise RuntimeError(QUOTA_ERROR)
+    # Every other platform has no quota mechanism. Return None so the caller
+    # selects the next acquisition tier instead of ending the review.
+    return None
 
 
 def _detach_volume(source: Path) -> None:
     """Detach the platform quota volume from its mount point."""
     if sys.platform == "darwin":
-        _hdiutil("detach", "-force", "-quiet", str(source))
+        if not _hdiutil("detach", "-force", "-quiet", str(source)):
+            raise RuntimeError(REMOVE_ERROR)
         return
     if sys.platform.startswith("linux"):
         try:
@@ -240,7 +266,6 @@ def _detach_best_effort(source: Path) -> None:
     try:
         _detach_volume(source)
     except RuntimeError:
-        # Do not let this cleanup error hide an earlier failure.
         pass
 
 
@@ -524,6 +549,47 @@ def _bounded_materialize_main(arguments: Sequence[str]) -> int:
     return 0
 
 
+def _plain_materialize(
+    root: Path,
+    maximum_bytes: int,
+    *,
+    repository: str,
+    number: int,
+    base_ref: str,
+    base_oid: str,
+    head_oid: str,
+    hooks: Path,
+    template: Path,
+) -> MaterializedSnapshot:
+    """Materialize a verified snapshot with the host's normal permissions.
+
+    Use this tier when neither a quota volume nor a user namespace is
+    available, which is the normal case on macOS and Windows. Acquisition
+    still fetches only the captured refs, still verifies the base and head
+    object identifiers, and still refuses a shallow or promisor repository.
+    The bound here is the available-disk check, not a file system quota.
+    """
+    # `exist_ok` matters: a failed macOS quota attempt leaves root/source
+    # behind, and this tier reuses that path.
+    source = root / "source"
+    source.mkdir(exist_ok=True)
+    merge_base, tree_oid = _acquire_into(
+        source,
+        repository_url=canonical_repository_url(repository),
+        number=number,
+        base_ref=base_ref,
+        base_oid=base_oid,
+        head_oid=head_oid,
+        hooks=hooks,
+        template=template,
+        maximum_bytes=maximum_bytes,
+    )
+    _make_read_only(root)
+    return MaterializedSnapshot(
+        root=root, source_path=source, merge_base=merge_base, tree_oid=tree_oid
+    )
+
+
 def _bounded_materialize(
     root: Path,
     maximum_bytes: int,
@@ -632,15 +698,30 @@ def materialize_snapshot(
             )
         source = _create_quota_volume(root, maximum_snapshot_bytes)
         if source is None:
-            return _bounded_materialize(
-                root,
-                maximum_snapshot_bytes,
-                repository=canonical_repository,
-                number=number,
-                base_ref=canonical_base_ref,
-                base_oid=canonical_base,
-                head_oid=canonical_head,
-            )
+            try:
+                return _bounded_materialize(
+                    root,
+                    maximum_snapshot_bytes,
+                    repository=canonical_repository,
+                    number=number,
+                    base_ref=canonical_base_ref,
+                    base_oid=canonical_base,
+                    head_oid=canonical_head,
+                )
+            except RuntimeError:
+                # No user namespace on this host. Acquire with the host's own
+                # permissions rather than refusing to review the pull request.
+                return _plain_materialize(
+                    root,
+                    maximum_snapshot_bytes,
+                    repository=canonical_repository,
+                    number=number,
+                    base_ref=canonical_base_ref,
+                    base_oid=canonical_base,
+                    head_oid=canonical_head,
+                    hooks=hooks,
+                    template=template,
+                )
         merge_base, tree_oid = _acquire_into(
             source,
             repository_url=canonical_repository_url(canonical_repository),
@@ -685,7 +766,10 @@ def remove_snapshot(root: Path) -> None:
             raise TypeError(REMOVE_ERROR)
         function(path)
 
-    shutil.rmtree(resolved, onexc=make_removable)
+    if "onexc" in inspect.signature(shutil.rmtree).parameters:
+        shutil.rmtree(resolved, onexc=make_removable)
+        return
+    shutil.rmtree(resolved, onerror=make_removable)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

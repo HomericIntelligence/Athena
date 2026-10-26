@@ -3,19 +3,23 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import math
+import re
+import shutil
+import sqlite3
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections.abc import Sequence
+from contextlib import closing
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
-from typing import IO, Any
-
-if __package__ in {None, ""}:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from typing import IO, TYPE_CHECKING, Any
 
 from materialize_snapshot import (
     MaterializedSnapshot,
@@ -32,27 +36,45 @@ from pr_identity import (
     validate_pr_identifier,
 )
 
-from skills._cli import (
-    argument_parser,
-    git_read_arguments,
-    git_read_environment,
-    require_complete_git_history,
-    require_unambiguous_git_merge_base,
-    run_command,
-)
+if TYPE_CHECKING or __package__ not in {None, ""}:
+    from skills._cli import (
+        argument_parser,
+        git_read_arguments,
+        git_read_environment,
+        require_complete_git_history,
+        require_unambiguous_git_merge_base,
+        run_command,
+    )
+else:
+    _cli_path = Path(__file__).resolve().parents[2] / "_cli.py"
+    _cli_spec = importlib.util.spec_from_file_location(
+        "athena_installed_cli", _cli_path
+    )
+    if _cli_spec is None or _cli_spec.loader is None:
+        raise RuntimeError(
+            f"The installed Athena CLI helper is unavailable: '{_cli_path}'."
+        )
+    _cli = importlib.util.module_from_spec(_cli_spec)
+    _cli_spec.loader.exec_module(_cli)
+    argument_parser = _cli.argument_parser
+    git_read_arguments = _cli.git_read_arguments
+    git_read_environment = _cli.git_read_environment
+    require_complete_git_history = _cli.require_complete_git_history
+    require_unambiguous_git_merge_base = _cli.require_unambiguous_git_merge_base
+    run_command = _cli.run_command
 
 # Keep this query below GitHub's GraphQL complexity budget. Strict callers bind
 # changed paths to local immutable Git objects. Earlier callers use the REST
 # file-list fallback only for backward compatibility.
 FIELDS = (
     "number,title,body,state,isDraft,author,baseRefName,headRefName,"
-    "baseRefOid,headRefOid,reviews,statusCheckRollup,closingIssuesReferences,url"
+    "baseRefOid,headRefOid,reviews,"
+    "closingIssuesReferences,url"
 )
 ISSUE_FIELDS = "id,number,url,title,body,state"
 READ_CHUNK_SIZE = 64 * 1024
-LINKED_ISSUE_COMMENT_PAGE_SIZE = 100
+LINKED_ISSUE_COMMENT_PAGE_SIZE = 25
 MAX_LINKED_ISSUE_COMMENT_PAGES = 10
-MAX_LINKED_ISSUE_COMMENTS = 1_000
 MAX_LINKED_ISSUE_COMMENT_PAGE_BYTES = 256 * 1024
 MAX_LINKED_ISSUE_COMMENT_BYTES = 1024 * 1024
 MAX_LINKED_ISSUE_COMMENT_STDERR_BYTES = 16 * 1024
@@ -61,19 +83,11 @@ PROVIDER_POLL_SECONDS = 0.01
 PROVIDER_READER_JOIN_SECONDS = 1.0
 MAX_LINKED_REQUIREMENT_METADATA_BYTES = 256 * 1024
 MAX_LINKED_REQUIREMENT_REQUESTS = 48
-MAX_LINKED_REQUIREMENT_PAGES = 24
-MAX_LINKED_REQUIREMENT_COMMENTS = 2_000
 MAX_LINKED_REQUIREMENT_BYTES = 2 * 1024 * 1024
 MAX_CHANGED_PATH_MANIFEST_BYTES = 2 * 1024 * 1024
 MAX_CHANGED_PATHS = 10_000
 MAX_CHANGED_PATH_STDERR_BYTES = 16 * 1024
 CHANGED_PATH_REQUEST_TIMEOUT_SECONDS = 30.0
-MAX_CHECK_RUN_PAGE_BYTES = 256 * 1024
-MAX_CHECK_RUN_BYTES = 2 * 1024 * 1024
-MAX_CHECK_RUN_PAGES = 100
-MAX_CHECK_RUNS = 10_000
-MAX_CHECK_RUN_STDERR_BYTES = 16 * 1024
-CHECK_RUN_REQUEST_TIMEOUT_SECONDS = 30.0
 
 
 class LinkedRequirementsCoverageGap(RuntimeError):
@@ -84,16 +98,10 @@ class ChangedPathCoverageGap(RuntimeError):
     """Changed paths exceed the bounded immutable-evidence collector."""
 
 
-class CheckEvidenceCoverageGap(RuntimeError):
-    """GitHub checks cannot be bound completely to the reviewed head."""
-
-
 @dataclass
 class LinkedRequirementBudget:
     """This budget controls both strict evidence reads from the provider."""
 
-    pages: int = 0
-    comments: int = 0
     bytes_read: int = 0
     requests: int = 0
 
@@ -109,14 +117,6 @@ class LinkedRequirementBudget:
             )
         self.requests += 1
 
-    def reserve_comment_page(self) -> None:
-        """Reserve one aggregate comment page and its provider request."""
-        if self.pages >= MAX_LINKED_REQUIREMENT_PAGES:
-            raise LinkedRequirementsCoverageGap(
-                "The linked issue requirements exceed the safe aggregate page limit."
-            )
-        self.reserve_request()
-
     def record_bytes(self, count: int) -> None:
         """Account for one provider response without crossing the byte budget."""
         if count > self.remaining_bytes():
@@ -124,15 +124,6 @@ class LinkedRequirementBudget:
                 "The linked issue requirements exceed the safe aggregate byte limit."
             )
         self.bytes_read += count
-
-    def record_comment_page(self, count: int) -> None:
-        """Account for one successful provider page and its item count."""
-        if self.comments + count > MAX_LINKED_REQUIREMENT_COMMENTS:
-            raise LinkedRequirementsCoverageGap(
-                "The linked issue requirements exceed the safe aggregate comment limit."
-            )
-        self.pages += 1
-        self.comments += count
 
 
 @dataclass
@@ -264,6 +255,23 @@ class LinkedRequirement:
         }
 
 
+@dataclass(frozen=True)
+class ReviewRequirementsBinding:
+    """This record binds live pull-request scope and linked requirements."""
+
+    reviewed_scope_sha256: str
+    requirements_sha256: str
+    requirement_issue_urls: tuple[str, ...]
+
+    def as_json(self) -> dict[str, object]:
+        """Return the canonical live requirements binding."""
+        return {
+            "reviewed_scope_sha256": self.reviewed_scope_sha256,
+            "requirements_sha256": self.requirements_sha256,
+            "requirement_issue_urls": list(self.requirement_issue_urls),
+        }
+
+
 def metadata_error(metadata: object, *, require_immutable_identity: bool) -> str | None:
     """Return a diagnostic when GitHub returns partial pull-request metadata."""
     if not isinstance(metadata, dict):
@@ -275,7 +283,6 @@ def metadata_error(metadata: object, *, require_immutable_identity: bool) -> str
         "author": dict,
         "baseRefName": str,
         "headRefName": str,
-        "statusCheckRollup": list,
         "url": str,
     }
     invalid = [
@@ -433,16 +440,30 @@ def expected_target(
 def ensure_expected_identity(
     identity: ImmutableIdentity | None, expected: tuple[str, str] | None
 ) -> None:
-    """Fail closed when collected revisions differ from the resolved pull request."""
+    """Fail closed when the collected head differs from the resolved pull request."""
     if expected is None:
         return
     if identity is None:
         raise RuntimeError("GitHub did not return an immutable pull-request identity.")
-    if (identity.base_oid, identity.head_oid) != expected:
+    if identity.head_oid != expected[1]:
         raise RuntimeError(
-            "The immutable pull-request identity does not match the expected base "
-            "object identifier and head object identifier."
+            "The immutable pull-request identity does not match the expected head "
+            "object identifier."
         )
+
+
+def same_review_implementation(
+    first: ImmutableIdentity | None, second: ImmutableIdentity | None
+) -> bool:
+    """Return whether two observations bind the same pull-request implementation."""
+    if first is None or second is None:
+        return first is second
+    return (
+        first.repository.casefold() == second.repository.casefold()
+        and first.number == second.number
+        and first.url == second.url
+        and first.head_oid == second.head_oid
+    )
 
 
 def ensure_expected_target(
@@ -810,25 +831,36 @@ def bounded_gh_output(
         ) from error
 
 
-def paginated_issue_comments(
-    repository: str, number: int, budget: LinkedRequirementBudget | None = None
-) -> list[dict[str, Any]]:
-    """Read bounded linked-issue comments through explicit canonical pages."""
-    collection_budget = budget if budget is not None else LinkedRequirementBudget()
+@dataclass(frozen=True)
+class CommentBatch:
+    """One bounded comment batch and its next provider page."""
+
+    comments: tuple[dict[str, Any], ...]
+    next_page: int | None
+
+
+def issue_comment_batch(
+    repository: str,
+    number: int,
+    start_page: int = 1,
+    *,
+    deadline: float | None = None,
+) -> CommentBatch:
+    """Read one bounded batch; return a cursor instead of rejecting later pages."""
+    if start_page < 1:
+        raise ValueError("The comment page must be positive.")
     comments: list[dict[str, Any]] = []
-    bytes_read = 0
-    for page in range(1, MAX_LINKED_ISSUE_COMMENT_PAGES + 2):
-        remaining_bytes = MAX_LINKED_ISSUE_COMMENT_BYTES - bytes_read
-        aggregate_remaining_bytes = collection_budget.remaining_bytes()
-        if remaining_bytes <= 0:
+    remaining = MAX_LINKED_ISSUE_COMMENT_BYTES
+    page = start_page
+    for _ in range(MAX_LINKED_ISSUE_COMMENT_PAGES):
+        if deadline is not None and time.monotonic() >= deadline:
             raise LinkedRequirementsCoverageGap(
-                "The linked issue comments exceed the safe byte limit."
+                "The comment job reached its operation deadline."
             )
-        if aggregate_remaining_bytes <= 0:
-            raise LinkedRequirementsCoverageGap(
-                "The linked issue requirements exceed the safe aggregate byte limit."
-            )
-        collection_budget.reserve_comment_page()
+        # Leave enough space for one complete provider response. A fresh batch
+        # can continue at this exact page without duplicate reads.
+        if remaining < MAX_LINKED_ISSUE_COMMENT_PAGE_BYTES and comments:
+            break
         response = bounded_gh_output(
             (
                 "api",
@@ -841,46 +873,240 @@ def paginated_issue_comments(
                     f"per_page={LINKED_ISSUE_COMMENT_PAGE_SIZE}&page={page}"
                 ),
             ),
-            maximum_bytes=min(
-                MAX_LINKED_ISSUE_COMMENT_PAGE_BYTES,
-                remaining_bytes,
-                aggregate_remaining_bytes,
-            ),
-            limit_error="The linked issue comments exceed the safe byte limit.",
+            maximum_bytes=min(MAX_LINKED_ISSUE_COMMENT_PAGE_BYTES, remaining),
+            limit_error=f"The comment page {page} exceeds the response byte limit.",
         )
-        bytes_read += len(response)
-        collection_budget.record_bytes(len(response))
-        try:
-            page_comments = json.loads(response)
-        except json.JSONDecodeError as error:
-            raise RuntimeError(
-                "GitHub returned linked issue comment pages that are not valid."
-            ) from error
-        if not isinstance(page_comments, list):
-            raise TypeError(
-                "GitHub returned linked issue comment pages that are not valid."
-            )
-        if not all(isinstance(comment, dict) for comment in page_comments):
-            raise RuntimeError(
-                "GitHub returned a linked issue comment that is not valid."
-            )
-        if page > MAX_LINKED_ISSUE_COMMENT_PAGES:
-            if page_comments:
-                raise LinkedRequirementsCoverageGap(
-                    "The linked issue comments exceed the safe page limit."
-                )
-            return comments
-        if len(comments) + len(page_comments) > MAX_LINKED_ISSUE_COMMENTS:
+        values = json.loads(response)
+        if not isinstance(values, list) or not all(isinstance(v, dict) for v in values):
+            raise RuntimeError("GitHub returned a comment page that is not valid.")
+        if len(values) > LINKED_ISSUE_COMMENT_PAGE_SIZE:
             raise LinkedRequirementsCoverageGap(
-                "The linked issue comments exceed the safe comment limit."
+                "GitHub returned more comments than the requested page."
             )
-        collection_budget.record_comment_page(len(page_comments))
-        comments.extend(page_comments)
-        if len(page_comments) < LINKED_ISSUE_COMMENT_PAGE_SIZE:
-            return comments
-    raise AssertionError(
-        "The bounded linked issue comment pagination did not terminate."
+        comments.extend(values)
+        remaining -= len(response)
+        page += 1
+        if len(values) < LINKED_ISSUE_COMMENT_PAGE_SIZE:
+            return CommentBatch(tuple(comments), None)
+    if not comments:
+        raise LinkedRequirementsCoverageGap("The comment batch has no usable capacity.")
+    return CommentBatch(tuple(comments), page)
+
+
+class CommentDigestCheckpoint(LinkedRequirementsCoverageGap):
+    """A bounded collection stopped with source-bound progress available on disk."""
+
+    def __init__(
+        self,
+        reason: str,
+        checkpoint_path: Path,
+        next_page: int | None,
+        *,
+        continuable: bool = False,
+    ) -> None:
+        self.reason = reason
+        self.checkpoint_path = checkpoint_path
+        self.next_page = next_page
+        self.continuable = continuable
+        super().__init__(
+            f"{reason} Resume comment page {next_page} with checkpoint '{checkpoint_path}'."
+        )
+
+
+def issue_content_digest(
+    repository: str,
+    number: int,
+    issue: dict[str, Any],
+    *,
+    checkpoint_path: Path | None = None,
+    maximum_batches: int = 24,
+    completed_checkpoint_path: Path | None = None,
+    restart_completed: bool = False,
+    deadline: float | None = None,
+) -> str:
+    """Hash bounded comment batches; retain a resumable checkpoint on interruption."""
+    if maximum_batches < 1:
+        raise ValueError("The comment operation must permit at least one batch.")
+    scope = canonical_json(
+        {
+            "repository": repository,
+            "number": number,
+            "issue": {key: issue.get(key) for key in ("body", "state", "title")},
+        },
+        "comment checkpoint scope",
     )
+    digest = sha256()
+    with (
+        tempfile.TemporaryDirectory(prefix="athena-issue-comments-") as directory,
+        closing(sqlite3.connect(str(Path(directory) / "comments.sqlite"))) as database,
+    ):
+        database.execute("PRAGMA temp_store=FILE")
+        database.execute("PRAGMA cache_size=-1024")
+        database.execute(
+            "CREATE TABLE comments (identity TEXT PRIMARY KEY, document TEXT NOT NULL)"
+        )
+        database.execute(
+            "CREATE TABLE progress (scope TEXT NOT NULL, next_page INTEGER)"
+        )
+        page: int | None = 1
+        if checkpoint_path is not None and checkpoint_path.exists():
+            with closing(
+                sqlite3.connect(checkpoint_path.as_uri() + "?mode=ro", uri=True)
+            ) as saved:
+                rows = saved.execute("SELECT scope, next_page FROM progress").fetchmany(
+                    2
+                )
+                if len(rows) != 1 or rows[0][0] != scope:
+                    raise RuntimeError(
+                        "The comment checkpoint does not match the issue binding."
+                    )
+                page = rows[0][1]
+                if page is not None and (type(page) is not int or page < 1):
+                    raise RuntimeError("The comment checkpoint cursor is malformed.")
+                # A new final-verification invocation must observe the whole
+                # history again. A saved partial prefix can have changed too.
+                if restart_completed:
+                    page = 1
+                else:
+                    database.executemany(
+                        "INSERT INTO comments VALUES (?, ?)",
+                        saved.execute("SELECT identity, document FROM comments"),
+                    )
+        database.execute("INSERT INTO progress VALUES (?, ?)", (scope, page))
+        database.commit()
+        continuable = False
+        try:
+            for _ in range(maximum_batches):
+                if page is None:
+                    break
+                batch = issue_comment_batch(repository, number, page, deadline=deadline)
+                if batch.next_page is not None and batch.next_page <= page:
+                    raise LinkedRequirementsCoverageGap(
+                        "The comment cursor made no progress."
+                    )
+                for comment in batch.comments:
+                    identity = comment.get("id")
+                    if isinstance(identity, bool) or not isinstance(
+                        identity, (int, str)
+                    ):
+                        raise TypeError("A comment has no stable provider identity.")
+                    try:
+                        database.execute(
+                            "INSERT INTO comments VALUES (?, ?)",
+                            (
+                                str(identity),
+                                canonical_json(comment, "linked issue comment"),
+                            ),
+                        )
+                    except sqlite3.IntegrityError as error:
+                        raise LinkedRequirementsCoverageGap(
+                            "The provider repeated a comment identity; collection made no reliable progress."
+                        ) from error
+                database.execute(
+                    "UPDATE progress SET next_page = ?", (batch.next_page,)
+                )
+                database.commit()
+                page = batch.next_page
+            if page is not None:
+                continuable = True
+                raise LinkedRequirementsCoverageGap(
+                    "The bounded comment operation reached its checkpoint."
+                )
+        except (
+            LinkedRequirementsCoverageGap,
+            sqlite3.Error,
+            KeyboardInterrupt,
+        ) as error:
+            database.rollback()
+            with tempfile.NamedTemporaryFile(
+                prefix="athena-comment-checkpoint-", suffix=".sqlite", delete=False
+            ) as checkpoint:
+                saved_path = Path(checkpoint.name)
+            with closing(sqlite3.connect(saved_path)) as saved:
+                database.backup(saved)
+            raise CommentDigestCheckpoint(
+                str(error) or "Comment collection was canceled.",
+                saved_path,
+                page,
+                continuable=continuable,
+            ) from error
+        if completed_checkpoint_path is not None:
+            with closing(sqlite3.connect(completed_checkpoint_path)) as saved:
+                database.backup(saved)
+        digest.update(b'{"body":')
+        digest.update(canonical_json(issue.get("body"), "issue body").encode("utf-8"))
+        digest.update(b',"comments":[')
+        separator = b""
+        for (document,) in database.execute(
+            "SELECT document FROM comments ORDER BY document"
+        ):
+            digest.update(separator)
+            digest.update(document.encode("utf-8"))
+            separator = b","
+        digest.update(b'],"state":')
+        digest.update(canonical_json(issue["state"], "issue state").encode("utf-8"))
+        digest.update(b',"title":')
+        digest.update(canonical_json(issue["title"], "issue title").encode("utf-8"))
+        digest.update(b"}")
+    return digest.hexdigest()
+
+
+def positive_comment_operation_seconds(value: str | float) -> float:
+    """Require a finite positive job deadline of at most one hour."""
+    seconds = float(value)
+    if not math.isfinite(seconds) or not 0 < seconds <= 3600:
+        raise ValueError(
+            "Comment operation seconds must be more than zero and at most 3600."
+        )
+    return seconds
+
+
+def complete_issue_content_digest(
+    repository: str,
+    number: int,
+    issue: dict[str, Any],
+    *,
+    checkpoint_path: Path | None = None,
+    restart_completed: bool = False,
+    operation_seconds: float = 600.0,
+    maximum_batches: int = 24,
+) -> str:
+    """Continue bounded batches until completion, cancellation, or the job deadline."""
+    deadline = time.monotonic() + positive_comment_operation_seconds(operation_seconds)
+    current = checkpoint_path
+    owned: Path | None = None
+    while True:
+        try:
+            result = issue_content_digest(
+                repository,
+                number,
+                issue,
+                checkpoint_path=current,
+                completed_checkpoint_path=checkpoint_path,
+                restart_completed=restart_completed,
+                maximum_batches=maximum_batches,
+                deadline=deadline,
+            )
+        except CommentDigestCheckpoint as error:
+            if owned is not None:
+                owned.unlink(missing_ok=True)
+            if checkpoint_path is not None:
+                shutil.move(str(error.checkpoint_path), checkpoint_path)
+                error.checkpoint_path = checkpoint_path
+                error.args = (
+                    f"{error.reason} Comment progress is saved at '{checkpoint_path}'. Run the collector again with the same checkpoint directory.",
+                )
+                current = checkpoint_path
+            else:
+                owned = error.checkpoint_path
+                current = owned
+            if not error.continuable or time.monotonic() >= deadline:
+                raise
+            restart_completed = False
+        else:
+            if owned is not None:
+                owned.unlink(missing_ok=True)
+            return result
 
 
 def structured_error(error: str, details: str) -> None:
@@ -925,24 +1151,69 @@ def linked_issue_metadata(
     return issue_data
 
 
+def _explicit_requirement_identity(url: str) -> tuple[str, int, str]:
+    match = re.fullmatch(
+        r"https://github\.com/([^/]+)/([^/]+)/issues/([1-9][0-9]{0,19})", url
+    )
+    if match is None:
+        raise RuntimeError("Use a canonical GitHub issue URL for each requirement.")
+    repository = require_github_repository(
+        f"{match[1]}/{match[2]}", "requirement issue repository"
+    )
+    return repository, int(match[3]), url
+
+
+def canonical_requirement_issue_urls(
+    requirement_issues: Sequence[str],
+) -> tuple[str, ...]:
+    """Validate and return one sorted set of explicit requirement URLs."""
+    return tuple(
+        sorted({_explicit_requirement_identity(url)[2] for url in requirement_issues})
+    )
+
+
 def linked_requirements(
-    metadata: dict[str, Any], budget: LinkedRequirementBudget | None = None
+    metadata: dict[str, Any],
+    budget: LinkedRequirementBudget | None = None,
+    requirement_issues: Sequence[str] = (),
+    *,
+    checkpoint_directory: Path | None = None,
+    restart_completed: bool = False,
+    comment_operation_seconds: float = 600.0,
 ) -> LinkedRequirements:
     """Bind every linked issue's requirement content and complete comment history."""
+    comment_operation_seconds = positive_comment_operation_seconds(
+        comment_operation_seconds
+    )
     references = metadata.get("closingIssuesReferences")
     if not isinstance(references, list):
         raise TypeError("GitHub returned incomplete linked issue references.")
     identities = sorted(linked_issue_reference(issue) for issue in references)
     if len(identities) != len(set(identities)):
         raise RuntimeError("GitHub returned duplicate linked issue references.")
+    selected: dict[str, tuple[str | None, str, int, str]] = {
+        identity[3]: identity for identity in identities
+    }
+    if len(selected) != len(identities):
+        raise RuntimeError(
+            "GitHub returned different identities for the same linked issue URL."
+        )
+    for url in canonical_requirement_issue_urls(requirement_issues):
+        repository, number, canonical_url = _explicit_requirement_identity(url)
+        selected.setdefault(canonical_url, (None, repository, number, canonical_url))
     collection_budget = budget if budget is not None else LinkedRequirementBudget()
     items: list[LinkedRequirement] = []
-    for expected_id, repository, number, expected_url in identities:
+    for expected_id, repository, number, expected_url in sorted(
+        selected.values(), key=lambda identity: identity[3]
+    ):
         issue_data = linked_issue_metadata(repository, number, collection_budget)
         issue_id = issue_data.get("id")
         body = issue_data.get("body")
         if (
-            issue_id != expected_id
+            not isinstance(issue_id, str)
+            or not issue_id
+            or (expected_id is not None and issue_id != expected_id)
+            or isinstance(issue_data.get("number"), bool)
             or issue_data.get("number") != number
             or issue_data.get("url") != expected_url
             or not isinstance(issue_data.get("title"), str)
@@ -950,29 +1221,30 @@ def linked_requirements(
             or not isinstance(issue_data.get("state"), str)
         ):
             raise RuntimeError("GitHub returned incomplete linked issue requirements.")
-        comments = sorted(
-            canonical_json(comment, "linked issue comment")
-            for comment in paginated_issue_comments(
-                repository, number, collection_budget
+        checkpoint_path = None
+        if checkpoint_directory is not None:
+            checkpoint_directory.mkdir(parents=True, exist_ok=True)
+            checkpoint_path = checkpoint_directory / (
+                sha256(f"{repository}/{number}".encode()).hexdigest() + ".sqlite"
             )
+        content_digest = complete_issue_content_digest(
+            repository,
+            number,
+            issue_data,
+            checkpoint_path=checkpoint_path,
+            restart_completed=restart_completed,
+            operation_seconds=comment_operation_seconds,
         )
-        content = {
-            "body": body,
-            "comments": [json.loads(comment) for comment in comments],
-            "state": issue_data["state"],
-            "title": issue_data["title"],
-        }
         items.append(
             LinkedRequirement(
-                id=expected_id,
+                id=issue_id,
                 repository=repository,
                 number=number,
                 url=expected_url,
-                content_sha256=sha256(
-                    canonical_json(content, "linked issue requirements").encode("utf-8")
-                ).hexdigest(),
+                content_sha256=content_digest,
             )
         )
+    items.sort(key=lambda item: (item.id, item.repository, item.number, item.url))
     document = canonical_json(
         [item.as_json() for item in items], "linked issue requirements"
     )
@@ -1110,10 +1382,23 @@ def immutable_range_paths(
     )
 
 
-def immutable_changed_paths(
+def changed_path_manifest(entries: Sequence[bytes]) -> ChangedPathManifest:
+    """Return one canonical manifest for validated Git path bytes."""
+    canonical_entries = sorted(set(entries))
+    try:
+        paths = tuple(entry.decode("utf-8") for entry in canonical_entries)
+    except UnicodeDecodeError as error:
+        raise RuntimeError(
+            "Git returned a changed path that is not valid 'UTF-8'."
+        ) from error
+    canonical_bytes = b"".join(entry + b"\0" for entry in canonical_entries)
+    return ChangedPathManifest(paths=paths, sha256=sha256(canonical_bytes).hexdigest())
+
+
+def immutable_changed_path_lenses(
     base_oid: str, head_oid: str, *, cwd: Path | None = None
-) -> ChangedPathManifest:
-    """Bind the union of author-intent and current-target immutable paths."""
+) -> tuple[ChangedPathManifest, ChangedPathManifest]:
+    """Bind separate author-intent and current-target path manifests."""
     require_complete_git_history(cwd=cwd)
     for oid in (base_oid, head_oid):
         git_bytes("cat-file", "-e", f"{oid}^{{commit}}", cwd=cwd)
@@ -1124,15 +1409,10 @@ def immutable_changed_paths(
     git_bytes("cat-file", "-e", f"{merge_base}^{{commit}}", cwd=cwd)
     author_intent_paths = immutable_range_paths(merge_base, head_oid, cwd=cwd)
     current_target_paths = immutable_range_paths(base_oid, head_oid, cwd=cwd)
-    canonical_entries = sorted(set(author_intent_paths) | set(current_target_paths))
-    try:
-        paths = tuple(entry.decode("utf-8") for entry in canonical_entries)
-    except UnicodeDecodeError as error:
-        raise RuntimeError(
-            "Git returned a changed path that is not valid 'UTF-8'."
-        ) from error
-    canonical_bytes = b"".join(entry + b"\0" for entry in canonical_entries)
-    return ChangedPathManifest(paths=paths, sha256=sha256(canonical_bytes).hexdigest())
+    return (
+        changed_path_manifest(author_intent_paths),
+        changed_path_manifest(current_target_paths),
+    )
 
 
 def local_immutable_objects_available(base_oid: str, head_oid: str) -> bool:
@@ -1149,11 +1429,14 @@ def strict_changed_paths(
     metadata: dict[str, Any],
     expected: tuple[str, str],
     target: ExpectedReviewTarget,
-) -> tuple[ChangedPathManifest, MaterializedSnapshot | None]:
+) -> tuple[ChangedPathManifest, ChangedPathManifest, MaterializedSnapshot | None]:
     """Derive strict paths locally or from a verified host-owned materialized snapshot."""
     base_oid, head_oid = expected
     if local_immutable_objects_available(base_oid, head_oid):
-        return immutable_changed_paths(base_oid, head_oid), None
+        author_intent, current_target = immutable_changed_path_lenses(
+            base_oid, head_oid
+        )
+        return author_intent, current_target, None
     base_ref = metadata.get("baseRefName")
     if not isinstance(base_ref, str):
         raise TypeError(
@@ -1167,9 +1450,10 @@ def strict_changed_paths(
         head_oid=head_oid,
     )
     try:
-        return immutable_changed_paths(
+        author_intent, current_target = immutable_changed_path_lenses(
             base_oid, head_oid, cwd=snapshot.source_path
-        ), snapshot
+        )
+        return author_intent, current_target, snapshot
     except BaseException:
         remove_snapshot(snapshot.root)
         raise
@@ -1187,130 +1471,6 @@ def gh(*arguments: str, accepted_codes: tuple[int, ...] = (0,)) -> str:
     return result.stdout
 
 
-def head_bound_check_runs(repository: str, head_oid: str) -> list[dict[str, Any]]:
-    """Return complete GitHub check-run evidence bound to one immutable commit."""
-    total_count: int | None = None
-    runs: list[dict[str, Any]] = []
-    run_ids: set[int] = set()
-    bytes_read = 0
-    for page_number in range(1, MAX_CHECK_RUN_PAGES + 2):
-        if page_number > MAX_CHECK_RUN_PAGES:
-            raise CheckEvidenceCoverageGap(
-                "GitHub check runs exceed the safe page limit."
-            )
-        remaining_bytes = MAX_CHECK_RUN_BYTES - bytes_read
-        if remaining_bytes <= 0:
-            raise CheckEvidenceCoverageGap(
-                "GitHub check runs exceed the safe aggregate byte limit."
-            )
-        try:
-            response = bounded_gh_output(
-                (
-                    "api",
-                    "--hostname",
-                    "github.com",
-                    "--method",
-                    "GET",
-                    "-H",
-                    "Accept: application/vnd.github+json",
-                    (
-                        f"repos/{repository}/commits/{head_oid}/check-runs?"
-                        f"per_page=100&page={page_number}"
-                    ),
-                ),
-                maximum_bytes=min(MAX_CHECK_RUN_PAGE_BYTES, remaining_bytes),
-                limit_error="The GitHub check-run response exceeds the safe byte limit.",
-                timeout_seconds=CHECK_RUN_REQUEST_TIMEOUT_SECONDS,
-                stderr_maximum_bytes=MAX_CHECK_RUN_STDERR_BYTES,
-                stderr_limit_error=(
-                    "The GitHub check-run response exceeds the safe standard-error limit."
-                ),
-                deadline_error=(
-                    "The GitHub check-run provider exceeded the safe deadline."
-                ),
-                output_error="The tool cannot read GitHub check-run provider output.",
-                unavailable_output_error=(
-                    "The GitHub CLI process did not provide check-run output."
-                ),
-                operating_system_error="The tool cannot collect GitHub check runs",
-                coverage_gap=CheckEvidenceCoverageGap,
-            )
-        except RuntimeError as error:
-            if isinstance(error, CheckEvidenceCoverageGap):
-                raise
-            raise CheckEvidenceCoverageGap(
-                "GitHub did not return readable check evidence for the head object identifier."
-            ) from error
-        bytes_read += len(response)
-        try:
-            page = json.loads(response)
-        except json.JSONDecodeError as error:
-            raise CheckEvidenceCoverageGap(
-                "GitHub did not return readable check evidence for the head object identifier."
-            ) from error
-        if not isinstance(page, dict):
-            raise CheckEvidenceCoverageGap(
-                "GitHub returned a check-run page that is not valid."
-            )
-        page_total = page.get("total_count")
-        page_runs = page.get("check_runs")
-        if (
-            isinstance(page_total, bool)
-            or not isinstance(page_total, int)
-            or page_total < 0
-            or not isinstance(page_runs, list)
-        ):
-            raise CheckEvidenceCoverageGap(
-                "GitHub returned incomplete check-run evidence."
-            )
-        if total_count is None:
-            total_count = page_total
-            if total_count > MAX_CHECK_RUNS:
-                raise CheckEvidenceCoverageGap(
-                    "GitHub check runs exceed the safe run limit."
-                )
-        elif page_total != total_count:
-            raise CheckEvidenceCoverageGap(
-                "GitHub returned inconsistent check-run totals."
-            )
-        for run in page_runs:
-            if not isinstance(run, dict):
-                raise CheckEvidenceCoverageGap(
-                    "GitHub returned a check run that is not valid."
-                )
-            run_id = run.get("id")
-            run_head_oid = run.get("head_sha")
-            if (
-                isinstance(run_id, bool)
-                or not isinstance(run_id, int)
-                or run_id < 1
-                or run_id in run_ids
-                or not isinstance(run.get("name"), str)
-                or not run["name"]
-                or not isinstance(run.get("status"), str)
-                or not isinstance(run.get("conclusion"), str | type(None))
-                or not isinstance(run_head_oid, str)
-                or COMMIT_OID.fullmatch(run_head_oid) is None
-            ):
-                raise CheckEvidenceCoverageGap(
-                    "GitHub returned incomplete check-run evidence."
-                )
-            if run_head_oid != head_oid:
-                raise CheckEvidenceCoverageGap(
-                    "GitHub returned a check run that is bound to a different head "
-                    "object identifier."
-                )
-            run_ids.add(run_id)
-            runs.append(run)
-        if len(runs) == total_count:
-            return runs
-        if not page_runs:
-            raise CheckEvidenceCoverageGap(
-                "GitHub returned partial check-run evidence."
-            )
-    raise AssertionError("The bounded check-run pagination did not terminate.")
-
-
 def pr_metadata(
     pull_request: str, target: ExpectedReviewTarget | None
 ) -> dict[str, Any]:
@@ -1323,6 +1483,61 @@ def pr_metadata(
     if not isinstance(metadata, dict):
         raise TypeError("GitHub returned a pull-request object that is not valid.")
     return metadata
+
+
+def collect_requirements_binding(
+    pull_request: str,
+    target: ExpectedReviewTarget,
+    expected: tuple[str, str],
+    requirement_issues: Sequence[str] = (),
+    *,
+    checkpoint_directory: Path | None = None,
+    comment_operation_seconds: float = 600.0,
+) -> ReviewRequirementsBinding:
+    """Collect and double-read one live pull-request requirements binding."""
+    comment_operation_seconds = positive_comment_operation_seconds(
+        comment_operation_seconds
+    )
+    selected_urls = canonical_requirement_issue_urls(requirement_issues)
+    budget = LinkedRequirementBudget()
+    observed: list[ReviewRequirementsBinding] = []
+    for phase in range(2):
+        metadata = pr_metadata(pull_request, target)
+        problem = metadata_error(metadata, require_immutable_identity=True)
+        if problem is not None:
+            raise RuntimeError(problem)
+        identity = immutable_identity(
+            metadata, target.repository, require_immutable_identity=True
+        )
+        ensure_expected_identity(identity, expected)
+        ensure_expected_target(identity, target)
+        scope = review_scope(metadata)
+        requirements = linked_requirements(
+            metadata,
+            budget,
+            selected_urls,
+            checkpoint_directory=(
+                checkpoint_directory / str(phase)
+                if checkpoint_directory is not None
+                else None
+            ),
+            restart_completed=phase == 1,
+            comment_operation_seconds=comment_operation_seconds,
+        )
+        observed.append(
+            ReviewRequirementsBinding(
+                reviewed_scope_sha256=scope.sha256,
+                requirements_sha256=requirements.sha256,
+                requirement_issue_urls=tuple(
+                    sorted(item.url for item in requirements.items)
+                ),
+            )
+        )
+    if observed[0] != observed[1]:
+        raise RuntimeError(
+            "The pull-request requirements changed during live binding collection."
+        )
+    return observed[0]
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1359,7 +1574,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Use the canonical pull-request URL from 'resolve_pr.py'.",
     )
     parser.add_argument("pull_request", metavar="PR_NUMBER_OR_URL")
+    parser.add_argument(
+        "--requirement-issue",
+        action="append",
+        default=[],
+        metavar="ISSUE_URL",
+        help="Bind another GitHub issue. Use this option for each non-closing requirement.",
+    )
+    parser.add_argument(
+        "--comment-checkpoint-directory",
+        type=Path,
+        metavar="DIRECTORY",
+        help="Save and resume issue-comment progress separately for both verification phases.",
+    )
+    parser.add_argument(
+        "--comment-operation-seconds",
+        type=positive_comment_operation_seconds,
+        default=600.0,
+        metavar="SECONDS",
+        help="Set a comment-verification deadline of more than zero and at most 3600 seconds.",
+    )
     arguments = parser.parse_args(argv)
+    if arguments.comment_checkpoint_directory is not None:
+        arguments.comment_checkpoint_directory = (
+            arguments.comment_checkpoint_directory.resolve()
+        )
     pull_request = arguments.pull_request
     expected = expected_identity(
         parser, arguments.expected_base_oid, arguments.expected_head_oid
@@ -1373,6 +1612,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         arguments.expected_pr_url,
     )
     require_immutable_identity = expected is not None
+    if arguments.requirement_issue and not require_immutable_identity:
+        parser.error("All strict identity arguments are necessary for this option.")
     try:
         validate_pr_identifier(pull_request)
         requested = pull_request_number(pull_request)
@@ -1430,34 +1671,32 @@ def main(argv: Sequence[str] | None = None) -> int:
             LinkedRequirementBudget() if expected is not None else None
         )
         reviewed_linked_requirements = (
-            linked_requirements(metadata, linked_requirement_budget)
+            linked_requirements(
+                metadata,
+                linked_requirement_budget,
+                arguments.requirement_issue,
+                checkpoint_directory=(
+                    arguments.comment_checkpoint_directory / "initial"
+                    if arguments.comment_checkpoint_directory is not None
+                    else None
+                ),
+                comment_operation_seconds=arguments.comment_operation_seconds,
+            )
             if expected is not None
             else None
         )
         changed_path_manifest: ChangedPathManifest | None = None
+        current_target_path_manifest: ChangedPathManifest | None = None
         source_snapshot: MaterializedSnapshot | None = None
-        check_evidence: dict[str, str | int] | None = None
         if expected is not None:
             assert target is not None
-            changed_path_manifest, source_snapshot = strict_changed_paths(
-                metadata, expected, target
-            )
+            assert identity is not None
+            (
+                changed_path_manifest,
+                current_target_path_manifest,
+                source_snapshot,
+            ) = strict_changed_paths(metadata, (identity.base_oid, expected[1]), target)
             changed_files = list(changed_path_manifest.paths)
-            try:
-                checks = head_bound_check_runs(repository, expected[1])
-            except CheckEvidenceCoverageGap as error:
-                checks = []
-                check_evidence = {
-                    "status": "coverage_gap",
-                    "reason": str(error),
-                    "head_oid": expected[1],
-                }
-            else:
-                check_evidence = {
-                    "status": "head_bound",
-                    "head_oid": expected[1],
-                    "count": len(checks),
-                }
         else:
             changed_files = [
                 line
@@ -1470,18 +1709,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ).splitlines()
                 if line
             ]
-            checks = json.loads(
-                gh(
-                    "pr",
-                    "checks",
-                    pull_request,
-                    "--json",
-                    "name,state,startedAt,completedAt,link,workflow",
-                    accepted_codes=(0, 1, 8),
-                )
-            )
-            if not isinstance(checks, list):
-                raise RuntimeError("GitHub returned check evidence that is not valid.")
         final_metadata = pr_metadata(pull_request, target)
         final_problem = metadata_error(
             final_metadata, require_immutable_identity=require_immutable_identity
@@ -1494,9 +1721,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             repository,
             require_immutable_identity=require_immutable_identity,
         )
-        if final_identity != identity:
+        if not same_review_implementation(final_identity, identity):
             raise RuntimeError(
-                "The immutable pull-request identity changed during evidence collection."
+                "The pull-request implementation changed during evidence collection."
             )
         ensure_expected_identity(final_identity, expected)
         ensure_expected_target(final_identity, target)
@@ -1504,7 +1731,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         if final_scope != reviewed_scope:
             raise RuntimeError("The review scope changed during evidence collection.")
         final_linked_requirements = (
-            linked_requirements(final_metadata, linked_requirement_budget)
+            linked_requirements(
+                final_metadata,
+                linked_requirement_budget,
+                arguments.requirement_issue,
+                checkpoint_directory=(
+                    arguments.comment_checkpoint_directory / "final"
+                    if arguments.comment_checkpoint_directory is not None
+                    else None
+                ),
+                restart_completed=True,
+                comment_operation_seconds=arguments.comment_operation_seconds,
+            )
             if expected is not None
             else None
         )
@@ -1518,14 +1756,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     except LinkedRequirementsCoverageGap as error:
         structured_error("linked issue requirements coverage gap", str(error))
         return 1
-    except (RuntimeError, TypeError, json.JSONDecodeError) as error:
+    except (
+        OSError,
+        RuntimeError,
+        TypeError,
+        sqlite3.Error,
+        json.JSONDecodeError,
+    ) as error:
         print(error, file=sys.stderr)
         return 1
     evidence: dict[str, object] = {
         "changed_files": changed_files,
         "changed_paths": changed_files,
-        "checks": checks,
-        "pull_request": final_metadata,
+        "pull_request": {
+            key: value
+            for key, value in final_metadata.items()
+            if key != "reviewDecision"
+        },
     }
     if identity is not None:
         evidence["reviewed_identity"] = identity.as_json()
@@ -1537,10 +1784,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if changed_path_manifest is not None:
         evidence["changed_path_manifest"] = changed_path_manifest.as_json()
+    if current_target_path_manifest is not None:
+        evidence["current_target_paths"] = list(current_target_path_manifest.paths)
+        evidence["current_target_path_manifest"] = (
+            current_target_path_manifest.as_json()
+        )
     if source_snapshot is not None:
         evidence["source_snapshot"] = source_snapshot.as_json()
-    if check_evidence is not None:
-        evidence["check_evidence"] = check_evidence
     print(json.dumps(evidence, sort_keys=True))
     return 0
 

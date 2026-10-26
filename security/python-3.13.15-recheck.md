@@ -1,0 +1,23 @@
+# Python 3.13.15 recheck
+
+This file records the candidate release, the initial recheck, and the later
+security decision for issue #15.
+
+| Item | Evidence |
+| --- | --- |
+| Python release | Python 3.13.15. The Python release page lists 2026-08-05 as the release date. |
+| linux-64 package | `linux-64/python-3.13.15-hf47f18c_101_cp313.conda` |
+| osx-arm64 package | `osx-arm64/python-3.13.15-hb59dee6_101_cp313.conda` |
+| osx-64 package | `osx-64/python-3.13.15-h9dec186_101_cp313.conda` |
+| Grype database | v6.1.9, built 2026-08-18T06:15:38Z |
+| Recheck result | Grype database v6.1.9 matched CVE-2026-15308 for CPython 3.13.15. This result blocked the initial update. |
+| Initial security decision | The approved exception for Python 3.13.14 remained active after the initial recheck. |
+| Required final evidence | [PR #179](https://github.com/HomericIntelligence/Athena/pull/179) retains a Syft inventory that identifies the uv-managed runtime as Python 3.13.15. The required dependency scan evaluates this inventory. |
+| Final security decision | Remove the dedicated exception only after the current-head package, dependency scan, and aggregate gate pass. Keep the supported Python range at `>=3.13,<3.14`. |
+
+Sources:
+
+- [Python 3.13.15 release page](https://www.python.org/downloads/release/python-31315/)
+- [conda-forge python package index](https://anaconda.org/conda-forge/python/files?type=conda&version=3.13.15)
+- [Grype DB issue 1102](https://github.com/anchore/grype-db/issues/1102)
+- [Vulnerability exception policy](vulnerability-exceptions.yaml)

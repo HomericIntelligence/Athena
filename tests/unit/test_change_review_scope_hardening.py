@@ -15,8 +15,11 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import patch
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 RESOLVER = ROOT / "skills/change-review/scripts/resolve_scope.py"
+pytestmark = pytest.mark.nightly
 
 
 def git(cwd: Path, *arguments: str) -> str:
@@ -176,6 +179,54 @@ class ChangeReviewScopeHardeningTests(unittest.TestCase):
 
             self.assertEqual(0, worktree.returncode, worktree.stderr)
             self.assertEqual([], json.loads(worktree.stdout)["paths"])
+
+    def test_range_scope_reports_gitlink_paths_under_local_ignore_submodules(
+        self,
+    ) -> None:
+        """A local `diff.ignoreSubmodules` setting must not hide a gitlink from any mode.
+
+        Every scope path must carry the same `--ignore-submodules=none` guard.
+        Without it, batch discovery and single-operation resolution disagree
+        about which paths the review can observe.
+        """
+        with tempfile.TemporaryDirectory() as temp:
+            repository = Path(temp) / "repo"
+            initialize_repository(repository)
+            base = git(repository, "rev-parse", "HEAD")
+
+            # A local setting that `git_read_environment` does not neutralize.
+            git(repository, "config", "diff.ignoreSubmodules", "all")
+            git(
+                repository,
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                f"160000,{git(repository, 'rev-parse', 'HEAD')},linked.txt",
+            )
+            git(repository, "commit", "--quiet", "-m", "test: gitlink")
+            head = git(repository, "rev-parse", "HEAD")
+
+            for arguments in (
+                ["--range", f"{base}..{head}"],
+                ["--range", f"{base}..{head}", "--batch-size", "2"],
+            ):
+                with self.subTest(arguments=arguments):
+                    result = subprocess.run(
+                        [sys.executable, str(RESOLVER), *arguments],
+                        cwd=repository,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    reported: set[str] = set()
+                    for line in result.stdout.splitlines():
+                        record = json.loads(line)
+                        if "paths" in record:
+                            reported.update(record["paths"])
+                        reported.update(record.get("manifest", {}).get("paths", []))
+                    self.assertIn("linked.txt", reported, result.stdout)
 
     def test_worktree_scope_preserves_trailing_whitespace_in_repository_root(
         self,
@@ -455,6 +506,74 @@ class ChangeReviewScopeHardeningTests(unittest.TestCase):
                     module.worktree_tracked_capture(head, (), repository)
         finally:
             sys.modules.pop(module_name, None)
+
+    def test_scope_batches_cover_paths_beyond_one_operation(self) -> None:
+        module_name = "test_change_review_scope_batches"
+        module = load_resolver(module_name)
+        original_cwd = Path.cwd()
+        try:
+            with tempfile.TemporaryDirectory() as temp:
+                repository = Path(temp) / "repo"
+                initialize_repository(repository)
+                for name in ("first.txt", "second.txt", "third.txt"):
+                    (repository / name).write_text("new work\n", encoding="utf-8")
+                os.chdir(repository)
+                with patch.object(module, "MAX_WORKTREE_CANDIDATES", 2):
+                    batches = list(
+                        module.resolve_scope_batches("worktree", None, (), 2)
+                    )
+                self.assertTrue(batches[-1]["complete"])
+                selected = {
+                    path
+                    for batch in batches[:-1]
+                    for path in batch["manifest"]["paths"]
+                }
+                self.assertEqual({"first.txt", "second.txt", "third.txt"}, selected)
+                self.assertEqual(2, batches[-1]["batches"])
+        finally:
+            os.chdir(original_cwd)
+            sys.modules.pop(module_name, None)
+
+    def test_scope_batches_detect_new_paths_before_completion(self) -> None:
+        module_name = "test_change_review_batch_path_drift"
+        module = load_resolver(module_name)
+        original_cwd = Path.cwd()
+        try:
+            with tempfile.TemporaryDirectory() as temp:
+                repository = Path(temp) / "repo"
+                initialize_repository(repository)
+                os.chdir(repository)
+                batches = iter(module.resolve_scope_batches("worktree", None, (), 1))
+                self.assertFalse(next(batches)["complete"])
+                (repository / "later.txt").write_text("later work\n", encoding="utf-8")
+                with self.assertRaisesRegex(RuntimeError, "path inventory changed"):
+                    list(batches)
+        finally:
+            os.chdir(original_cwd)
+            sys.modules.pop(module_name, None)
+
+    def test_scope_batches_recheck_earlier_mutable_content(self) -> None:
+        for scope in ("worktree", "staged"):
+            module_name = f"test_change_review_batch_content_{scope}"
+            module = load_resolver(module_name)
+            original_cwd = Path.cwd()
+            try:
+                with tempfile.TemporaryDirectory() as temp:
+                    repository = Path(temp) / "repo"
+                    initialize_repository(repository)
+                    os.chdir(repository)
+                    batches = iter(module.resolve_scope_batches(scope, None, (), 1))
+                    self.assertFalse(next(batches)["complete"])
+                    (repository / "tracked.txt").write_text(
+                        "later content\n", encoding="utf-8"
+                    )
+                    if scope == "staged":
+                        git(repository, "add", "tracked.txt")
+                    with self.assertRaisesRegex(RuntimeError, "scope batch 1 changed"):
+                        list(batches)
+            finally:
+                os.chdir(original_cwd)
+                sys.modules.pop(module_name, None)
 
     def test_untracked_path_list_fails_closed_at_the_candidate_cap(self) -> None:
         module_name = "test_change_review_untracked_candidate_cap"

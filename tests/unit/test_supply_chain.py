@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import re
+import shutil
 import subprocess
 import tarfile
 import tempfile
 import unittest
 from contextlib import redirect_stderr
 from datetime import UTC, date, datetime, timedelta
+from fnmatch import fnmatchcase
 from pathlib import Path
 from unittest.mock import patch
 
@@ -73,6 +77,187 @@ RAW_SPDX = {
     ],
 }
 
+WORKFLOW_CLASSIFICATIONS = {
+    "_agent-contract.yml": "provider-only",
+    "_required.yml": "protected-events",
+    "nightly-tests.yml": "scheduled",
+    "release.yml": "publishing",
+}
+WORKFLOW_CLASSIFICATION_VALUES = {
+    "provider-only",
+    "protected-events",
+    "publishing",
+    "scheduled",
+}
+AGENT_CONTRACT_WORKFLOW = "$/.github/workflows/_agent-contract.yml"
+
+
+def _workflow_triggers(
+    workflow: dict[object, object], filename: str, errors: list[str]
+) -> dict[str, object] | None:
+    """Normalize valid GitHub event syntax, including PyYAML's YAML 1.1 `on`."""
+    has_string_key = "on" in workflow
+    has_boolean_key = True in workflow
+    if has_string_key and has_boolean_key:
+        errors.append(f"{filename}: workflow has ambiguous string and boolean on keys")
+        return None
+    if not has_string_key and not has_boolean_key:
+        errors.append(f"{filename}: workflow is missing its on trigger")
+        return None
+
+    raw_triggers = workflow["on" if has_string_key else True]
+    if isinstance(raw_triggers, str):
+        return {raw_triggers: None}
+    if isinstance(raw_triggers, list) and all(
+        isinstance(event, str) for event in raw_triggers
+    ):
+        return {event: None for event in raw_triggers}
+    if isinstance(raw_triggers, dict) and all(
+        isinstance(event, str) for event in raw_triggers
+    ):
+        return raw_triggers
+    errors.append(f"{filename}: on trigger must be an event or event mapping")
+    return None
+
+
+def _branch_patterns(
+    value: object, filename: str, field: str, errors: list[str]
+) -> list[str] | None:
+    if isinstance(value, str):
+        return [value]
+    if (
+        isinstance(value, list)
+        and value
+        and all(isinstance(pattern, str) and pattern for pattern in value)
+    ):
+        return value
+    errors.append(f"{filename}: push.{field} must contain branch glob patterns")
+    return None
+
+
+def _patterns_select_main(patterns: list[str]) -> bool:
+    selected = False
+    for pattern in patterns:
+        negated = pattern.startswith("!")
+        candidate = pattern[1:] if negated else pattern
+        if candidate and fnmatchcase("main", candidate):
+            selected = not negated
+    return selected
+
+
+def _pushes_protected_main(
+    triggers: dict[str, object], filename: str, errors: list[str]
+) -> bool:
+    if "push" not in triggers:
+        return False
+    push = triggers["push"]
+    if push is None:
+        return True
+    if not isinstance(push, dict):
+        errors.append(f"{filename}: push trigger must be null or a mapping")
+        return False
+    if not push:
+        return True
+
+    branches_present = "branches" in push
+    ignored_present = "branches-ignore" in push
+    if branches_present and ignored_present:
+        errors.append(f"{filename}: push cannot combine branches and branches-ignore")
+        return False
+    if branches_present:
+        patterns = _branch_patterns(push["branches"], filename, "branches", errors)
+        return patterns is not None and _patterns_select_main(patterns)
+    if ignored_present:
+        patterns = _branch_patterns(
+            push["branches-ignore"], filename, "branches-ignore", errors
+        )
+        return patterns is not None and not any(
+            fnmatchcase("main", pattern) for pattern in patterns
+        )
+
+    # A tags-only filter suppresses all branch pushes. Every other mapping without a
+    # branch filter (for example, paths-only) includes pushes to protected main.
+    return not ({"tags", "tags-ignore"} & set(push))
+
+
+def workflow_inventory_errors(
+    workflow_directory: Path,
+    classifications: dict[str, str] | None = None,
+) -> list[str]:
+    """Return fail-closed errors for the complete, explicit workflow inventory."""
+    if classifications is None:
+        classifications = WORKFLOW_CLASSIFICATIONS
+    workflows: dict[str, dict[object, object]] = {}
+    errors: list[str] = []
+    for path in sorted(workflow_directory.iterdir()):
+        if path.suffix not in {".yml", ".yaml"}:
+            continue
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            errors.append(f"{path.name}: workflow must be a mapping")
+            continue
+        workflows[path.name] = document
+
+    actual = set(workflows)
+    declared = set(classifications)
+    for filename in sorted(actual - declared):
+        errors.append(f"{filename}: workflow is not classified")
+    for filename in sorted(declared - actual):
+        errors.append(f"{filename}: classified workflow is missing")
+
+    providers = [
+        filename
+        for filename, classification in classifications.items()
+        if classification == "provider-only"
+    ]
+    if providers != ["_agent-contract.yml"]:
+        errors.append(
+            "_agent-contract.yml must be the sole provider-only workflow exception"
+        )
+
+    for filename in sorted(actual & declared):
+        workflow = workflows[filename]
+        classification = classifications[filename]
+        if classification not in WORKFLOW_CLASSIFICATION_VALUES:
+            errors.append(
+                f"{filename}: unknown workflow classification {classification!r}"
+            )
+            continue
+        triggers = _workflow_triggers(workflow, filename, errors)
+        jobs = workflow.get("jobs", {})
+        if not isinstance(jobs, dict):
+            errors.append(f"{filename}: jobs must be a mapping")
+            continue
+
+        if classification == "provider-only":
+            if triggers is not None and set(triggers) != {"workflow_call"}:
+                errors.append(
+                    f"{filename}: provider-only workflow must use workflow_call only"
+                )
+            continue
+
+        if classification == "protected-events" and triggers is not None:
+            protected_event = (
+                "pull_request" in triggers
+                or "merge_group" in triggers
+                or _pushes_protected_main(triggers, filename, errors)
+            )
+            if not protected_event:
+                errors.append(f"{filename}: does not run for protected main")
+
+        call = jobs.get("agent-contract")
+        if not isinstance(call, dict) or call.get("uses") != AGENT_CONTRACT_WORKFLOW:
+            errors.append(f"{filename}: must directly self-call the agent contract")
+            continue
+        if call.get("permissions") != {"contents": "read"}:
+            errors.append(
+                f"{filename}: agent-contract permissions must be contents: read"
+            )
+        if "secrets" in call:
+            errors.append(f"{filename}: agent-contract must not receive secrets")
+
+    return errors
+
 
 def write_archive(path: Path) -> None:
     with tarfile.open(path, mode="w:gz") as archive:
@@ -95,7 +280,7 @@ def write_workflow(path: Path, action: str = "actions/checkout@" + "a" * 40) -> 
                             {"uses": action},
                             {
                                 "uses": "astral-sh/setup-uv@" + "b" * 40,
-                                "with": {"version": "0.10.8"},
+                                "with": {"version": "0.12.24"},
                             },
                         ]
                     },
@@ -177,7 +362,7 @@ class SbomTests(unittest.TestCase):
         self.assertNotIn("actions/download-artifact", package_names)
         self.assertEqual(1, len(document["documentDescribes"]))
         packages = {item["name"]: item for item in document["packages"]}
-        self.assertEqual("0.10.8", packages["uv"]["versionInfo"])
+        self.assertEqual("0.12.24", packages["uv"]["versionInfo"])
         self.assertEqual("1.2.3", packages["athena-build-linux-64"]["versionInfo"])
         relationship_types = {
             item["relationshipType"] for item in document["relationships"]
@@ -706,6 +891,593 @@ class VulnerabilityPolicyTests(unittest.TestCase):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    @staticmethod
+    def _fixture_inventory_errors(
+        filename: str,
+        source: str,
+        classification: str | None,
+    ) -> list[str]:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            workflow_directory = Path(temporary_directory)
+            (workflow_directory / "_agent-contract.yml").write_text(
+                """name: Agent Contract
+"on":
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  validate-agent-contract:
+    runs-on: ubuntu-24.04
+    steps: []
+""",
+                encoding="utf-8",
+            )
+            (workflow_directory / filename).write_text(source, encoding="utf-8")
+            classifications = {"_agent-contract.yml": "provider-only"}
+            if classification is not None:
+                classifications[filename] = classification
+            return workflow_inventory_errors(workflow_directory, classifications)
+
+    @staticmethod
+    def _needs(job: dict[str, object]) -> set[str]:
+        value = job.get("needs", [])
+        if isinstance(value, str):
+            return {value}
+        if isinstance(value, list):
+            return {item for item in value if isinstance(item, str)}
+        return set()
+
+    def _depends_on(
+        self,
+        jobs: dict[str, dict[str, object]],
+        job_name: str,
+        dependency: str,
+        visited: set[str] | None = None,
+    ) -> bool:
+        if job_name == dependency:
+            return True
+        if visited is None:
+            visited = set()
+        if job_name in visited:
+            return False
+        visited.add(job_name)
+        return any(
+            self._depends_on(jobs, required, dependency, visited)
+            for required in self._needs(jobs[job_name])
+            if required in jobs
+        )
+
+    def _required_concurrency_key(
+        self,
+        *,
+        workflow: str,
+        event_name: str,
+        event: dict[str, object],
+        sha: str,
+    ) -> str:
+        root = Path(__file__).resolve().parents[2]
+        required = yaml.safe_load(
+            (root / ".github" / "workflows" / "_required.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        group = required["concurrency"]["group"]
+        self.assertEqual(
+            (
+                "${{ format('required-{0}-{1}-{2}', github.workflow, "
+                "github.event_name, github.event.pull_request.number || github.sha) }}"
+            ),
+            group,
+        )
+        pull_request = event.get("pull_request")
+        number = pull_request.get("number") if isinstance(pull_request, dict) else None
+        identity = number or sha
+        return f"required-{workflow}-{event_name}-{identity}"
+
+    def test_reusable_agent_contract_is_hermetic_and_required(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        provider_path = root / ".github" / "workflows" / "_agent-contract.yml"
+        action_path = (
+            root / ".github" / "actions" / "validate-agent-contract" / "action.yml"
+        )
+        self.assertTrue(provider_path.is_file(), provider_path)
+        self.assertTrue(action_path.is_file(), action_path)
+
+        provider = yaml.safe_load(provider_path.read_text(encoding="utf-8"))
+        self.assertEqual({"name", "on", "permissions", "jobs"}, set(provider))
+        self.assertEqual({"workflow_call"}, set(provider["on"]))
+        self.assertIsNone(provider["on"]["workflow_call"])
+        self.assertEqual({"contents": "read"}, provider["permissions"])
+        self.assertNotIn("concurrency", provider)
+        self.assertEqual({"validate-agent-contract"}, set(provider["jobs"]))
+        job = provider["jobs"]["validate-agent-contract"]
+        self.assertEqual(
+            {"name", "runs-on", "timeout-minutes", "steps"},
+            set(job),
+        )
+        self.assertEqual("validate-agent-contract", job["name"])
+        self.assertEqual("ubuntu-24.04", job["runs-on"])
+        self.assertEqual(5, job["timeout-minutes"])
+        self.assertEqual(2, len(job["steps"]))
+        checkout, validate = job["steps"]
+        self.assertEqual(
+            {
+                "name": "Check out the caller revision",
+                "uses": ("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"),
+                "with": {"persist-credentials": False},
+            },
+            checkout,
+        )
+        self.assertEqual(
+            {
+                "name": "Validate the root agent contract",
+                "uses": "$/.github/actions/validate-agent-contract",
+            },
+            validate,
+        )
+
+        action = yaml.safe_load(action_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            {
+                "name": "Validate agent contract",
+                "description": (
+                    "Validate root agent instructions against the canonical Athena "
+                    "catalog."
+                ),
+                "runs": {
+                    "using": "composite",
+                    "steps": [
+                        {
+                            "name": "Validate the caller checkout",
+                            "shell": "bash",
+                            "run": (
+                                'python3 -I -S "${{ github.action_path }}/../../../scripts/'
+                                'validate_agent_contract.py" --root "${{ github.workspace }}" '
+                                '--catalog-root "${{ github.action_path }}/../../.."'
+                            ),
+                        }
+                    ],
+                },
+            },
+            action,
+        )
+
+        required = yaml.safe_load(
+            (root / ".github" / "workflows" / "_required.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        call = required["jobs"]["agent-contract"]
+        self.assertEqual("agent-contract", call["name"])
+        self.assertEqual({"contents": "read"}, call["permissions"])
+        self.assertEqual("$/.github/workflows/_agent-contract.yml", call["uses"])
+        self.assertNotIn("secrets", call)
+        self.assertIn(
+            "agent-contract", required["jobs"]["required-checks-gate"]["needs"]
+        )
+
+    def test_agent_contract_tag_ruleset_is_immutable(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        path = root / ".github" / "rulesets" / "homeric-agent-contract-tags.json"
+
+        document = json.loads(path.read_text(encoding="utf-8"))
+
+        self.assertEqual("homeric-agent-contract-tags", document["name"])
+        self.assertEqual("tag", document["target"])
+        self.assertEqual("active", document["enforcement"])
+        self.assertEqual([], document["bypass_actors"])
+        self.assertEqual(
+            {
+                "ref_name": {
+                    "include": ["refs/tags/agent-contract-v*"],
+                    "exclude": [],
+                }
+            },
+            document["conditions"],
+        )
+        self.assertEqual(
+            {"update", "deletion"},
+            {rule["type"] for rule in document["rules"]},
+        )
+        self.assertEqual(2, len(document["rules"]))
+
+    def test_agent_contract_release_path_does_not_publish_packages(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        release = yaml.safe_load(
+            (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(["v*", "agent-contract-v*"], release["on"]["push"]["tags"])
+        jobs = release["jobs"]
+        self.assertEqual("startsWith(github.ref_name, 'v')", jobs["preflight"]["if"])
+        for name in ("release", "publish-npm"):
+            with self.subTest(job=name):
+                self.assertEqual("startsWith(github.ref_name, 'v')", jobs[name]["if"])
+        contract = jobs["agent-contract-release"]
+        self.assertEqual(
+            "startsWith(github.ref_name, 'agent-contract-v')", contract["if"]
+        )
+        contract_text = json.dumps(contract)
+        self.assertIn("agent-contract-live-ruleset", contract_text)
+        self.assertIn("agent-contract-release", contract_text)
+        self.assertIn("agent-contract-url-resolution", contract_text)
+        self.assertIn("git rev-parse HEAD", contract_text)
+        self.assertNotIn("github.sha", contract_text)
+        self.assertNotIn("npm publish", contract_text)
+        self.assertNotIn("publish-release", contract_text)
+
+    def test_agent_contract_release_uses_ruleset_proof_secret_only_for_live_readback(
+        self,
+    ) -> None:
+        root = Path(__file__).resolve().parents[2]
+        release = yaml.safe_load(
+            (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        )
+        contract = release["jobs"]["agent-contract-release"]
+
+        self.assertEqual("release", contract["environment"])
+        self.assertEqual(
+            {
+                "actions": "read",
+                "checks": "read",
+                "contents": "read",
+                "pull-requests": "read",
+            },
+            contract["permissions"],
+        )
+        live_step = next(
+            step
+            for step in contract["steps"]
+            if step.get("name") == "Verify live agent-contract tag protection"
+        )
+        self.assertEqual(
+            "${{ secrets.AGENT_CONTRACT_RULESET_PROOF_TOKEN }}",
+            live_step["env"]["GH_TOKEN"],
+        )
+        other_steps = [step for step in contract["steps"] if step is not live_step]
+        self.assertNotIn("AGENT_CONTRACT_RULESET_PROOF_TOKEN", json.dumps(other_steps))
+
+    def test_agent_contract_consumers_use_the_immutable_release_tag(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        candidates = [
+            root / "README.md",
+            root / "AGENTS.md",
+            *sorted((root / "docs").rglob("*.md")),
+            *sorted((root / ".github").rglob("*.yml")),
+            *sorted((root / ".github").rglob("*.yaml")),
+        ]
+        forbidden = re.compile(
+            r"HomericIntelligence/Athena/\.github/workflows/_agent-contract\.yml@(?:main|master)"
+        )
+
+        violations = [
+            str(path.relative_to(root))
+            for path in candidates
+            if forbidden.search(path.read_text(encoding="utf-8"))
+        ]
+
+        self.assertEqual([], violations)
+
+    def test_agent_contract_action_executes_only_the_provider_validator(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            fixture_root = Path(temporary_directory)
+            provider = fixture_root / "provider"
+            caller = fixture_root / "caller"
+            action_path = provider / ".github" / "actions" / "validate-agent-contract"
+            action_path.mkdir(parents=True)
+            caller.mkdir()
+            shutil.copy2(
+                root / ".github" / "actions" / "validate-agent-contract" / "action.yml",
+                action_path / "action.yml",
+            )
+            shutil.copytree(root / "scripts", provider / "scripts")
+            (provider / "skills").mkdir()
+            shutil.copy2(root / "skills" / "_cli.py", provider / "skills" / "_cli.py")
+            shutil.copytree(
+                root / "docs" / "principles", provider / "docs" / "principles"
+            )
+            shutil.copy2(root / "AGENTS.md", caller / "AGENTS.md")
+            shutil.copy2(root / "CLAUDE.md", caller / "CLAUDE.md")
+            sentinel = fixture_root / "caller-code-ran"
+            (caller / "sitecustomize.py").write_text(
+                f"from pathlib import Path\nPath({str(sentinel)!r}).touch()\n",
+                encoding="utf-8",
+            )
+            (caller / "skills").mkdir()
+            (caller / "skills" / "__init__.py").write_text(
+                f"from pathlib import Path\nPath({str(sentinel)!r}).touch()\n",
+                encoding="utf-8",
+            )
+
+            action = yaml.safe_load((action_path / "action.yml").read_text("utf-8"))
+            command = action["runs"]["steps"][0]["run"]
+            command = command.replace("${{ github.action_path }}", str(action_path))
+            command = command.replace("${{ github.workspace }}", str(caller))
+            result = subprocess.run(
+                ["bash", "--noprofile", "--norc", "-euo", "pipefail", "-c", command],
+                cwd=caller,
+                env={"PATH": os.environ["PATH"]},
+                capture_output=True,
+                check=False,
+                text=True,
+            )
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertFalse(sentinel.exists())
+
+            audit_runner = fixture_root / "audit_runner.py"
+            audit_runner.write_text(
+                """from __future__ import annotations
+
+import runpy
+import sys
+
+
+def deny_external_capability(event: str, _arguments: tuple[object, ...]) -> None:
+    if event.startswith("socket.") or event in {
+        "os.posix_spawn",
+        "os.spawn",
+        "os.system",
+        "subprocess.Popen",
+    }:
+        raise RuntimeError(f"The validator used a denied capability: {event}")
+
+
+sys.addaudithook(deny_external_capability)
+script = sys.argv[1]
+sys.argv = sys.argv[1:]
+runpy.run_path(script, run_name="__main__")
+""",
+                encoding="utf-8",
+            )
+            audited_command = command.replace(
+                "python3 -I -S ",
+                f'python3 -I -S "{audit_runner}" ',
+                1,
+            )
+            audited_result = subprocess.run(
+                [
+                    "bash",
+                    "--noprofile",
+                    "--norc",
+                    "-euo",
+                    "pipefail",
+                    "-c",
+                    audited_command,
+                ],
+                cwd=caller,
+                env={"PATH": os.environ["PATH"]},
+                capture_output=True,
+                check=False,
+                text=True,
+            )
+
+            self.assertEqual(0, audited_result.returncode, audited_result.stderr)
+            self.assertFalse(sentinel.exists())
+
+    def test_protected_and_publishing_workflows_directly_self_call(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        self.assertEqual(
+            [],
+            workflow_inventory_errors(root / ".github" / "workflows"),
+        )
+
+    def test_protected_main_trigger_forms_cannot_silently_skip_the_contract(
+        self,
+    ) -> None:
+        trigger_sources = {
+            "unquoted on": """on:
+  pull_request:
+""",
+            "push null": """on:
+  push:
+""",
+            "push empty mapping": """on:
+  push: {}
+""",
+            "push without branch filters": """on:
+  push:
+    paths: ["src/**"]
+""",
+            "push branches-ignore permits main": """on:
+  push:
+    branches-ignore: ["release/**"]
+""",
+            "push glob matches main": """on:
+  push:
+    branches: ["**"]
+""",
+        }
+        for scenario, triggers in trigger_sources.items():
+            with self.subTest(scenario=scenario):
+                errors = self._fixture_inventory_errors(
+                    "ordinary.yml",
+                    f"""name: Ordinary automation
+{triggers}jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps: []
+""",
+                    "protected-events",
+                )
+                self.assertTrue(
+                    any("must directly self-call" in error for error in errors),
+                    errors,
+                )
+                self.assertFalse(
+                    any("does not run for protected main" in error for error in errors),
+                    errors,
+                )
+
+    def test_publishing_classification_does_not_depend_on_workflow_names(self) -> None:
+        errors = self._fixture_inventory_errors(
+            "artifact-integrity.yml",
+            """name: Artifact integrity
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  deliver:
+    runs-on: ubuntu-24.04
+    steps: []
+""",
+            "publishing",
+        )
+
+        self.assertTrue(
+            any("must directly self-call" in error for error in errors),
+            errors,
+        )
+
+    def test_non_main_push_filters_do_not_claim_protected_main_coverage(self) -> None:
+        trigger_sources = {
+            "main is ignored": """on:
+  push:
+    branches-ignore: ["m*"]
+""",
+            "main does not match": """on:
+  push:
+    branches: ["release/**"]
+""",
+            "ordered negation removes main": """on:
+  push:
+    branches: ["**", "!main"]
+""",
+            "tag filters suppress branch pushes": """on:
+  push:
+    tags: ["v*"]
+""",
+        }
+        for scenario, triggers in trigger_sources.items():
+            with self.subTest(scenario=scenario):
+                errors = self._fixture_inventory_errors(
+                    "ordinary.yml",
+                    f"""name: Ordinary automation
+{triggers}jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps: []
+""",
+                    "protected-events",
+                )
+                self.assertTrue(
+                    any("does not run for protected main" in error for error in errors),
+                    errors,
+                )
+
+    def test_unknown_workflow_fails_the_explicit_inventory(self) -> None:
+        errors = self._fixture_inventory_errors(
+            "maintenance.yml",
+            """name: Weekly maintenance
+on:
+  schedule:
+    - cron: "17 9 * * 2"
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    steps: []
+""",
+            None,
+        )
+
+        self.assertTrue(any("is not classified" in error for error in errors), errors)
+
+    def test_workflow_dependency_graphs_fail_closed_on_agent_contract(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        required = yaml.safe_load(
+            (root / ".github" / "workflows" / "_required.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        release = yaml.safe_load(
+            (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        )
+        required_jobs = required["jobs"]
+        release_jobs = release["jobs"]
+        self.assertEqual(
+            set(required_jobs)
+            - {"required-checks-gate", "pi-upstream-inventory-watch"},
+            set(required_jobs["required-checks-gate"]["needs"]),
+        )
+        for name in set(required_jobs) - {
+            "agent-contract",
+            "pi-upstream-inventory-watch",
+        }:
+            with self.subTest(workflow="required", job=name):
+                self.assertTrue(
+                    self._depends_on(required_jobs, name, "agent-contract"),
+                    name,
+                )
+        for name in set(release_jobs) - {"agent-contract"}:
+            with self.subTest(workflow="release", job=name):
+                self.assertTrue(
+                    self._depends_on(release_jobs, name, "agent-contract"),
+                    name,
+                )
+
+    def test_required_concurrency_does_not_use_a_fork_branch_name(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        required = yaml.safe_load(
+            (root / ".github" / "workflows" / "_required.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        group = required["concurrency"]["group"]
+        self.assertNotIn("github.head_ref", group)
+        self.assertNotIn("github.ref", group)
+        self.assertIs(required["concurrency"]["cancel-in-progress"], True)
+
+    def test_same_name_fork_pull_requests_have_isolated_concurrency_keys(self) -> None:
+        first = self._required_concurrency_key(
+            workflow="Required Checks",
+            event_name="pull_request",
+            event={"pull_request": {"number": 101, "head": {"ref": "feature"}}},
+            sha="first-head",
+        )
+        second = self._required_concurrency_key(
+            workflow="Required Checks",
+            event_name="pull_request",
+            event={"pull_request": {"number": 102, "head": {"ref": "feature"}}},
+            sha="second-head",
+        )
+
+        self.assertNotEqual(first, second)
+
+    def test_new_commit_for_the_same_pull_request_cancels_the_stale_run(self) -> None:
+        stale = self._required_concurrency_key(
+            workflow="Required Checks",
+            event_name="pull_request",
+            event={"pull_request": {"number": 101}},
+            sha="stale-head",
+        )
+        current = self._required_concurrency_key(
+            workflow="Required Checks",
+            event_name="pull_request",
+            event={"pull_request": {"number": 101}},
+            sha="current-head",
+        )
+
+        self.assertEqual(stale, current)
+
+    def test_pull_request_and_non_pull_request_runs_cannot_cancel_each_other(
+        self,
+    ) -> None:
+        pull_request = self._required_concurrency_key(
+            workflow="Required Checks",
+            event_name="pull_request",
+            event={"pull_request": {"number": 101}},
+            sha="shared-sha",
+        )
+        push = self._required_concurrency_key(
+            workflow="Required Checks",
+            event_name="push",
+            event={},
+            sha="shared-sha",
+        )
+
+        self.assertNotEqual(pull_request, push)
+
     def test_required_workflow_handles_merge_queue_checks_without_trigger_drift(
         self,
     ) -> None:
@@ -715,13 +1487,81 @@ class WorkflowContractTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            {"workflow_call", "pull_request", "push", "merge_group", "schedule"},
+            {
+                "workflow_call",
+                "workflow_dispatch",
+                "pull_request",
+                "push",
+                "merge_group",
+                "schedule",
+            },
             set(workflow["on"]),
         )
         self.assertEqual({"branches": ["main"]}, workflow["on"]["pull_request"])
         self.assertEqual({"branches": ["main"]}, workflow["on"]["push"])
         self.assertEqual({"types": ["checks_requested"]}, workflow["on"]["merge_group"])
         self.assertEqual([{"cron": "17 9 * * 2"}], workflow["on"]["schedule"])
+
+    def test_test_tiers_match_event_and_release_contracts(self) -> None:
+        """Use fast tests for changes and complete tests for releases."""
+        root = Path(__file__).resolve().parents[2]
+        required = yaml.safe_load(
+            (root / ".github" / "workflows" / "_required.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        release = yaml.safe_load(
+            (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        )
+        workflow_call = required["on"]["workflow_call"]
+        full_tests = workflow_call["inputs"]["full-tests"]
+        self.assertEqual({"type": "boolean", "default": False}, full_tests)
+
+        validate_steps = required["jobs"]["validate"]["steps"]
+        test_steps = [
+            step
+            for step in validate_steps
+            if step.get("run") in {"just ci-test", "just ci-test-fast"}
+        ]
+        self.assertEqual(
+            [
+                ("${{ !inputs['full-tests'] }}", "just ci-test-fast"),
+                ("${{ inputs['full-tests'] }}", "just ci-test"),
+            ],
+            [(step["if"], step["run"]) for step in test_steps],
+        )
+        self.assertEqual(True, release["jobs"]["required"]["with"]["full-tests"])
+
+    def test_nightly_workflow_runs_complete_tests_outside_required_gate(self) -> None:
+        """Run complete tests each day without adding a pull-request gate."""
+        root = Path(__file__).resolve().parents[2]
+        nightly = yaml.safe_load(
+            (root / ".github" / "workflows" / "nightly-tests.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            {"workflow_dispatch": {}, "schedule": [{"cron": "17 9 * * *"}]},
+            nightly["on"],
+        )
+        self.assertEqual(
+            AGENT_CONTRACT_WORKFLOW,
+            nightly["jobs"]["agent-contract"]["uses"],
+        )
+        test_job = nightly["jobs"]["nightly-tests"]
+        self.assertEqual("agent-contract", test_job["needs"])
+        self.assertEqual(30, test_job["timeout-minutes"])
+        self.assertTrue(
+            any(step.get("run") == "just ci-test" for step in test_job["steps"])
+        )
+        required = yaml.safe_load(
+            (root / ".github" / "workflows" / "_required.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertNotIn(
+            "nightly-tests", required["jobs"]["required-checks-gate"]["needs"]
+        )
 
     def test_required_and_release_workflows_consume_gated_sboms(self) -> None:
         root = Path(__file__).resolve().parents[2]
@@ -751,6 +1591,21 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(
             "read", release["jobs"]["required"]["permissions"].get("issues")
         )
+        self.assertEqual("read", release["jobs"]["preflight"]["permissions"]["actions"])
+        self.assertEqual("release", release["jobs"]["release"]["environment"])
+        self.assertEqual("release", release["jobs"]["publish-npm"]["environment"])
+        preflight_step = next(
+            step
+            for step in release["jobs"]["preflight"]["steps"]
+            if step.get("name") == "Verify the release environment configuration"
+        )
+        self.assertEqual(
+            "python scripts/ci_policy.py release-environment",
+            preflight_step["run"],
+        )
+        self.assertEqual("${{ github.token }}", preflight_step["env"]["GH_TOKEN"])
+        self.assertNotIn("environment", release["jobs"]["preflight"])
+        self.assertNotIn("environment", release["jobs"]["required"])
         self.assertEqual(
             "athena-plugin", release["jobs"]["release"]["steps"][1]["with"]["name"]
         )
@@ -764,6 +1619,77 @@ class WorkflowContractTests(unittest.TestCase):
         )
         self.assertIn("--provenance", publish_step["run"])
         self.assertNotIn("env", publish_step)
+
+    def test_package_inventories_the_pinned_uv_python_runtime(self) -> None:
+        """The package job retains evidence for the interpreter that uv uses."""
+        root = Path(__file__).resolve().parents[2]
+        required = yaml.safe_load(
+            (root / ".github" / "workflows" / "_required.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        package_steps = required["jobs"]["package"]["steps"]
+        inventory_step = next(
+            (
+                step
+                for step in package_steps
+                if step.get("name") == "Inventory the uv-managed Python runtime"
+            ),
+            None,
+        )
+
+        self.assertIsNotNone(inventory_step)
+        assert inventory_step is not None
+        inventory_run = inventory_step["run"]
+        self.assertIn(
+            "Path(sys.executable).resolve().parents[1]",
+            inventory_step["env"]["PYTHON_RUNTIME_ROOT_QUERY"],
+        )
+        self.assertEqual(
+            "dist-internal/syft-python-runtime.json",
+            inventory_step["env"]["PYTHON_RUNTIME_INVENTORY"],
+        )
+        self.assertIn('.get("name") == "python"', inventory_run)
+        self.assertIn('.get("version") == sys.argv[2]', inventory_run)
+        self.assertIn("$(cat .python-version)", inventory_run)
+
+        upload_step = next(
+            step
+            for step in package_steps
+            if step.get("with", {}).get("name") == "athena-sca-input"
+        )
+        self.assertIn(
+            "dist-internal/syft-python-runtime.json",
+            upload_step["with"]["path"],
+        )
+
+    def test_dependency_scan_gates_the_python_runtime_inventory(self) -> None:
+        """The required scan evaluates the retained Python runtime inventory."""
+        root = Path(__file__).resolve().parents[2]
+        required = yaml.safe_load(
+            (root / ".github" / "workflows" / "_required.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        jobs = required["jobs"]
+        scan_step = next(
+            step
+            for step in jobs["security-dependency-scan"]["steps"]
+            if "scripts/scan_vulnerabilities.py" in step.get("run", "")
+        )
+
+        self.assertIn(
+            "--inventory dist-internal/syft-python-runtime.json",
+            scan_step["run"],
+        )
+        self.assertIn(
+            "--report dist-internal/grype-python-runtime.json",
+            scan_step["run"],
+        )
+        self.assertIn(
+            "security-dependency-scan",
+            jobs["required-checks-gate"]["needs"],
+        )
 
     def test_pi_runtime_is_locked_updated_and_scanned_before_ci_executes_it(
         self,
@@ -788,8 +1714,8 @@ class WorkflowContractTests(unittest.TestCase):
 
         self.assertEqual(
             {
-                "pi-subagents": "0.51.0",
-                "@earendil-works/pi-coding-agent": "0.84.2",
+                "pi-subagents": "0.58.0",
+                "@earendil-works/pi-coding-agent": "0.86.0",
             },
             manifest["dependencies"],
         )
@@ -876,8 +1802,79 @@ class WorkflowContractTests(unittest.TestCase):
             for job in workflow.get("jobs", {}).values():
                 for step in job.get("steps", []):
                     reference = step.get("uses")
-                    if reference and not reference.startswith("./"):
+                    if reference and not reference.startswith(("./", "$/")):
                         self.assertRegex(reference, r"^[^@]+@[0-9a-f]{40}$")
+
+    def test_required_job_environments_do_not_use_runner_context(self) -> None:
+        """Job environments must use contexts available before runner selection."""
+        root = Path(__file__).resolve().parents[2]
+        required = yaml.safe_load(
+            (root / ".github" / "workflows" / "_required.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        for job_name, job in required["jobs"].items():
+            with self.subTest(job=job_name):
+                self.assertNotIn("${{ runner.", json.dumps(job.get("env", {})))
+
+    def test_pi_upstream_inventory_watch_stays_outside_required_gate(
+        self,
+    ) -> None:
+        """The upstream full-tree scan stays outside the required gate."""
+        root = Path(__file__).resolve().parents[2]
+        required = yaml.safe_load(
+            (root / ".github" / "workflows" / "_required.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        jobs = required["jobs"]
+        watch = jobs["pi-upstream-inventory-watch"]
+
+        self.assertEqual("security/pi-upstream-inventory-watch", watch["name"])
+        self.assertEqual(
+            "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
+            watch["if"],
+        )
+        self.assertEqual(
+            {"contents": "read", "issues": "read"},
+            watch["permissions"],
+        )
+        self.assertNotIn(
+            "pi-upstream-inventory-watch", jobs["required-checks-gate"]["needs"]
+        )
+        self.assertIn("workflow_dispatch", required["on"])
+        fetch_step = next(
+            step
+            for step in watch["steps"]
+            if step.get("name") == "Fetch the upstream Pi source inventory"
+        )
+        scan_step = next(
+            step
+            for step in watch["steps"]
+            if step.get("name") == "Scan the full upstream Pi source tree"
+        )
+        self.assertIn('git -C "$PI_UPSTREAM_SOURCE_ROOT" init', fetch_step["run"])
+        self.assertIn(
+            'git -C "$PI_UPSTREAM_SOURCE_ROOT" fetch --depth=1 origin "$PI_UPSTREAM_REF"',
+            fetch_step["run"],
+        )
+        self.assertIn('scan "$PI_UPSTREAM_SOURCE_ROOT" -o json', scan_step["run"])
+        self.assertIn("scripts/scan_vulnerabilities.py", scan_step["run"])
+        self.assertIn("syft-pi-source-full.json", scan_step["run"])
+        self.assertIn("grype-pi-source-full.json", scan_step["run"])
+
+        expected_pins = {
+            reference.split("@", 1)[0]: reference
+            for job_name, job in jobs.items()
+            if job_name != "pi-upstream-inventory-watch"
+            for step in job.get("steps", [])
+            if (reference := step.get("uses")) and not reference.startswith("./")
+        }
+        for step in watch["steps"]:
+            reference = step.get("uses")
+            if reference:
+                self.assertEqual(expected_pins[reference.split("@", 1)[0]], reference)
 
 
 if __name__ == "__main__":

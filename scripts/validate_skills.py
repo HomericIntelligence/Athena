@@ -5,15 +5,19 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import re
 import sys
+from collections.abc import Collection
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, cast
 
 sys.dont_write_bytecode = True
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from scripts.policies.agent_contract import validate_agent_contract
+from scripts.policies.agent_contract_release import tag_ruleset_errors
 from scripts.semver import SEMVER_PATTERN
 from skills._cli import argument_parser
 
@@ -37,14 +41,70 @@ REPO_REVIEW_SECTION = re.compile(
 REPO_REVIEW_WEIGHT = re.compile(
     r"(?P<name>[A-Za-z][A-Za-z/ ]*?) (?P<weight>[1-9][0-9]?)%"
 )
+APPROVED_RULESET_NAME = "homeric-main-baseline"
+APPROVED_RULESET_TARGET = "branch"
+APPROVED_RULESET_ENFORCEMENT = "active"
+APPROVED_RULESET_BYPASS_ACTORS: list[object] = []
+APPROVED_RULESET_CONDITIONS: dict[str, object] = {
+    "ref_name": {
+        "include": ["~DEFAULT_BRANCH"],
+        "exclude": [],
+    }
+}
+APPROVED_PULL_REQUEST_PARAMETERS: dict[str, object] = {
+    "required_approving_review_count": 0,
+    "dismiss_stale_reviews_on_push": False,
+    "required_reviewers": [],
+    "dismissal_restriction": {"enabled": False, "allowed_actors": []},
+    "require_code_owner_review": False,
+    "require_last_push_approval": False,
+    "required_review_thread_resolution": True,
+    "allowed_merge_methods": ["squash"],
+    "require_extra_approval_for_unattributed_changes": True,
+}
 APPROVED_MERGE_QUEUE_PARAMETERS: dict[str, object] = {
-    "check_response_timeout_minutes": 60,
-    "grouping_strategy": "ALLGREEN",
+    "check_response_timeout_minutes": 180,
+    "grouping_strategy": "HEADGREEN",
     "max_entries_to_build": 10,
     "max_entries_to_merge": 5,
     "merge_method": "SQUASH",
     "min_entries_to_merge": 1,
     "min_entries_to_merge_wait_minutes": 5,
+}
+APPROVED_REQUIRED_STATUS_CHECKS_PARAMETERS: dict[str, object] = {
+    "strict_required_status_checks_policy": False,
+    "do_not_enforce_on_create": False,
+    "required_status_checks": [
+        {
+            "context": "required-checks-gate",
+            "integration_id": 15368,
+        }
+    ],
+}
+APPROVED_RULESET_POLICY: dict[str, object] = {
+    "name": APPROVED_RULESET_NAME,
+    "target": APPROVED_RULESET_TARGET,
+    "enforcement": APPROVED_RULESET_ENFORCEMENT,
+    "bypass_actors": APPROVED_RULESET_BYPASS_ACTORS,
+    "conditions": APPROVED_RULESET_CONDITIONS,
+    "rules": [
+        {"type": "deletion"},
+        {"type": "non_fast_forward"},
+        {"type": "required_linear_history"},
+        {
+            "type": "pull_request",
+            "parameters": APPROVED_PULL_REQUEST_PARAMETERS,
+        },
+        {
+            "type": "merge_queue",
+            "parameters": APPROVED_MERGE_QUEUE_PARAMETERS,
+        },
+        {
+            "type": "required_status_checks",
+            "parameters": APPROVED_REQUIRED_STATUS_CHECKS_PARAMETERS,
+        },
+        {"type": "required_signatures"},
+    ],
 }
 PI_PACKAGE_NAME = "@homericintelligence/athena"
 PI_SKILL_ROOT = ["./skills"]
@@ -57,19 +117,31 @@ class ValidationError(NamedTuple):
 
     surface: str
     reason: str
+    operational: bool = False
 
 
 def _read_json(
     path: Path, surface: str, repo_root: Path = REPO_ROOT
 ) -> tuple[dict[str, object] | None, list[ValidationError]]:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
         return None, [
             ValidationError(
                 surface,
                 f"The validator cannot read '{path.relative_to(repo_root)}'. "
                 f"The operation returned this diagnostic.\n{exc}",
+                True,
+            )
+        ]
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        return None, [
+            ValidationError(
+                surface,
+                f"The file '{path.relative_to(repo_root)}' must contain valid JSON. "
+                f"The parser returned this diagnostic.\n{exc}",
             )
         ]
     if not isinstance(data, dict):
@@ -129,6 +201,7 @@ def _validate_skills(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
                     "skills",
                     f"The validator cannot read 'skills/{directory.name}/SKILL.md'. "
                     f"The operation returned this diagnostic.\n{exc}",
+                    True,
                 )
             )
             continue
@@ -329,7 +402,9 @@ def _validate_opencode(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
     return errors
 
 
-def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
+def _validate_layout_and_policy(
+    repo_root: Path = REPO_ROOT, extra_ignored_top_levels: Collection[str] = ()
+) -> list[ValidationError]:
     errors: list[ValidationError] = []
     forbidden_paths = ("athena", "plugins/athena", "CODEOWNERS")
     for relative in forbidden_paths:
@@ -341,6 +416,7 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
             )
     required_paths = (
         ".github/CODEOWNERS",
+        ".github/rulesets/homeric-agent-contract-tags.json",
         ".github/workflows/_required.yml",
         ".github/workflows/release.yml",
         "docs/policies/development.md",
@@ -358,12 +434,14 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
     ignored_top_levels = {
         ".git",
         ".mypy_cache",
+        ".pixi",
         ".venv",
         ".pytest_cache",
         ".ruff_cache",
         "build",
         "dist",
     }
+    ignored_top_levels.update(extra_ignored_top_levels)
     for path in repo_root.rglob("*"):
         relative_path = path.relative_to(repo_root)
         if (
@@ -372,8 +450,6 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
             or relative_path.parts[0] in ignored_top_levels
             or "__pycache__" in relative_path.parts
         ):
-            continue
-        if relative_path.as_posix() == "scripts/validate_skills.py":
             continue
         if path.suffix.lower() in {
             ".gif",
@@ -393,6 +469,7 @@ def _validate_layout_and_policy(repo_root: Path = REPO_ROOT) -> list[ValidationE
                     "self-contained",
                     f"The validator cannot inspect '{relative_path}'. "
                     f"The operation returned this diagnostic.\n{exc}",
+                    True,
                 )
             )
             continue
@@ -434,6 +511,7 @@ def _validate_cli_conventions(repo_root: Path = REPO_ROOT) -> list[ValidationErr
                     "cli",
                     f"The validator cannot read '{path.relative_to(repo_root)}'. "
                     f"The operation returned this diagnostic.\n{exc}",
+                    True,
                 )
             )
             continue
@@ -540,6 +618,7 @@ def _validate_repo_review_scorecard(
                 "repo-review",
                 "The validator cannot read the scorecard. "
                 f"The operation returned this diagnostic.\n{error}",
+                True,
             )
         ]
     sections = [match.group("name") for match in REPO_REVIEW_SECTION.finditer(criteria)]
@@ -596,88 +675,145 @@ def _validate_repo_review_scorecard(
     return errors
 
 
-def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
-    """Require the tracked main ruleset to gate merges on current checks."""
-    path = repo_root / ".github" / "rulesets" / "homeric-main-baseline.json"
-    document, errors = _read_json(path, "ruleset", repo_root)
-    if document is None:
-        return errors
-    rules = document.get("rules")
-    if not isinstance(rules, list):
+def _json_type_name(value: object) -> str:
+    """Return a stable JSON type name for validator diagnostics."""
+    return "null" if value is None else type(value).__name__
+
+
+def _validate_exact_json(
+    actual: object, expected: object, path: str
+) -> list[ValidationError]:
+    """Require one exact JSON value at the given path."""
+    if type(actual) is not type(expected):
         return [
-            *errors,
-            ValidationError("ruleset", "The ruleset must contain a rules list."),
-        ]
-    status_checks = next(
-        (
-            rule
-            for rule in rules
-            if isinstance(rule, dict) and rule.get("type") == "required_status_checks"
-        ),
-        None,
-    )
-    if not isinstance(status_checks, dict) or not isinstance(
-        status_checks.get("parameters"), dict
-    ):
-        return [
-            *errors,
-            ValidationError("ruleset", "The required status-check policy is missing."),
-        ]
-    parameters = status_checks["parameters"]
-    if parameters.get("strict_required_status_checks_policy") is not False:
-        errors.append(
             ValidationError(
                 "ruleset",
-                "The ruleset must not require up-to-date branches. The merge queue "
-                "manages freshness.",
+                "The ruleset must match the approved live baseline from issue #173 "
+                f"at {path}. Expected {_json_type_name(expected)} but found "
+                f"{_json_type_name(actual)}.",
             )
-        )
-    checks = parameters.get("required_status_checks")
-    if not isinstance(checks, list) or not any(
-        isinstance(check, dict) and check.get("context") == "required-checks-gate"
-        for check in checks
-    ):
-        errors.append(
+        ]
+
+    if isinstance(expected, dict):
+        actual_dict = cast(dict[str, object], actual)
+        expected_dict = cast(dict[str, object], expected)
+        actual_keys = set(actual_dict)
+        expected_keys = set(expected_dict)
+        if actual_keys != expected_keys:
+            missing = sorted(expected_keys - actual_keys)
+            extra = sorted(actual_keys - expected_keys)
+            parts: list[str] = []
+            if missing:
+                parts.append("missing keys: " + ", ".join(missing))
+            if extra:
+                parts.append("unexpected keys: " + ", ".join(extra))
+            return [
+                ValidationError(
+                    "ruleset",
+                    "The ruleset must match the approved live baseline from issue "
+                    f"#173 at {path}. " + "; ".join(parts) + ".",
+                )
+            ]
+
+        for key in expected_dict:
+            nested = _validate_exact_json(
+                actual_dict[key], expected_dict[key], f"{path}.{key}"
+            )
+            if nested:
+                return nested
+        return []
+
+    if isinstance(expected, list):
+        actual_list = cast(list[object], actual)
+        expected_list = cast(list[object], expected)
+        if len(actual_list) != len(expected_list):
+            return [
+                ValidationError(
+                    "ruleset",
+                    "The ruleset must match the approved live baseline from issue "
+                    f"#173 at {path}. Expected {len(expected_list)} entries but found "
+                    f"{len(actual_list)}.",
+                )
+            ]
+        for index, (actual_item, expected_item) in enumerate(
+            zip(actual_list, expected_list)
+        ):
+            nested = _validate_exact_json(
+                actual_item, expected_item, f"{path}[{index}]"
+            )
+            if nested:
+                return nested
+        return []
+
+    if actual != expected:
+        return [
             ValidationError(
-                "ruleset", "The ruleset must require 'required-checks-gate'."
+                "ruleset",
+                "The ruleset must match the approved live baseline from issue #173 "
+                f"at {path}. Expected {expected!r} but found {actual!r}.",
             )
+        ]
+    return []
+
+
+def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
+    """Require the tracked branch and tag rulesets to enforce current policy."""
+    path = repo_root / ".github" / "rulesets" / "homeric-main-baseline.json"
+    document, errors = _read_json(path, "ruleset", repo_root)
+    if document is not None:
+        errors.extend(
+            _validate_exact_json(document, APPROVED_RULESET_POLICY, "ruleset")
         )
-    pull_request = next(
-        (
-            rule
-            for rule in rules
-            if isinstance(rule, dict) and rule.get("type") == "pull_request"
-        ),
-        None,
-    )
-    if not isinstance(pull_request, dict) or not isinstance(
-        pull_request.get("parameters"), dict
-    ):
-        errors.append(ValidationError("ruleset", "The pull-request policy is missing."))
-    elif pull_request["parameters"].get("allowed_merge_methods") != ["squash"]:
-        errors.append(
-            ValidationError("ruleset", "Pull requests must merge by squash only.")
-        )
-    merge_queues = [
-        rule
-        for rule in rules
-        if isinstance(rule, dict) and rule.get("type") == "merge_queue"
-    ]
-    if not merge_queues:
-        errors.append(ValidationError("ruleset", "The merge queue policy is missing."))
-    elif (
-        len(merge_queues) != 1
-        or merge_queues[0].get("parameters") != APPROVED_MERGE_QUEUE_PARAMETERS
-    ):
-        errors.append(
-            ValidationError(
-                "ruleset", "The merge queue policy does not match issue #28."
-            )
+    tag_path = repo_root / ".github" / "rulesets" / "homeric-agent-contract-tags.json"
+    tag_document, tag_read_errors = _read_json(tag_path, "ruleset", repo_root)
+    errors.extend(tag_read_errors)
+    if tag_document is not None:
+        errors.extend(
+            ValidationError("ruleset", reason)
+            for reason in tag_ruleset_errors(tag_document)
         )
     return errors
 
 
-def validate_repository(repo_root: Path) -> list[ValidationError]:
+IGNORED_TOP_LEVELS_ENVIRONMENT_VARIABLE = "ATHENA_VALIDATE_IGNORED_PATHS"
+
+
+def parse_ignored_top_levels(raw: str) -> tuple[str, ...]:
+    """Read extra top-level paths to skip from a comma-separated setting.
+
+    The repository walk in `_validate_layout_and_policy` inspects every file it
+    is not told to skip. A consumer that runs the validator over a prepared
+    workspace needs a way to declare its own runtime scratch directories, which
+    hold vendored wheels, shared objects, and other non-source payloads that
+    cannot be read as UTF-8 and are not Athena content.
+
+    Only a single path segment is accepted. Rejecting separators, wildcards, and
+    relative markers keeps one entry from silently disabling the walk for a
+    whole subtree, and keeps this setting from becoming a blanket opt-out.
+    """
+    entries: list[str] = []
+    for item in raw.split(","):
+        name = item.strip()
+        if not name:
+            continue
+        if (
+            "/" in name
+            or "\\" in name
+            or "*" in name
+            or name in {".", ".."}
+            or name.startswith("-")
+        ):
+            raise ValueError(
+                f"{IGNORED_TOP_LEVELS_ENVIRONMENT_VARIABLE} accepts only a single "
+                f"path segment per entry; got {name!r}"
+            )
+        entries.append(name)
+    return tuple(entries)
+
+
+def validate_repository(
+    repo_root: Path, extra_ignored_top_levels: Collection[str] = ()
+) -> list[ValidationError]:
     """Validate the skills, manifests, layout, and policies in one repository."""
     repo_root = repo_root.resolve()
     errors = [
@@ -686,10 +822,14 @@ def validate_repository(repo_root: Path) -> list[ValidationError]:
         *_validate_codex(repo_root),
         *_validate_pi(repo_root),
         *_validate_opencode(repo_root),
-        *_validate_layout_and_policy(repo_root),
+        *_validate_layout_and_policy(repo_root, extra_ignored_top_levels),
         *_validate_cli_conventions(repo_root),
         *_validate_repo_review_scorecard(repo_root),
         *_validate_ruleset_policy(repo_root),
+        *(
+            ValidationError("agent-contract", error.reason, error.operational)
+            for error in validate_agent_contract(repo_root)
+        ),
     ]
     claude, _ = _read_json(
         repo_root / ".claude-plugin" / "plugin.json", "version", repo_root
@@ -730,13 +870,27 @@ def main(argv: list[str] | None = None) -> int:
         default=REPO_ROOT,
         help="Repository root. By default, use this checkout.",
     )
+    parser.add_argument(
+        "--ignore-path",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help=(
+            "Skip a top-level directory during the repository walk. Repeatable. "
+            f"May also be supplied as a comma-separated "
+            f"{IGNORED_TOP_LEVELS_ENVIRONMENT_VARIABLE} environment variable."
+        ),
+    )
     args = parser.parse_args(argv)
-    errors = validate_repository(args.root)
+    declared = parse_ignored_top_levels(
+        os.environ.get(IGNORED_TOP_LEVELS_ENVIRONMENT_VARIABLE, "")
+    )
+    errors = validate_repository(args.root, (*declared, *args.ignore_path))
     if errors:
         print("The Athena skill validation failed:", file=sys.stderr)
         for error in errors:
             print(f"  - {error.surface}: {error.reason}", file=sys.stderr)
-        return 2
+        return 2 if any(error.operational for error in errors) else 1
     if not args.quiet:
         print("The Athena skill validation passed.")
     return 0

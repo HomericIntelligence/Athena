@@ -38,7 +38,44 @@ ungranted high-impact actions. A different party does an independent review. The
 qualifications sufficient for the risk. Human review is necessary only when applicable policy specifies
 a human.
 
+## Topic anchors
+
+Review contracts use these stable topic anchors to classify a surface. The numeric catalog below is
+authoritative. Each detail page describes relationships with other principles.
+
 ## Simplicity and change
+
+Use this topic for scope, change size, reversibility, deletion, and necessary complexity.
+
+## Architecture, interfaces, and state
+
+Use this topic for boundaries, dependencies, interfaces, ownership, and state.
+
+## Testing and evidence
+
+Use this topic for test design, traceability, verification, and evidence.
+
+## Error handling
+
+Use this topic for failures, diagnostics, recovery, and cleanup.
+
+## Distributed reliability
+
+Use this topic for concurrency, retries, idempotency, coordination, and operations.
+
+## Security and supply chain
+
+Use this topic for trust boundaries, validation, dependencies, provenance, and least privilege.
+
+## Agent authority
+
+Use this topic for scope, permissions, external effects, and human approval.
+
+## Stewardship and judgment
+
+Use this topic for preservation, code health, technical evidence, and delivery.
+
+## Canonical catalog
 
 ### P001
 
@@ -54,6 +91,22 @@ configuration, and infrastructure only for a specified current requirement.
 
 [DRY — Don't Repeat Yourself](details/p003-dry.md) — Give each authoritative rule or item of
 knowledge one canonical representation.
+
+### P004
+
+[SOLID](details/p004-solid.md) — Give each responsibility one clear owner. Connect each extension seam
+to a requirement. Make substitutions keep contracts. Make each interface applicable to its consumer.
+Keep high-level policy free from dependencies on details that can change.
+
+### P005
+
+[Modularity](details/p005-modularity.md) — Make cohesive modules with narrow interfaces and low
+coupling. Thus, local changes have local effects.
+
+### P006
+
+[POLA — Principle of Least Astonishment](details/p006-principle-of-least-astonishment.md) — Make
+interfaces, defaults, behavior, and failures agree with user expectations that evidence shows.
 
 ### P007
 
@@ -97,57 +150,6 @@ show the same stable concept, generalize. When the alternative is an incorrect a
 [Preserve Unrequested Behavior](details/p014-preserve-unrequested-behavior.md) — Unless a specified
 requirement changes them, keep current observable contracts.
 
-### P021
-
-[Evolutionary and Reversible Design](details/p021-evolutionary-and-reversible-design.md) — Select
-incremental, migration-safe steps. Each step must let an author make sure that the step is correct,
-use a bounded rollback, or use a bounded roll-forward path.
-
-### P073
-
-[Optimize Only With Evidence](details/p073-optimize-only-with-evidence.md) — Measure first. When
-measurements show a constraint or bottleneck, add optimization complexity.
-
-### P074
-
-[Prefer Existing Mechanisms](details/p074-prefer-existing-mechanisms.md) — Before you make a new
-mechanism, select an applicable repository, language, framework, or standard-library mechanism.
-
-### P088
-
-[Delete Dead Code](details/p088-delete-dead-code.md) — Remove code that no execution path or consumer
-uses. Also remove unreachable, superseded, or obsolete code. First, make sure that deletion is safe.
-
-### P089
-
-[Delete Obsolete Configuration and Dependencies](details/p089-delete-obsolete-configuration-and-dependencies.md)
-— After evidence shows that no consumer uses the artifact, remove the configuration, dependencies,
-tests, documentation, and scaffolding.
-
-### P090
-
-[Prefer Negative Code](details/p090-prefer-negative-code.md) — For equally correct and clear
-solutions, select less code and maintenance. Also select less state, configuration, dependency surface,
-and conceptual complexity.
-
-## Architecture, interfaces, and state
-
-### P004
-
-[SOLID](details/p004-solid.md) — Give each responsibility one clear owner. Connect each extension seam
-to a requirement. Make substitutions keep contracts. Make each interface applicable to its consumer.
-Keep high-level policy free from dependencies on details that can change.
-
-### P005
-
-[Modularity](details/p005-modularity.md) — Make cohesive modules with narrow interfaces and low
-coupling. Thus, local changes have local effects.
-
-### P006
-
-[POLA — Principle of Least Astonishment](details/p006-principle-of-least-astonishment.md) — Make
-interfaces, defaults, behavior, and failures agree with user expectations that evidence shows.
-
 ### P015
 
 [Architecture Conformance](details/p015-architecture-conformance.md) — If the requirement does not
@@ -180,54 +182,11 @@ inputs, outputs, invariants, ownership, side effects, concurrency, and failure b
 [Executable Architecture](details/p020-executable-architecture.md) — When resources are sufficient and
 the check decreases risk, use executable checks for important architecture rules. Do not let prose be the only control.
 
-### P075
+### P021
 
-[Make Invalid States Hard to Represent](details/p075-make-invalid-states-hard-to-represent.md) — Use
-types, schemas, construction boundaries, and state machines to prevent invalid combinations.
-
-### P076
-
-[Parse, Then Validate, Then Operate](details/p076-parse-then-validate-then-operate.md) — Parse
-each external representation one time. Validate all parts of the parsed structure. Let core logic use
-trusted data.
-
-### P077
-
-[Separate Policy from Mechanism](details/p077-separate-policy-from-mechanism.md) — Keep a clear
-boundary that divides policy from mechanism. Policy selects an action. The mechanism does the action.
-
-### P078
-
-[Single Source of Truth](details/p078-single-source-of-truth.md) — Give each authoritative mutable
-state or policy one explicit owner. Do not give authority to replicas that have different values.
-
-### P079
-
-[Explicit Ownership and Lifetimes](details/p079-explicit-ownership-and-lifetimes.md) — Give resources,
-tasks, locks, and temporary state a clear owner and deterministic cleanup or termination.
-
-### P084
-
-[Prefer Local Reasoning](details/p084-prefer-local-reasoning.md) — Give a reader sufficient information about a component
-without access to hidden state or control flow in other components.
-
-### P085
-
-[Explicit Is Better Than Implicit](details/p085-explicit-is-better-than-implicit.md) — Make important
-dependencies, transitions, configuration, conversions, and side effects clear.
-
-### P086
-
-[Readability Counts](details/p086-readability-counts.md) — Use clear names, simple control flow,
-cohesive functions, and clear data structures to make correct behavior and maintenance easier.
-
-### P087
-
-[Comments Explain Why, Code Explains What](details/p087-comments-explain-why-code-explains-what.md) —
-Make mechanics clear in code. Write comments only for rationale, constraints, invariants, and context
-that code cannot show.
-
-## Testing and evidence
+[Evolutionary and Reversible Design](details/p021-evolutionary-and-reversible-design.md) — Select
+incremental, migration-safe steps. Each step must let an author make sure that the step is correct,
+use a bounded rollback, or use a bounded roll-forward path.
 
 ### P022
 
@@ -267,47 +226,6 @@ test results are the same.
 [Test Failure Paths, Not Just Success Paths](details/p028-test-failure-paths.md) — Make sure behavior
 is correct for invalid input and failures that can occur in operation. Include dependency failure,
 timeout, cancellation, cleanup, and progress that stops before the end.
-
-### P063
-
-[Requirement-to-Code Traceability](details/p063-requirement-to-code-traceability.md) — For each artifact
-change, give a link to a requirement, acceptance criterion, defect, invariant, or necessary dependency.
-
-### P064
-
-[Requirement-to-Test Traceability](details/p064-requirement-to-test-traceability.md) — Give each
-changed behavior a test that is applicable to its contract and risk.
-
-### P065
-
-[Verify Before Claiming Completion](details/p065-verify-before-claiming-completion.md) — After you
-complete the work, examine the change. Before a completion statement, do the applicable repository
-checks. Give information about all coverage gaps.
-
-### P067
-
-[No Test Cheating](details/p067-no-test-cheating.md) — Do not change an applicable test to hide an
-implementation defect. Do not disable an applicable test to hide an implementation defect.
-
-### P068
-
-[No Validation Bypass](details/p068-no-validation-bypass.md) — If an applicable gate shows a problem,
-correct the problem. When an approved narrow exception applies, record the exception. Without an approved
-exception, do not disable the gate.
-
-### P069
-
-[Independent Review for High-Risk Changes](details/p069-independent-review-for-high-risk-changes.md)
-— Send work with high risk to security or availability to independent review. Reviewer qualifications must
-agree with the risk and applicable policy requirements.
-
-### P091
-
-[Test-Driven Development](details/p091-test-driven-development.md) — For behavior changes, write a
-narrow test that shows the missing behavior. Make the smallest change that gives a correct test result. Then,
-refactor while test results stay correct.
-
-## Error handling
 
 ### P029
 
@@ -351,8 +269,6 @@ available, select that state.
 
 [Graceful Degradation](details/p036-graceful-degradation.md) — When a capability has a noncritical
 failure, continue only in a mode that keeps security and correct operation. Use less functionality in that mode.
-
-## Distributed reliability
 
 ### P037
 
@@ -413,30 +329,6 @@ work can continue safely.
 structured evidence with a correlation identifier. Do not record sensitive data. This evidence lets
 operators find causes of operation outcomes.
 
-### P080
-
-[Make Concurrency Deliberate](details/p080-make-concurrency-deliberate.md) — When measurements show that
-concurrency helps the system, add concurrency. Give explicit definitions for shared state, synchronization,
-failure, and cancellation.
-
-### P081
-
-[Forward Progress With Safety](details/p081-forward-progress-with-safety.md) — Make bounded progress.
-If progress is not possible, stop with a clear recoverable failure. When the result is unknown, do
-not wait without a limit.
-
-### P082
-
-[Design for Cancellation](details/p082-design-for-cancellation.md) — Give rules for cancellation
-propagation and resource release after interruption. Keep state correct.
-
-### P083
-
-[Irreversible Actions Last](details/p083-irreversible-actions-last.md) — Before the known point for an
-irreversible action, complete validation and reversible work.
-
-## Security and supply chain
-
 ### P048
 
 [Secure by Design](details/p048-secure-by-design.md) — Make security controls and new trust boundaries
@@ -488,8 +380,6 @@ exception is correct only for an explicit requirement. Use the applicable protec
 [Supply-Chain Integrity](details/p057-supply-chain-integrity.md) — Keep the dependency count low.
 Examine each dependency. Use trusted sources. Keep locks, provenance, and integrity for build inputs and artifacts.
 
-## Agent authority
-
 ### P058
 
 [Bounded Agent Authority](details/p058-bounded-agent-authority.md) — Give an agent only the scope,
@@ -517,12 +407,43 @@ Give permissions with a clear decision. Output can be untrusted input. Thus, val
 — Get action-bound approval from a person. Approval is necessary when the task and applicable
 contract do not give specified authority.
 
-## Stewardship and judgment
+### P063
+
+[Requirement-to-Code Traceability](details/p063-requirement-to-code-traceability.md) — For each artifact
+change, give a link to a requirement, acceptance criterion, defect, invariant, or necessary dependency.
+
+### P064
+
+[Requirement-to-Test Traceability](details/p064-requirement-to-test-traceability.md) — Give each
+changed behavior a test that is applicable to its contract and risk.
+
+### P065
+
+[Verify Before Claiming Completion](details/p065-verify-before-claiming-completion.md) — After you
+complete the work, examine the change. Before a completion statement, do the applicable repository
+checks. Give information about all coverage gaps.
 
 ### P066
 
 [Preserve Existing Work](details/p066-preserve-existing-work.md) — Do not change existing work that
 is not in the request.
+
+### P067
+
+[No Test Cheating](details/p067-no-test-cheating.md) — Do not change an applicable test to hide an
+implementation defect. Do not disable an applicable test to hide an implementation defect.
+
+### P068
+
+[No Validation Bypass](details/p068-no-validation-bypass.md) — If an applicable gate shows a problem,
+correct the problem. When an approved narrow exception applies, record the exception. Without an approved
+exception, do not disable the gate.
+
+### P069
+
+[Independent Review for High-Risk Changes](details/p069-independent-review-for-high-risk-changes.md)
+— Send work with high risk to security or availability to independent review. Reviewer qualifications must
+agree with the risk and applicable policy requirements.
 
 ### P070
 
@@ -540,3 +461,105 @@ evidence shows that a change is necessary, use established repository convention
 [Technical Evidence Over Preference](details/p072-technical-evidence-over-preference.md) — Select an
 alternative with requirements, measurements, tests, specifications, architecture, and established
 principles. Do not use personal preference.
+
+### P073
+
+[Optimize Only With Evidence](details/p073-optimize-only-with-evidence.md) — Measure first. When
+measurements show a constraint or bottleneck, add optimization complexity.
+
+### P074
+
+[Prefer Existing Mechanisms](details/p074-prefer-existing-mechanisms.md) — Before you make a new
+mechanism, select an applicable repository, language, framework, or standard-library mechanism.
+
+### P075
+
+[Make Invalid States Hard to Represent](details/p075-make-invalid-states-hard-to-represent.md) — Use
+types, schemas, construction boundaries, and state machines to prevent invalid combinations.
+
+### P076
+
+[Parse, Then Validate, Then Operate](details/p076-parse-then-validate-then-operate.md) — Parse
+each external representation one time. Validate all parts of the parsed structure. Let core logic use
+trusted data.
+
+### P077
+
+[Separate Policy from Mechanism](details/p077-separate-policy-from-mechanism.md) — Keep a clear
+boundary that divides policy from mechanism. Policy selects an action. The mechanism does the action.
+
+### P078
+
+[Single Source of Truth](details/p078-single-source-of-truth.md) — Give each authoritative mutable
+state or policy one explicit owner. Do not give authority to replicas that have different values.
+
+### P079
+
+[Explicit Ownership and Lifetimes](details/p079-explicit-ownership-and-lifetimes.md) — Give resources,
+tasks, locks, and temporary state a clear owner and deterministic cleanup or termination.
+
+### P080
+
+[Make Concurrency Deliberate](details/p080-make-concurrency-deliberate.md) — When measurements show that
+concurrency helps the system, add concurrency. Give explicit definitions for shared state, synchronization,
+failure, and cancellation.
+
+### P081
+
+[Forward Progress With Safety](details/p081-forward-progress-with-safety.md) — Make bounded progress.
+If progress is not possible, stop with a clear recoverable failure. When the result is unknown, do
+not wait without a limit.
+
+### P082
+
+[Design for Cancellation](details/p082-design-for-cancellation.md) — Give rules for cancellation
+propagation and resource release after interruption. Keep state correct.
+
+### P083
+
+[Irreversible Actions Last](details/p083-irreversible-actions-last.md) — Before the known point for an
+irreversible action, complete validation and reversible work.
+
+### P084
+
+[Prefer Local Reasoning](details/p084-prefer-local-reasoning.md) — Give a reader sufficient information about a component
+without access to hidden state or control flow in other components.
+
+### P085
+
+[Explicit Is Better Than Implicit](details/p085-explicit-is-better-than-implicit.md) — Make important
+dependencies, transitions, configuration, conversions, and side effects clear.
+
+### P086
+
+[Readability Counts](details/p086-readability-counts.md) — Use clear names, simple control flow,
+cohesive functions, and clear data structures to make correct behavior and maintenance easier.
+
+### P087
+
+[Comments Explain Why, Code Explains What](details/p087-comments-explain-why-code-explains-what.md) —
+Make mechanics clear in code. Write comments only for rationale, constraints, invariants, and context
+that code cannot show.
+
+### P088
+
+[Delete Dead Code](details/p088-delete-dead-code.md) — Remove code that no execution path or consumer
+uses. Also remove unreachable, superseded, or obsolete code. First, make sure that deletion is safe.
+
+### P089
+
+[Delete Obsolete Configuration and Dependencies](details/p089-delete-obsolete-configuration-and-dependencies.md)
+— After evidence shows that no consumer uses the artifact, remove the configuration, dependencies,
+tests, documentation, and scaffolding.
+
+### P090
+
+[Prefer Negative Code](details/p090-prefer-negative-code.md) — For equally correct and clear
+solutions, select less code and maintenance. Also select less state, configuration, dependency surface,
+and conceptual complexity.
+
+### P091
+
+[Test-Driven Development](details/p091-test-driven-development.md) — For behavior changes, write a
+narrow test that shows the missing behavior. Make the smallest change that gives a correct test result. Then,
+refactor while test results stay correct.

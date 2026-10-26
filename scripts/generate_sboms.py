@@ -26,6 +26,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts.package_plugin import read_plugin_version
+from scripts.semver import BUILD_ARTIFACT_NAME
 from skills._cli import argument_parser
 
 SPDX_VERSION: Final = "SPDX-2.3"
@@ -335,7 +336,7 @@ def build_spdx(
     epoch: int,
 ) -> dict[str, Any]:
     """Normalize the environment SPDX from Syft and add continuous integration dependencies."""
-    name = "athena-build-linux-64"
+    name = BUILD_ARTIFACT_NAME
     document = _base_document(
         raw,
         name=name,
@@ -361,7 +362,7 @@ def build_spdx(
         packages,
     )
     actions, uv_version = _package_job_dependencies(workflow_path)
-    root = _package("athena-build-linux-64", "build-environment", version=version)
+    root = _package(BUILD_ARTIFACT_NAME, "build-environment", version=version)
     additions = [_package("uv", "build-tool", version=uv_version), *actions]
     all_packages = [root, *packages, *additions]
     document["packages"] = sorted(
@@ -426,7 +427,7 @@ def generate(
     build_raw = _run_syft(syft, environment_path, "spdx-json")
     native = _run_syft(syft, environment_path, "json")
     plugin_path = output_directory / f"athena-plugin-{version}.spdx.json"
-    build_path = output_directory / f"athena-build-linux-64-{version}.spdx.json"
+    build_path = output_directory / f"{BUILD_ARTIFACT_NAME}-{version}.spdx.json"
     _write_json(plugin_path, plugin_spdx(plugin_raw, archive_path, version, epoch))
     _write_json(
         build_path,

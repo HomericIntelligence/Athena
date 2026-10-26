@@ -1,7 +1,7 @@
 ---
 name: change-review
 license: BSD-3-Clause
-description: Review only a worktree, staged, or explicit-range change for architecture, behavior, language, and evidence. Use before a commit or pull request. This skill is read-only. If the scope is ambiguous, unresolved, or out of scope, report the reason. In that case, stop.
+description: Review only a worktree, staged, or explicit-range change for architecture, behavior, language, and evidence. Use before a commit or pull request. This skill is read-only. Resolve scope from task and branch evidence. Report unsupported scope as a coverage gap and deliver supported findings.
 argument-hint: "[--worktree | --staged | --range BASE..HEAD] [PATH ...]"
 allowed-tools: [Read, Bash, Grep, Glob, Agent]
 ---
@@ -17,6 +17,9 @@ prose that it produces.
 Use the shared [review contract](../../docs/review/common.md),
 [language routing](../../docs/review/language-routing.md), and
 [behavior-first testing](../../docs/review/behavior-first-testing.md).
+
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
+recovery, resources, validation, and delivery.
 
 ## Engineering principles
 
@@ -54,9 +57,17 @@ Select exactly one scope:
 - Use `--staged` to select index changes from `HEAD`.
 - Use `--range BASE..HEAD` to select the explicit Git range.
 
+For feature work, `BASE` is the recorded worktree start commit and initial review base. Do not
+replace it with the latest remote target commit only because that branch changes. Movement of the
+remote target branch does not invalidate a review of unchanged candidate content. Do not require a
+rebase because the branch is behind. Repeat the review only if the selected content or its
+requirements change, including after a permitted rebase or conflict resolution.
+
 Before you inspect content, resolve the installed
 [`scripts/resolve_scope.py`](scripts/resolve_scope.py) from this skill directory. Read each eligible
-object in its manifest. Follow the
+object in its manifest. For large scopes, use `--batch-size 1000` and inspect every JSONL batch.
+Require the terminal complete record before claiming full coverage. Retain each manifest and
+compare it during final revalidation. Follow the
 [scope-resolution safety contract](references/scope-resolution.md). Use path arguments only to
 reduce the selected diff. Make sure that each path remains inside the repository root.
 
@@ -71,8 +82,9 @@ Do not create a commit, tree, stash, temporary index, or other Git state to repr
 head. If the scope is empty, report the empty scope. Do not substitute a different range.
 
 `--staged` and `--range` exclude untracked worktree files. State this boundary in the result. If
-resolution cannot safely cover the selected scope, report the coverage gap. Reduce the paths.
-Alternatively, select a safer scope. Do not inspect a sample of the scope.
+resolution cannot cover the selected scope in one operation, use batches and record progress.
+If a source remains unavailable, report the exact coverage gap and supported findings.
+Do not silently narrow the requested scope or claim complete coverage from a sample.
 
 ## Review and deliver
 
@@ -106,10 +118,10 @@ Include these items in the console or host-native read-only annotation surface:
 
 1. Identify the scope, base and head or manifest digest, and files read.
 2. Give the architecture decision first.
-3. List applicable and `N/A` checks.
+3. List applicable and `N/A` source-review criteria.
 4. Give severity-ranked findings with the exact `path:line`, impact, and evidence.
 5. For each finding, give a correction that is proportional to the impact.
-6. Give behavior-first test and validation coverage.
+6. Give changed-test source coverage and source-coverage limits.
 7. Give residual risks and unverified assumptions.
 
 If the host supports native source annotations, use them only for changed locations. Otherwise, use
@@ -121,4 +133,4 @@ If the host supports native source annotations, use them only for changed locati
 - Do not increase the scope beyond the requested range, paths, or selected diff. Report the boundary.
 - Do not edit source. Do not stage files. Do not publish forge comments. Do not simulate native
   annotations to deliver findings.
-- Do not sample a scope that you cannot cover safely. Report the coverage gap. Then, reduce the paths.
+- Cover the requested scope in batches. Report remaining gaps without discarding supported findings.

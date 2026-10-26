@@ -42,18 +42,21 @@ export function syncSkills() {
   return target;
 }
 
-async function athenaPlugin() {
-  try {
-    syncSkills();
-  } catch (error) {
-    console.warn(
-      `[athena-opencode] The plugin could not install the skills: ${error}`,
-    );
-  }
-  return {};
-}
-
-export default athenaPlugin;
+export default {
+  id: "@homericintelligence/athena-opencode",
+  setup() {
+    try {
+      const target = syncSkills();
+      console.log(
+        `[athena-opencode] The plugin installed the skills at '${target}'.`,
+      );
+    } catch (error) {
+      console.warn(
+        `[athena-opencode] The plugin could not install the skills: ${error}`,
+      );
+    }
+  },
+};
 
 export function bundledSkillNames() {
   const root = bundledSkillsRoot();

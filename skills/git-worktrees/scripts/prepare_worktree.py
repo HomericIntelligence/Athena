@@ -3,16 +3,28 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-if __package__ in {None, ""}:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-
-from skills._cli import argument_parser, run_command
+if TYPE_CHECKING or __package__ not in {None, ""}:
+    from skills._cli import argument_parser, run_command
+else:
+    _cli_path = Path(__file__).resolve().parents[2] / "_cli.py"
+    _cli_spec = importlib.util.spec_from_file_location(
+        "athena_installed_cli", _cli_path
+    )
+    if _cli_spec is None or _cli_spec.loader is None:
+        raise RuntimeError(
+            f"The installed Athena CLI helper is unavailable: '{_cli_path}'."
+        )
+    _cli = importlib.util.module_from_spec(_cli_spec)
+    _cli_spec.loader.exec_module(_cli)
+    argument_parser = _cli.argument_parser
+    run_command = _cli.run_command
 
 
 def git(
@@ -65,17 +77,38 @@ def select_path(
         path = base / branch
         reject_symlinks_below(base, path)
         return path.resolve(), path.resolve().is_relative_to(root)
-    for directory_name in (".worktrees", "worktrees"):
-        directory = root / directory_name
-        if directory.is_dir():
-            if directory.is_symlink():
-                raise RuntimeError(
-                    "The project-local worktree directory is a symbolic link: "
-                    f"'{directory}'."
-                )
-            return (directory / branch).resolve(), True
-    project = root.name
-    return Path(tempfile.gettempdir()) / f"{project}-{branch}", False
+    primary = primary_project_root(root)
+    directory = primary / ".worktrees"
+    reject_symlinks_below(primary, directory / branch)
+    return (directory / branch).resolve(), True
+
+
+def primary_project_root(root: Path) -> Path:
+    """Return the primary checkout from Git's worktree records."""
+    records = git(root, "worktree", "list", "--porcelain", "-z").stdout
+    first = records.split("\0", maxsplit=1)[0]
+    if not first.startswith("worktree "):
+        raise RuntimeError("Git did not identify the primary project checkout.")
+    return Path(first.removeprefix("worktree ")).resolve()
+
+
+def ensure_ignored(root: Path, path: Path) -> None:
+    """Ignore a project-local directory without a tracked file change."""
+    relative = path.relative_to(root)
+    directory = relative.parts[0]
+    if directory != ".worktrees":
+        verify_ignored(root, path)
+        return
+    probe = Path(directory) / ".athena-ignore-probe"
+    if git(root, "check-ignore", "-q", "--", str(probe), check=False).returncode == 0:
+        return
+    exclude = Path(git(root, "rev-parse", "--git-path", "info/exclude").stdout.strip())
+    if not exclude.is_absolute():
+        exclude = root / exclude
+    exclude.parent.mkdir(parents=True, exist_ok=True)
+    with exclude.open("a", encoding="utf-8") as stream:
+        stream.write("\n/.worktrees/\n")
+    verify_ignored(root, path)
 
 
 def verify_ignored(root: Path, path: Path) -> None:
@@ -125,7 +158,16 @@ def main() -> int:
             f"{arguments.start_point}^{{commit}}",
         ).stdout.strip()
         if project_local:
-            verify_ignored(root, path)
+            ignore_root = (
+                primary_project_root(root)
+                if arguments.directory is None and arguments.path is None
+                else root
+            )
+            if arguments.dry_run:
+                if not path.is_relative_to(ignore_root / ".worktrees"):
+                    verify_ignored(ignore_root, path)
+            else:
+                ensure_ignored(ignore_root, path)
         if path.exists():
             raise RuntimeError(f"The worktree path already exists: '{path}'.")
         if not arguments.dry_run:
@@ -138,7 +180,7 @@ def main() -> int:
                 arguments.branch,
                 start_sha,
             )
-    except RuntimeError as error:
+    except (OSError, RuntimeError) as error:
         print(error, file=sys.stderr)
         return 1
     print(

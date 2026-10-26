@@ -1,4 +1,4 @@
-# Route default ownership to @mvillmow. The baseline ruleset does not require approvals.
+# Route default ownership to @mvillmow. The baseline ruleset still requires extra approval for unattributed changes.
 * @mvillmow
 
 # Assign the plugin-distribution files.
@@ -17,5 +17,6 @@
 /CLAUDE.md @mvillmow
 /pyproject.toml @mvillmow
 /uv.lock @mvillmow
+/.python-version @mvillmow
 /justfile @mvillmow
 /.pre-commit-config.yaml @mvillmow

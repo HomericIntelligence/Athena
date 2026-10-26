@@ -12,8 +12,8 @@ specifies. Report the command, revision, environment, result, and important veri
 **Classification:** Athena synthesis.
 
 This rule uses established verification practice and evidence from software delivery. No verified
-source owns this rule. Athena's evidence-integrity policy specifies accurate reports with recorded
-commands, revisions, and environments.
+source owns this rule. Athena's [evidence-integrity policy](../../../docs/policies/evidence-integrity.md)
+specifies accurate reports with recorded commands, revisions, and environments.
 
 ## Decision rule
 
@@ -93,9 +93,12 @@ The report identifies one unavailable platform test and does not claim that all 
 **Misuse:** A developer changes code after a test passes. The developer cites that stale result
 as proof for the new revision.
 
-**Athena/agent workflow:** Before completion, an agent runs `just all` and reports the command
-result.
-If the full gate cannot complete, the agent identifies each narrower check.
+**Athena/agent workflow:** An agent can publish a pull request before validation finishes. The
+agent reports pending or unavailable checks accurately. Before completion or merge, the agent gets
+successful focused results for each new or changed test from an approved local or hosted runner.
+The agent also reports the applicable non-pytest check results. Pull-request continuous integration runs the automatic fast pytest tier.
+Nightly and release workflows run the complete pytest suite. Before the agent claims completion, it
+verifies the required continuous integration checks for the current pull-request head.
 
 ## Related principles
 
