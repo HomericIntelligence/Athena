@@ -194,6 +194,22 @@ def test_boundary_index_and_fixture_write_are_not_stored_positions() -> None:
     assert verdict["verdict"] == "accept", verdict["reasons"]
 
 
+@pytest.mark.parametrize(
+    "assertion",
+    [
+        'assert lines[1160] == "writer"',
+        'assert lines[42] != "x"',
+        "assert lines[42] >= value",
+        "assert lines[42] <= value",
+    ],
+)
+def test_fixed_position_comparison_is_rejected(assertion: str) -> None:
+    """A comparison against a stored position is not a fixture write."""
+    text = f"def test_position() -> None:\n    {assertion}\n"
+    verdict = CLASSIFIER_MODULE.classify_text(text)
+    assert verdict["verdict"] == "reject", verdict
+
+
 def test_main_prints_one_verdict_document(tmp_path: Path) -> None:
     """The command prints one verdict document for a readable test file."""
     sample = tmp_path / "test_sample.py"

@@ -62,7 +62,7 @@ SOURCE_TEXT_NAME = re.compile(
 )
 STRING_LITERAL = re.compile(r"""^(?:[rubf]*)(?:'[^']*'|"[^"]*")$""")
 BOUNDARY_INDEX = frozenset({"0", "-1"})
-SUBSCRIPT_ASSIGNMENT = re.compile(r"\s*=[^=]")
+SUBSCRIPT_ASSIGNMENT = re.compile(r"(?<![=!<>])=(?!=)")
 ASSERT_KEYWORD = re.compile(r"\bassert\b")
 TEXT_SEARCH = re.compile(r"\s(?:in|re\.search\()\s")
 
