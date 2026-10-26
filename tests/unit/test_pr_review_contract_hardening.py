@@ -2483,6 +2483,213 @@ class BoundedChangedPathReaderTests(unittest.TestCase):
         )
 
 
+class ScriptedByteStream:
+    """Deterministic byte-stream stand-in for bounded provider pipe tests."""
+
+    def __init__(
+        self,
+        chunks: Sequence[bytes] = (),
+        *,
+        read_error: OSError | ValueError | None = None,
+        close_error: OSError | ValueError | None = None,
+    ) -> None:
+        self.chunks = list(chunks)
+        self.read_error = read_error
+        self.close_error = close_error
+        self.close_calls = 0
+        self.read_sizes: list[int] = []
+
+    def read(self, size: int) -> bytes:
+        """Return the next scripted chunk or mark the stream as exhausted."""
+        if self.read_error is not None:
+            raise self.read_error
+        self.read_sizes.append(size)
+        if not self.chunks:
+            return b""
+        return self.chunks.pop(0)
+
+    def close(self) -> None:
+        """Record the drain closing this stream and honor a scripted failure."""
+        self.close_calls += 1
+        if self.close_error is not None:
+            raise self.close_error
+
+
+class RecordingReaderThread:
+    """Thread stand-in that records each bounded join request."""
+
+    def __init__(self) -> None:
+        self.join_timeouts: list[float | None] = []
+
+    def join(self, timeout: float | None = None) -> None:
+        """Record the requested join timeout."""
+        self.join_timeouts.append(timeout)
+
+
+class BoundedStreamDrainTests(unittest.TestCase):
+    """Exercise the bounded provider stream drain and reap paths directly."""
+
+    def setUp(self) -> None:
+        self.module_name = f"test_collect_evidence_drains_{id(self)}"
+        self.collector = load_collector(self.module_name)
+
+    def tearDown(self) -> None:
+        sys.modules.pop(self.module_name, None)
+
+    def test_collects_a_bounded_provider_stream(self) -> None:
+        stream = ScriptedByteStream([b"first", b"second"])
+        capture = self.collector.ProviderStream(maximum_bytes=64)
+
+        self.collector.drain_provider_stream(stream, capture)
+
+        self.assertEqual(b"firstsecond", bytes(capture.output))
+        self.assertTrue(capture.completed.is_set())
+        self.assertFalse(capture.overflowed.is_set())
+        self.assertIsNone(capture.error)
+        self.assertEqual(1, stream.close_calls)
+
+    def test_marks_a_provider_stream_as_overflowed_past_its_byte_limit(self) -> None:
+        stream = ScriptedByteStream([b"abcde"])
+        capture = self.collector.ProviderStream(maximum_bytes=4)
+
+        self.collector.drain_provider_stream(stream, capture)
+
+        self.assertTrue(capture.overflowed.is_set())
+        self.assertTrue(capture.completed.is_set())
+        self.assertEqual(b"", bytes(capture.output))
+
+    def test_records_a_provider_stream_read_failure(self) -> None:
+        stream = ScriptedByteStream(read_error=OSError("pipe read failed"))
+        capture = self.collector.ProviderStream(maximum_bytes=64)
+
+        self.collector.drain_provider_stream(stream, capture)
+
+        self.assertIsInstance(capture.error, OSError)
+        self.assertTrue(capture.completed.is_set())
+        self.assertFalse(capture.overflowed.is_set())
+
+    def test_ignores_a_provider_stream_close_failure(self) -> None:
+        stream = ScriptedByteStream([b"data"], close_error=OSError("already closed"))
+        capture = self.collector.ProviderStream(maximum_bytes=64)
+
+        self.collector.drain_provider_stream(stream, capture)
+
+        self.assertEqual(b"data", bytes(capture.output))
+        self.assertIsNone(capture.error)
+        self.assertTrue(capture.completed.is_set())
+
+    def test_collects_a_bounded_changed_path_manifest(self) -> None:
+        stream = ScriptedByteStream([b"alpha\0be", b"ta\0"])
+        capture = self.collector.ChangedPathStream(maximum_bytes=64, maximum_paths=8)
+
+        self.collector.drain_changed_path_stream(stream, capture)
+
+        self.assertEqual([b"alpha", b"beta"], capture.paths)
+        self.assertTrue(capture.completed.is_set())
+        self.assertFalse(capture.overflowed.is_set())
+        self.assertIsNone(capture.error)
+
+    def test_marks_a_changed_path_manifest_as_overflowed_past_its_byte_limit(
+        self,
+    ) -> None:
+        stream = ScriptedByteStream([b"alpha\0"])
+        capture = self.collector.ChangedPathStream(maximum_bytes=4, maximum_paths=8)
+
+        self.collector.drain_changed_path_stream(stream, capture)
+
+        self.assertIsNotNone(capture.limit_error)
+        self.assertIn("byte limit", str(capture.limit_error))
+        self.assertTrue(capture.overflowed.is_set())
+        self.assertTrue(capture.completed.is_set())
+
+    def test_marks_a_changed_path_manifest_as_overflowed_past_its_path_limit(
+        self,
+    ) -> None:
+        stream = ScriptedByteStream([b"alpha\0beta\0"])
+        capture = self.collector.ChangedPathStream(maximum_bytes=64, maximum_paths=1)
+
+        self.collector.drain_changed_path_stream(stream, capture)
+
+        self.assertIsNotNone(capture.limit_error)
+        self.assertIn("path limit", str(capture.limit_error))
+        self.assertEqual([b"alpha"], capture.paths)
+        self.assertTrue(capture.overflowed.is_set())
+
+    def test_rejects_a_changed_path_manifest_with_an_unterminated_entry(self) -> None:
+        stream = ScriptedByteStream([b"alpha\0beta"])
+        capture = self.collector.ChangedPathStream(maximum_bytes=64, maximum_paths=8)
+
+        self.collector.drain_changed_path_stream(stream, capture)
+
+        self.assertIsInstance(capture.error, RuntimeError)
+        self.assertTrue(capture.completed.is_set())
+
+    def test_rejects_a_changed_path_manifest_with_a_duplicate_path(self) -> None:
+        stream = ScriptedByteStream([b"alpha\0alpha\0"])
+        capture = self.collector.ChangedPathStream(maximum_bytes=64, maximum_paths=8)
+
+        self.collector.drain_changed_path_stream(stream, capture)
+
+        self.assertIsInstance(capture.error, RuntimeError)
+        self.assertIn("duplicate", str(capture.error))
+
+    def test_rejects_a_changed_path_manifest_with_an_unsafe_path(self) -> None:
+        stream = ScriptedByteStream([b"/alpha\0"])
+        capture = self.collector.ChangedPathStream(maximum_bytes=64, maximum_paths=8)
+
+        self.collector.drain_changed_path_stream(stream, capture)
+
+        self.assertIsInstance(capture.error, RuntimeError)
+        self.assertIn("unsafe", str(capture.error))
+
+    def test_rejects_a_changed_path_manifest_with_an_empty_entry(self) -> None:
+        stream = ScriptedByteStream([b"\0"])
+        capture = self.collector.ChangedPathStream(maximum_bytes=64, maximum_paths=8)
+
+        self.collector.drain_changed_path_stream(stream, capture)
+
+        self.assertIsInstance(capture.error, RuntimeError)
+        self.assertIn("empty", str(capture.error))
+
+    def test_ignores_a_changed_path_stream_close_failure(self) -> None:
+        stream = ScriptedByteStream([b"alpha\0"], close_error=ValueError("closed"))
+        capture = self.collector.ChangedPathStream(maximum_bytes=64, maximum_paths=8)
+
+        self.collector.drain_changed_path_stream(stream, capture)
+
+        self.assertEqual([b"alpha"], capture.paths)
+        self.assertIsNone(capture.error)
+        self.assertTrue(capture.completed.is_set())
+
+    def test_kills_and_reaps_a_running_provider_process(self) -> None:
+        process = BoundedOutputProcess(poll_result=None, returncode=-9)
+        stream = ScriptedByteStream()
+        reader = RecordingReaderThread()
+
+        self.collector.reap_provider(process, [stream], [reader])
+
+        self.assertTrue(process.killed)
+        self.assertEqual(1, process.wait_calls)
+        self.assertEqual(1, stream.close_calls)
+        self.assertEqual(
+            [self.collector.PROVIDER_READER_JOIN_SECONDS], reader.join_timeouts
+        )
+
+    def test_reaps_an_exited_provider_process_without_killing_it(self) -> None:
+        process = BoundedOutputProcess(poll_result=0, returncode=0)
+        stream = ScriptedByteStream(close_error=OSError("already closed"))
+        reader = RecordingReaderThread()
+
+        self.collector.reap_provider(process, [stream], [reader])
+
+        self.assertFalse(process.killed)
+        self.assertEqual(1, process.wait_calls)
+        self.assertEqual(1, stream.close_calls)
+        self.assertEqual(
+            [self.collector.PROVIDER_READER_JOIN_SECONDS], reader.join_timeouts
+        )
+
+
 class LiveRequirementsBindingTests(unittest.TestCase):
     """Verify the reusable live requirements binding without repository writes."""
 
