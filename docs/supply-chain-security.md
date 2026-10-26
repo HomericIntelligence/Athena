@@ -29,13 +29,18 @@ source-commit build pin. The locked runtime replaces that pin. The package job f
 coding-harness package. It then scans both dependency contracts. The job retains the native
 inventories for Grype.
 
-The job does not scan example lockfiles or build-time compiler binaries. These items are not in the
-installed runtime surface. The native inventories are continuous integration (CI) evidence and not
-release assets. Athena never includes those third-party packages in its archive.
+[Issue #74](https://github.com/HomericIntelligence/Athena/issues/74) tracks the restoration of the
+full Pi source inventory. The job does not scan example lockfiles or build-time compiler binaries.
+These items are not in the installed runtime surface. The native inventories are continuous
+integration (CI) evidence and not release assets. Athena never includes those third-party packages
+in its archive.
 The advisory `security/pi-upstream-inventory-watch` job scans the full upstream Pi source tree each
 week with the same Syft and Grype policy. It keeps a separate record for upstream inventory
 evidence for tracking only. It does not change `required-checks-gate` or the shipped dependency
-contract.
+contract. The job scans upstream `main` with the current vulnerability database. A failure can
+therefore come from a newly disclosed advisory in any upstream dependency, not only from a
+non-runtime one. A successful run is necessary and not sufficient for restoration. A person reads the
+run result, because nothing automated acts on it.
 
 Host capabilities, the runner operating system, and commands used only in examples are outside the
 dependency scope. Athena remains a plugin distribution. It does not add a Python package or runtime
@@ -56,6 +61,40 @@ relationships.
 Multiple installed packages can have the same name. In this condition, Athena omits the
 nondeterministic Syft dependency guess for that name. It does not publish an arbitrary version
 relationship. Each installed package remains a build-environment dependency.
+
+## Restoring the full Pi source inventory
+
+Restoration stays dormant until each step below is permitted. The tracking
+[Issue #74](https://github.com/HomericIntelligence/Athena/issues/74) stays open until the
+restoration lands. The pull request that restores the full inventory closes it.
+
+1. Confirm that a `security/pi-upstream-inventory-watch` run against upstream `main` is
+   successful. This is necessary and not sufficient. Step 2 separately proves that the pinned
+   artifact is remediated.
+2. Update the pinned `@earendil-works/pi-coding-agent` version to a released upstream artifact that
+   contains the remediated files. Change every place that carries the pin:
+   `ci/pi-runtime/package.json`, `ci/pi-runtime/package-lock.json`, the pinned version literal in
+   `tests/unit/test_supply_chain.py`, and the Dependabot entry for `/ci/pi-runtime` in
+   `.github/dependabot.yml` if it carries a version.
+3. The `package` job installs only the pinned runtime, so it never has a full Pi source root. Add a
+   step to the `package` job in `.github/workflows/_required.yml` that fetches the upstream source
+   into a scratch root with the `git init` and `git fetch --depth=1` sequence that the watch job
+   uses. Then replace the coding-agent shrinkwrap scan with a Syft scan of that scratch root. Keep
+   the `syft-pi-subagents.json` inventory of the isolated runtime. Remove the watch job only after
+   this step exists, because a rescan of the installed runtime under a new name does not give full
+   source coverage.
+4. Carry the new inventory name through every consumer. Update the `athena-sca-input` upload list in
+   the `package` job, and the `--inventory` and `--report` arguments in
+   `security-dependency-scan`, in place of `dist-internal/syft-pi-source.json` and
+   `dist-internal/grype-pi-source.json`. Update the workflow assertions in
+   `tests/unit/test_supply_chain.py`.
+5. Remove the `security/pi-upstream-inventory-watch` job, the `workflow_dispatch` trigger that only
+   it needs, and the advisory record in `docs/policies/required-checks.md`. Drop the job from the
+   `uv` setup list in `tests/unit/test_toolchain.py`.
+
+The restored required scan must pass with zero new entries in
+`security/vulnerability-exceptions.yaml`. Do not lower a scanner threshold, suppress a finding, or
+add a broad ignore. A residual finding goes through the narrow exception policy only.
 
 ## Vulnerability policy
 
