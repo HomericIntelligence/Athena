@@ -59,9 +59,12 @@ timeout.
   - It retains the full JavaScript Object Notation (JSON) reports.
 
 - `security/pi-upstream-inventory-watch` is the single intentional advisory job. It runs on the
-  weekly schedule or by manual dispatch, and scans the full upstream Pi source tree. It records
+  weekly schedule or by manual dispatch. A manual dispatch also runs the other required jobs, but
+  it never merges a pull request. The job scans the full upstream Pi source tree. It records
   upstream inventory evidence for tracking only and must not join `required-checks-gate` while
-  upstream-only findings can fail the scan.
+  upstream-only findings can fail the scan. It tracks
+  [Issue #74](https://github.com/HomericIntelligence/Athena/issues/74). Athena retires it when the
+  full Pi source inventory is restored into the required gate.
 
 - On pull requests, `pr-policy` enforces these requirements:
 
