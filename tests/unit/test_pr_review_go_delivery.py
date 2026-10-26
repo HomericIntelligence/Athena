@@ -3249,6 +3249,214 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             self.delivery._delivery_result_document(report), diagnostic["recovery"]
         )
 
+    def test_main_routes_prepare_terminal_duplicate_repair(self) -> None:
+        forge = object()
+        receipt = {"schema_id": "athena.pr-review.terminal-duplicate-repair"}
+        output = io.StringIO()
+        with (
+            patch.object(self.delivery, "GitHubForge", return_value=forge),
+            patch.object(
+                self.delivery,
+                "prepare_terminal_duplicate_repair",
+                return_value=receipt,
+            ) as prepare,
+            redirect_stdout(output),
+        ):
+            status = self.delivery.main(
+                [
+                    "--target-repository",
+                    "owner/repository",
+                    "--expected-pr-url",
+                    "https://github.com/owner/repository/pull/7",
+                    "--expected-base-oid",
+                    "a" * 40,
+                    "--expected-head-oid",
+                    "b" * 40,
+                    "--prepare-terminal-duplicate-repair",
+                    "c" * 64,
+                    "7",
+                ]
+            )
+
+        self.assertEqual(0, status)
+        self.assertEqual(receipt, json.loads(output.getvalue()))
+        prepare.assert_called_once_with(forge, self.binding(), "c" * 64)
+
+    def test_main_routes_go_with_terminal_duplicate_repair(self) -> None:
+        forge = object()
+        manifest = object()
+        repair = object()
+        with (
+            patch.object(self.delivery, "GitHubForge", return_value=forge),
+            patch.object(
+                self.delivery, "load_response_manifest", return_value=manifest
+            ),
+            patch.object(
+                self.delivery,
+                "load_terminal_duplicate_repair",
+                return_value=repair,
+            ) as load_repair,
+            patch.object(
+                self.delivery,
+                "deliver_go_v1",
+                return_value=self.delivery.DeliveryResult("delivered", ()),
+            ) as deliver,
+            redirect_stdout(io.StringIO()),
+        ):
+            status = self.delivery.main(
+                [
+                    "--target-repository",
+                    "owner/repository",
+                    "--expected-pr-url",
+                    "https://github.com/owner/repository/pull/7",
+                    "--expected-base-oid",
+                    "a" * 40,
+                    "--expected-head-oid",
+                    "b" * 40,
+                    "--responses-file",
+                    "/bound/manifest.json",
+                    "--terminal-duplicate-repair",
+                    "/bound/repair.json",
+                    "7",
+                ]
+            )
+
+        self.assertEqual(0, status)
+        load_repair.assert_called_once_with(Path("/bound/repair.json"), self.binding())
+        deliver.assert_called_once_with(
+            forge,
+            self.binding(),
+            manifest,
+            terminal_duplicate_repair=repair,
+        )
+
+    def test_main_routes_go_with_recovery_and_terminal_duplicate_repair(
+        self,
+    ) -> None:
+        forge = object()
+        manifest = object()
+        recovery = object()
+        repair = object()
+        with (
+            patch.object(self.delivery, "GitHubForge", return_value=forge),
+            patch.object(
+                self.delivery, "load_response_manifest", return_value=manifest
+            ),
+            patch.object(
+                self.delivery,
+                "load_format_only_inline_root_recovery",
+                return_value=recovery,
+            ),
+            patch.object(
+                self.delivery,
+                "load_terminal_duplicate_repair",
+                return_value=repair,
+            ),
+            patch.object(
+                self.delivery,
+                "deliver_go_v1",
+                return_value=self.delivery.DeliveryResult("delivered", ()),
+            ) as deliver,
+            redirect_stdout(io.StringIO()),
+        ):
+            status = self.delivery.main(
+                [
+                    "--target-repository",
+                    "owner/repository",
+                    "--expected-pr-url",
+                    "https://github.com/owner/repository/pull/7",
+                    "--expected-base-oid",
+                    "a" * 40,
+                    "--expected-head-oid",
+                    "b" * 40,
+                    "--responses-file",
+                    "/bound/manifest.json",
+                    "--format-only-inline-root-recovery",
+                    "/bound/recovery.json",
+                    "--terminal-duplicate-repair",
+                    "/bound/repair.json",
+                    "7",
+                ]
+            )
+
+        self.assertEqual(0, status)
+        deliver.assert_called_once_with(
+            forge,
+            self.binding(),
+            manifest,
+            format_only_inline_root_recovery=recovery,
+            terminal_duplicate_repair=repair,
+        )
+
+    def test_main_rejects_terminal_duplicate_repair_in_other_modes(self) -> None:
+        common = [
+            "--target-repository",
+            "owner/repository",
+            "--expected-pr-url",
+            "https://github.com/owner/repository/pull/7",
+            "--expected-base-oid",
+            "a" * 40,
+            "--expected-head-oid",
+            "b" * 40,
+        ]
+        repair = ["--terminal-duplicate-repair", "/bound/repair.json"]
+        cases: tuple[tuple[str, list[str]], ...] = (
+            ("prepare-manifest", ["--prepare-manifest", *repair]),
+            (
+                "deliver-no-go",
+                [
+                    "--deliver-no-go",
+                    "--state-carrier-file",
+                    "/bound/state.json",
+                    *repair,
+                ],
+            ),
+            ("verify-legacy-go", ["--verify-legacy-go", "/bound/legacy.json", *repair]),
+            (
+                "repair-format-only",
+                ["--repair-format-only-inline-root", "root-7", *repair],
+            ),
+            (
+                "prepare-terminal-duplicate-repair",
+                ["--prepare-terminal-duplicate-repair", "c" * 64, *repair],
+            ),
+        )
+        operations = (
+            "prepare_response_manifest",
+            "load_response_manifest",
+            "load_no_go_proof",
+            "load_format_only_inline_root_recovery",
+            "load_legacy_proof",
+            "load_terminal_duplicate_repair",
+            "prepare_terminal_duplicate_repair",
+            "repair_format_only_inline_root",
+            "deliver_go_v1",
+            "deliver_no_go",
+            "verify_legacy_go",
+        )
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch.object(self.delivery, "GitHubForge", return_value=object())
+            )
+            operation_mocks = [
+                stack.enter_context(patch.object(self.delivery, operation))
+                for operation in operations
+            ]
+            for name, mode in cases:
+                output = io.StringIO()
+                errors = io.StringIO()
+                with (
+                    self.subTest(name=name),
+                    redirect_stdout(output),
+                    redirect_stderr(errors),
+                ):
+                    status = self.delivery.main([*common, *mode, "7"])
+                self.assertEqual(1, status)
+                self.assertEqual("", output.getvalue())
+                self.assertTrue(errors.getvalue())
+            for operation in operation_mocks:
+                operation.assert_not_called()
+
     def test_v1_corrective_head_publishes_terminal_then_closes_and_labels(
         self,
     ) -> None:
@@ -9697,6 +9905,318 @@ class AuthorTransitionDuplicateStateTests(unittest.TestCase):
             "produce different states for the same result digest",
             str(error.exception),
         )
+
+
+class RenderEquivalentTerminalResumeTests(unittest.TestCase):
+    """A verified byte-divergent terminal carrier is resumed, not republished."""
+
+    delivery: ModuleType
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.delivery = load_module()
+
+    def setUp(self) -> None:
+        from tests.unit import test_review_legacy_history as legacy_history
+
+        self.legacy_history = legacy_history
+        self.fixtures = PrReviewGoDeliveryTests()
+        self.fixtures.delivery = self.delivery
+        self.fixtures.setUp()
+
+    def legacy_terminal_body(self, manifest: Any) -> str:
+        """Render the terminal carrier in the original version-1 wire format."""
+        exchange = self.delivery.review_exchange
+        states, _authors = self.legacy_history.legacy_prefixes(
+            exchange, manifest.state_envelope
+        )
+        original = states[manifest.state_envelope["state_sha256"]]
+        return self.legacy_history.original_document(
+            manifest.terminal_visible_content, original, compressed=False
+        )
+
+    def legacy_terminal_record(
+        self, manifest: Any, identifier: str, submitted_at: str | None
+    ) -> Any:
+        """Build one published byte-divergent terminal record for one manifest."""
+        body = self.legacy_terminal_body(manifest)
+        state = self.delivery.review_exchange.extract_carrier(body)["state"]
+        return self.delivery.ReviewRecord(
+            id=identifier,
+            body=body,
+            head_oid=state["artifact_binding"]["revision"],
+            author="reviewer",
+            viewer_did_author=True,
+            includes_created_edit=False,
+            state="COMMENTED",
+            submitted_at=submitted_at,
+        )
+
+    def assert_byte_divergent_digest_equal(self, manifest: Any, body: str) -> None:
+        """Require a fixture body to differ in bytes but match the digest."""
+        self.assertNotEqual(body, self.delivery.terminal_review_body(manifest))
+        self.assertEqual(
+            manifest.state_envelope["state_sha256"],
+            self.delivery.review_exchange.extract_carrier(body)["state_sha256"],
+        )
+
+    def assert_no_writes(self, forge: FakeForge) -> None:
+        """Require that a failed run made no forge mutation."""
+        self.assertEqual(
+            [],
+            [
+                event
+                for event in forge.events
+                if not event.startswith(("read", "ancestry", "requirements"))
+            ],
+        )
+
+    def test_render_equivalent_terminal_is_resumed_not_republished(self) -> None:
+        """A digest-equal published terminal is adopted without a second record."""
+        thread = self.fixtures.owned_thread()
+        forge = FakeForge(self.delivery, threads=(thread,))
+        manifest = self.fixtures.v1_manifest(thread)
+        self.fixtures.add_history(forge, manifest)
+        published = self.legacy_terminal_record(
+            manifest, "review-legacy-terminal", "2026-01-01T00:01:00Z"
+        )
+        self.assert_byte_divergent_digest_equal(manifest, published.body)
+        forge.reviews.append(published)
+
+        result = self.delivery.deliver_go_v1(forge, self.fixtures.binding(), manifest)
+
+        self.assertEqual("delivered", result.status)
+        self.assertEqual("review-legacy-terminal", result.terminal_review_id)
+        self.assertEqual(0, forge.events.count("terminal"))
+        self.assertEqual(
+            1,
+            len([review for review in forge.reviews if review.id == published.id]),
+        )
+        self.assertIn("labels", forge.events)
+        self.assertEqual({"state:implementation-go", "enhancement"}, forge.labels)
+
+    def test_render_equivalent_terminal_relables_after_cleanup(self) -> None:
+        """A byte-divergent terminal binds closed threads before the label fix."""
+        thread = self.fixtures.owned_thread()
+        forge = FakeForge(self.delivery, threads=(thread,))
+        manifest = self.fixtures.v1_manifest(thread)
+        self.fixtures.add_history(forge, manifest)
+        first = self.delivery.deliver_go_v1(forge, self.fixtures.binding(), manifest)
+        self.assertEqual("delivered", first.status)
+        terminal = next(
+            review for review in forge.reviews if review.id == first.terminal_review_id
+        )
+        divergent = self.legacy_terminal_body(manifest)
+        self.assert_byte_divergent_digest_equal(manifest, divergent)
+        forge.reviews[forge.reviews.index(terminal)] = replace(terminal, body=divergent)
+        forge.labels.add("state:implementation-no-go")
+        forge.events.clear()
+
+        replay = self.delivery.deliver_go_v1(forge, self.fixtures.binding(), manifest)
+
+        self.assertEqual("delivered", replay.status)
+        self.assertEqual(first.terminal_review_id, replay.terminal_review_id)
+        self.assertEqual(0, forge.events.count("terminal"))
+        self.assertEqual(0, forge.events.count("reply:thread-1"))
+        self.assertEqual(0, forge.events.count("resolve:thread-1"))
+        self.assertEqual(["labels"], [e for e in forge.events if e == "labels"])
+        self.assertEqual({"state:implementation-go", "enhancement"}, forge.labels)
+
+
+class TerminalDuplicateRepairTests(unittest.TestCase):
+    """A wedged same-digest terminal pair delivers only with a valid receipt."""
+
+    delivery: ModuleType
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.delivery = load_module()
+
+    def setUp(self) -> None:
+        from tests.unit import test_review_legacy_history as legacy_history
+
+        self.legacy_history = legacy_history
+        self.fixtures = PrReviewGoDeliveryTests()
+        self.fixtures.delivery = self.delivery
+        self.fixtures.setUp()
+
+    def legacy_terminal_body(self, manifest: Any) -> str:
+        """Render the terminal carrier in the original version-1 wire format."""
+        exchange = self.delivery.review_exchange
+        states, _authors = self.legacy_history.legacy_prefixes(
+            exchange, manifest.state_envelope
+        )
+        original = states[manifest.state_envelope["state_sha256"]]
+        return self.legacy_history.original_document(
+            manifest.terminal_visible_content, original, compressed=False
+        )
+
+    def legacy_terminal_record(
+        self, manifest: Any, identifier: str, submitted_at: str | None
+    ) -> Any:
+        """Build one published byte-divergent terminal record for one manifest."""
+        body = self.legacy_terminal_body(manifest)
+        state = self.delivery.review_exchange.extract_carrier(body)["state"]
+        return self.delivery.ReviewRecord(
+            id=identifier,
+            body=body,
+            head_oid=state["artifact_binding"]["revision"],
+            author="reviewer",
+            viewer_did_author=True,
+            includes_created_edit=False,
+            state="COMMENTED",
+            submitted_at=submitted_at,
+        )
+
+    def assert_no_writes(self, forge: FakeForge) -> None:
+        """Require that a failed run made no forge mutation."""
+        self.assertEqual(
+            [],
+            [
+                event
+                for event in forge.events
+                if not event.startswith(("read", "ancestry", "requirements"))
+            ],
+        )
+
+    def wedged_fixture(
+        self, *, duplicate_updates: dict[str, Any] | None = None
+    ) -> tuple[FakeForge, Any, Any]:
+        """Return one forge with two same-digest terminal carriers."""
+        thread = self.fixtures.owned_thread()
+        forge = FakeForge(self.delivery, threads=(thread,))
+        manifest = self.fixtures.v1_manifest(thread)
+        self.fixtures.add_history(forge, manifest)
+        canonical = self.legacy_terminal_record(
+            manifest, "review-canonical", "2026-01-01T00:01:00Z"
+        )
+        duplicate = self.legacy_terminal_record(
+            manifest, "review-duplicate", "2026-01-01T00:02:00Z"
+        )
+        if duplicate_updates is not None:
+            duplicate = replace(duplicate, **duplicate_updates)
+        forge.reviews.extend((canonical, duplicate))
+        return forge, self.fixtures.binding(), manifest
+
+    def test_wedged_terminal_duplicate_needs_a_receipt_then_delivers(self) -> None:
+        """Without a receipt the wedged chain fails; with one it delivers."""
+        wedged, binding, manifest = self.wedged_fixture()
+
+        with self.assertRaises(self.delivery.DeliveryError) as error:
+            self.delivery.deliver_go_v1(wedged, binding, manifest)
+
+        self.assertEqual(
+            "A reviewer round has duplicate reviewer state messages.",
+            str(error.exception),
+        )
+        self.assert_no_writes(wedged)
+
+        forge, binding, manifest = self.wedged_fixture()
+        receipt = self.delivery.prepare_terminal_duplicate_repair(
+            forge, binding, manifest.state_envelope["state_sha256"]
+        )
+        self.assertEqual("review-canonical", receipt["canonical_review_id"])
+        self.assertEqual(["review-duplicate"], receipt["duplicate_review_ids"])
+
+        result = self.delivery.deliver_go_v1(
+            forge, binding, manifest, terminal_duplicate_repair=receipt
+        )
+
+        self.assertEqual("delivered", result.status)
+        self.assertEqual("review-canonical", result.terminal_review_id)
+        self.assertEqual(0, forge.events.count("terminal"))
+        self.assertEqual(2, len(forge.reviews) - 2)
+        self.assertEqual({"state:implementation-go", "enhancement"}, forge.labels)
+
+    def test_terminal_duplicate_repair_rejects_mismatched_evidence(self) -> None:
+        """A stale, foreign, or incomplete receipt fails closed with no writes."""
+        cases: tuple[tuple[str, dict[str, object], dict[str, object]], ...] = (
+            ("different digest", {}, {"state_sha256": "0" * 64}),
+            ("different exchange", {}, {"exchange_id": "exchange-other"}),
+            (
+                "canonical is not the earliest",
+                {},
+                {
+                    "canonical_review_id": "review-duplicate",
+                    "duplicate_review_ids": ["review-canonical"],
+                },
+            ),
+            ("a listed carrier is absent", {}, {"duplicate_review_ids": ["ghost"]}),
+            ("foreign duplicate", {"viewer_did_author": False}, {}),
+            ("edited duplicate", {"includes_created_edit": True}, {}),
+            ("old-head duplicate", {"head_oid": "a" * 40}, {}),
+        )
+        for case, forge_updates, receipt_updates in cases:
+            with self.subTest(case=case):
+                forge, binding, manifest = self.wedged_fixture(
+                    duplicate_updates=forge_updates or None
+                )
+                if forge_updates:
+                    receipt = {
+                        "schema_id": ("athena.pr-review.terminal-duplicate-repair"),
+                        "schema_version": 1,
+                        "binding": self.delivery._binding_dict(binding),
+                        "state_sha256": manifest.state_envelope["state_sha256"],
+                        "exchange_id": manifest.state_envelope["state"]["exchange_id"],
+                        "canonical_review_id": "review-canonical",
+                        "duplicate_review_ids": ["review-duplicate"],
+                    }
+                else:
+                    receipt = self.delivery.prepare_terminal_duplicate_repair(
+                        forge, binding, manifest.state_envelope["state_sha256"]
+                    )
+                receipt = {**receipt, **receipt_updates}
+
+                with self.assertRaises(self.delivery.DeliveryError):
+                    self.delivery.deliver_go_v1(
+                        forge, binding, manifest, terminal_duplicate_repair=receipt
+                    )
+                self.assert_no_writes(forge)
+
+    def test_terminal_duplicate_repair_rejects_a_late_same_digest_carrier(
+        self,
+    ) -> None:
+        """A same-digest record that appears after preparation breaks a receipt."""
+        forge, binding, manifest = self.wedged_fixture()
+        receipt = self.delivery.prepare_terminal_duplicate_repair(
+            forge, binding, manifest.state_envelope["state_sha256"]
+        )
+        forge.reviews.append(
+            self.legacy_terminal_record(
+                manifest, "review-third", "2026-01-01T00:03:00Z"
+            )
+        )
+
+        with self.assertRaises(self.delivery.DeliveryError):
+            self.delivery.deliver_go_v1(
+                forge, binding, manifest, terminal_duplicate_repair=receipt
+            )
+        self.assert_no_writes(forge)
+
+    def test_terminal_duplicate_repair_requires_an_observed_duplicate(self) -> None:
+        """A repair with no observed same-digest duplicate fails closed."""
+        forge, _binding, manifest = self.wedged_fixture()
+        receipt_duplicate = {
+            "schema_id": "athena.pr-review.terminal-duplicate-repair",
+            "schema_version": 1,
+            "binding": self.delivery._binding_dict(_binding),
+            "state_sha256": manifest.state_envelope["state_sha256"],
+            "exchange_id": manifest.state_envelope["state"]["exchange_id"],
+            "canonical_review_id": "review-canonical",
+            "duplicate_review_ids": ["review-duplicate"],
+        }
+        forge.reviews.pop()
+
+        with self.assertRaises(self.delivery.DeliveryError) as error:
+            self.delivery.deliver_go_v1(
+                forge, _binding, manifest, terminal_duplicate_repair=receipt_duplicate
+            )
+
+        self.assertEqual(
+            "The terminal duplicate repair has no matching carriers.",
+            str(error.exception),
+        )
+        self.assert_no_writes(forge)
 
 
 if __name__ == "__main__":
