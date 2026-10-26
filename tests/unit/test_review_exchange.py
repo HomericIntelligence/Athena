@@ -184,7 +184,8 @@ class ReviewExchangeTests(unittest.TestCase):
                 {
                     "finding_id": "F-001",
                     "kind": action,
-                    "evidence": evidence or ["The current artifact was checked."],
+                    "evidence": evidence
+                    or [f"The current artifact was checked in round {round_number}."],
                     "closure_condition": closure_condition,
                 }
             ],
