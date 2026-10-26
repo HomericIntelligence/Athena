@@ -145,14 +145,23 @@ rebase or conflict resolution changes candidate content, update the applicable r
 ## Executable carriers
 
 Use [`issue_exchange.py`](../../skills/review-exchange/SKILL.md) as the only issue-exchange parser and
-state-transition mechanism. Normalize one current issue snapshot and run `inspect`. Use its
-`state_sha256` and `next_action` to select the next permitted operation. Do not edit or reinterpret a
-carrier.
+state-transition mechanism. Build one current issue snapshot with
+[`mk_issue_snapshot.py`](../../skills/review-exchange/scripts/mk_issue_snapshot.py) and run
+`inspect` with it. That producer owns every normalization rule. Do not build, normalize, or edit a
+snapshot in an agent session. Use the snapshot `state_sha256` and `next_action` to select the next
+permitted operation. Do not edit or reinterpret a carrier.
 
 The snapshot producer must exhaust the provider's bounded comment pagination. It must include all
-top-level comments and set `comments_complete` to `true`. Continue pagination in bounded batches. If some comments remain inaccessible, prepare useful
-local analysis and state its coverage. Withhold only a publication whose identity or authority
-depends on the missing comments.
+top-level comments and set `comments_complete` to `true`. The producer writes no snapshot when a
+bound stops the read. The reducer rejects a snapshot whose comment collection is not complete. Do not
+continue pagination by hand and do not work from partial coverage.
+
+Migration: a plan carrier that a historic ad-hoc producer published can report
+`requirements_drift` or a `plan_requirements_rebind` diagnostic under the canonical producer. A
+plan-only epoch has no review comment, so a reframe route cannot apply. The author confirms that the
+plan comment is the single actor-owned plan and that the issue has no review comment. Then either
+delete the stale plan comment and prepare a new plan, or run `prepare-plan` for the ready rebind
+update. Publish, read the comment again, and verify it. A completed exchange needs no action.
 
 The plan comment contains visible plan content and exactly one final `author-event` carrier. The
 review comment contains visible review content and exactly one final `state` carrier. The visible
@@ -164,7 +173,7 @@ For each plan or review publication:
 
 1. Run `inspect` and the applicable `prepare-plan` or `prepare-review` command.
 2. For a read-only invocation, return the prepared result and stop.
-3. Before a write, get a fresh normalized snapshot and prepare the operation again.
+3. Before a write, run a fresh producer snapshot and prepare the operation again.
 4. Require the same precondition and exact operation.
 5. Make only the returned `create` or `update` operation.
 6. Read the issue again and run `verify-publication`.

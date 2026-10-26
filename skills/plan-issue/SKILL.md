@@ -139,8 +139,10 @@ if you did not run it. Do not create a prose-string test to make the plan appear
 
 ## Exchange projection
 
-1. Exhaust bounded provider pagination for issue comments. Normalize the current issue snapshot,
-   set `comments_complete` to `true`, and run `issue_exchange.py inspect`.
+1. Build the issue snapshot with
+   [`mk_issue_snapshot.py`](../review-exchange/scripts/mk_issue_snapshot.py). Then run
+   `issue_exchange.py inspect` with that snapshot. A hand-built or hand-edited snapshot is not a
+   valid input.
 2. For a normal plan, use `prepare_plan`. If another transition is due, invoke its owning workflow
    within existing task authority, then resume when planning is applicable.
 3. Declare the plan targets with the supported target kinds in the issue-planning contract.
@@ -151,10 +153,11 @@ if you did not run it. Do not create a prose-string test to make the plan appear
 5. Give `scope_change_reason` if and only if the declared target set changes.
 6. Run `issue_exchange.py prepare-plan` with the visible plan and author event.
 7. For `--draft`, return the prepared result and stop.
-8. Before publication, get a fresh snapshot and prepare the operation again.
+8. Before publication, run a fresh producer snapshot and prepare the operation again.
 9. Require the same precondition and exact operation. If they differ, withhold the update.
 10. Make only the returned comment create or update operation.
-11. Read the issue again and run `issue_exchange.py verify-publication`.
+11. Read the issue again with a fresh producer snapshot and run `issue_exchange.py
+    verify-publication`.
 12. After verified publication, continue with reviewer assessment within task authority.
 13. If the write or readback result is indeterminate, report `unknown_outcome`. Preserve the
     prepared operation and available receipt evidence. Reconcile exact readback before a retry.
@@ -190,7 +193,18 @@ decision remains unresolved. Do not infer a response or approval from old prose.
 - Do not start implementation during planning.
 - Do not deliver changes beyond the canonical-plan comment.
 - Do not claim that a validation command passed if you did not run it.
+- Do not build, normalize, or edit an issue snapshot in this skill. Only
+  [`mk_issue_snapshot.py`](../review-exchange/scripts/mk_issue_snapshot.py) builds one.
 - Do not overwrite content from another actor if ownership is ambiguous.
+
+## Migration
+
+A plan carrier that a historic ad-hoc producer published can report `requirements_drift` or a
+`plan_requirements_rebind` diagnostic under the canonical producer. A plan-only epoch has no review
+comment, so a needs-reframe route cannot apply. The author confirms that the plan comment is the
+single actor-owned plan, deletes that plan comment through the invoking workflow, builds a fresh
+producer snapshot, prepares a new plan, and publishes and verifies it. A completed exchange needs no
+action.
 
 ## Result
 

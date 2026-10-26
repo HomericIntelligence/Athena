@@ -544,6 +544,60 @@ def _withheld_inspection(
     }
 
 
+def _is_rebindable_plan_carrier(
+    snapshot: Mapping[str, Any],
+    plan: Mapping[str, Any],
+    event: Mapping[str, Any],
+) -> bool:
+    """Return true when one actor-owned plan carrier can rebind its requirements.
+
+    A carrier that a historic ad-hoc producer published can bind a requirements
+    digest that no canonical snapshot reproduces. The issue content did not
+    change. The carrier is rebindable only when it is the single actor-owned
+    initial plan carrier, it binds the current target, and no review carrier
+    depends on it. Any other drift keeps the withheld result.
+    """
+    return bool(
+        event["target"] == _core_target(snapshot)
+        and _is_initial_plan_event(plan, event)
+        and not _role_comments(snapshot, REVIEW_MARKERS)
+        and [comment["id"] for comment in _role_comments(snapshot, PLAN_MARKERS)]
+        == [plan["id"]]
+        and plan["author"]["id"] == snapshot["actor"]["id"]
+    )
+
+
+def _rebindable_inspection(
+    snapshot: Mapping[str, Any],
+    requirements_sha256: str,
+    plan: Mapping[str, Any],
+    plan_envelope: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return the preparation view for one permitted plan requirements rebind."""
+    artifact = _artifact_summary(plan)
+    return {
+        "schema_id": INSPECT_SCHEMA_ID,
+        "schema_version": SCHEMA_VERSION,
+        "status": "ready",
+        "requirements_sha256": requirements_sha256,
+        "precondition_sha256": _precondition(snapshot, requirements_sha256, plan, None),
+        "plan": artifact,
+        "review": None,
+        "envelope": copy.deepcopy(plan_envelope),
+        "state": copy.deepcopy(plan_envelope["state"]),
+        "state_sha256": plan_envelope["state_sha256"],
+        "next_action": "prepare_plan",
+        "diagnostics": [
+            _diagnostic(
+                "plan_requirements_rebind",
+                "The actor-owned plan carrier binds an earlier requirements "
+                "digest. Republish that same plan carrier from a canonical "
+                "producer snapshot.",
+            )
+        ],
+    }
+
+
 def _pending_reframe(
     snapshot: Mapping[str, Any],
     requirements_sha256: str,
@@ -712,6 +766,10 @@ def inspect_snapshot(
                 "diagnostics": [],
             }
         if plan_state["requirements_sha256"] != requirements_sha256:
+            if _is_rebindable_plan_carrier(snapshot, plan, plan_state):
+                return _rebindable_inspection(
+                    snapshot, requirements_sha256, plan, plan_envelope
+                )
             return _withheld_inspection(
                 snapshot,
                 requirements_sha256,
@@ -1413,6 +1471,74 @@ def _verified_replanned_context(
     return previous, plan, review, plan_envelope
 
 
+def _prepare_plan_rebind(
+    snapshot: Mapping[str, Any],
+    content: str,
+    event: Mapping[str, Any],
+    inspection: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Prepare one canonical republish of a drifted actor-owned plan carrier."""
+    plan_state = cast(Mapping[str, Any], inspection["state"])
+    current_plan_comment = _find_comment(snapshot, inspection["plan"])
+    if current_plan_comment is None:
+        raise ProtocolError("A plan rebind requires the retained plan comment.")
+    if _scope_targets(event["scope"]) != plan_state["scope"]:
+        raise ProtocolError("A plan rebind keeps the retained plan target set.")
+    if event["responses"] != [] or event["scope_change_reason"] is not None:
+        raise ProtocolError(
+            "A plan rebind republishes the same plan and answers no prior finding."
+        )
+    target = _core_target(snapshot)
+    exchange_id = (
+        "issue-"
+        + review_exchange.sha256_json(
+            {
+                "target": target,
+                "requirements_sha256": inspection["requirements_sha256"],
+                "supersedes_state_sha256": inspection["state_sha256"],
+            }
+        )[:24]
+    )
+    visible = _visible(PLAN_MARKER, content)
+    visible_sha256 = review_exchange.sha256_text(visible)
+    if visible_sha256 != plan_state["artifact_binding"]["visible_content_sha256"]:
+        raise ProtocolError(
+            "A plan rebind keeps the retained visible plan content exactly."
+        )
+    author_record = {
+        "event_type": "author_response",
+        "exchange_id": exchange_id,
+        "prior_state_sha256": None,
+        "target": target,
+        "requirements_sha256": inspection["requirements_sha256"],
+        "artifact_binding": {
+            "revision": current_plan_comment["id"],
+            "sha256": visible_sha256,
+            "visible_content_sha256": visible_sha256,
+        },
+        "scope": copy.deepcopy(list(plan_state["scope"])),
+        "scope_change_reason": None,
+        "responses": [],
+    }
+    author_envelope = review_exchange.make_envelope(
+        author_record, review_exchange.AUTHOR_EVENT_SCHEMA_ID
+    )
+    body = review_exchange.render_carrier(visible, author_envelope, "author-event")
+    return _prepared_result(
+        inspection=inspection,
+        snapshot=snapshot,
+        state_envelope=None,
+        operation=_operation(artifact="plan", body=body, comment=current_plan_comment),
+        diagnostics=[
+            _diagnostic(
+                "plan_requirements_rebind",
+                "The prepared update republishes the retained plan carrier under "
+                "the current canonical requirements digest.",
+            )
+        ],
+    )
+
+
 def prepare_plan(value: object) -> dict[str, Any]:
     """Prepare one create or update for the canonical actor-owned plan."""
     snapshot, content, raw_event = _prepare_input(value, "prepare-plan request")
@@ -1537,6 +1663,11 @@ def prepare_plan(value: object) -> dict[str, Any]:
         )
         state_envelope = None
     else:
+        if inspection["state"] is not None and (
+            inspection["state"]["requirements_sha256"]
+            != inspection["requirements_sha256"]
+        ):
+            return _prepare_plan_rebind(snapshot, content, event, inspection)
         raw_author_event = {
             "event_type": "author_response",
             "exchange_id": previous["state"]["exchange_id"],
