@@ -1014,6 +1014,23 @@ a GO for one batch is not approval of the full task. If a provider body is too s
 prepare smaller batches. Keep actual provider limits. Refresh affected batches when the source
 changes and verify the complete set again before delivery.
 
+Use `verify-finding-batch` before any inline batch write. Its input is one canonical JSON document
+with `schema_id` `athena.review-exchange.finding-batch`, `schema_version` `1`, an `exchange_id`, and
+a `comments` list. Each comment has a repository-relative `path`, a `side` of `LEFT` or `RIGHT`, a
+positive `line`, and a `body` within the GitHub body limit. An empty `comments` list is valid.
+
+The placement rule is the same for every caller. Each body must contain exactly one
+`<!-- HomericIntelligence:review-finding:v1 exchange=<exchange-id> id=F-NNN -->` marker line. The
+marker must be the final line and a top-level Markdown line, and its exchange ID must equal the
+batch `exchange_id`. The helper rejects a malformed or repeated marker, a marker that is not final,
+a marker inside an open Markdown block, a marker that is not a top-level line, and a comment with no
+marker. Finding IDs must be unique and ordered ascending. The comment count must not exceed
+`MAX_FINDINGS`.
+
+The result is `athena.review-exchange.finding-batch-result` version `1` with the `exchange_id`,
+`comment_count`, ordered `finding_ids`, and `bodies_sha256`. A nonzero exit prints one diagnostic
+and no result. A nonzero exit means nothing was published.
+
 ## Reassessment and continuation
 
 A corrective reviewer event can include the optional `reassessment` string. It records the evidence

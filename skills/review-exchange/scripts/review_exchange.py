@@ -15,7 +15,7 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import nullcontext
 from hashlib import sha256
 from html.parser import HTMLParser
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, NoReturn, cast
 
 sys.dont_write_bytecode = True
@@ -60,6 +60,13 @@ HEX_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 FINDING_ID = re.compile(r"F-(?:00[1-9]|0[1-9][0-9]|100)\Z")
 NATIVE_FINDING_ID = re.compile(r"native:[A-Za-z0-9._~:/+=-]{1,256}\Z")
 CARRIER_PREFIX = "<!-- HomericIntelligence:review-exchange:"
+FINDING_MARKER_PREFIX = "<!-- HomericIntelligence:review-finding:"
+FINDING_MARKER = re.compile(
+    r"<!-- HomericIntelligence:review-finding:v1 "
+    r"exchange=([^\s]+) id=(F-(?:00[1-9]|0[1-9][0-9]|100)) -->"
+)
+FINDING_BATCH_SCHEMA_ID = "athena.review-exchange.finding-batch"
+FINDING_BATCH_RESULT_SCHEMA_ID = "athena.review-exchange.finding-batch-result"
 COMPRESSED_CARRIER_FENCE = "athena-json-zlib-base64-v1"
 CARRIER_PATTERN = re.compile(
     r"^<!-- HomericIntelligence:review-exchange:v1 "
@@ -3690,6 +3697,112 @@ def top_level_markdown_lines(
     return lines
 
 
+def verify_finding_marker(body: str) -> tuple[str, str] | None:
+    """Return the exchange and finding identity of one correctly placed marker.
+
+    The marker is the only protocol rule for an inline finding root. It must be
+    the final line of the body and a top-level Markdown line. The function
+    returns ``None`` when the body carries no marker.
+    """
+    if not isinstance(body, str):
+        raise ProtocolError("The review-finding body must be text.")
+    lines = body.splitlines()
+    marker_lines = [
+        (index, line, FINDING_MARKER.fullmatch(line))
+        for index, line in enumerate(lines)
+        if FINDING_MARKER_PREFIX in line
+    ]
+    if not marker_lines:
+        return None
+    if len(marker_lines) != 1 or marker_lines[0][2] is None:
+        raise ProtocolError(
+            "The Athena review-finding marker is malformed or repeated."
+        )
+    index, marker_line, match = marker_lines[0]
+    if index != len(lines) - 1:
+        raise ProtocolError("The Athena review-finding marker is not final.")
+    try:
+        top_level_lines = top_level_markdown_lines(body, require_closed=True)
+    except ProtocolError as error:
+        raise ProtocolError(
+            "The Athena review-finding marker is inside an open Markdown block."
+        ) from error
+    if not any(line == marker_line for _, _, line in top_level_lines):
+        raise ProtocolError("The Athena review-finding marker is not a top-level line.")
+    assert match is not None
+    return cast(tuple[str, str], match.groups())
+
+
+def _finding_batch_comment(value: object, exchange_id: str) -> dict[str, Any]:
+    comment = _object(
+        value, "finding-batch comment", frozenset({"path", "side", "line", "body"})
+    )
+    path = _string(comment["path"], "finding-batch comment path")
+    if path.startswith("/") or ".." in PurePosixPath(path).parts:
+        raise ProtocolError("A finding-batch comment path is not repository-relative.")
+    _enum(comment["side"], "finding-batch comment side", frozenset({"LEFT", "RIGHT"}))
+    _integer(comment["line"], "finding-batch comment line", minimum=1)
+    body = _string(comment["body"], "finding-batch comment body")
+    if len(body.encode("utf-8")) > PROVIDER_BODY_LIMITS["github"]:
+        raise ProtocolError("A finding-batch comment exceeds the GitHub body limit.")
+    marker = verify_finding_marker(body)
+    if marker is None or marker[0] != exchange_id:
+        raise ProtocolError(
+            "A finding-batch comment has no exact exchange finding marker."
+        )
+    return comment
+
+
+def verify_finding_batch(document: object) -> dict[str, Any]:
+    """Verify one inline finding batch before any provider write.
+
+    The function enforces the marker placement rule, the batch bounds, and the
+    finding order. A malformed batch is rejected while it is still correctable.
+    """
+    batch = _object(
+        document,
+        "finding batch",
+        frozenset({"schema_id", "schema_version", "exchange_id", "comments"}),
+    )
+    if (
+        batch["schema_id"] != FINDING_BATCH_SCHEMA_ID
+        or type(batch["schema_version"]) is not int
+        or batch["schema_version"] != SCHEMA_VERSION
+    ):
+        raise ProtocolError("The finding-batch schema is not supported.")
+    exchange_id = _string(batch["exchange_id"], "finding-batch exchange ID")
+    raw_comments = batch["comments"]
+    if not isinstance(raw_comments, list):
+        raise ProtocolError("The finding batch must contain a comment list.")
+    if len(raw_comments) > MAX_FINDINGS:
+        raise ProtocolError("The finding batch contains too many inline findings.")
+    finding_ids: list[str] = []
+    for raw_comment in raw_comments:
+        comment = _finding_batch_comment(raw_comment, exchange_id)
+        assert isinstance(comment["body"], str)
+        finding_ids.append(verify_finding_marker(comment["body"])[1])  # type: ignore[index]
+    if finding_ids != sorted(finding_ids) or len(finding_ids) != len(set(finding_ids)):
+        raise ProtocolError(
+            "Finding-batch finding IDs must be unique and ordered by finding ID."
+        )
+    digest = sha256()
+    for raw_comment in raw_comments:
+        comment = _object(
+            raw_comment,
+            "finding-batch comment",
+            frozenset({"path", "side", "line", "body"}),
+        )
+        digest.update(canonical_json(comment).encode("utf-8"))
+    return {
+        "schema_id": FINDING_BATCH_RESULT_SCHEMA_ID,
+        "schema_version": SCHEMA_VERSION,
+        "exchange_id": exchange_id,
+        "comment_count": len(finding_ids),
+        "finding_ids": finding_ids,
+        "bodies_sha256": digest.hexdigest(),
+    }
+
+
 def write_utf8_stdout(output: str) -> None:
     """Write exact UTF-8 output and normalize local stream failures."""
     try:
@@ -4057,6 +4170,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "render",
         "prepare-batches",
         "verify-batches",
+        "verify-finding-batch",
     ):
         subparser = subparsers.add_parser(command)
         subparser.add_argument(
@@ -4088,6 +4202,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 output = canonical_json(reduce_request(value)) + "\n"
             elif arguments.command == "verify":
                 output = canonical_json(verify_envelope(value)) + "\n"
+            elif arguments.command == "verify-finding-batch":
+                output = canonical_json(verify_finding_batch(value)) + "\n"
             else:
                 visible, envelope, kind = _parse_render_request(value)
                 output = render_carrier(visible, envelope, kind)
