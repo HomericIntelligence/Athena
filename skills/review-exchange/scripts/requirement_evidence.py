@@ -268,7 +268,9 @@ def validate_inventory(
         "sections": [_section(item) for item in body["sections"]],
         "expected_cells": expected_cells(body),
     }
-    identifiers = [cast(dict[str, str], item)["id"] for item in normalized["requirements"]]
+    identifiers = [
+        cast(dict[str, str], item)["id"] for item in normalized["requirements"]
+    ]
     if len(set(identifiers)) != len(identifiers):
         _fail("The expected inventory has a duplicate requirement identifier.")
     sections = [cast(dict[str, Any], item)["id"] for item in normalized["sections"]]
@@ -647,11 +649,11 @@ def compare_sections(
         }
     grouped = _prior_rows(prior)
     changed_dependencies: list[dict[str, str]] = []
-    changed_names: set[str] = set()
+    prior_by_section: dict[str, dict[str, str]] = {}
+    local_by_section: dict[str, list[dict[str, str]]] = {}
     for section in sections:
-        prior_rows = grouped.get(section["id"], [])
         prior_identities: dict[str, str] = {}
-        for row in prior_rows:
+        for row in grouped.get(section["id"], []):
             dependencies = row.get("dependencies")
             if type(dependencies) is not dict or not dependencies:
                 continue
@@ -659,39 +661,63 @@ def compare_sections(
                 if not (type(value) is str and len(value) == HEX_DIGEST_LENGTH):
                     _fail("A prior dependency identity is not a content digest.")
                 prior_identities[name] = value
+        prior_by_section[section["id"]] = prior_identities
         if not prior_identities:
+            continue
+        local_changes = [
+            {"name": name, "old": prior_identities.get(name, ""), "new": value}
+            for name, value in sorted(section["dependencies"].items())
+            if prior_identities.get(name) != value
+        ]
+        local_changes.extend(
+            {"name": name, "old": prior_identities[name], "new": ""}
+            for name in sorted(prior_identities)
+            if name not in section["dependencies"]
+        )
+        if local_changes:
+            local_by_section[section["id"]] = local_changes
+            changed_dependencies.extend(local_changes)
+    # Resolve the declared dependency graph to a fixed point before classifying,
+    # so the result does not depend on the order of section identifiers.
+    changed_names = {
+        item["name"] for changes in local_by_section.values() for item in changes
+    }
+    dependent_by_section: dict[str, list[str]] = {}
+    grew = True
+    while grew:
+        grew = False
+        for section in sections:
+            section_id = section["id"]
+            if (
+                not prior_by_section[section_id]
+                or section_id in local_by_section
+                or section_id in dependent_by_section
+            ):
+                continue
+            dependent = sorted(
+                name for name in section["depends_on"] if name in changed_names
+            )
+            if dependent:
+                dependent_by_section[section_id] = dependent
+                changed_names.update(section["paths"])
+                grew = True
+    for section in sections:
+        section_id = section["id"]
+        prior_rows = grouped.get(section_id, [])
+        if not prior_by_section[section_id]:
             repeated.append(
                 {
-                    "section": section["id"],
+                    "section": section_id,
                     "cause": {"kind": "no_verified_dependency_evidence"},
                     "changed_dependencies": [],
                 }
             )
             continue
-        local_changes = [
-            {
-                "name": name,
-                "old": prior_identities[name],
-                "new": value,
-            }
-            for name, value in sorted(section["dependencies"].items())
-            if name in prior_identities and prior_identities[name] != value
-        ]
-        local_changes.extend(
-            {
-                "name": name,
-                "old": "",
-                "new": section["dependencies"][name],
-            }
-            for name in sorted(section["dependencies"])
-            if name not in prior_identities
-        )
-        if local_changes:
-            changed_dependencies.extend(local_changes)
-            changed_names.update(item["name"] for item in local_changes)
+        if section_id in local_by_section:
+            local_changes = local_by_section[section_id]
             repeated.append(
                 {
-                    "section": section["id"],
+                    "section": section_id,
                     "cause": {
                         "kind": "dependency_changed",
                         "changed": [item["name"] for item in local_changes],
@@ -700,9 +726,18 @@ def compare_sections(
                 }
             )
             continue
-        dependent = sorted(
-            name for name in section["depends_on"] if name in changed_names
-        )
+        if section_id in dependent_by_section:
+            repeated.append(
+                {
+                    "section": section_id,
+                    "cause": {
+                        "kind": "dependency_changed",
+                        "changed": dependent_by_section[section_id],
+                    },
+                    "changed_dependencies": [],
+                }
+            )
+            continue
         corrected = sorted(
             {
                 finding_id
@@ -711,25 +746,16 @@ def compare_sections(
                 if finding_id in section["corrected_findings"]
             }
         )
-        if dependent:
-            repeated.append(
-                {
-                    "section": section["id"],
-                    "cause": {"kind": "dependency_changed", "changed": dependent},
-                    "changed_dependencies": [],
-                }
-            )
-            continue
         if corrected:
             repeated.append(
                 {
-                    "section": section["id"],
+                    "section": section_id,
                     "cause": {"kind": "finding_corrected", "finding_id": corrected[0]},
                     "changed_dependencies": [],
                 }
             )
             continue
-        retained.append(section["id"])
+        retained.append(section_id)
     unique_changes = {item["name"]: item for item in changed_dependencies}
     return {
         "retained": sorted(retained),

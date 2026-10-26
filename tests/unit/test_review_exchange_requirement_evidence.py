@@ -282,6 +282,7 @@ class RequirementEvidenceExchangeTests(unittest.TestCase):
                     "retained_sections": ["S2"],
                     "repeated_sections": ["S1"],
                     "changed_dependencies": ["a.py"],
+                    "causes": ["S1:finding_corrected:F-001"],
                 },
             }
         )
@@ -322,6 +323,7 @@ class RequirementEvidenceExchangeTests(unittest.TestCase):
                     "retained_sections": [],
                     "repeated_sections": ["S1", "S2"],
                     "changed_dependencies": ["a.py", "b.py"],
+                    "causes": ["S1:dependency_changed", "S2:dependency_changed"],
                 },
             }
         )
@@ -361,12 +363,129 @@ class RequirementEvidenceExchangeTests(unittest.TestCase):
                     "retained_sections": ["S2"],
                     "repeated_sections": ["S1"],
                     "changed_dependencies": ["a.py"],
+                    "causes": ["S1:finding_corrected:F-001"],
                 },
             }
         )
         with self.assertRaises(exchange.ProtocolError) as context:
             reduce(cast(dict[str, Any], answer), state)
         assert "retained requirement evidence inventory" in str(context.exception)
+
+    def _corrective_context(self) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Return the state that awaits a corrective reviewer assessment."""
+        first = record(first=rows(result="missing_coverage", finding_ids=["F-001"]))
+        state = cast(
+            dict[str, Any],
+            reduce(initial_event(findings=[finding()], requirement_evidence=first))[
+                "envelope"
+            ],
+        )
+        answer = exchange._continued_author_event(
+            {
+                "event_type": "author_response",
+                "exchange_id": "exchange-7",
+                "prior_state_sha256": state["state_sha256"],
+                "artifact_binding": artifact("revision-2"),
+                "scope": ["path:a.py", "path:b.py"],
+                "scope_change_reason": None,
+                "responses": [
+                    {
+                        "finding_id": "F-001",
+                        "kind": "fix",
+                        "evidence": ["The correction is in revision-2."],
+                        "tradeoff": None,
+                    }
+                ],
+            }
+        )
+        awaiting = cast(
+            dict[str, Any], reduce(cast(dict[str, Any], answer), state)["envelope"]
+        )
+        return awaiting, first
+
+    def _corrective_event(
+        self, awaiting: dict[str, Any], **changes: Any
+    ) -> dict[str, Any]:
+        event: dict[str, Any] = {
+            "event_type": "reviewer_assessment",
+            "exchange_id": "exchange-7",
+            "prior_state_sha256": awaiting["state_sha256"],
+            "round": 2,
+            "artifact_binding": artifact("revision-2"),
+            "scope": ["path:a.py", "path:b.py"],
+            "coverage_complete": True,
+            "responses": [
+                {
+                    "finding_id": "F-001",
+                    "kind": "resolve",
+                    "evidence": ["The failing case now returns 1."],
+                    "closure_condition": None,
+                }
+            ],
+            "new_findings": [],
+            "stop_reason": None,
+        }
+        event.update(changes)
+        return event
+
+    def test_a_corrective_round_replaces_the_requirement_evidence(self) -> None:
+        awaiting, first = self._corrective_context()
+        replacement = record()
+        result = reduce(
+            self._corrective_event(awaiting, requirement_evidence=replacement),
+            awaiting,
+        )
+        state = cast(dict[str, Any], result["envelope"]["state"])
+        assert (
+            state["requirement_evidence"]["record_sha256"]
+            == (replacement["record_sha256"])
+        )
+        assert replacement["record_sha256"] != first["record_sha256"]
+
+    def test_a_corrective_round_rejects_a_partial_findings_batch(self) -> None:
+        awaiting, _ = self._corrective_context()
+        partial = record(
+            first=rows(result="missing_coverage", finding_ids=["F-001"]),
+            second=rows(
+                section="S2", result="incorrect_implementation", finding_ids=["F-002"]
+            ),
+        )
+        with self.assertRaises(exchange.ProtocolError) as context:
+            reduce(
+                self._corrective_event(
+                    awaiting,
+                    coverage_complete=False,
+                    responses=[
+                        {
+                            "finding_id": "F-001",
+                            "kind": "still_present",
+                            "evidence": ["The failing case still returns 0."],
+                            "closure_condition": None,
+                        }
+                    ],
+                    requirement_evidence=partial,
+                ),
+                awaiting,
+            )
+        assert "omits material findings" in str(context.exception)
+
+    def test_a_corrective_round_must_replace_the_retained_record(self) -> None:
+        awaiting, _ = self._corrective_context()
+        with self.assertRaises(exchange.ProtocolError) as context:
+            reduce(self._corrective_event(awaiting), awaiting)
+        assert "must replace the retained" in str(context.exception)
+
+    def test_a_corrective_round_rejects_evidence_for_other_requirements(
+        self,
+    ) -> None:
+        awaiting, _ = self._corrective_context()
+        foreign = dict(record())
+        foreign["requirements_sha256"] = digest("other-requirements")
+        with self.assertRaises(exchange.ProtocolError):
+            reduce(
+                self._corrective_event(awaiting, requirement_evidence=foreign),
+                awaiting,
+            )
 
     def test_signature_only_rewrite_binds_the_new_commit(self) -> None:
         complete = record()

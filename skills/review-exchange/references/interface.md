@@ -231,11 +231,12 @@ An author response may carry `coverage_changes`:
 | `retained_sections` | List of retained review section identifiers |
 | `repeated_sections` | List of repeated review section identifiers |
 | `changed_dependencies` | List of changed dependency identifiers |
+| `causes` | List of `section:kind[:finding]` strings, one for each repeated section |
 
-The digest must equal the retained inventory digest of the state. Coverage stays complete only when
-at least one section is retained and the requirements, declared scope, and artifact binding did not
-change. A state without a requirement-evidence record keeps the prior rule: each changed artifact
-invalidates coverage.
+The digest must equal the retained inventory digest of the state. The accepted author event keeps
+this record, so the retained sections and the cause of each repeat stay observable. A changed
+artifact or declared scope always invalidates coverage, and the next reviewer assessment sets it
+again.
 
 The accepted-event ledger starts with the initial reviewer assessment or reframe. It contains at
 most 509 events. The helper replays the complete ledger, verifies each prior-state binding, and

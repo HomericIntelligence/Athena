@@ -1425,47 +1425,6 @@ def local_immutable_objects_available(base_oid: str, head_oid: str) -> bool:
     return True
 
 
-def dependency_content_identities(
-    paths: Sequence[str],
-    snapshot: MaterializedSnapshot | None,
-    *,
-    cwd: Path | None = None,
-) -> dict[str, str]:
-    """Return one content identity for each immutable dependency path.
-
-    The identity is the immutable Git blob object identity of the reviewed head
-    tree. A path that is not a blob, such as a deletion or a submodule, uses its
-    immutable object type, so a logical content change is visible to the
-    requirement-to-evidence comparison.
-    """
-    identities: dict[str, str] = {}
-    for path in paths:
-        entry = _git_tree_entry(path, snapshot, cwd=cwd)
-        identities[path] = sha256(
-            b"athena-pr-review-dependency-v1\0"
-            + entry.encode("utf-8", errors="surrogateescape")
-        ).hexdigest()
-    return identities
-
-
-def _git_tree_entry(
-    path: str, snapshot: MaterializedSnapshot | None, *, cwd: Path | None
-) -> str:
-    """Return one immutable tree entry identity for a dependency path."""
-    arguments = [
-        "rev-parse",
-        "--verify",
-        f"HEAD^{{tree}}:{path}",
-    ]
-    try:
-        value = git_bytes(
-            *arguments, cwd=snapshot.source_path if snapshot is not None else cwd
-        )
-    except (OSError, RuntimeError):
-        return f"{path}:absent"
-    return f"{path}:{value.decode('utf-8', errors='replace').strip()}"
-
-
 def strict_changed_paths(
     metadata: dict[str, Any],
     expected: tuple[str, str],
@@ -1832,10 +1791,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if source_snapshot is not None:
         evidence["source_snapshot"] = source_snapshot.as_json()
-    if changed_path_manifest is not None:
-        evidence["dependency_identities"] = dependency_content_identities(
-            changed_path_manifest.paths, source_snapshot
-        )
     print(json.dumps(evidence, sort_keys=True))
     return 0
 

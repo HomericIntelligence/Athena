@@ -482,14 +482,22 @@ class TestSectionComparison:
                 "id": "S1",
                 "paths": ["a.py"],
                 "depends_on": [],
-                "dependencies": {"a.py": digest("a-2"), "b.py": digest("b-1")},
+                "dependencies": {
+                    "a.py": digest("a-2"),
+                    "b.py": digest("b-1"),
+                    "c.py": digest("c-1"),
+                },
                 "corrected_findings": [],
             },
             {
                 "id": "S2",
                 "paths": ["b.py"],
                 "depends_on": ["a.py"],
-                "dependencies": {"a.py": digest("a-2"), "b.py": digest("b-1")},
+                "dependencies": {
+                    "a.py": digest("a-2"),
+                    "b.py": digest("b-1"),
+                    "c.py": digest("c-1"),
+                },
                 "corrected_findings": [],
             },
         ]
@@ -501,6 +509,81 @@ class TestSectionComparison:
         assert comparison["changed_dependencies"] == [
             {"name": "a.py", "old": digest("a-1"), "new": digest("a-2")}
         ]
+        assert comparison["retained"] == []
+
+    def test_a_removed_dependency_repeats_the_section(self) -> None:
+        prior = build_record()
+        current = current_sections()
+        current[0]["dependencies"] = {"a.py": PATHS["a.py"]}
+        comparison = evidence.compare_sections(prior, current)
+        repeated = {item["section"]: item for item in comparison["repeated"]}
+        assert repeated["S1"]["cause"] == {
+            "kind": "dependency_changed",
+            "changed": ["b.py", "c.py"],
+        }
+        assert {
+            "name": "b.py",
+            "old": PATHS["b.py"],
+            "new": "",
+        } in repeated["S1"]["changed_dependencies"]
+        assert "S1" not in comparison["retained"]
+
+    def test_a_dependent_that_sorts_first_still_repeats_with_its_dependency(
+        self,
+    ) -> None:
+        sections = [
+            {"id": "docs", "paths": ["d.md"], "depends_on": ["s.py"]},
+            {"id": "src", "paths": ["s.py"], "depends_on": []},
+        ]
+        before = {"d.md": digest("d-1"), "s.py": digest("s-1")}
+        frozen = cast(Any, evidence).build_inventory(
+            requirements_binding={
+                "kind": "issue",
+                "identity": "HomericIntelligence/Athena#288",
+                "content_sha256": digest("requirements"),
+            },
+            artifact_binding={
+                "kind": "commit",
+                "identity": "1" * 40,
+                "content_sha256": digest("artifact-1"),
+            },
+            scope_binding={"paths": ["d.md", "s.py"], "sha256": digest("scope-1")},
+            requirements=[{"id": "R1", "source": "issue:acceptance:1"}],
+            sections=sections,
+        )
+        prior_rows = [
+            {
+                "requirement": "R1",
+                "section": section["id"],
+                "surface": surface,
+                "result": "covered",
+                "reason": None,
+                "evidence": ["s.py:1"],
+                "finding_ids": [],
+                "dependencies": {section["paths"][0]: before[section["paths"][0]]},
+            }
+            for section in sections
+            for surface in evidence.SURFACES
+        ]
+        prior = cast(Any, evidence).build_record(inventory=frozen, rows=prior_rows)
+        current = [
+            {
+                **sections[0],
+                "dependencies": {"d.md": before["d.md"]},
+                "corrected_findings": [],
+            },
+            {
+                **sections[1],
+                "dependencies": {"s.py": digest("s-2")},
+                "corrected_findings": [],
+            },
+        ]
+        comparison = evidence.compare_sections(prior, current)
+        repeated = {item["section"]: item["cause"] for item in comparison["repeated"]}
+        assert repeated == {
+            "docs": {"kind": "dependency_changed", "changed": ["s.py"]},
+            "src": {"kind": "dependency_changed", "changed": ["s.py"]},
+        }
         assert comparison["retained"] == []
 
     def test_first_review_repeats_every_section(self) -> None:

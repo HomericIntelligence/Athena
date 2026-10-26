@@ -309,7 +309,6 @@ def prepare(request: object) -> dict[str, Any]:
                 "artifact_kind",
                 "sections",
                 "corrected_findings",
-                "rows",
                 "previous_record",
                 "previous_record_sha256",
             }

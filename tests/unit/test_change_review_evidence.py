@@ -189,7 +189,12 @@ class ChangeReviewEvidenceTests(unittest.TestCase):
 
     def prepare(self, request: dict[str, Any]) -> dict[str, Any]:
         """Run one preparation in the temporary repository."""
-        return cast(dict[str, Any], self.adapter.prepare(request))
+        return cast(dict[str, Any], self.adapter.prepare(self.without_rows(request)))
+
+    @staticmethod
+    def without_rows(request: dict[str, Any]) -> dict[str, Any]:
+        """Return the documented preparation request, which carries no rows."""
+        return {key: value for key, value in request.items() if key != "rows"}
 
     def finalize(
         self, preparation: dict[str, Any], rows: list[dict[str, Any]]
@@ -391,7 +396,7 @@ class ChangeReviewEvidenceTests(unittest.TestCase):
         request = self.request()
         prepared = subprocess.run(
             [sys.executable, str(ADAPTER), "prepare"],
-            input=json.dumps(request),
+            input=json.dumps(self.without_rows(request)),
             capture_output=True,
             text=True,
             cwd=self.repository,
@@ -418,7 +423,7 @@ class ChangeReviewEvidenceTests(unittest.TestCase):
         request = self.request(previous={}, previous_sha256=digest("other"))
         failed = subprocess.run(
             [sys.executable, str(ADAPTER), "prepare"],
-            input=json.dumps(request),
+            input=json.dumps(self.without_rows(request)),
             capture_output=True,
             text=True,
             cwd=self.repository,

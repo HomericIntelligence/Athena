@@ -1762,6 +1762,7 @@ def _coverage_changes(value: object) -> dict[str, Any]:
                 "retained_sections",
                 "repeated_sections",
                 "changed_dependencies",
+                "causes",
             }
         ),
     )
@@ -1782,6 +1783,11 @@ def _coverage_changes(value: object) -> dict[str, Any]:
         "changed_dependencies": _strings(
             changes["changed_dependencies"],
             "changed review dependencies",
+            allow_empty=True,
+        ),
+        "causes": _strings(
+            changes["causes"],
+            "repeated review section causes",
             allow_empty=True,
         ),
     }
@@ -2396,26 +2402,20 @@ def _author_reduce(
         else:
             finding["state"] = "contested"
     changes = event.get("coverage_changes")
-    retained_sections: list[str] = []
-    if previous.get("requirement_evidence") is not None:
-        if changes is None:
-            invalidates_coverage = True
-        else:
-            verified_changes = _coverage_changes(changes)
-            if (
-                verified_changes["inventory_sha256"]
-                != previous["requirement_evidence"]["inventory_sha256"]
-            ):
-                raise ProtocolError(
-                    "The coverage changes do not bind the retained requirement "
-                    "evidence inventory."
-                )
-            retained_sections = list(verified_changes["retained_sections"])
-            invalidates_coverage = (
-                changed_artifact or scope_changed or not retained_sections
+    if previous.get("requirement_evidence") is not None and changes is not None:
+        verified_changes = _coverage_changes(changes)
+        if (
+            verified_changes["inventory_sha256"]
+            != previous["requirement_evidence"]["inventory_sha256"]
+        ):
+            raise ProtocolError(
+                "The coverage changes do not bind the retained requirement "
+                "evidence inventory."
             )
-    else:
-        invalidates_coverage = changed_artifact or scope_changed
+    # A changed head or scope always requires a new reviewer assessment. The
+    # accepted author event records the retained and repeated sections and the
+    # cause of each repeat.
+    invalidates_coverage = changed_artifact or scope_changed
     has_active_findings = bool(_active_required(findings))
     state = {
         **previous,
@@ -2620,6 +2620,18 @@ def _review_reduce(
         _apply_reviewer_response(finding, response, event["round"])
     for new_finding in event["new_findings"]:
         findings.append(_stored_finding(new_finding, event["round"]))
+    evidence = event.get("requirement_evidence")
+    if evidence is not None:
+        if evidence["requirements_sha256"] != previous["requirements_sha256"]:
+            raise ProtocolError(
+                "The requirement evidence does not match the bound requirements."
+            )
+        _require_complete_findings_batch(evidence, findings)
+    elif previous.get("requirement_evidence") is not None:
+        raise ProtocolError(
+            "A corrective reviewer assessment must replace the retained "
+            "requirement evidence."
+        )
     required_remaining = len(_active_required(findings))
     prior_progress = previous["progress"][-1]
     reason_override = event["stop_reason"]
@@ -2681,6 +2693,8 @@ def _review_reduce(
         "verdict": verdict,
         "next_action": next_action,
     }
+    if evidence is not None:
+        state["requirement_evidence"] = evidence
     return state, reason
 
 
