@@ -1,0 +1,20 @@
+"""Model of a behavior-level alternative to the fixed-offset tests."""
+
+from comet.inventory import build_inventory
+
+
+def test_inventory_modes_select_their_writer_output() -> None:
+    """Require each inventory mode to produce its documented writer output."""
+    inventory = build_inventory("node_local")
+    assert inventory.mode_output("node_local") == inventory.writer_output()
+    assert inventory.unmapped_mode() is None
+
+
+def test_unknown_mode_reports_a_public_error() -> None:
+    """Require an unknown mode to produce the documented error contract."""
+    try:
+        build_inventory("unknown_mode")
+    except KeyError as error:
+        assert "unknown_mode" in str(error)
+    else:
+        raise AssertionError("an unknown mode must raise a public error")

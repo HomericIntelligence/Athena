@@ -1,0 +1,9 @@
+"""Model of a source-text search used as a substitute for a behavior test."""
+
+from pathlib import Path
+
+
+def test_writer_expression_remains_available() -> None:
+    """Require the writer expression to remain in the registry source text."""
+    source_text = Path("src/comet/domain_registry.py").read_text(encoding="utf-8")
+    assert "def _inventory_writer" in source_text

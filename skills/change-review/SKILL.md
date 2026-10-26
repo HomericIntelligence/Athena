@@ -71,6 +71,13 @@ compare it during final revalidation. Follow the
 [scope-resolution safety contract](references/scope-resolution.md). Use path arguments only to
 reduce the selected diff. Make sure that each path remains inside the repository root.
 
+When you must decide whether a changed test enforces a product contract through a fixed source-line
+position, a stored citation offset, or the source-file length, run the installed
+[`scripts/classify_test_design.py`](scripts/classify_test_design.py) on that test file. It prints one
+JSON verdict with the reasons and the remediation. Follow the
+[behavior-first testing contract](../../docs/review/behavior-first-testing.md). Do not request
+citation-offset maintenance when the verdict is `reject`.
+
 For a range, report the immutable base and head commits. For worktree or staged scope, report these
 items:
 

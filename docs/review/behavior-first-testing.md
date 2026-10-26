@@ -37,6 +37,7 @@ or ambient machine state. The test must fail if the regression occurs again.
 | State change | Durable state and externally visible transitions are correct on success and failure. | A snapshot freezes internal layout without an outcome assertion. |
 | Documentation | Markdown, links, and executable examples validate syntax, navigation, or real output. | A test pins wording, headings, paragraph counts, or documentation counts. |
 | Integration | Controlled substitutes exercise a real external boundary and error behavior. | A live service, wall-clock sleep, or ambient credential decides the result. |
+| Source layout | A test reads a public interface, a data contract, a permission, an ownership rule, or a failure path. | A test enforces product behavior through a fixed source-line position, a citation offset, or the source-file length. |
 
 ## Avoid flakiness and false confidence
 
@@ -78,6 +79,25 @@ validation. Source-review verdicts remain independent of execution results.
 - Do not weaken, skip, xfail, delete, or mock around a test solely to make a change green.
 - Do not claim a benchmark, model metric, or runtime measurement succeeded without reproducible
   execution evidence bound to the reviewed revision.
+
+Reject a test that enforces a product contract through a fixed source-line position, a stored
+citation offset, or the source-file length. Treat it as a required test-design correction. Require
+the review to propose a behavior-level test through a public interface, or the removal of the test
+when it protects no required behavior. Do not ask an author to maintain citation offsets after an
+unrelated comment, import, or format change. Do not accept an equivalent source-text search as a
+replacement; it still depends on implementation layout.
+
+A line number in a failure diagnostic, a failure message, a review annotation, or a historical
+citation is diagnostic data. It is not a test invariant. Keep such references.
+
+Line position can be the product contract. Keep those tests. Examples are a parser diagnostic that
+reports the line of invalid input and a repository convention that defines a layout rule.
+
+This rule does not authorize the removal of a functional security test, and it does not authorize a
+validation bypass. Require the same architecture, security, provenance, and CI/CD gates for the
+change. Run
+[`classify_test_design.py`](../../skills/change-review/scripts/classify_test_design.py) on a test
+file when you need evidence for the verdict.
 
 Documentation-only changes use existing Markdown, link, and executable-example checks. They do not
 justify a prose-string test harness.

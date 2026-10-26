@@ -429,7 +429,7 @@ Use the shared applicable-weight formula:
 | Architecture and design | 30% | Boundaries, interfaces, applicable simplicity and architecture principles, dependency direction, compatibility, and migration. |
 | Issue and scope | 20% | Acceptance criteria, hidden scope, user-visible behavior, and documentation. |
 | Implementation | 18% | Correctness, errors, types, maintainability, duplication, portability, and unexpected behavior. |
-| Testing and evidence | 15% | Applicable testing and evidence principles, including P091 when behavior is developed test-first, meaningful assertions, and honest evidence. |
+| Testing and evidence | 15% | Applicable testing and evidence principles, including P091 when behavior is developed test-first, meaningful assertions, and honest evidence. A fixed source-line, citation-offset, or source-file-length assertion is rejectable test evidence. |
 | Security and safety | 10% | Applicable security and authority principles for inputs, permissions, destructive paths, supply chain, rollback, and failure behavior. |
 | Integration and release | 7% | Applicable source-level reliability and execution-integrity principles for staleness, packaging, documentation, compatibility, and transfer. |
 
