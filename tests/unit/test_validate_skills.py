@@ -948,13 +948,18 @@ class DistributionTests(unittest.TestCase):
         policy_path = self.fixture / "docs" / "policies" / "required-checks.md"
         original_policy = policy_path.read_text(encoding="utf-8")
         original_document = _ruleset_document(self.fixture)
+        current = _ruleset_rule(original_document, "merge_queue")["parameters"][
+            "max_entries_to_build"
+        ]
         tuned_document = copy.deepcopy(original_document)
         _ruleset_rule(tuned_document, "merge_queue")["parameters"][
             "max_entries_to_build"
-        ] = 7
+        ] = current + 1
         tuned_policy = original_policy.replace(
-            '"max_entries_to_build": 10', '"max_entries_to_build": 7'
+            f'"max_entries_to_build": {current}',
+            f'"max_entries_to_build": {current + 1}',
         )
+        self.assertNotEqual(tuned_policy, original_policy)
         try:
             _write_ruleset_document(self.fixture, tuned_document)
             self.assert_validation_errors(

@@ -145,6 +145,7 @@ The tracked `main` ruleset records this staged merge-queue policy. This block is
 source for these parameters. The tracked ruleset must match it exactly, and a maintainer
 changes these values in this block and in the ruleset file.
 
+<!-- athena:merge-queue-parameters -->
 ```json
 {
   "check_response_timeout_minutes": 180,

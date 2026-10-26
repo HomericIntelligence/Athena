@@ -38,9 +38,21 @@ APPROVED_REQUIRED_STATUS_CHECKS_PARAMETERS: dict[str, object] = {
         }
     ],
 }
+POLICY_DOCUMENT = "docs/policies/required-checks.md"
+MERGE_QUEUE_PARAMETER_MARKER = "<!-- athena:merge-queue-parameters -->"
 MERGE_QUEUE_PARAMETER_BLOCK = re.compile(
-    r"^```json\n(?P<parameters>.+?)\n```$", re.MULTILINE | re.DOTALL
+    rf"^{re.escape(MERGE_QUEUE_PARAMETER_MARKER)}\n```json\n(?P<parameters>.+?)\n```$",
+    re.MULTILINE | re.DOTALL,
 )
+MERGE_QUEUE_PARAMETER_TYPES: dict[str, type] = {
+    "check_response_timeout_minutes": int,
+    "grouping_strategy": str,
+    "max_entries_to_build": int,
+    "max_entries_to_merge": int,
+    "merge_method": str,
+    "min_entries_to_merge": int,
+    "min_entries_to_merge_wait_minutes": int,
+}
 
 
 def approved_merge_queue_parameters(policy_text: str) -> dict[str, Any]:
@@ -49,24 +61,41 @@ def approved_merge_queue_parameters(policy_text: str) -> dict[str, Any]:
     The merge-queue parameters are a tuning decision that a maintainer records in
     `docs/policies/required-checks.md`. That document is the only approved source
     for these values, so a ruleset change and its policy text stay in one place.
+    Only the JSON block that follows the merge-queue marker line is read.
     """
     match = MERGE_QUEUE_PARAMETER_BLOCK.search(policy_text)
     if match is None:
         raise ValueError(
-            "The merge-queue policy is missing. The tracked policy document must "
-            "contain one JSON object in a fenced json block."
+            f"The merge-queue policy is missing from {POLICY_DOCUMENT}. The "
+            f"document must contain the line {MERGE_QUEUE_PARAMETER_MARKER} "
+            "directly before one JSON object in a fenced json block."
         )
     try:
         parameters = json.loads(match.group("parameters"))
     except ValueError as error:
         raise ValueError(
-            "The merge-queue policy is not valid JSON.\n"
+            f"The merge-queue policy in {POLICY_DOCUMENT} is not valid JSON.\n"
             f"The operation returned this diagnostic.\n{error}"
         ) from error
     if not isinstance(parameters, dict):
         raise TypeError(
-            "The merge-queue policy must be one JSON object of parameter names "
-            "and values."
+            f"The merge-queue policy in {POLICY_DOCUMENT} must be one JSON object "
+            "of parameter names and values."
+        )
+    problems = [
+        f"{name} must be a {kind.__name__}"
+        for name, kind in MERGE_QUEUE_PARAMETER_TYPES.items()
+        if type(parameters.get(name)) is not kind
+    ]
+    problems.extend(
+        f"{name} is not a merge-queue parameter"
+        for name in sorted(set(parameters) - set(MERGE_QUEUE_PARAMETER_TYPES))
+    )
+    if problems:
+        raise ValueError(
+            f"The merge-queue policy in {POLICY_DOCUMENT} is invalid: "
+            + "; ".join(problems)
+            + "."
         )
     return cast(dict[str, Any], parameters)
 

@@ -32,6 +32,15 @@ def _merge_queue(document: dict[str, Any]) -> dict[str, Any]:
     return next(r for r in rules if r["type"] == "merge_queue")
 
 
+def _block(body: str) -> str:
+    return f"{ruleset.MERGE_QUEUE_PARAMETER_MARKER}\n```json\n{body}\n```"
+
+
+def _block_with(**changes: object) -> str:
+    parameters = ruleset.approved_merge_queue_parameters(_policy_text()) | changes
+    return json.dumps(parameters)
+
+
 class ApprovedMergeQueueParameterTests(unittest.TestCase):
     """Exercise the tracked merge-queue policy source."""
 
@@ -50,24 +59,49 @@ class ApprovedMergeQueueParameterTests(unittest.TestCase):
         self.assertEqual(approved["merge_method"], "SQUASH")
 
     def test_tuning_the_policy_block_changes_the_approved_parameters(self) -> None:
+        current = ruleset.approved_merge_queue_parameters(_policy_text())[
+            "max_entries_to_build"
+        ]
         tuned = _policy_text().replace(
-            '"max_entries_to_build": 10', '"max_entries_to_build": 7'
+            f'"max_entries_to_build": {current}',
+            f'"max_entries_to_build": {current + 1}',
         )
+        self.assertNotEqual(tuned, _policy_text())
         self.assertEqual(
-            ruleset.approved_merge_queue_parameters(tuned)["max_entries_to_build"], 7
+            ruleset.approved_merge_queue_parameters(tuned)["max_entries_to_build"],
+            current + 1,
+        )
+
+    def test_an_earlier_json_fence_does_not_change_the_parameters(self) -> None:
+        decoy = '```json\n{"max_entries_to_build": 99}\n```\n\n'
+        self.assertEqual(
+            ruleset.approved_merge_queue_parameters(decoy + _policy_text()),
+            ruleset.approved_merge_queue_parameters(_policy_text()),
         )
 
     def test_policy_block_failure_paths(self) -> None:
         cases: tuple[tuple[str, str, str], ...] = (
             ("missing block", _policy_text().replace("```json", "```text"), "missing"),
-            ("not json", "```json\n{oops}\n```", "not valid JSON"),
-            ("not an object", "```json\n[1]\n```", "one JSON object"),
+            ("not json", _block("{oops}"), "not valid JSON"),
+            ("not an object", _block("[1]"), "one JSON object"),
+            ("missing key", _block('{"merge_method": "SQUASH"}'), "must be a"),
+            (
+                "mistyped value",
+                _block(_block_with(max_entries_to_build="10")),
+                "max_entries_to_build must be a int",
+            ),
+            (
+                "unknown key",
+                _block(_block_with(extra=1)),
+                "extra is not a merge-queue parameter",
+            ),
         )
         for name, text, literal in cases:
             with self.subTest(name=name):
                 with self.assertRaises((ValueError, TypeError)) as caught:
                     ruleset.approved_merge_queue_parameters(text)
                 self.assertIn(literal, str(caught.exception))
+                self.assertIn("required-checks.md", str(caught.exception))
 
 
 class EvaluateRulesetTests(unittest.TestCase):
