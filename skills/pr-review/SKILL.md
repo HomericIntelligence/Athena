@@ -376,11 +376,10 @@ workflow in the same invocation.
      decision intervened first. Do not reduce another reviewer round directly from a state that
      needs a human decision.
     Target-branch movement alone does not change the reviewed head or start a new exchange.
-    During terminal GitHub GO delivery only, the delivery adapter can recover one Athena-owned
-    directly superseded reviewer state message that has exactly one additional final line feed. Require the
-    unchanged carrier body to end with `\n```\n\n`. Require removal of only the final line feed to
-    pass the strict parser. Require the proposed terminal state to be the verified direct
-    authoritative reframe successor. Reject all other malformed carriers.
+    The carrier reader replaces a run of trailing line feeds with one line feed before the framing
+    checks. An immutable historical carrier with trailing blank lines therefore passes the strict
+    parser without an adapter recovery step. Reject a carrier with a space, a carriage return, or
+    text after the final fence. Reject all other malformed carriers.
 21. Preserve prior finding identities within each exchange. Reconcile them before you add a finding.
     After a changed-head author response, explicitly keep or reopen each revalidated terminal
     finding in the next complete assessment. Do not treat its prior-head reviewer response as current evidence.
