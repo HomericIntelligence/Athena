@@ -37,7 +37,7 @@ PREPARE_SCHEMA_ID = "athena.issue-exchange.prepare-result"
 PUBLICATION_SCHEMA_ID = "athena.issue-exchange.publication-result"
 FINALIZE_SCHEMA_ID = "athena.issue-exchange.finalize-result"
 SCHEMA_VERSION = 1
-CORPUS_VERSION: Final[str] = "0.6.0"
+CORPUS_VERSION: Final[str] = "0.6.1"
 
 PLAN_MARKER = "<!-- HomericIntelligence:plan-issue -->"
 REVIEW_MARKER = "<!-- HomericIntelligence:issue-review -->"
