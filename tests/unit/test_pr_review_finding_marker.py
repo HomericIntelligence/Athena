@@ -775,6 +775,40 @@ class PrReviewFindingMarkerTests(unittest.TestCase):
                 {"path": "a.py", "side": "MIDDLE", "line": 1, "body": "Text."}
             )
 
+    def test_publisher_refuses_a_terminal_carrier_without_a_write(self) -> None:
+        """Only the terminal helper publishes a terminal state carrier."""
+        arguments = self.publisher_inputs()
+        exchange = self.publisher.deliver_go.review_exchange
+        extract = exchange.extract_carrier
+
+        def terminal(body: str) -> dict[str, Any]:
+            envelope = extract(body)
+            state = {
+                **envelope["state"],
+                "phase": "complete",
+                "next_action": "finalize",
+            }
+            return {**envelope, "state": state}
+
+        with patch.object(exchange, "extract_carrier", side_effect=terminal):
+            status, output, errors = self.run_with_arguments(arguments)
+
+        self.assertEqual(1, status)
+        self.assertEqual("", output)
+        self.assertIn("is terminal", errors)
+        self.assertEqual([], self.recorder.calls)
+
+    def test_publisher_refuses_a_finding_the_state_does_not_introduce(self) -> None:
+        """A batch finding must be introduced by the round of the carrier state."""
+        status, output, errors = self.run_publisher(
+            self.batch(bodies=(f"Text.\n\n{self.marker('F-099', 'exchange-7')}",))
+        )
+
+        self.assertEqual(1, status)
+        self.assertEqual("", output)
+        self.assertIn("does not introduce", errors)
+        self.assertEqual([], self.recorder.calls)
+
     # ------------------------------------------------------------------
     # Legacy malformed-batch recovery.
     # ------------------------------------------------------------------

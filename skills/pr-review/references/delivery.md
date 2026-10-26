@@ -150,11 +150,20 @@ Before the request, run the pre-write gate:
 
 ```text
 review_exchange.py verify-finding-batch <batch.json>
-publish_round.py --state-carrier-file <carrier.md> --batch-file <batch.json> <pull-request>
+publish_round.py \
+  --target-repository <owner/repository> \
+  --expected-pr-url <canonical-pr-url> \
+  --expected-base-oid <base-oid> \
+  --expected-head-oid <head-oid> \
+  --state-carrier-file <carrier.md> \
+  --batch-file <batch.json> \
+  <number>
 ```
 
 The gate checks the marker placement, the batch bounds, and the binding to the carrier before any
-forge call. Stop on any violation. A malformed batch is correctable only before its write. The
+forge call. The carrier must be non-terminal. Publish a terminal `GO` carrier only with
+`deliver_go.py`. Each batch finding must be a finding that the carrier state introduces in its own
+round. Stop on any violation. A malformed batch is correctable only before its write. The
 publisher then makes the single atomic request and verifies the readback: review identity,
 `COMMENT` or `COMMENTED` state, reviewed commit, complete body carrier, and one root per expected
 path, side, line, body, and marker.

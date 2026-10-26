@@ -49,11 +49,19 @@ def _carrier_body(
         raise deliver_go.DeliveryError(
             "The reviewer state carrier is not bound to the requested pull request."
         )
+    if state["phase"] == "complete" or state["next_action"] == "finalize":
+        raise deliver_go.DeliveryError(
+            "The reviewer state carrier is terminal. Publish it only with deliver_go.py."
+        )
     return body, envelope
 
 
-def _batch_comments(path: Path, exchange_id: str) -> tuple[dict[str, Any], ...]:
-    """Verify one inline batch against the shared marker and bound rules."""
+def _batch_comments(
+    path: Path, envelope: Mapping[str, Any]
+) -> tuple[dict[str, Any], ...]:
+    """Verify one inline batch against the shared rules and the carrier state."""
+    state = envelope["state"]
+    exchange_id = cast(str, state["exchange_id"])
     exchange = deliver_go.review_exchange
     document = deliver_go._read_json_document(
         path, "reviewer round finding batch", canonical=False
@@ -69,6 +77,16 @@ def _batch_comments(path: Path, exchange_id: str) -> tuple[dict[str, Any], ...]:
     if not isinstance(document, dict) or not isinstance(document.get("comments"), list):
         raise deliver_go.DeliveryError(
             "The reviewer round finding batch has no comment list."
+        )
+    introduced = {
+        finding["id"]
+        for finding in state["findings"]
+        if finding["introduced_round"] == state["round"]
+    }
+    if not set(result["finding_ids"]).issubset(introduced):
+        raise deliver_go.DeliveryError(
+            "The reviewer round finding batch holds a finding that this state "
+            "does not introduce."
         )
     comments = tuple(cast(dict[str, Any], comment) for comment in document["comments"])
     if len(comments) != result["comment_count"]:
@@ -214,9 +232,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         binding = deliver_go._binding_from_args(args)
         body, envelope = _carrier_body(args.state_carrier_file, binding)
-        comments = _batch_comments(
-            args.batch_file, cast(str, envelope["state"]["exchange_id"])
-        )
+        comments = _batch_comments(args.batch_file, envelope)
         _verify_anchor_annex(
             deliver_go._carrier_visible(body), args.anchor_source, binding
         )
