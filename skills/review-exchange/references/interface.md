@@ -29,9 +29,21 @@ Each command has this form:
 
 Use `-` to read standard input. A valid result has exit code `0`. A protocol rejection has exit code
 `1` and one diagnostic on standard error. An input-read or output-write failure has exit code `2`
-and one diagnostic on standard error. Except for `review_exchange.py render`, a successful command
+and one diagnostic on standard error. A mixed helper corpus also has exit code `2`. It reports the
+peer helper that declares no corpus version, the peer helper that declares a different corpus
+version together with both declared values, or a corpus version manifest that cannot be read. Each
+sentence names one remedy: re-sync the installed helper corpus to one version and run the command
+again. Do not recover the withheld transition by hand. Except for `review_exchange.py render`, a
+successful command
 writes one canonical JSON value and a line feed to standard output. `render` writes the exact
 carrier document.
+
+The corpus guard runs only in a corpus whose invoked helper declares `CORPUS_VERSION`. A wholly
+stale corpus has no such constant, runs no guard, and is repaired by the host re-sync. A release
+that updates one participating helper must update the declared constant in
+`review_exchange.py`, `issue_exchange.py`, and `deliver_go.py`. The repository gate
+`tests/unit/test_declared_corpus_version.py` fails when the declared constant is not the version in
+the canonical host manifest.
 
 ## Common records
 
@@ -725,7 +737,11 @@ A prepared issue-comment result has these fields:
 | `operation` | Prepared comment operation or `null` |
 | `diagnostics` | List of diagnostic records |
 
-A diagnostic record has the nonempty string fields `code` and `message`. A `ready` result has an
+A diagnostic record has the nonempty string fields `code` and `message`. A `malformed_carrier`
+diagnostic also has a `location` object. That object has the `comment_id` of the implicated comment
+and the identity of every loaded helper. Each helper identity has the `path` relative to the corpus
+root, the `declared_corpus_version`, and the `tree_corpus_version`. A corpus refusal has the same
+object without `comment_id`. No path in a diagnostic is absolute. A `ready` result has an
 operation and an empty diagnostic list. A `withheld` result has no operation and has a diagnostic.
 
 The issue-comment precondition is the digest of canonical JSON with `schema_id` set to
