@@ -108,7 +108,8 @@ The archive excludes these items:
 
 - Architecture-first review: `change-review`, `repo-review`, and `pr-review`.
 - Issue planning, review, and finalization: `plan-issue`, `issue-review`, and `finalize-plan`.
-- Engineering: `brainstorm`, `systematic-debugging`, and `test-driven-development`.
+- Engineering: `brainstorm`, `implement`, `address-review`, `realign`, `systematic-debugging`, and
+  `test-driven-development`.
 - Coordination: `myrmidon-swarm`, `git-worktrees`, and `tidy`.
 - Knowledge and enablement: `advise` and `learn`.
 
