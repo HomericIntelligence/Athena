@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import io
 import json
 import os
@@ -10,6 +11,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import tomllib
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from hashlib import sha256
@@ -31,6 +33,31 @@ from scripts.package_plugin import (
 from . import package_markdown_helpers as md
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def packaged_minimum_supported_python(source: str) -> tuple[int, int, int]:
+    """Return the interpreter floor that this module source declares."""
+    tree = ast.parse(source)
+    for node in tree.body:
+        if not isinstance(node, ast.AnnAssign) or not isinstance(node.target, ast.Name):
+            continue
+        if node.target.id != "MINIMUM_SUPPORTED_PYTHON" or node.value is None:
+            continue
+        value = ast.literal_eval(node.value)
+        if not isinstance(value, tuple) or not all(type(part) is int for part in value):
+            raise AssertionError("MINIMUM_SUPPORTED_PYTHON is not a tuple of ints")
+        return value
+    raise AssertionError("the module has no MINIMUM_SUPPORTED_PYTHON assignment")
+
+
+def declared_python_floor() -> tuple[int, ...]:
+    """Return the `>=` clause of the declared `requires-python` floor."""
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    clauses = project["project"]["requires-python"].split(",")
+    floors = [clause for clause in clauses if clause.startswith(">=")]
+    if len(floors) != 1:
+        raise AssertionError(f"expected one floor clause, found {floors}")
+    return tuple(int(part) for part in floors[0][2:].split("."))
 
 
 def create_repository(root: Path, *, version: str = "1.2.3") -> None:
@@ -334,6 +361,26 @@ if (
                 packaged = archive.getmember(member)
                 if member.endswith(".py"):
                     self.assertEqual(0o755, packaged.mode)
+
+    def test_source_archive_requires_the_interpreter_floor(self) -> None:
+        """The fast lane guards the interpreter floor that the archive carries.
+
+        The installed-helper proof of this gate runs in the nightly lane. This
+        test keeps the required change gate alert: it fails when the archive
+        stops shipping `skills/_cli.py`, when that module stops declaring the
+        floor, or when the packaged floor differs from `pyproject.toml`.
+        """
+        archive_path, checksum_path = build_package(ROOT)
+        self.addCleanup(archive_path.unlink, missing_ok=True)
+        self.addCleanup(checksum_path.unlink, missing_ok=True)
+
+        with tarfile.open(archive_path, mode="r:gz") as archive:
+            member = archive.extractfile("skills/_cli.py")
+            self.assertIsNotNone(member)
+            assert member is not None
+            packaged_source = member.read().decode("utf-8")
+        packaged_floor = packaged_minimum_supported_python(packaged_source)
+        self.assertEqual(declared_python_floor(), packaged_floor)
 
     def test_source_archive_requires_the_principles_catalog(self) -> None:
         """Every packaged harness receives the shared principles authority."""

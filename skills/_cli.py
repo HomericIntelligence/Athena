@@ -6,11 +6,36 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+
+# `pyproject.toml` states the supported interpreter floor. The packaged archive
+# does not carry that file, so this constant is the runtime reference and
+# `tests/unit/test_interpreter_floor.py` blocks it from drifting.
+MINIMUM_SUPPORTED_PYTHON: Final[tuple[int, int, int]] = (3, 14, 8)
+
+
+def _version_text(version: tuple[int, ...]) -> str:
+    """Return a dotted interpreter version for a failure message."""
+    return ".".join(str(part) for part in version)
+
+
+def _require_supported_interpreter(parser: argparse.ArgumentParser) -> None:
+    """Stop with an actionable message when the interpreter is too old."""
+    major, minor, micro = sys.version_info[:3]
+    if (major, minor, micro) >= MINIMUM_SUPPORTED_PYTHON:
+        return
+    required = _version_text(MINIMUM_SUPPORTED_PYTHON)
+    detected = f"{major}.{minor}.{micro}"
+    parser.exit(
+        2,
+        f"{parser.prog}: error: This helper requires Python {required} or newer. "
+        f"This interpreter is {detected}.\n",
+    )
 
 
 def run_command(
@@ -151,9 +176,19 @@ class _PluginVersionAction(argparse.Action):
         parser.exit(0)
 
 
-def argument_parser(*, description: str | None = None) -> argparse.ArgumentParser:
-    """Create the required parser with a consistent plugin-version action."""
+def argument_parser(
+    *, description: str | None = None, enforce_interpreter_floor: bool = True
+) -> argparse.ArgumentParser:
+    """Create the required parser with a consistent plugin-version action.
+
+    Skill helpers keep the interpreter-floor check. The two repository tools that
+    run on the CI runner's system interpreter (`ci_policy.py` and
+    `validate_agent_contract.py`) pass `enforce_interpreter_floor=False`. Those
+    tools parse on older interpreters, and the floor check would stop them.
+    """
     parser = argparse.ArgumentParser(description=description)
+    if enforce_interpreter_floor:
+        _require_supported_interpreter(parser)
     parser.add_argument(
         "--version",
         action=_PluginVersionAction,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import shutil
@@ -19,6 +20,35 @@ from scripts.package_plugin import build_package
 
 ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.nightly
+
+
+def packaged_minimum_supported_python(extracted: Path) -> tuple[int, int, int]:
+    """Return the interpreter floor that the extracted archive carries."""
+    module = ast.parse((extracted / "skills" / "_cli.py").read_text(encoding="utf-8"))
+    for node in module.body:
+        if not isinstance(node, ast.AnnAssign) or not isinstance(node.target, ast.Name):
+            continue
+        if node.target.id != "MINIMUM_SUPPORTED_PYTHON" or node.value is None:
+            continue
+        value = ast.literal_eval(node.value)
+        if isinstance(value, tuple) and all(type(part) is int for part in value):
+            return value
+    raise AssertionError("the packaged skills/_cli.py has no integer floor")
+
+
+def version_below_floor(floor: tuple[int, int, int]) -> tuple[int, int, int]:
+    """Return a version that sorts strictly below the floor."""
+    major, minor, micro = floor
+    if micro > 0:
+        return (major, minor, micro - 1)
+    if minor > 0:
+        return (major, minor - 1, 0)
+    return (major - 1, 0, 0)
+
+
+def dotted_version(version: tuple[int, ...]) -> str:
+    """Return the dotted spelling that a failure message carries."""
+    return ".".join(str(part) for part in version)
 
 
 @unittest.skipUnless(shutil.which("node"), "Installation requires Node.js")
@@ -309,6 +339,51 @@ class InstalledSkillHelperTests(unittest.TestCase):
                     corpus, "advise/scripts/resolve_knowledge_checkout.py", "--help"
                 )
                 self.assertEqual(0, help_result.returncode, help_result.stderr)
+
+    def test_portable_archive_helper_enforces_the_interpreter_floor(self) -> None:
+        """The packaged helper must reject an unsupported interpreter legibly.
+
+        The archive does not carry `pyproject.toml`, so the floor travels in the
+        packaged `skills/_cli.py`. This runs the extracted helper under a
+        simulated older interpreter to prove the gate ships with the artifact.
+        The packaged constant gives the expected text because the source
+        checkout is not available to this test.
+        """
+        archive, _ = build_package(self.source, self.root / "archives")
+        extracted = self.root / "portable"
+        with tarfile.open(archive) as bundle:
+            bundle.extractall(extracted, filter="data")
+        packaged_floor = packaged_minimum_supported_python(extracted)
+        rejected = version_below_floor(packaged_floor)
+        self.source.rename(self.root / "unavailable-source")
+        helper = (
+            extracted
+            / "skills"
+            / "advise"
+            / "scripts"
+            / "resolve_knowledge_checkout.py"
+        )
+        preamble = (
+            "import runpy, sys\n"
+            f"sys.argv = [{str(helper)!r}, '--json', '--mode', 'read-only']\n"
+            f"sys.version_info = {rejected!r}\n"
+            f"runpy.run_path({str(helper)!r}, run_name='__main__')\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", preamble],
+            cwd=self.cwd,
+            env=self.environment,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+
+        self.assertEqual(2, result.returncode, result.stderr)
+        self.assertEqual("", result.stdout)
+        self.assertIn(dotted_version(packaged_floor), result.stderr)
+        self.assertIn(dotted_version(rejected), result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
 
     def test_generated_metadata_conflict_preserves_existing_output(self) -> None:
         from scripts.package_plugin import PackageError
