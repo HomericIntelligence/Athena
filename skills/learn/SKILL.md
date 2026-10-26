@@ -377,20 +377,29 @@ Do not use this fallback to reconstruct an Existing-PR worktree.
     - main-file byte size;
     - delivery base and change commit identifiers, when safe to disclose;
     - companion files;
-    - retired entries, if any; and
-    - exact validation evidence.
+    - retired entries, if any;
+    - exact validation evidence; and
+    - the delivery-worktree cleanup result.
 
 A published disposition requires a verified PR URL. If validation, push, or PR creation fails,
 preserve completed local work. Attempt recovery, then provide exact remaining commands and prepared
 artifacts. Report local preparation separately from remote delivery. Do not use Athena, a default branch, or a
-different repository as a fallback. Preserve delegated and delivery worktrees until their unique
-work is integrated or explicitly rejected.
+different repository as a fallback. Preserve delegated worktrees until their unique
+work is integrated or explicitly rejected. Preserve a delivery worktree until remote delivery is verified.
 
-Cleanup is a separate operation. Remove only a worktree that this invocation created. Require user
-authority for the removal. Before removal, confirm that no uncommitted or unintegrated state remains.
-If these conditions are not satisfied, leave each applicable worktree intact. For each worktree,
-report its path, owner, revision, cleanliness, and integration state. Do not delete branches. Do not
-discard changes. Do not force removal. Do not change a pre-existing worktree.
+After successful remote delivery, remove the delivery worktree in the same invocation when all of
+these conditions apply:
+
+- this invocation created the worktree;
+- the pushed head matches the worktree commit, and the PR URL is verified;
+- the worktree is clean, with no uncommitted files; and
+- all unique state is pushed, so no unintegrated work remains.
+
+Use a non-forced removal. Do not delete branches. Do not discard changes. Do not force removal. Do
+not change a pre-existing or foreign worktree. If any condition is not satisfied, leave the
+worktree intact. For each retained worktree, report its path, owner, revision, cleanliness, and
+integration state. When delivery fails, preserve the worktree and provide the exact remaining
+commands. An explicit cleanup request can authorize more removal.
 
 ## Failed approaches
 
