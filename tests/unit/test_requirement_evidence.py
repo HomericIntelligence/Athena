@@ -657,3 +657,83 @@ class TestRequirementMap:
         assert rendered.splitlines()[0].startswith(
             "| Requirement | Section | Surface |"
         )
+
+
+class TestMalformedInput:
+    """Reject each malformed value with the shared error."""
+
+    def test_validators_reject_malformed_values(self) -> None:
+        good = digest("x")
+        long_text = "a" * (evidence.MAX_SUMMARY_LENGTH + 1)
+        cases: dict[str, Any] = {
+            "short digest": lambda: evidence._digest_text("abc", "d"),
+            "upper-case digest": lambda: evidence._digest_text("A" * 64, "d"),
+            "non-object": lambda: evidence._object([], "o", frozenset()),
+            "blank text": lambda: evidence._text(" ", "t"),
+            "long text": lambda: evidence._text(long_text, "t"),
+            "non-list references": lambda: evidence._references("a", "r"),
+            "duplicate references": lambda: evidence._references(["a", "a"], "r"),
+            "non-map dependencies": lambda: evidence._dependencies([], "d"),
+            "bad dependency digest": lambda: evidence._dependencies({"a": "x"}, "d"),
+            "blank dependency name": lambda: evidence._dependencies({" ": good}, "d"),
+            "duplicate section dependency": lambda: evidence._section(
+                {"id": "S", "paths": [], "depends_on": ["a", "a"]}
+            ),
+            "no current sections": lambda: evidence._current_sections([]),
+            "duplicate current section": lambda: evidence._current_sections(
+                current_sections()[:1] * 2
+            ),
+        }
+        for call in cases.values():
+            with pytest.raises(Error):
+                call()
+
+    def test_inventory_rejects_unsupported_schema_and_counts(self) -> None:
+        frozen = inventory()
+        for change in ({"schema_id": "other"}, {"schema_version": 99}):
+            with pytest.raises(Error):
+                evidence.validate_inventory({**frozen, **change})
+        with pytest.raises(Error):
+            evidence.build_inventory(
+                requirements_binding=frozen["requirements_binding"],
+                artifact_binding=frozen["artifact_binding"],
+                scope_binding=frozen["scope_binding"],
+                requirements=[],
+                sections=frozen["sections"],
+            )
+        with pytest.raises(Error):
+            evidence.build_inventory(
+                requirements_binding=frozen["requirements_binding"],
+                artifact_binding=frozen["artifact_binding"],
+                scope_binding=frozen["scope_binding"],
+                requirements=frozen["requirements"],
+                sections=[],
+            )
+
+    def test_rows_reject_each_inconsistent_result(self) -> None:
+        frozen = inventory()
+        base = rows()
+        mutations: dict[str, dict[str, Any]] = {
+            "unknown result": {"result": "maybe"},
+            "reason on applicable row": {"reason": "no"},
+            "finding on covered row": {"finding_ids": ["F-1"]},
+            "no evidence": {"evidence": []},
+            "unknown requirement": {"requirement": "R9"},
+            "unknown section": {"section": "S9"},
+        }
+        for change in mutations.values():
+            mutated = [{**base[0], **change}, *base[1:]]
+            with pytest.raises(Error):
+                evidence.validate_assessment(frozen, mutated)
+        with pytest.raises(Error):
+            evidence.validate_assessment(frozen, "rows")
+        with pytest.raises(Error):
+            evidence.validate_assessment(frozen, [*base, *base[:1]])
+        with pytest.raises(Error):
+            evidence.validate_assessment(frozen, base[1:])
+
+    def test_record_rejects_unsupported_schema(self) -> None:
+        record = build_record()
+        for change in ({"schema_id": "other"}, {"schema_version": 99}):
+            with pytest.raises(Error):
+                evidence.validate_record({**record, **change})

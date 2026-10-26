@@ -392,6 +392,118 @@ class ChangeReviewEvidenceTests(unittest.TestCase):
         with pytest.raises(shared.RequirementEvidenceError, match="preparation digest"):
             self.finalize(preparation, cast(list[Any], request["rows"]))
 
+    def test_helpers_reject_malformed_values(self) -> None:
+        adapter = self.adapter
+        too_long = "a" * (shared.MAX_SUMMARY_LENGTH + 1)
+        cases: list[tuple[str, Any]] = [
+            ("blank string", lambda: adapter._string("  ", "name")),
+            ("non-string", lambda: adapter._string(1, "name")),
+            ("long string", lambda: adapter._string(too_long, "name")),
+            ("non-object", lambda: adapter._object([], "name", frozenset())),
+            ("extra field", lambda: adapter._object({"a": 1}, "name", frozenset())),
+            ("non-list references", lambda: adapter._references("a", "name")),
+            ("duplicate references", lambda: adapter._references(["a", "a"], "name")),
+            ("no sections", lambda: adapter._sections([])),
+            (
+                "duplicate section",
+                lambda: adapter._sections(
+                    [{"id": "A", "paths": [], "depends_on": []}] * 2
+                ),
+            ),
+            (
+                "unknown scope",
+                lambda: adapter._scope_selectors(
+                    {"scope": "all", "range": None, "paths": []}
+                ),
+            ),
+            (
+                "range without scope",
+                lambda: adapter._scope_selectors(
+                    {"scope": "worktree", "range": "a..b", "paths": []}
+                ),
+            ),
+            (
+                "range scope without range",
+                lambda: adapter._scope_selectors(
+                    {"scope": "range", "range": None, "paths": []}
+                ),
+            ),
+            ("non-list rows", lambda: adapter._rows_with_dependencies("x", [])),
+            ("non-object row", lambda: adapter._rows_with_dependencies([1], [])),
+            (
+                "row for retained section",
+                lambda: adapter._rows_with_dependencies([{"section": "S9"}], []),
+            ),
+            (
+                "section outside scope",
+                lambda: adapter._section_records(
+                    [{"id": "S", "paths": ["missing.py"], "depends_on": []}], {}, []
+                ),
+            ),
+        ]
+        for name, call in cases:
+            with self.subTest(name), pytest.raises(adapter.Error):
+                call()
+
+    def test_prepare_rejects_a_half_supplied_previous_record(self) -> None:
+        request = self.request(previous={}, previous_sha256=None)
+        with pytest.raises(self.adapter.Error):
+            self.prepare(request)
+
+    def test_prepare_rejects_a_retained_record_for_other_requirements(self) -> None:
+        first = self.review(self.request())
+        request = self.request(
+            previous=first["record"], previous_sha256=first["record_sha256"]
+        )
+        request["inventory"] = shared.build_inventory(
+            requirements_binding={
+                "kind": "task",
+                "identity": "task-288",
+                "content_sha256": digest("other requirements"),
+            },
+            artifact_binding=request["inventory"]["artifact_binding"],
+            scope_binding=request["inventory"]["scope_binding"],
+            requirements=request["inventory"]["requirements"],
+            sections=request["inventory"]["sections"],
+        )
+        with pytest.raises(self.adapter.Error):
+            self.prepare(request)
+
+    def test_finalize_rejects_an_unsupported_or_malformed_preparation(self) -> None:
+        preparation = self.prepare(self.request())
+        mutations: list[tuple[str, dict[str, Any]]] = [
+            ("schema id", {"schema_id": "other"}),
+            ("schema version", {"schema_version": 2}),
+            ("sections", {"sections_to_assess": "none"}),
+            ("rows", {"retained_rows": "none"}),
+        ]
+        for name, change in mutations:
+            mutated = {**preparation, **change}
+            mutated["preparation_sha256"] = self.adapter._preparation_digest(mutated)
+            with self.subTest(name), pytest.raises(self.adapter.Error):
+                self.finalize(mutated, [])
+
+    def test_finalize_rejects_rows_when_no_section_repeats(self) -> None:
+        preparation = self.prepare(self.request())
+        preparation["sections_to_assess"] = []
+        preparation["preparation_sha256"] = self.adapter._preparation_digest(
+            preparation
+        )
+        with pytest.raises(self.adapter.Error):
+            self.finalize(preparation, self.complete_rows(ASSIGNMENT))
+
+    def test_main_reads_a_file_and_reports_failures(self) -> None:
+        request = self.without_rows(self.request())
+        source = self.repository.parent / "request.json"
+        source.write_text(json.dumps(request), encoding="utf-8")
+        assert self.adapter.main(["prepare", str(source)]) == 0
+        source.write_text("[]", encoding="utf-8")
+        assert self.adapter.main(["prepare", str(source)]) == 1
+        assert (
+            self.adapter.main(["finalize", str(self.repository.parent / "gone.json")])
+            == 1
+        )
+
     def test_the_cli_returns_one_json_result_per_command(self) -> None:
         request = self.request()
         prepared = subprocess.run(
