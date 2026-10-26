@@ -141,15 +141,22 @@ pull-request, merge-group, or push run for the same revision. Manual dispatch ru
 entry points as configured. The advisory Pi watch is the only job that runs exclusively for manual
 dispatch or the weekly schedule.
 
-The tracked `main` ruleset records this staged merge-queue policy:
+The tracked `main` ruleset records this staged merge-queue policy. This block is the approved
+source for these parameters. The tracked ruleset must match it exactly, and a maintainer
+changes these values in this block and in the ruleset file.
 
-- Use squash merges.
-- Use `HEADGREEN` grouping.
-- Permit a maximum of 10 builds in each group.
-- Permit a maximum of 5 merged entries in each group.
-- Require a minimum of 1 entry.
-- Require a minimum wait of 5 minutes.
-- Use a check timeout of 180 minutes.
+<!-- athena:merge-queue-parameters -->
+```json
+{
+  "check_response_timeout_minutes": 180,
+  "grouping_strategy": "HEADGREEN",
+  "max_entries_to_build": 10,
+  "max_entries_to_merge": 5,
+  "merge_method": "SQUASH",
+  "min_entries_to_merge": 1,
+  "min_entries_to_merge_wait_minutes": 5
+}
+```
 
 The required workflow also runs each week. Thus, dependency findings are refreshed between changes.
 
