@@ -55,7 +55,7 @@ CITATION_LINE_NUMBER = re.compile(
 )
 SOURCE_LENGTH = re.compile(r"\blen\([^)]*(?:splitlines|lines|source|_text)[^)]*\)")
 LINE_NAME = re.compile(
-    r"\b(?![A-Za-z_]*lines\b)[A-Za-z_]*line(?:_[A-Za-z_]+)*\b", re.IGNORECASE
+    r"\b(?![A-Za-z_]*lines\b)[A-Za-z_]*line(?:_[A-Za-z_]+)?\b", re.IGNORECASE
 )
 SOURCE_TEXT_NAME = re.compile(
     r"\b(?:source|src|writer|registry|module|code)(?:_text)?\b|\btext_lines\b"
