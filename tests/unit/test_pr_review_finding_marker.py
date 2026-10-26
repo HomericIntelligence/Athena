@@ -646,6 +646,135 @@ class PrReviewFindingMarkerTests(unittest.TestCase):
         self.assertEqual(1, status)
         self.assertIn("exact inline batch", errors)
 
+    def run_with_arguments(self, arguments: list[str]) -> tuple[int, str, str]:
+        """Run the publisher with prepared arguments and a recording forge."""
+        recorder = FakePublisherForge(self.publisher, self.publisher_binding, "unused")
+        self.recorder = recorder
+        output, errors = io.StringIO(), io.StringIO()
+        with (
+            patch.object(
+                self.publisher.deliver_go, "GitHubForge", return_value=recorder
+            ),
+            redirect_stdout(output),
+            redirect_stderr(errors),
+        ):
+            status = self.publisher.main(arguments)
+        return status, output.getvalue(), errors.getvalue()
+
+    def test_publisher_refuses_an_unreadable_or_invalid_carrier(self) -> None:
+        """A missing or malformed state carrier is refused before any write."""
+        arguments = self.publisher_inputs()
+        index = arguments.index("--state-carrier-file") + 1
+        cases = {
+            "missing": (str(Path(self.temporary.name) / "absent.md"), "cannot be read"),
+            "malformed": (self.write_text("not a carrier", "bad.md"), "is invalid"),
+        }
+        for name, (path, message) in cases.items():
+            with self.subTest(case=name):
+                changed = list(arguments)
+                changed[index] = path
+                status, output, errors = self.run_with_arguments(changed)
+                self.assertEqual(1, status)
+                self.assertEqual("", output)
+                self.assertIn(message, errors)
+                self.assertEqual([], self.recorder.calls)
+
+    def test_publisher_refuses_an_anchor_source_without_an_annex(self) -> None:
+        """An anchor source needs a publication anchor annex in the carrier."""
+        arguments = [*self.publisher_inputs(), "--anchor-source", "anchors.json"]
+        status, output, errors = self.run_with_arguments(arguments)
+
+        self.assertEqual(1, status)
+        self.assertEqual("", output)
+        self.assertIn("no publication anchor annex", errors)
+        self.assertEqual([], self.recorder.calls)
+
+    def test_publisher_withholds_for_each_invalid_readback(self) -> None:
+        """Each readback that differs from the publication withholds the result."""
+
+        def drift(change: Callable[[Any], None]) -> type[FakePublisherForge]:
+            class DriftForge(FakePublisherForge):
+                def publish_round_batch(
+                    self,
+                    body: str,
+                    head_oid: str,
+                    comments: tuple[dict[str, Any], ...],
+                ) -> str:
+                    """Publish one batch, then change its readback."""
+                    review_id = super().publish_round_batch(body, head_oid, comments)
+                    change(self)
+                    return review_id
+
+            return DriftForge
+
+        def drop_review(forge: Any) -> None:
+            forge.reviews = []
+
+        def foreign_author(forge: Any) -> None:
+            forge.reviews = [replace(forge.reviews[0], viewer_did_author=False)]
+
+        def invalid_side(forge: Any) -> None:
+            for key, thread in forge.threads.items():
+                root = replace(thread.comments[0], side="MIDDLE")
+                forge.threads[key] = replace(thread, comments=(root,))
+
+        def no_marker(forge: Any) -> None:
+            for key, thread in forge.threads.items():
+                root = replace(thread.comments[0], body="Text without a marker.")
+                forge.threads[key] = replace(thread, comments=(root,))
+
+        def other_review_root(forge: Any) -> None:
+            for key, thread in forge.threads.items():
+                root = replace(thread.comments[0], review_id="other-review")
+                forge.threads[key] = replace(thread, comments=(root,))
+            forge.threads["empty"] = replace(
+                next(iter(forge.threads.values())), comments=()
+            )
+
+        cases = {
+            "no-review": (drop_review, "no unique readback record"),
+            "foreign-author": (foreign_author, "changed during readback"),
+            "invalid-side": (invalid_side, "invalid readback anchor"),
+            "no-marker": (no_marker, "no exact exchange finding marker"),
+            "other-review-root": (other_review_root, "exact inline batch"),
+        }
+        for name, (change, message) in cases.items():
+            with self.subTest(case=name):
+                status, output, errors = self.run_publisher(forge_class=drift(change))
+                self.assertEqual(1, status)
+                self.assertEqual("", output)
+                self.assertIn(message, errors)
+
+    def test_publisher_checks_the_anchor_annex_and_inline_comment_shape(self) -> None:
+        """The annex must bind the reviewed identity and each comment must be valid."""
+        self.publisher_inputs()
+        binding = self.publisher_binding
+        delivery_error = self.publisher.deliver_go.DeliveryError
+        annex = {"head_oid": binding.head_oid, "base_oid": binding.base_oid}
+        with patch.object(
+            self.publisher.anchor_proofs, "visible_manifest", return_value=annex
+        ):
+            self.publisher._verify_anchor_annex("visible", Path("a.json"), binding)
+            with self.assertRaisesRegex(delivery_error, "not bound"):
+                self.publisher._verify_anchor_annex(
+                    "visible",
+                    None,
+                    replace(binding, base_oid="e" * 40),
+                )
+        with (
+            patch.object(
+                self.publisher.anchor_proofs,
+                "visible_manifest",
+                side_effect=ValueError("x"),
+            ),
+            self.assertRaisesRegex(delivery_error, "x"),
+        ):
+            self.publisher._verify_anchor_annex("visible", None, binding)
+        with self.assertRaisesRegex(delivery_error, "invalid inline comment"):
+            self.publisher._readback_anchor(
+                {"path": "a.py", "side": "MIDDLE", "line": 1, "body": "Text."}
+            )
+
     # ------------------------------------------------------------------
     # Legacy malformed-batch recovery.
     # ------------------------------------------------------------------
