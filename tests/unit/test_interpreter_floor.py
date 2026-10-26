@@ -84,3 +84,23 @@ def test_factory_accepts_the_floor_and_newer_interpreters(
     parser = _cli.argument_parser(description="test helper")
 
     assert isinstance(parser, argparse.ArgumentParser)
+
+
+def test_factory_can_skip_the_floor_for_tools_run_on_the_runner_interpreter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CI tools that run on the system interpreter opt out of the floor check."""
+    monkeypatch.setattr(sys, "version_info", version_below_floor())
+    parser = _cli.argument_parser(
+        description="test tool", enforce_interpreter_floor=False
+    )
+
+    assert isinstance(parser, argparse.ArgumentParser)
+
+
+@pytest.mark.parametrize("tool", ["ci_policy.py", "validate_agent_contract.py"])
+def test_runner_interpreter_tools_opt_out_of_the_floor(tool: str) -> None:
+    """The tools that CI runs with the system `python3` must keep the opt-out."""
+    source = (ROOT / "scripts" / tool).read_text(encoding="utf-8")
+
+    assert "enforce_interpreter_floor=False" in source

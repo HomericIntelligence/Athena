@@ -720,7 +720,7 @@ def _publish_release_command(directory: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argument_parser(description=__doc__)
+    parser = argument_parser(description=__doc__, enforce_interpreter_floor=False)
     parser.add_argument(
         "command",
         choices=(

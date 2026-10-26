@@ -19,7 +19,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 def main(argv: list[str] | None = None) -> int:
     """Run the reusable agent-contract validator."""
     parser = argument_parser(
-        description="Validate root agent instructions against the Athena catalog."
+        description="Validate root agent instructions against the Athena catalog.",
+        enforce_interpreter_floor=False,
     )
     parser.add_argument(
         "--root",

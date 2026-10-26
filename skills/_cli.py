@@ -176,10 +176,19 @@ class _PluginVersionAction(argparse.Action):
         parser.exit(0)
 
 
-def argument_parser(*, description: str | None = None) -> argparse.ArgumentParser:
-    """Create the required parser with a consistent plugin-version action."""
+def argument_parser(
+    *, description: str | None = None, enforce_interpreter_floor: bool = True
+) -> argparse.ArgumentParser:
+    """Create the required parser with a consistent plugin-version action.
+
+    Skill helpers keep the interpreter-floor check. The two repository tools that
+    run on the CI runner's system interpreter (`ci_policy.py` and
+    `validate_agent_contract.py`) pass `enforce_interpreter_floor=False`. Those
+    tools parse on older interpreters, and the floor check would stop them.
+    """
     parser = argparse.ArgumentParser(description=description)
-    _require_supported_interpreter(parser)
+    if enforce_interpreter_floor:
+        _require_supported_interpreter(parser)
     parser.add_argument(
         "--version",
         action=_PluginVersionAction,
