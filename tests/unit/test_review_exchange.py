@@ -2805,7 +2805,7 @@ class ReviewExchangeTests(unittest.TestCase):
             ):
                 self.exchange.extract_carrier(document)
 
-    def test_carrier_accepts_both_closing_fence_endings_and_rejects_trailing_content(
+    def test_carrier_tolerates_trailing_blank_lines_and_rejects_trailing_content(
         self,
     ) -> None:
         state_visible = "## Review\n\nThe correction is complete."
@@ -2840,12 +2840,23 @@ class ReviewExchangeTests(unittest.TestCase):
                     envelope,
                     self.exchange.extract_carrier(without_final_newline),
                 )
+                for accepted_candidate in (
+                    rendered + "\n",
+                    rendered + "\n\n\n",
+                    without_final_newline + "\n\n",
+                ):
+                    with self.subTest(accepted=accepted_candidate[-16:]):
+                        self.assertEqual(
+                            envelope,
+                            self.exchange.extract_carrier(accepted_candidate),
+                        )
                 for candidate in (
                     rendered + "trailing text",
                     without_final_newline + "trailing text",
-                    rendered + "\n",
                     rendered + " ",
                     without_final_newline + " ",
+                    rendered + " \n",
+                    rendered + "\r",
                 ):
                     with (
                         self.subTest(candidate=candidate[-32:]),
@@ -3833,15 +3844,27 @@ class ReviewExchangeTests(unittest.TestCase):
             extracted_stdout = io.StringIO()
             with redirect_stdout(extracted_stdout):
                 extracted = self.exchange.main(["extract", str(carrier_path)])
+            # A transport such as `gh --jq` can add one blank line after the body.
+            carrier_path.write_text(rendered_stdout.getvalue() + "\n", encoding="utf-8")
+            trailing_blank_stdout = io.StringIO()
+            with redirect_stdout(trailing_blank_stdout):
+                trailing_blank_extracted = self.exchange.main(
+                    ["extract", str(carrier_path)]
+                )
 
         self.assertEqual(0, verified)
         self.assertEqual(0, rendered)
         self.assertEqual(0, extracted)
+        self.assertEqual(0, trailing_blank_extracted)
         self.assertEqual(
             self.exchange.canonical_json(envelope), verified_stdout.getvalue().strip()
         )
         self.assertEqual(
             self.exchange.canonical_json(envelope), extracted_stdout.getvalue().strip()
+        )
+        self.assertEqual(
+            self.exchange.canonical_json(envelope),
+            trailing_blank_stdout.getvalue().strip(),
         )
 
     def test_cli_supports_file_and_stdin_and_classifies_failures(self) -> None:

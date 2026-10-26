@@ -1542,7 +1542,6 @@ def _require_pr_envelope(
 def _review_carriers(
     snapshot: PullRequestSnapshot,
     binding: ReviewBinding,
-    directly_superseded_state_sha256: str | None = None,
 ) -> tuple[
     dict[str, tuple[ReviewRecord, dict[str, Any]]],
     tuple[tuple[ReviewRecord, dict[str, Any]], ...],
@@ -1553,7 +1552,6 @@ def _review_carriers(
     authors: list[tuple[ReviewRecord, dict[str, Any]]] = []
     source_states: dict[str, dict[str, Any]] = {}
     carrier_ids: set[str] = set()
-    recovered_review_id: str | None = None
     for review in snapshot.reviews:
         if review_exchange.CARRIER_PREFIX not in review.body:
             continue
@@ -1571,32 +1569,9 @@ def _review_carriers(
         try:
             original, envelope = review_exchange.extract_carrier_pair(review.body)
         except review_exchange.ProtocolError as error:
-            recoverable = (
-                directly_superseded_state_sha256 is not None
-                and recovered_review_id is None
-                and review.viewer_did_author
-                and review.body.endswith("\n```\n\n")
-            )
-            if not recoverable:
-                raise DeliveryError(
-                    f"A pull-request carrier is invalid: {error}"
-                ) from error
-            try:
-                original, envelope = review_exchange.extract_carrier_pair(
-                    review.body[:-1]
-                )
-            except review_exchange.ProtocolError:
-                raise DeliveryError(
-                    f"A pull-request carrier is invalid: {error}"
-                ) from error
-            if (
-                envelope["schema_id"] != review_exchange.STATE_SCHEMA_ID
-                or envelope["state_sha256"] != directly_superseded_state_sha256
-            ):
-                raise DeliveryError(
-                    f"A pull-request carrier is invalid: {error}"
-                ) from error
-            recovered_review_id = review.id
+            raise DeliveryError(
+                f"A pull-request carrier is invalid: {error}"
+            ) from error
         envelope = _require_pr_envelope(
             envelope, binding, schema_id=cast(str, envelope["schema_id"])
         )
@@ -2505,7 +2480,6 @@ def _verify_state_chain(
     anchor_source: Path | None = None,
     historical_anchor_proofs: tuple[dict[str, Any], ...] = (),
     *,
-    recover_direct_reframe: bool = False,
     format_only_compatibility: Mapping[str, Any] | None = None,
     format_only_recovered_thread_ids: frozenset[str] = frozenset(),
     misplaced_recoveries: Mapping[str, Mapping[str, Any]] | None = None,
@@ -2513,24 +2487,10 @@ def _verify_state_chain(
     batch_manifest_sha256: str | None = None,
 ) -> VerifiedStateChain:
     """Replay every persisted event that leads to one terminal reviewer state."""
-    terminal_state = terminal["state"]
     batch_terminals = _verified_batch_terminals(
         batch_manifest_path, batch_manifest_sha256, terminal
     )
-    direct_supersession = (
-        terminal_state["supersedes_state_sha256"]
-        if recover_direct_reframe
-        and terminal["schema_id"] == review_exchange.STATE_SCHEMA_ID
-        and terminal_state["round"] == 1
-        and terminal_state["prior_state_sha256"] is None
-        and terminal_state["supersession_authority_receipt"] is not None
-        and len(terminal_state["accepted_events"]) == 1
-        and terminal_state["accepted_events"][0]["event_type"] == "reframe"
-        else None
-    )
-    states, author_records, original_states = _review_carriers(
-        snapshot, binding, cast(str | None, direct_supersession)
-    )
+    states, author_records, original_states = _review_carriers(snapshot, binding)
     author_transitions, logical_envelopes = _derive_author_transitions(
         states, author_records
     )
@@ -3009,7 +2969,6 @@ def validate_closure_manifest(
         binding,
         manifest.anchor_source,
         manifest.historical_anchor_proofs,
-        recover_direct_reframe=True,
         format_only_compatibility=format_only_compatibility,
         format_only_recovered_thread_ids=(
             frozenset()
@@ -3709,7 +3668,6 @@ def _verify_go_state_history(
         binding,
         manifest.anchor_source,
         manifest.historical_anchor_proofs,
-        recover_direct_reframe=True,
         format_only_compatibility=format_only_compatibility,
         format_only_recovered_thread_ids=recovered_thread_ids,
         misplaced_recoveries=misplaced,

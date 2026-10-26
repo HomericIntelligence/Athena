@@ -3901,6 +3901,10 @@ def extract_carrier_pair(document: str) -> tuple[dict[str, Any], dict[str, Any]]
         raise ProtocolError("The carrier document is not valid UTF-8.") from error
     if len(encoded_document) > MAX_INPUT_BYTES:
         raise ProtocolError("The carrier document is larger than 1 MiB.")
+    # Transports such as `gh --jq`, here-documents, and pipelines append a line
+    # feed to an otherwise byte-faithful body. Only the file-level framing is
+    # relaxed here. The digests and the size checks keep the exact input bytes.
+    document = document.rstrip("\n") + "\n"
     matches = list(CARRIER_PATTERN.finditer(document))
     if len(matches) != 1:
         raise ProtocolError(

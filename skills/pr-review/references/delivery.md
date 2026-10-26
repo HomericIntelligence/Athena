@@ -181,19 +181,13 @@ accept this event. For GitHub, apply the completed-history conditions below befo
 separate exchange for a new head. A material requirements change uses the reframe rule. It does not
 silently reset the exchange.
 
-Terminal GitHub GO delivery has one compatibility rule for an immutable historical carrier. The
-adapter can remove exactly one final line feed from one Athena-owned reviewer state message when all these
-conditions apply:
-
-- the unchanged body then passes the strict carrier parser;
-- the original body ends with the exact bytes `\n```\n\n`;
-- the proposed terminal state directly supersedes that state digest; and
-- the direct successor is a verified authoritative requirements reframe.
-
-This rule does not change the carrier parser or the publication format. It does not apply to a
-foreign carrier, an author review message, a second malformed carrier, another suffix, a human
-decision, a NO-GO delivery, or a state without a direct authoritative reframe. Run all normal
-state-chain, authority, publication-order, source, thread, and label checks after recovery.
+Terminal GitHub GO delivery needs no compatibility rule for a trailing line feed. The carrier
+reader replaces a run of trailing line feeds with one line feed before the framing checks. An
+immutable historical carrier with trailing blank lines therefore passes the strict carrier parser
+directly. The adapter does not change the carrier parser or the publication format. The adapter
+has no separate recovery path: it rejects every carrier that the strict parser rejects, including a
+carrier with a space, a carriage return, or text after the final fence. Run all normal state-chain,
+authority, publication-order, source, thread, and label checks.
 
 Before a human decision or requirements reframe, the pull-request surface adapter must resolve one
 exact current logical state. Start with the latest accepted reviewer state message. Reduce each later

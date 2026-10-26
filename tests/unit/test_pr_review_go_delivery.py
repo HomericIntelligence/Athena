@@ -6502,9 +6502,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self.assertEqual(1, forge.events.count("terminal"))
         self.assertEqual(1, forge.events.count("labels"))
 
-    def _direct_completed_reframe(
-        self, *, extra_final_line_feed: bool = False
-    ) -> tuple[Any, Any, Any]:
+    def _direct_completed_reframe(self) -> tuple[Any, Any, Any]:
         exchange = self.delivery.review_exchange
         current_seed = self.v1_manifest(self.owned_thread())
         old, old_visible = self.completed_exchange(
@@ -6557,13 +6555,10 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             requirements_binding=self.requirements_binding(terminal),
         )
         old_record = self.carrier_record("old-terminal", old, old_visible)
-        retained_body = (
-            f"{old_record.body}\n" if extra_final_line_feed else old_record.body
-        )
         forge = FakeForge(self.delivery, threads=())
         forge.reviews.extend(
             (
-                replace(old_record, body=retained_body),
+                old_record,
                 self.delivery.ReviewRecord(
                     id="reframe-authority",
                     body=authority_body,
@@ -6581,13 +6576,14 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
 
         return forge, manifest, old_record
 
-    def test_authoritative_reframe_supersedes_one_extra_final_line_feed(self) -> None:
-        forge, manifest, canonical = self._direct_completed_reframe(
-            extra_final_line_feed=True
-        )
+    def test_reframe_with_one_extra_final_line_feed_delivers(self) -> None:
+        forge, manifest, canonical = self._direct_completed_reframe()
+        forge.reviews[0] = replace(canonical, body=f"{canonical.body}\n")
 
-        with self.assertRaises(self.delivery.review_exchange.ProtocolError):
-            self.delivery.review_exchange.extract_carrier(f"{canonical.body}\n")
+        self.assertEqual(
+            self.delivery.review_exchange.extract_carrier(canonical.body),
+            self.delivery.review_exchange.extract_carrier(f"{canonical.body}\n"),
+        )
 
         result = self.delivery.deliver_go_v1(forge, self.binding(), manifest)
 
@@ -6595,22 +6591,14 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self.assertEqual(1, forge.events.count("terminal"))
         self.assertEqual(1, forge.events.count("labels"))
 
-    def test_malformed_reframe_predecessor_recovery_fails_closed(self) -> None:
-        for case, suffix, owned in (
-            ("foreign", "\n", False),
-            ("two extra line feeds", "\n\n", True),
-            ("trailing space", " ", True),
-            ("trailing carriage return", "\r", True),
-            ("trailing text", "suffix", True),
+    def test_malformed_reframe_predecessor_fails_closed(self) -> None:
+        for case, suffix in (
+            ("trailing space", " "),
+            ("trailing carriage return", "\r"),
+            ("trailing text", "suffix"),
         ):
-            forge, manifest, canonical = self._direct_completed_reframe(
-                extra_final_line_feed=True
-            )
-            forge.reviews[0] = replace(
-                canonical,
-                body=f"{canonical.body}{suffix}",
-                viewer_did_author=owned,
-            )
+            forge, manifest, canonical = self._direct_completed_reframe()
+            forge.reviews[0] = replace(canonical, body=f"{canonical.body}{suffix}")
 
             with (
                 self.subTest(case=case),
@@ -6620,25 +6608,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
 
             self.assertNotIn("terminal", forge.events)
             self.assertNotIn("labels", forge.events)
-
-    def test_only_one_malformed_reframe_predecessor_can_be_recovered(self) -> None:
-        forge, manifest, canonical = self._direct_completed_reframe(
-            extra_final_line_feed=True
-        )
-        forge.reviews.insert(
-            1,
-            replace(
-                canonical,
-                id="duplicate-malformed-predecessor",
-                body=f"{canonical.body}\n",
-            ),
-        )
-
-        with self.assertRaises(self.delivery.DeliveryError):
-            self.delivery.deliver_go_v1(forge, self.binding(), manifest)
-
-        self.assertNotIn("terminal", forge.events)
-        self.assertNotIn("labels", forge.events)
 
     def test_malformed_carrier_without_direct_reframe_still_fails(self) -> None:
         thread = self.owned_thread()
@@ -6650,7 +6619,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             requirements_sha256="e" * 64,
         )
         old_record = self.carrier_record("old-terminal", old, old_visible)
-        forge.reviews.append(replace(old_record, body=f"{old_record.body}\n"))
+        forge.reviews.append(replace(old_record, body=f"{old_record.body} "))
 
         with self.assertRaises(self.delivery.DeliveryError):
             self.delivery.deliver_go_v1(forge, self.binding(), manifest)

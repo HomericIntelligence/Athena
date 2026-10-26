@@ -464,8 +464,10 @@ digest before it returns the normalized version 2 envelope. The original carrier
 Only the documented version conversion can change the state representation. All other wire state
 must already have canonical semantic order.
 The final payload fence must end with a line feed or at the end of input.
-No text, spaces, or extra blank lines can follow that fence. The reader preserves
-all input bytes for digest and size checks. The renderer continues to emit a final line feed.
+Only blank lines can follow that fence. Before the framing checks, the reader replaces a run of
+trailing line feeds with one line feed. Text, spaces, tabs, and carriage returns after the fence
+remain invalid. The reader preserves all input bytes for digest and size checks. The renderer
+continues to emit a final line feed.
 
 Readers that support only the plain form reject the new fence. They must not infer state from its
 marker. Upgrade the consumer before publication of a compressed carrier. Existing plain carriers
@@ -692,10 +694,11 @@ over foreign marker comments. A foreign selected artifact requires the explicit 
 authority extension for an issue-body update. A valid finalized issue returns `finalized` and
 `next_action=none`.
 
-One historical exception applies only in the issue adapter. The generic carrier parser stays
-strict. The issue adapter can read at most one actor-owned carrier that has exactly one additional
-final line feed. The adapter requires one live authority comment with this exact canonical JSON
-record:
+One historical exception applied only in the issue adapter. The generic carrier reader now tolerates
+any number of blank lines after the final fence, so no current carrier body needs the exception and
+the adapter issues no new recovery receipt. The adapter retains the record only to verify a prepared
+publication that already carries a receipt from an earlier helper. Such a publication needs one live
+authority comment with this exact canonical JSON record:
 
 | Field | Type and value |
 | --- | --- |
@@ -709,8 +712,9 @@ record:
 | `carrier_state_sha256` | Digest from the strict parse of that canonical body |
 
 The authority comment author must have repository authority. The adapter rechecks the complete
-record at each read. It rejects a foreign carrier, two recoverable carriers, two matching authority
-comments, a different suffix, or a record with a different digest. New publication stays canonical.
+record when it verifies a publication that carries the receipt. It rejects a foreign carrier, a
+missing or altered receipt comment, or a record with a different digest, target, or comment. New
+publication stays canonical.
 The exception does not make an unknown publication result successful. Reframe and human-decision
 operations still require their separate action-bound authority records.
 
