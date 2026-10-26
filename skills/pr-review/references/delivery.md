@@ -535,6 +535,13 @@ terminal carrier exists after an interrupted run, validate the same manifest and
 remaining generated responses, resolutions, or label operation. Do not publish the terminal carrier
 again.
 
+The helper matches that carrier first by exact bytes or verified compressed form. When that match
+finds no carrier, it matches one owned, immutable, current-head reviewer state message by verified
+state digest and exchange identity. Such a render-equivalent carrier resumes the same way. The
+helper never publishes the terminal carrier again for a digest match. Two or more
+render-equivalent carriers for one terminal state withhold delivery. Use the terminal duplicate
+repair for that case.
+
 A delivered GO label is independent of the forge status. A rebase, a merge of the base branch, or a
 later bug fix does not remove it. Re-review is the author's judgement. The label lapses only when a
 reviewer delivers `state:implementation-no-go` or when the target carries no state label.
@@ -547,6 +554,48 @@ If an enclosing coordinator is the single delivery owner, return the bound struc
 Do not make a second write. A GitLab review can use an authenticated capability that proves
 equivalent exact-head carrier, discussion-response, resolution, and exclusive-label postconditions.
 If it cannot prove these conditions, return the prepared artifact and withhold favorable delivery.
+
+### Terminal duplicate repair
+
+Use the terminal duplicate repair only when an interrupted run published the same verified
+terminal state digest in two or more owned, immutable, current-head reviewer state messages. Such
+duplicate carriers withhold delivery. This receipt workflow never rewrites, edits, or deletes a
+published record, and it never publishes the terminal carrier again.
+
+First, run the read-only preparation with the same target arguments:
+
+```bash
+<installed-skill>/scripts/deliver_go.py \
+  --target-host github.com \
+  --target-repository <owner/repository> \
+  --expected-pr-url <canonical-pr-url> \
+  --expected-base-oid <base-oid> \
+  --expected-head-oid <head-oid> \
+  --prepare-terminal-duplicate-repair <state-sha256> \
+  <number>
+```
+
+The helper recomputes the receipt from the current verified snapshot. It requires the named state
+digest on two or more matching carriers and one unique earliest submission time. The command
+prints one canonical JSON repair receipt. Retain that receipt. The receipt has only these fields:
+
+- `schema_id`, with the value `athena.pr-review.terminal-duplicate-repair`;
+- `schema_version`, with the value `1`;
+- `binding`, with the exact repository, pull-request number and URL, captured base object
+  identifier, and exact head object identifier;
+- `state_sha256`, with the verified terminal state digest;
+- `exchange_id`, with the terminal exchange identity;
+- `canonical_review_id`, with the earliest published matching review identity; and
+- `duplicate_review_ids`, with the canonical sorted set of the later duplicate review identities.
+
+Supply the retained receipt through `--terminal-duplicate-repair <file>` only together with the
+version-1 GO closure delivery. The helper accepts the receipt only when the binding, state digest,
+exchange identity, canonical review identity, sorted duplicate identities, and unique earliest
+submission time match the current verified snapshot exactly. It then treats the receipt-listed
+duplicates as absent and resumes or completes the remaining delivery steps. A receipt that names
+a different state, exchange, review set, or submission order stops delivery. The option is not
+valid with manifest preparation, legacy proof, NO-GO delivery, the format-only repair operations,
+or the repair preparation itself.
 
 ## Guarded GitHub auto-merge
 

@@ -86,6 +86,7 @@ FINDING_MARKER = re.compile(
 FORMAT_ONLY_INLINE_ROOT_RECOVERY_SCHEMA_ID = (
     "athena.pr-review.format-only-inline-root-recovery"
 )
+TERMINAL_DUPLICATE_REPAIR_SCHEMA_ID = "athena.pr-review.terminal-duplicate-repair"
 _FORMAT_ONLY_INLINE_ROOT_ORIGINAL_BODY = (
     "F-001: This publisher imports the unresolved #1524 descriptor owner. "
     "Complete that owner repair and bind this change to the accepted owner "
@@ -822,6 +823,17 @@ _FORMAT_ONLY_DYNAMIC_RECOVERY_FIELDS = frozenset(
         "original_body_sha256",
         "canonical_body",
         "canonical_body_sha256",
+    }
+)
+_TERMINAL_DUPLICATE_REPAIR_FIELDS = frozenset(
+    {
+        "schema_id",
+        "schema_version",
+        "binding",
+        "state_sha256",
+        "exchange_id",
+        "canonical_review_id",
+        "duplicate_review_ids",
     }
 )
 
@@ -2825,6 +2837,7 @@ def validate_closure_manifest(
     snapshot: PullRequestSnapshot,
     *,
     format_only_inline_root_recovery: Mapping[str, Any] | None = None,
+    terminal_body: str | None = None,
 ) -> dict[str, ThreadClosure]:
     """Validate one complete v1 closure ledger before any forge mutation."""
     _terminal_state(binding, manifest)
@@ -2850,7 +2863,9 @@ def validate_closure_manifest(
         format_only_recovered_thread_ids=(
             frozenset()
             if format_only_compatibility is None
-            else _format_only_recovered_thread_ids(snapshot, binding, manifest)
+            else _format_only_recovered_thread_ids(
+                snapshot, binding, manifest, terminal_body
+            )
         ),
         batch_manifest_path=manifest.batch_manifest_path,
         batch_manifest_sha256=manifest.batch_manifest_sha256,
@@ -2962,7 +2977,7 @@ def validate_closure_manifest(
             )
         conversation_matches = conversation_sha256(thread) == entry.conversation_sha256
         response_recovered = _closure_reply_recovered(
-            thread, binding, manifest, entry, snapshot
+            thread, binding, manifest, entry, snapshot, terminal_body=terminal_body
         )
         if thread.is_resolved and not response_recovered:
             raise DeliveryError(
@@ -3232,6 +3247,114 @@ def _closure_response_body(
     )
 
 
+def _current_head_state_carriers(
+    snapshot: PullRequestSnapshot, binding: ReviewBinding
+) -> list[tuple[ReviewRecord, dict[str, Any]]]:
+    """Collect the owned immutable state carriers that bind the current head."""
+    carriers = []
+    for review in snapshot.reviews:
+        if (
+            review_exchange.CARRIER_PREFIX not in review.body
+            or review.head_oid != binding.head_oid
+            or not review.viewer_did_author
+            or review.includes_created_edit
+            or review.last_edited_at is not None
+            or review.state not in {"COMMENT", "COMMENTED"}
+        ):
+            continue
+        try:
+            _original, envelope = review_exchange.extract_carrier_pair(review.body)
+        except review_exchange.ProtocolError:
+            continue
+        if envelope["schema_id"] != review_exchange.STATE_SCHEMA_ID:
+            continue
+        try:
+            verified = _require_pr_envelope(
+                envelope, binding, schema_id=review_exchange.STATE_SCHEMA_ID
+            )
+        except DeliveryError:
+            continue
+        if review.head_oid != verified["state"]["artifact_binding"]["revision"]:
+            continue
+        carriers.append((review, verified))
+    return carriers
+
+
+def _render_equivalent_terminal_reviews(
+    snapshot: PullRequestSnapshot,
+    binding: ReviewBinding,
+    terminal_envelope: Mapping[str, Any],
+) -> list[ReviewRecord]:
+    """Match the current-head carriers whose verified digest is the terminal."""
+    return [
+        review
+        for review, envelope in _current_head_state_carriers(snapshot, binding)
+        if envelope["state_sha256"] == terminal_envelope["state_sha256"]
+        and envelope["state"]["exchange_id"]
+        == terminal_envelope["state"]["exchange_id"]
+    ]
+
+
+def _apply_terminal_duplicate_repair(
+    snapshot: PullRequestSnapshot,
+    binding: ReviewBinding,
+    terminal_envelope: Mapping[str, Any],
+    repair: Mapping[str, Any],
+) -> PullRequestSnapshot:
+    """Remove the receipt-listed duplicates from one fresh snapshot."""
+    receipt = _validated_terminal_duplicate_repair(repair, binding)
+    if (
+        receipt["state_sha256"] != terminal_envelope["state_sha256"]
+        or receipt["exchange_id"] != terminal_envelope["state"]["exchange_id"]
+    ):
+        raise DeliveryError(
+            "The terminal duplicate repair names a different terminal state."
+        )
+    carriers = _current_head_state_carriers(snapshot, binding)
+    observed = [
+        review
+        for review, envelope in carriers
+        if envelope["state_sha256"] == terminal_envelope["state_sha256"]
+    ]
+    if len(observed) != len(carriers):
+        raise DeliveryError(
+            "The terminal duplicate repair does not match the observed carrier "
+            "evidence."
+        )
+    if len(observed) < 2:
+        raise DeliveryError("The terminal duplicate repair has no matching carriers.")
+    receipt_ids = {receipt["canonical_review_id"], *receipt["duplicate_review_ids"]}
+    if {review.id for review in observed} != receipt_ids:
+        raise DeliveryError(
+            "The terminal duplicate repair does not match the observed carrier "
+            "evidence."
+        )
+    times: dict[str, datetime] = {}
+    for review in observed:
+        if review.submitted_at is None:
+            raise DeliveryError(
+                "The terminal duplicate repair does not match the observed carrier "
+                "evidence."
+            )
+        times[review.id] = _review_submission_time(review)
+    earliest = min(times.values())
+    if (
+        times[receipt["canonical_review_id"]] != earliest
+        or list(times.values()).count(earliest) != 1
+    ):
+        raise DeliveryError(
+            "The terminal duplicate repair does not match the observed carrier "
+            "evidence."
+        )
+    duplicates = frozenset(receipt["duplicate_review_ids"])
+    return replace(
+        snapshot,
+        reviews=tuple(
+            review for review in snapshot.reviews if review.id not in duplicates
+        ),
+    )
+
+
 def _matching_terminal_reviews(
     snapshot: PullRequestSnapshot,
     body: str,
@@ -3423,7 +3546,7 @@ def _verify_go_state_history(
     recovered_thread_ids = (
         frozenset()
         if format_only_compatibility is None
-        else _format_only_recovered_thread_ids(snapshot, binding, manifest)
+        else _format_only_recovered_thread_ids(snapshot, binding, manifest, body)
     )
     chain = _verify_state_chain(
         forge,
@@ -3458,6 +3581,7 @@ def _closure_reply_recovered(
     manifest: ClosureManifest,
     entry: ThreadClosure,
     snapshot: PullRequestSnapshot,
+    terminal_body: str | None = None,
 ) -> bool:
     if not thread.comments:
         return False
@@ -3469,9 +3593,12 @@ def _closure_reply_recovered(
         or response.last_edited_at is not None
     ):
         return False
+    rendered_terminal = (
+        terminal_body if terminal_body is not None else terminal_review_body(manifest)
+    )
     terminal_reviews = _matching_terminal_reviews(
         snapshot,
-        terminal_review_body(manifest),
+        rendered_terminal,
         binding.head_oid,
         recover_compressed=True,
     )
@@ -3495,6 +3622,7 @@ def _format_only_recovered_thread_ids(
     snapshot: PullRequestSnapshot,
     binding: ReviewBinding,
     manifest: ClosureManifest,
+    terminal_body: str | None = None,
 ) -> frozenset[str]:
     """Return repaired-root threads with one exact verified closure reply."""
     return frozenset(
@@ -3502,7 +3630,12 @@ def _format_only_recovered_thread_ids(
         for entry in manifest.entries
         if any(thread.id == entry.thread_id for thread in snapshot.threads)
         and _closure_reply_recovered(
-            _thread(snapshot, entry.thread_id), binding, manifest, entry, snapshot
+            _thread(snapshot, entry.thread_id),
+            binding,
+            manifest,
+            entry,
+            snapshot,
+            terminal_body=terminal_body,
         )
     )
 
@@ -3512,12 +3645,13 @@ def _require_closed_manifest_threads(
     binding: ReviewBinding,
     manifest: ClosureManifest,
     by_thread: Mapping[str, ThreadClosure],
+    terminal_body: str | None = None,
 ) -> None:
     """Require each ledger thread to remain exactly closed."""
     for thread_id, entry in by_thread.items():
         thread = _thread(snapshot, thread_id)
         if not thread.is_resolved or not _closure_reply_recovered(
-            thread, binding, manifest, entry, snapshot
+            thread, binding, manifest, entry, snapshot, terminal_body=terminal_body
         ):
             raise DeliveryError(
                 "A closed v1 review conversation changed after its verified closure."
@@ -3529,6 +3663,7 @@ def _manifest_with_terminal_threads(
     binding: ReviewBinding,
     manifest: ClosureManifest,
     terminal_review_id: str,
+    terminal_body: str | None = None,
 ) -> ClosureManifest:
     """Bind the terminal inline batch to its fetched review threads."""
     state = manifest.state_envelope["state"]
@@ -3596,7 +3731,9 @@ def _manifest_with_terminal_threads(
             author_event_review_id=None,
         )
         if len(thread.comments) == 2:
-            if not _closure_reply_recovered(thread, binding, manifest, entry, snapshot):
+            if not _closure_reply_recovered(
+                thread, binding, manifest, entry, snapshot, terminal_body=terminal_body
+            ):
                 raise DeliveryError(
                     "A terminal inline finding has an unverified later comment."
                 )
@@ -3637,14 +3774,29 @@ def deliver_go_v1(
     manifest: ClosureManifest,
     *,
     format_only_inline_root_recovery: Mapping[str, Any] | None = None,
+    terminal_duplicate_repair: Mapping[str, Any] | None = None,
 ) -> DeliveryResult:
     """Deliver one current-head v1 terminal record, closures, and GO label."""
     initial = _snapshot(forge, binding)
+    if terminal_duplicate_repair is not None:
+        initial = _apply_terminal_duplicate_repair(
+            initial,
+            binding,
+            manifest.state_envelope,
+            terminal_duplicate_repair,
+        )
     last_snapshot = initial
     body = terminal_review_body(manifest)
     matching = _matching_terminal_reviews(
         initial, body, binding.head_oid, recover_compressed=True
     )
+    if not matching:
+        # An extract-normalized re-render cannot byte-match a carrier published
+        # in the original wire format. Resume that carrier by verified digest
+        # instead of publishing an immutable second record.
+        matching = _render_equivalent_terminal_reviews(
+            initial, binding, manifest.state_envelope
+        )
     if len(matching) == 1:
         body = matching[0].body
     initial_history = _verify_go_state_history(
@@ -3659,7 +3811,7 @@ def deliver_go_v1(
         raise DeliveryError("The current-head terminal COMMENT evidence is ambiguous.")
     if matching:
         manifest = _manifest_with_terminal_threads(
-            initial, binding, manifest, matching[0].id
+            initial, binding, manifest, matching[0].id, terminal_body=body
         )
     by_thread = validate_closure_manifest(
         forge,
@@ -3667,6 +3819,7 @@ def deliver_go_v1(
         manifest,
         initial,
         format_only_inline_root_recovery=format_only_inline_root_recovery,
+        terminal_body=body,
     )
     _verify_live_requirements(forge, manifest.requirements_binding)
     open_threads = [thread for thread in initial.threads if not thread.is_resolved]
@@ -3675,7 +3828,12 @@ def deliver_go_v1(
         thread_id
         for thread_id, entry in by_thread.items()
         if _closure_reply_recovered(
-            _thread(initial, thread_id), binding, manifest, entry, initial
+            _thread(initial, thread_id),
+            binding,
+            manifest,
+            entry,
+            initial,
+            terminal_body=body,
         )
     ]
     resolved = [
@@ -3687,6 +3845,13 @@ def deliver_go_v1(
     def read() -> PullRequestSnapshot:
         nonlocal last_snapshot
         last_snapshot = _snapshot(forge, binding)
+        if terminal_duplicate_repair is not None:
+            last_snapshot = _apply_terminal_duplicate_repair(
+                last_snapshot,
+                binding,
+                manifest.state_envelope,
+                terminal_duplicate_repair,
+            )
         if terminal_review_id is not None:
             terminal = _matching_terminal_reviews(last_snapshot, body, binding.head_oid)
             if len(terminal) != 1 or terminal[0].id != terminal_review_id:
@@ -3737,7 +3902,9 @@ def deliver_go_v1(
     try:
         if GO_LABEL in initial.labels:
             if len(matching) == 1 and not open_threads:
-                _require_closed_manifest_threads(initial, binding, manifest, by_thread)
+                _require_closed_manifest_threads(
+                    initial, binding, manifest, by_thread, terminal_body=body
+                )
                 if NO_GO_LABEL not in initial.labels:
                     return result("already_delivered")
                 write("implementation label", forge.set_implementation_go)
@@ -3763,7 +3930,7 @@ def deliver_go_v1(
                         "The resumed GO label delivery was not verified."
                     )
                 _require_closed_manifest_threads(
-                    recovered, binding, manifest, by_thread
+                    recovered, binding, manifest, by_thread, terminal_body=body
                 )
                 _verify_live_requirements(forge, manifest.requirements_binding)
                 complete_write()
@@ -3798,7 +3965,11 @@ def deliver_go_v1(
                 )
             terminal_review_id = terminal_matches[0].id
             manifest = _manifest_with_terminal_threads(
-                after_terminal, binding, manifest, terminal_review_id
+                after_terminal,
+                binding,
+                manifest,
+                terminal_review_id,
+                terminal_body=body,
             )
             by_thread = validate_closure_manifest(
                 forge,
@@ -3806,6 +3977,7 @@ def deliver_go_v1(
                 manifest,
                 after_terminal,
                 format_only_inline_root_recovery=format_only_inline_root_recovery,
+                terminal_body=body,
             )
             responded = [
                 thread_id
@@ -3816,6 +3988,7 @@ def deliver_go_v1(
                     manifest,
                     entry,
                     after_terminal,
+                    terminal_body=body,
                 )
             ]
             resolved = [
@@ -3832,7 +4005,7 @@ def deliver_go_v1(
             thread = _thread(current, thread_id)
             if thread.is_resolved:
                 if not _closure_reply_recovered(
-                    thread, binding, manifest, entry, current
+                    thread, binding, manifest, entry, current, terminal_body=body
                 ):
                     raise DeliveryError(
                         "A resolved review thread has no verified v1 closure response."
@@ -3850,14 +4023,21 @@ def deliver_go_v1(
                 if not _response_is_only_conversation_change(
                     before_reply, after_reply, response_body
                 ) or not _closure_reply_recovered(
-                    after_reply, binding, manifest, entry, after_snapshot
+                    after_reply,
+                    binding,
+                    manifest,
+                    entry,
+                    after_snapshot,
+                    terminal_body=body,
                 ):
                     raise DeliveryError(
                         "The forge did not verify the exact posted v1 closure response."
                     )
                 responded.append(thread_id)
                 complete_write()
-            elif _closure_reply_recovered(thread, binding, manifest, entry, current):
+            elif _closure_reply_recovered(
+                thread, binding, manifest, entry, current, terminal_body=body
+            ):
                 after_reply = thread
                 if thread_id not in responded:
                     responded.append(thread_id)
@@ -3888,7 +4068,9 @@ def deliver_go_v1(
             raise DeliveryError(
                 "An unresolved review thread remains before terminal delivery."
             )
-        _require_closed_manifest_threads(current, binding, manifest, by_thread)
+        _require_closed_manifest_threads(
+            current, binding, manifest, by_thread, terminal_body=body
+        )
         _verify_go_state_history(
             forge,
             current,
@@ -3919,7 +4101,9 @@ def deliver_go_v1(
             raise DeliveryError(
                 "An unresolved review thread remains after GO delivery."
             )
-        _require_closed_manifest_threads(final, binding, manifest, by_thread)
+        _require_closed_manifest_threads(
+            final, binding, manifest, by_thread, terminal_body=body
+        )
         _verify_live_requirements(forge, manifest.requirements_binding)
         complete_write()
         return result("delivered")
@@ -4784,6 +4968,50 @@ def load_format_only_inline_root_recovery(
     return document
 
 
+def _validated_terminal_duplicate_repair(
+    value: Mapping[str, Any], binding: ReviewBinding
+) -> dict[str, Any]:
+    """Validate one terminal duplicate repair receipt against its binding."""
+    repair = _require_manifest_fields(
+        value, _TERMINAL_DUPLICATE_REPAIR_FIELDS, "terminal duplicate repair"
+    )
+    if (
+        repair["schema_id"] != TERMINAL_DUPLICATE_REPAIR_SCHEMA_ID
+        or type(repair["schema_version"]) is not int
+        or repair["schema_version"] != 1
+        or repair["binding"] != _binding_dict(binding)
+        or not isinstance(repair["state_sha256"], str)
+        or review_exchange.HEX_DIGEST.fullmatch(repair["state_sha256"]) is None
+        or not isinstance(repair["exchange_id"], str)
+        or not repair["exchange_id"]
+        or not isinstance(repair["canonical_review_id"], str)
+        or not repair["canonical_review_id"]
+        or not isinstance(repair["duplicate_review_ids"], list)
+    ):
+        raise DeliveryError("The terminal duplicate repair receipt is invalid.")
+    duplicates = repair["duplicate_review_ids"]
+    if (
+        not duplicates
+        or any(not isinstance(item, str) or not item for item in duplicates)
+        or len(set(duplicates)) != len(duplicates)
+        or duplicates != sorted(duplicates)
+        or repair["canonical_review_id"] in duplicates
+    ):
+        raise DeliveryError("The terminal duplicate repair receipt is invalid.")
+    return repair
+
+
+def load_terminal_duplicate_repair(
+    path: Path, binding: ReviewBinding
+) -> dict[str, Any]:
+    """Load one canonical terminal duplicate repair receipt."""
+    document = _read_json_document(path, "terminal duplicate repair", canonical=True)
+    if not isinstance(document, dict):
+        raise DeliveryError("The terminal duplicate repair is not an object.")
+    _validated_terminal_duplicate_repair(document, binding)
+    return document
+
+
 def _format_only_inline_root(
     snapshot: PullRequestSnapshot, root_id: str
 ) -> tuple[ReviewThread, ReviewComment]:
@@ -4983,6 +5211,51 @@ def repair_format_only_inline_root(
     return receipt
 
 
+def prepare_terminal_duplicate_repair(
+    forge: Forge, binding: ReviewBinding, state_sha256: str
+) -> dict[str, Any]:
+    """Return one canonical receipt for observed same-digest terminal carriers."""
+    if review_exchange.HEX_DIGEST.fullmatch(state_sha256) is None:
+        raise DeliveryError("The terminal duplicate repair digest is invalid.")
+    snapshot = _snapshot(forge, binding)
+    carriers = [
+        (review, envelope)
+        for review, envelope in _current_head_state_carriers(snapshot, binding)
+        if envelope["state_sha256"] == state_sha256
+    ]
+    if len(carriers) < 2:
+        raise DeliveryError(
+            "The terminal duplicate repair preparation requires duplicate carriers."
+        )
+    for review, _envelope in carriers:
+        if review.submitted_at is None:
+            raise DeliveryError("A terminal duplicate carrier has no submission time.")
+    times = {
+        review.id: _review_submission_time(review) for review, _envelope in carriers
+    }
+    earliest = min(times.values())
+    if list(times.values()).count(earliest) != 1:
+        raise DeliveryError(
+            "The terminal duplicate carriers have no unique earliest submission time."
+        )
+    canonical_id = next(
+        identifier for identifier, time in times.items() if time == earliest
+    )
+    receipt = {
+        "schema_id": TERMINAL_DUPLICATE_REPAIR_SCHEMA_ID,
+        "schema_version": 1,
+        "binding": _binding_dict(binding),
+        "state_sha256": state_sha256,
+        "exchange_id": carriers[0][1]["state"]["exchange_id"],
+        "canonical_review_id": canonical_id,
+        "duplicate_review_ids": sorted(
+            review.id for review, _envelope in carriers if review.id != canonical_id
+        ),
+    }
+    _validated_terminal_duplicate_repair(receipt, binding)
+    return receipt
+
+
 def prepare_response_manifest(
     forge: Forge,
     binding: ReviewBinding,
@@ -5115,8 +5388,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     delivery_input.add_argument("--verify-legacy-go", type=Path)
     delivery_input.add_argument("--deliver-no-go", action="store_true")
     delivery_input.add_argument("--repair-format-only-inline-root", metavar="ROOT_ID")
+    delivery_input.add_argument(
+        "--prepare-terminal-duplicate-repair", metavar="STATE_SHA256"
+    )
     parser.add_argument("--state-carrier-file", type=Path)
     parser.add_argument("--format-only-inline-root-recovery", type=Path)
+    parser.add_argument("--terminal-duplicate-repair", type=Path)
     parser.add_argument("--anchor-source", type=Path)
     parser.add_argument("--historical-anchor-proofs", type=Path)
     parser.add_argument(
@@ -5163,6 +5440,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise DeliveryError(
                     "A format-only recovery reference is valid only for final delivery."
                 )
+            if args.terminal_duplicate_repair is not None:
+                raise DeliveryError(
+                    "A terminal duplicate repair is valid only for version-1 GO "
+                    "delivery."
+                )
             print(
                 review_exchange.canonical_json(
                     prepare_response_manifest(
@@ -5187,6 +5469,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise DeliveryError(
                     "A repair cannot use an earlier format-only recovery reference."
                 )
+            if args.terminal_duplicate_repair is not None:
+                raise DeliveryError(
+                    "A terminal duplicate repair is valid only for version-1 GO "
+                    "delivery."
+                )
             print(
                 review_exchange.canonical_json(
                     repair_format_only_inline_root(
@@ -5195,10 +5482,42 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             )
             return 0
+        if args.prepare_terminal_duplicate_repair is not None:
+            if args.requirement_issue:
+                raise DeliveryError(
+                    "Requirement issue inputs are valid only during manifest "
+                    "preparation."
+                )
+            if args.state_carrier_file is not None:
+                raise DeliveryError(
+                    "A state-carrier file is valid only for NO-GO delivery."
+                )
+            if args.format_only_inline_root_recovery is not None:
+                raise DeliveryError(
+                    "A repair cannot use an earlier format-only recovery reference."
+                )
+            if args.terminal_duplicate_repair is not None:
+                raise DeliveryError(
+                    "A terminal duplicate repair is valid only for version-1 GO "
+                    "delivery."
+                )
+            print(
+                review_exchange.canonical_json(
+                    prepare_terminal_duplicate_repair(
+                        forge, binding, args.prepare_terminal_duplicate_repair
+                    )
+                )
+            )
+            return 0
         if args.deliver_no_go:
             if args.requirement_issue:
                 raise DeliveryError(
                     "Requirement issue inputs are valid only during manifest preparation."
+                )
+            if args.terminal_duplicate_repair is not None:
+                raise DeliveryError(
+                    "A terminal duplicate repair is valid only for version-1 GO "
+                    "delivery."
                 )
             if args.state_carrier_file is None:
                 raise DeliveryError("NO-GO delivery requires --state-carrier-file.")
@@ -5235,6 +5554,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise DeliveryError(
                     "A format-only recovery reference is valid only for NO-GO delivery."
                 )
+            if args.terminal_duplicate_repair is not None:
+                raise DeliveryError(
+                    "A terminal duplicate repair is valid only for version-1 GO "
+                    "delivery."
+                )
             result = verify_legacy_go(
                 forge,
                 binding,
@@ -5259,20 +5583,39 @@ def main(argv: Sequence[str] | None = None) -> int:
                     args.format_only_inline_root_recovery, binding
                 )
             )
+            repair = (
+                None
+                if args.terminal_duplicate_repair is None
+                else load_terminal_duplicate_repair(
+                    args.terminal_duplicate_repair, binding
+                )
+            )
             if args.anchor_source is not None:
                 manifest = replace(
                     manifest,
                     anchor_source=args.anchor_source,
                     historical_anchor_proofs=historical,
                 )
-            if recovery is None:
+            if recovery is None and repair is None:
                 result = deliver_go_v1(forge, binding, manifest)
+            elif recovery is None:
+                result = deliver_go_v1(
+                    forge, binding, manifest, terminal_duplicate_repair=repair
+                )
+            elif repair is None:
+                result = deliver_go_v1(
+                    forge,
+                    binding,
+                    manifest,
+                    format_only_inline_root_recovery=recovery,
+                )
             else:
                 result = deliver_go_v1(
                     forge,
                     binding,
                     manifest,
                     format_only_inline_root_recovery=recovery,
+                    terminal_duplicate_repair=repair,
                 )
     except (DeliveryError, RuntimeError, TypeError, ValueError) as error:
         if isinstance(error, DeliveryError) and error.report is not None:
