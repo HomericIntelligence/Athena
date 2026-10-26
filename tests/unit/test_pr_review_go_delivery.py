@@ -5797,6 +5797,51 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
 
         self.assertNotIn("terminal", forge.events)
 
+    def test_closure_evidence_fails_before_write(self) -> None:
+        """An unsupported closure stops the delivery before any forge mutation."""
+        fixture = (
+            Path(__file__).resolve().parents[1]
+            / "fixtures/review_exchange/comet_pr_1510"
+        )
+        cases = (
+            (
+                "author",
+                "author_review_body.md",
+                "contradict the structured response evidence",
+                1,
+            ),
+            (
+                "terminal",
+                "terminal_reviewer_body.md",
+                "must add closure evidence",
+                -1,
+            ),
+        )
+        for label, name, message, index in cases:
+            thread = self.owned_thread()
+            forge = FakeForge(self.delivery, threads=(thread,))
+            manifest = self.v1_manifest(thread)
+            self.add_history(forge, manifest)
+            forge.reviews[index] = replace(
+                forge.reviews[index],
+                body=(fixture / name).read_text(encoding="utf-8"),
+            )
+
+            with (
+                self.subTest(carrier=label),
+                self.assertRaises(self.delivery.DeliveryError) as caught,
+            ):
+                self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+
+            self.assertIn(message, str(caught.exception))
+            self.assertEqual([], [name for name in forge.events if name != "read"])
+            self.assertEqual(
+                {"state:implementation-no-go", "enhancement"}, forge.labels
+            )
+            self.assertTrue(
+                all(not item.is_resolved for item in forge.threads.values())
+            )
+
     def test_forked_current_head_nonterminal_state_withholds_go(self) -> None:
         thread = self.owned_thread()
         forge = FakeForge(self.delivery, threads=(thread,))
