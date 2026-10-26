@@ -60,7 +60,7 @@ def build_corpus(
     *,
     skills: tuple[str, ...] = ("review-exchange",),
     declared: Mapping[str, str] | None = None,
-    tree_version: str = "0.6.0",
+    tree_version: str = "0.6.1",
     manifest: bool = True,
 ) -> Path:
     """Build one temporary corpus with rewritten declared versions."""
@@ -80,7 +80,7 @@ def build_corpus(
                 text = text.replace(
                     declared_match.group(0),
                     "CORPUS_VERSION: Final[str] = "
-                    f'"{versions.get(script.name, "0.6.0")}"',
+                    f'"{versions.get(script.name, "0.6.1")}"',
                 )
             (scripts / script.name).write_text(text, encoding="utf-8")
     return root
@@ -296,7 +296,7 @@ def test_module_identity_reports_the_declared_corpus_version() -> None:
     exchange = load_module(REVIEW_SCRIPT, "corpus_identity_review_exchange")
     assert exchange.module_identity(exchange) == {
         "path": "review-exchange/scripts/review_exchange.py",
-        "declared_corpus_version": "0.6.0",
+        "declared_corpus_version": "0.6.1",
         "tree_corpus_version": _cli.plugin_version(),
     }
 
@@ -328,7 +328,7 @@ def test_verify_corpus_rejects_a_different_declared_version() -> None:
         exchange.verify_corpus(peer)
     message = str(failure.value)
     assert "mixed" in message
-    assert "0.6.0" in message
+    assert "0.6.1" in message
     assert "0.5.3" in message
     assert "issue_exchange.py" in message
     assert REMEDY in message
@@ -341,7 +341,7 @@ def test_verify_corpus_rejects_a_helper_without_a_declared_version() -> None:
     with pytest.raises(exchange.OperationalError) as failure:
         exchange.verify_corpus(peer)
     assert "declares no corpus version" in str(failure.value)
-    assert "0.6.0" not in str(failure.value)
+    assert "0.6.1" not in str(failure.value)
     assert REMEDY in str(failure.value)
 
 
@@ -349,7 +349,7 @@ def test_verify_corpus_rejects_an_unreachable_manifest(tmp_path: Path) -> None:
     """A corpus without readable version metadata is refused by name."""
     exchange = load_module(REVIEW_SCRIPT, "corpus_identity_reject_unreadable")
     root = build_corpus(tmp_path / "stale", manifest=False)
-    peer = synthetic_peer(root / "review-exchange/scripts/issue_exchange.py", "0.6.0")
+    peer = synthetic_peer(root / "review-exchange/scripts/issue_exchange.py", "0.6.1")
     with pytest.raises(exchange.OperationalError) as failure:
         exchange.verify_corpus(peer)
     message = str(failure.value)
@@ -363,7 +363,7 @@ def test_verify_corpus_accepts_a_manifest_that_differs_from_the_declared_version
     """One tree may carry a version that a helper was not written against."""
     exchange = load_module(REVIEW_SCRIPT, "corpus_identity_accept_manifest_skew")
     root = build_corpus(tmp_path / "installed", tree_version="1.2.3-rc.1+build.42")
-    peer = synthetic_peer(root / "review-exchange/scripts/issue_exchange.py", "0.6.0")
+    peer = synthetic_peer(root / "review-exchange/scripts/issue_exchange.py", "0.6.1")
     verified = exchange.verify_corpus(peer)
     assert verified["peer_tree_corpus_version"] == "1.2.3-rc.1+build.42"
     assert verified["peer_corpus_version"] == exchange.CORPUS_VERSION
@@ -381,7 +381,7 @@ def test_issue_exchange_exits_two_on_a_stale_sibling_declared_version(
     assert result.returncode == 2, result.stderr
     assert "mixed" in result.stderr
     assert "0.5.3" in result.stderr
-    assert "0.6.0" in result.stderr
+    assert "0.6.1" in result.stderr
     assert REMEDY in result.stderr
     assert "usage:" not in result.stderr
     assert "Traceback" not in result.stderr
@@ -482,8 +482,8 @@ def test_malformed_carrier_diagnostic_names_the_comment_and_both_helpers() -> No
     assert location["issue_exchange"]["path"] == (
         "review-exchange/scripts/issue_exchange.py"
     )
-    assert location["review_exchange"]["declared_corpus_version"] == "0.6.0"
-    assert location["issue_exchange"]["declared_corpus_version"] == "0.6.0"
+    assert location["review_exchange"]["declared_corpus_version"] == "0.6.1"
+    assert location["issue_exchange"]["declared_corpus_version"] == "0.6.1"
 
 
 def test_diagnostic_location_never_publishes_an_absolute_path() -> None:

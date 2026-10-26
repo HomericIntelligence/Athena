@@ -75,7 +75,7 @@ else:
     argument_parser = _cli.argument_parser
     run_command = _cli.run_command
 
-CORPUS_VERSION: Final[str] = "0.6.0"
+CORPUS_VERSION: Final[str] = "0.6.1"
 
 GO_LABEL = "state:implementation-go"
 NO_GO_LABEL = "state:implementation-no-go"
