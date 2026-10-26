@@ -345,12 +345,17 @@ workflow in the same invocation.
 13. Record each excluded route as N/A.
 14. Give the classifier reason for each excluded route.
 15. Review issue intent, behavior, test source, safety, source history, and applicable source evidence.
-16. Use both immutable diff lenses.
+16. Build one independent expected inventory for the linked requirements and the reviewed scope.
+    Freeze its digest before assessment. Follow the
+    [requirement-to-evidence contract](../../docs/review/requirement-evidence.md). Assess every
+    expected cell, then publish the material findings as one bounded batch. Do not stop after the
+    first defect.
+17. Use both immutable diff lenses.
     For new reviewer carriers, prepare the [publication-anchor proof](references/anchor-proofs.md).
     It binds inline and factual summary locations to the original immutable source. Historical
     recovery requires an explicit original-source witness; do not rewrite the carrier or infer
     a human decision.
-17. Before you calculate the score, complete each failed or sampled dimension.
+18. Before you calculate the score, complete each failed or sampled dimension.
 18. Calculate the score from earned evidence.
 19. Extract and verify the complete retained carrier history. For GitHub, classify independent
     older-head exchanges under the

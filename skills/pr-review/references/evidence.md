@@ -51,7 +51,9 @@ head refresh, continue that exchange through a separate `--author-response` invo
 event to the exact current logical state and new revision. Derive that logical state by reducing
 each verified pending author review message in provider order after the latest reviewer state message. The
 refresh invalidates prior coverage and does not
-increase the reviewer-round count. The next reviewer assessment must inspect and bind the refreshed
+increase the reviewer-round count. When the state retains a
+[requirement-to-evidence record](../../../docs/review/requirement-evidence.md), the author response
+lists the retained and repeated review sections with the cause of each repeat. The next reviewer assessment must inspect and bind the refreshed
 immutable source. A material requirements change requires an authoritative reframe instead.
 
 A terminal GO cannot accept an author refresh. For GitHub, use the

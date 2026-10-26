@@ -40,8 +40,16 @@ AUTHOR_EVENT_SCHEMA_ID = "athena.review-exchange.author-event"
 RESULT_SCHEMA_ID = "athena.review-exchange.reduce-result"
 AUTHORITY_SCHEMA_ID = "athena.review-exchange.authority"
 SCHEMA_VERSION = 1
-ENVELOPE_SCHEMA_VERSION = 2
 LEGACY_ENVELOPE_SCHEMA_VERSION = 1
+ENVELOPE_SCHEMA_VERSION = 2
+EVIDENCE_ENVELOPE_SCHEMA_VERSION = 3
+SUPPORTED_ENVELOPE_SCHEMA_VERSIONS = frozenset(
+    {
+        LEGACY_ENVELOPE_SCHEMA_VERSION,
+        ENVELOPE_SCHEMA_VERSION,
+        EVIDENCE_ENVELOPE_SCHEMA_VERSION,
+    }
+)
 ROUND_LIMIT = 5
 MAX_FINDINGS = 100
 MAX_ACCEPTED_EVENTS = MAX_FINDINGS * ROUND_LIMIT + (2 * ROUND_LIMIT - 1)
@@ -959,6 +967,11 @@ def _validate_finding_state(finding: Mapping[str, Any], round_number: int) -> No
 
 
 def _validate_state(value: object) -> dict[str, Any]:
+    optional = (
+        {"requirement_evidence"}
+        if isinstance(value, dict) and "requirement_evidence" in value
+        else set()
+    )
     state = _object(
         value,
         "state",
@@ -984,6 +997,7 @@ def _validate_state(value: object) -> dict[str, Any]:
                 "verdict",
                 "next_action",
             }
+            | optional
         ),
     )
     surface = _enum(
@@ -1177,6 +1191,17 @@ def _validate_state(value: object) -> dict[str, Any]:
         "verdict": verdict,
         "next_action": next_action,
     }
+    if "requirement_evidence" in optional:
+        evidence_record = _requirement_evidence(
+            state["requirement_evidence"], "state.requirement_evidence"
+        )
+        if evidence_record["requirements_sha256"] != requirements:
+            raise ProtocolError(
+                "The retained requirement evidence does not match the bound "
+                "requirements."
+            )
+        _require_complete_findings_batch(evidence_record, findings)
+        result["requirement_evidence"] = evidence_record
     _verify_state_history(result)
     return result
 
@@ -1197,6 +1222,11 @@ def _validate_author_event_record(value: object) -> dict[str, Any]:
                 "scope_change_reason",
                 "responses",
             }
+            | (
+                {"coverage_changes"}
+                if isinstance(value, dict) and "coverage_changes" in value
+                else set()
+            )
         ),
     )
     if event["event_type"] != "author_response":
@@ -1223,6 +1253,11 @@ def _validate_author_event_record(value: object) -> dict[str, Any]:
         ),
         "responses": _unique_responses(
             event["responses"], "author event responses", _author_response
+        ),
+        **(
+            {}
+            if "coverage_changes" not in event
+            else {"coverage_changes": _coverage_changes(event["coverage_changes"])}
         ),
     }
 
@@ -1355,9 +1390,14 @@ def make_envelope(state: object, schema_id: str = STATE_SCHEMA_ID) -> dict[str, 
         validated = _validate_author_event_record(dict(state_object))
     else:
         raise ProtocolError("The envelope schema identifier is not supported.")
+    schema_version = (
+        EVIDENCE_ENVELOPE_SCHEMA_VERSION
+        if isinstance(validated, dict) and "requirement_evidence" in validated
+        else ENVELOPE_SCHEMA_VERSION
+    )
     return {
         "schema_id": schema_id,
-        "schema_version": ENVELOPE_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "state": validated,
         "state_sha256": sha256_json(validated),
     }
@@ -1378,11 +1418,16 @@ def verify_envelope(value: object) -> dict[str, Any]:
     schema_version = _integer(
         envelope["schema_version"], "envelope.schema_version", minimum=1
     )
-    if schema_version not in {
-        LEGACY_ENVELOPE_SCHEMA_VERSION,
-        ENVELOPE_SCHEMA_VERSION,
-    }:
+    if schema_version not in SUPPORTED_ENVELOPE_SCHEMA_VERSIONS:
         raise ProtocolError("The envelope schema version is not supported.")
+    carries_evidence = (
+        isinstance(envelope["state"], dict)
+        and "requirement_evidence" in envelope["state"]
+    )
+    if carries_evidence != (schema_version == EVIDENCE_ENVELOPE_SCHEMA_VERSION):
+        raise ProtocolError(
+            "The envelope schema version does not match its requirement evidence."
+        )
     supplied = _digest(envelope["state_sha256"], "envelope.state_sha256")
     if supplied != sha256_json(envelope["state"]):
         raise ProtocolError("The envelope state digest does not match its state.")
@@ -1473,6 +1518,11 @@ def normalize_author_transition(
 
 
 def _initial_review_event(value: object) -> dict[str, Any]:
+    optional = (
+        {"requirement_evidence"}
+        if isinstance(value, dict) and "requirement_evidence" in value
+        else set()
+    )
     event = _object(
         value,
         "initial reviewer assessment",
@@ -1493,6 +1543,7 @@ def _initial_review_event(value: object) -> dict[str, Any]:
                 "new_findings",
                 "stop_reason",
             }
+            | optional
         ),
     )
     if event["event_type"] != "reviewer_assessment":
@@ -1548,6 +1599,15 @@ def _initial_review_event(value: object) -> dict[str, Any]:
             None
             if event["stop_reason"] is None
             else _enum(event["stop_reason"], "initial stop reason", STOP_REASONS)
+        ),
+        **(
+            {}
+            if "requirement_evidence" not in optional
+            else {
+                "requirement_evidence": _requirement_evidence(
+                    event["requirement_evidence"], "initial requirement evidence"
+                )
+            }
         ),
     }
 
@@ -1614,6 +1674,11 @@ def _reframe_event(value: object) -> dict[str, Any]:
 
 
 def _continued_author_event(value: object) -> dict[str, Any]:
+    optional = (
+        {"coverage_changes"}
+        if isinstance(value, dict) and "coverage_changes" in value
+        else set()
+    )
     event = _object(
         value,
         "author response",
@@ -1627,6 +1692,7 @@ def _continued_author_event(value: object) -> dict[str, Any]:
                 "scope_change_reason",
                 "responses",
             }
+            | optional
         ),
     )
     if event["event_type"] != "author_response":
@@ -1645,6 +1711,11 @@ def _continued_author_event(value: object) -> dict[str, Any]:
         "responses": _unique_responses(
             event["responses"], "author responses", _author_response
         ),
+        **(
+            {}
+            if not optional
+            else {"coverage_changes": _coverage_changes(event["coverage_changes"])}
+        ),
     }
 
 
@@ -1652,11 +1723,11 @@ def _continued_review_event(
     value: object, existing_findings: Sequence[Mapping[str, Any]]
 ) -> dict[str, Any]:
     reassessment = value.get("reassessment") if isinstance(value, dict) else None
-    fields = (
-        {"reassessment"}
-        if isinstance(value, dict) and "reassessment" in value
-        else set()
-    )
+    fields = {
+        key
+        for key in ("reassessment", "requirement_evidence")
+        if isinstance(value, dict) and key in value
+    }
     event = _object(
         value,
         "corrective reviewer assessment",
@@ -1709,8 +1780,12 @@ def _continued_review_event(
             else _enum(event["stop_reason"], "reviewer stop reason", STOP_REASONS)
         ),
     }
-    if fields:
+    if "reassessment" in fields:
         result["reassessment"] = _string(reassessment, "reviewer reassessment")
+    if "requirement_evidence" in fields:
+        result["requirement_evidence"] = _requirement_evidence(
+            event["requirement_evidence"], "reviewer requirement evidence"
+        )
     return result
 
 
@@ -1743,6 +1818,103 @@ def _human_event(value: object) -> dict[str, Any]:
             event["authority_receipt"], "human authority receipt"
         ),
         "decisions": decisions,
+    }
+
+
+def _requirement_evidence_module() -> Any:
+    """Return the shared requirement-evidence module from its canonical path."""
+    global _REQUIREMENT_EVIDENCE
+    if _REQUIREMENT_EVIDENCE is None:
+        path = Path(__file__).resolve().parent / "requirement_evidence.py"
+        specification = importlib.util.spec_from_file_location(
+            "athena_requirement_evidence", path
+        )
+        if specification is None or specification.loader is None:
+            raise ProtocolError(
+                f"The shared requirement-evidence module is unavailable: '{path}'."
+            )
+        module = importlib.util.module_from_spec(specification)
+        sys.modules[specification.name] = module
+        specification.loader.exec_module(module)
+        _REQUIREMENT_EVIDENCE = module
+    return _REQUIREMENT_EVIDENCE
+
+
+_REQUIREMENT_EVIDENCE: Any = None
+
+
+def _requirement_evidence(value: object, name: str) -> dict[str, Any]:
+    """Validate one shared requirement-evidence record."""
+    module = _requirement_evidence_module()
+    try:
+        return cast(dict[str, Any], module.validate_record(value))
+    except module.RequirementEvidenceError as error:
+        raise ProtocolError(f"The {name} is not valid: {error}") from error
+
+
+def _evidence_findings(record: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Return the complete findings batch of one evidence record."""
+    module = _requirement_evidence_module()
+    try:
+        return cast(list[dict[str, Any]], module.assemble_findings(record))
+    except module.RequirementEvidenceError as error:
+        raise ProtocolError(
+            f"The requirement evidence findings batch is not valid: {error}"
+        ) from error
+
+
+def _require_complete_findings_batch(
+    record: Mapping[str, Any], findings: Sequence[Mapping[str, Any]]
+) -> None:
+    """Require one complete batch of the material findings visible in the map."""
+    known = {finding["id"] for finding in findings}
+    missing = sorted({item["id"] for item in _evidence_findings(record)} - known)
+    if missing:
+        raise ProtocolError(
+            "The reviewer assessment omits material findings that the "
+            f"requirement-to-evidence map reports: {missing}."
+        )
+
+
+def _coverage_changes(value: object) -> dict[str, Any]:
+    """Validate one section reuse record from a correction."""
+    changes = _object(
+        value,
+        "coverage changes",
+        frozenset(
+            {
+                "inventory_sha256",
+                "retained_sections",
+                "repeated_sections",
+                "changed_dependencies",
+                "causes",
+            }
+        ),
+    )
+    return {
+        "inventory_sha256": _digest(
+            changes["inventory_sha256"], "coverage changes inventory digest"
+        ),
+        "retained_sections": _strings(
+            changes["retained_sections"],
+            "retained review sections",
+            allow_empty=True,
+        ),
+        "repeated_sections": _strings(
+            changes["repeated_sections"],
+            "repeated review sections",
+            allow_empty=True,
+        ),
+        "changed_dependencies": _strings(
+            changes["changed_dependencies"],
+            "changed review dependencies",
+            allow_empty=True,
+        ),
+        "causes": _strings(
+            changes["causes"],
+            "repeated review section causes",
+            allow_empty=True,
+        ),
     }
 
 
@@ -2186,6 +2358,13 @@ def _initial_reduce(
     if event["round"] != 1:
         raise ProtocolError("The first reviewer assessment must be round 1.")
     findings = [_stored_finding(item, 1) for item in event["new_findings"]]
+    evidence = event.get("requirement_evidence")
+    if evidence is not None:
+        if evidence["requirements_sha256"] != event["requirements_sha256"]:
+            raise ProtocolError(
+                "The requirement evidence does not match the bound requirements."
+            )
+        _require_complete_findings_batch(evidence, findings)
     phase, verdict, next_action, reason = _state_phase(
         findings,
         event["coverage_complete"],
@@ -2222,6 +2401,8 @@ def _initial_reduce(
         "verdict": verdict,
         "next_action": next_action,
     }
+    if evidence is not None:
+        state["requirement_evidence"] = evidence
     return state, reason
 
 
@@ -2345,6 +2526,20 @@ def _author_reduce(
             finding["state"] = "answered_tradeoff"
         else:
             finding["state"] = "contested"
+    changes = event.get("coverage_changes")
+    if previous.get("requirement_evidence") is not None and changes is not None:
+        verified_changes = _coverage_changes(changes)
+        if (
+            verified_changes["inventory_sha256"]
+            != previous["requirement_evidence"]["inventory_sha256"]
+        ):
+            raise ProtocolError(
+                "The coverage changes do not bind the retained requirement "
+                "evidence inventory."
+            )
+    # A changed head or scope always requires a new reviewer assessment. The
+    # accepted author event records the retained and repeated sections and the
+    # cause of each repeat.
     invalidates_coverage = changed_artifact or scope_changed
     has_active_findings = bool(_active_required(findings))
     state = {
@@ -2561,6 +2756,18 @@ def _review_reduce(
         _apply_reviewer_response(finding, response, event["round"])
     for new_finding in event["new_findings"]:
         findings.append(_stored_finding(new_finding, event["round"]))
+    evidence = event.get("requirement_evidence")
+    if evidence is not None:
+        if evidence["requirements_sha256"] != previous["requirements_sha256"]:
+            raise ProtocolError(
+                "The requirement evidence does not match the bound requirements."
+            )
+        _require_complete_findings_batch(evidence, findings)
+    elif previous.get("requirement_evidence") is not None:
+        raise ProtocolError(
+            "A corrective reviewer assessment must replace the retained "
+            "requirement evidence."
+        )
     required_remaining = len(_active_required(findings))
     prior_progress = previous["progress"][-1]
     reason_override = event["stop_reason"]
@@ -2622,6 +2829,8 @@ def _review_reduce(
         "verdict": verdict,
         "next_action": next_action,
     }
+    if evidence is not None:
+        state["requirement_evidence"] = evidence
     return state, reason
 
 

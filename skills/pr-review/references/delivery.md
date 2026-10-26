@@ -256,7 +256,11 @@ needs a new authoritative decision for the changed head. Nonblocking findings ke
 
 The response list is empty only when there is no active or terminal required finding. A refresh
 invalidates coverage and does not change the round, progress history, GO eligibility, or finding
-IDs. From `awaiting_reviewer`, it stays `awaiting_reviewer`. From `awaiting_evidence` or a conditional
+IDs. When the state retains a requirement-evidence record, the response carries the retained and
+repeated section identifiers, the changed dependencies, and the cause of each repeat. The changes
+must bind the retained inventory digest, and the next reviewer assessment repeats only the repeated
+sections. A record without verified dependency evidence repeats the complete review.
+From `awaiting_reviewer`, it stays `awaiting_reviewer`. From `awaiting_evidence` or a conditional
 state, it moves to `awaiting_reviewer` when it revalidates a terminal required finding. Otherwise,
 it moves to `phase=awaiting_evidence`. Each refresh has `verdict=NO-GO` and
 `next_action=review_assessment`.

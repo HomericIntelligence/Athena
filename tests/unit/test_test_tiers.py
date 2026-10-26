@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 NIGHTLY_MODULES = {
+    "tests/unit/test_change_review_evidence.py",
     "tests/unit/test_change_review_scope_hardening.py",
     "tests/unit/test_installed_skill_helpers.py",
     "tests/unit/test_knowledge_checkout_resolution.py",

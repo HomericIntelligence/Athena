@@ -78,8 +78,11 @@ result. Exit code `1` is a protocol rejection. Exit code `2` is an operational f
 8. Before a forge write, revalidate the target, source revision, actor, artifact identity, and
    prepared preconditions.
 9. Publish only the exact prepared artifact through the invoking workflow.
-10. Read the forge artifact again and use the applicable verification command.
-11. Expose a favorable delivered result only after exact readback verification.
+10. Carry the requirement-evidence record when one exists. Repeat only the review sections that a
+    requirements, scope, or dependency content change affects, and record the cause of each repeat.
+    A record without verified dependency evidence repeats the complete review.
+11. Read the forge artifact again and use the applicable verification command.
+12. Expose a favorable delivered result only after exact readback verification.
 
 ## Safety and fallback
 

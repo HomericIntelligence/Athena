@@ -15,6 +15,7 @@ Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this
 prose that it produces.
 
 Use the shared [review contract](../../docs/review/common.md),
+[requirement-to-evidence contract](../../docs/review/requirement-evidence.md),
 [language routing](../../docs/review/language-routing.md), and
 [behavior-first testing](../../docs/review/behavior-first-testing.md).
 
@@ -93,6 +94,29 @@ resolution cannot cover the selected scope in one operation, use batches and rec
 If a source remains unavailable, report the exact coverage gap and supported findings.
 Do not silently narrow the requested scope or claim complete coverage from a sample.
 
+## Map the requirements to evidence
+
+Before the verdict, build one independent expected inventory for the bound requirements and the
+bound scope. Follow the [requirement-to-evidence contract](../../docs/review/requirement-evidence.md).
+Freeze its digest before assessment. Assign every selected path to one review section. Assess each
+expected cell as covered, missing requirement coverage, an incorrect implementation, or not
+applicable with a reason.
+
+Use the installed [`scripts/review_evidence.py`](scripts/review_evidence.py) adapter. It is
+read-only.
+
+- Run `prepare` with the scope selectors, the frozen inventory, the section assignment, the corrected
+  findings, and an optional prior record with the record digest that you retained.
+- Run `finalize` with the preparation and the assessed rows for the repeated sections.
+
+The adapter returns the retained sections, the sections that need assessment with a cause each, the
+evidence record, the complete findings batch, and the compact requirement-to-evidence map. Retain the
+record outside the reviewed source and supply it on the next invocation. The adapter writes no record
+into the repository and creates no exchange authority.
+
+An invalid prior record is a specific diagnostic and no completeness claim. Source drift between
+`prepare` and `finalize` is a failure, not a merge.
+
 ## Review and deliver
 
 Follow this shared review flow:
@@ -129,7 +153,8 @@ Include these items in the console or host-native read-only annotation surface:
 4. Give severity-ranked findings with the exact `path:line`, impact, and evidence.
 5. For each finding, give a correction that is proportional to the impact.
 6. Give changed-test source coverage and source-coverage limits.
-7. Give residual risks and unverified assumptions.
+7. Give the compact requirement-to-evidence map and the cause for each repeated section.
+8. Give residual risks and unverified assumptions.
 
 If the host supports native source annotations, use them only for changed locations. Otherwise, use
 `path:line` in the console. Do not simulate annotations by editing source.
