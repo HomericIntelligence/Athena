@@ -78,6 +78,32 @@ def source_location(location: str) -> tuple[str, int] | None:
     return path, int(line)
 
 
+ANCHOR_FIELDS = frozenset(
+    {
+        "schema_id",
+        "schema_version",
+        "base_oid",
+        "head_oid",
+        "merge_base_oid",
+        "diff_policy",
+        "hunks_sha256",
+        "findings",
+    }
+)
+
+
+class MalformedAnnexError(ValueError):
+    """One anchor annex that omits a declared field or adds an unknown field.
+
+    The record appears under ``field`` so a caller can decide the outcome by
+    the field name instead of the message text.
+    """
+
+    def __init__(self, field: str | None) -> None:
+        super().__init__("Invalid anchor manifest fields.")
+        self.field = field
+
+
 def exact_fields(value: object, fields: set[str], description: str) -> dict[str, Any]:
     """Reject omitted, additional, or ambiguous proof fields."""
     if not isinstance(value, dict) or set(value) != fields:
@@ -362,20 +388,16 @@ def visible_manifest(visible: str) -> dict[str, Any] | None:
     value = _decode_annex(visible)
     if value is None:
         return None
-    return exact_fields(
-        value,
-        {
-            "schema_id",
-            "schema_version",
-            "base_oid",
-            "head_oid",
-            "merge_base_oid",
-            "diff_policy",
-            "hunks_sha256",
-            "findings",
-        },
-        "anchor manifest",
-    )
+    if not isinstance(value, dict):
+        raise MalformedAnnexError(None)
+    present = set(value)
+    if present - ANCHOR_FIELDS:
+        # An unknown field is not a record-shape omission and never warns.
+        raise MalformedAnnexError(None)
+    missing = ANCHOR_FIELDS - present
+    if missing:
+        raise MalformedAnnexError(next(iter(sorted(missing))))
+    return value
 
 
 def partial_manifest(visible: str) -> dict[str, Any] | None:
@@ -388,43 +410,57 @@ def partial_manifest(visible: str) -> dict[str, Any] | None:
     return value
 
 
-def partial_geometry(visible: str) -> dict[str, tuple[str, str | None, int]] | None:
+def partial_geometry(
+    visible: str, *, head_oid: str, base_oid: str
+) -> dict[str, tuple[str, str | None, int]] | None:
     """Read published anchor geometry from an annex that omits a declared field.
 
-    Return None when the annex has every declared field. The caller must treat
-    that case as an unsupported shape and keep its strict path.
+    Accept the geometry only when the annex still binds its carrier: it must
+    present ``head_oid == head_oid`` and ``base_oid == base_oid``. An annex
+    that omits, mistypes, or changes either binding, adds an unknown field, or
+    repeats a finding identifier yields None, so the caller keeps its strict
+    block. Return None when the annex has every declared field; the caller
+    must treat that case as an unsupported shape and keep its strict path.
     """
     try:
         if visible_manifest(visible) is not None:
             return None
-    except ValueError as error:
-        if "fields" not in str(error):
-            raise
+    except MalformedAnnexError as error:
+        # Only an omitted declared field other than a carrier binding is a
+        # record-shape warning. A changed binding or an unknown field blocks.
+        if error.field in {None, "head_oid", "base_oid"}:
+            return None
     manifest = partial_manifest(visible)
     if manifest is None:
+        return None
+    if set(manifest) - ANCHOR_FIELDS:
+        return None
+    if manifest.get("head_oid") != head_oid or manifest.get("base_oid") != base_oid:
         return None
     entries = manifest.get("findings")
     if not isinstance(entries, list) or len(entries) > MAX_FINDINGS:
         return None
-    by_id = {
-        entry["id"]: entry
+    valid = [
+        entry
         for entry in entries
         if isinstance(entry, dict)
         and isinstance(entry.get("id"), str)
         and isinstance(entry.get("path"), str)
-        and isinstance(entry.get("line"), int)
+        and type(entry.get("line")) is int
         and entry.get("side") in {None, "LEFT", "RIGHT"}
         and isinstance(entry.get("publication"), str)
-    }
+    ]
+    # A dropped entry would let the caller publish the rest of the annex as if
+    # the record were complete. One invalid entry rejects the whole annex.
+    if len(valid) != len(entries):
+        return None
+    identities = [entry["id"] for entry in valid]
+    if len(identities) != len(set(identities)):
+        return None
     return {
-        entry["id"]: (entry["path"], entry.get("side"), entry["line"])
-        for entry in entries
-        if isinstance(entry, dict)
-        and entry.get("id") in by_id
-        and entry.get("publication") == "inline"
-        and isinstance(entry.get("path"), str)
-        and isinstance(entry.get("line"), int)
-        and entry.get("side") in {None, "LEFT", "RIGHT"}
+        entry["id"]: (entry["path"], entry["side"], entry["line"])
+        for entry in valid
+        if entry["publication"] == "inline"
     }
 
 

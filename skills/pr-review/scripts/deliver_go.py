@@ -265,6 +265,28 @@ class RequirementsBinding:
     requirements_sha256: str
     requirement_issue_urls: tuple[str, ...]
 
+    def differing_fields(self, observed: RequirementsBinding) -> tuple[str, ...]:
+        """Name each field whose live value differs from the retained value."""
+        return tuple(
+            name
+            for name in (
+                "reviewed_scope_sha256",
+                "requirements_sha256",
+                "requirement_issue_urls",
+            )
+            if getattr(self, name) != getattr(observed, name)
+        )
+
+
+class RequirementsBindingChanged(DeliveryError):
+    """One live requirements binding that names each field that differs."""
+
+    def __init__(self, differing_fields: tuple[str, ...]) -> None:
+        super().__init__(
+            "The live pull-request requirements differ from the reviewed binding."
+        )
+        self.differing_fields = differing_fields
+
 
 @dataclass(frozen=True)
 class TerminalSupersession:
@@ -541,17 +563,21 @@ def _warn_live_requirements(
     """Report a stale requirements digest as a warning and continue delivery.
 
     The strict check stays in force when the caller passes no collector. Only a
-    changed digest is a warning. An edited requirement, or a failed collection,
-    still blocks the delivery.
+    changed requirements digest is a warning, and only when every other field
+    still matches. A changed scope digest, requirement-URL set, requirement
+    edit, or failed collection still blocks the delivery.
     """
     if warnings is None:
         _verify_live_requirements(forge, expected)
         return
     try:
         forge.verify_requirements_binding(expected)
-    except DeliveryError as error:
-        if "differ from the reviewed" not in str(error):
-            raise
+    except RequirementsBindingChanged as error:
+        if error.differing_fields != ("requirements_sha256",):
+            raise DeliveryError(
+                "The live pull-request requirements differ from the reviewed "
+                f"binding in: {', '.join(error.differing_fields)}."
+            ) from error
         warnings.add(
             "stale-requirements-digest",
             "The live requirements differ from the reviewed requirements binding.",
@@ -559,6 +585,9 @@ def _warn_live_requirements(
             requirement_issue_urls=",".join(expected.requirement_issue_urls),
             cause=str(error),
         )
+    except DeliveryError:
+        # A provider failure or an unverifiable binding is not a changed digest.
+        raise
     except Exception as error:
         # A scope, closing-reference, or linked-content edit is not a changed
         # digest. A failed collection also stays fatal.
@@ -1652,9 +1681,16 @@ def _publication_anchors(
         if warnings is not None:
             # A declared field that the annex omits is one record-shape
             # warning. The published annex geometry still controls a finding
-            # that declares an inline location.
+            # that declares an inline location, but only when the surviving
+            # fields still bind this carrier head and base.
             try:
-                published = anchor_proofs.partial_geometry(visible)
+                published = anchor_proofs.partial_geometry(
+                    visible,
+                    head_oid=cast(
+                        str, envelope["state"]["artifact_binding"]["revision"]
+                    ),
+                    base_oid=binding.base_oid,
+                )
             except (ValueError, TypeError):
                 published = None
             if published is not None:
@@ -4174,6 +4210,22 @@ def _validate_terminal_inline_comments(
         _warn_malformed_annex(warnings, "terminal", error)
     if annex is not None and annex["base_oid"] != binding.base_oid:
         raise DeliveryError("The pending publication anchors have a different base.")
+    if (
+        annex is None
+        and anchor_proofs.MARKER in manifest.terminal_visible_content
+        and anchor_proofs.partial_geometry(
+            manifest.terminal_visible_content,
+            head_oid=cast(str, state["artifact_binding"]["revision"]),
+            base_oid=binding.base_oid,
+        )
+        is None
+    ):
+        # A malformed annex still has to bind its carrier. The warn path already
+        # refused an unbound annex through _publication_anchors; this check keeps
+        # the base binding when the terminal path reads the annex separately.
+        raise DeliveryError(
+            "The terminal publication anchors do not bind their carrier."
+        )
     comment_finding_ids: list[str] = []
     for comment in comments:
         marker = _finding_marker(
@@ -5190,10 +5242,9 @@ class GitHubForge:
 
     def verify_requirements_binding(self, expected: RequirementsBinding) -> None:
         observed = self.collect_requirements_binding(expected.requirement_issue_urls)
-        if observed != expected:
-            raise DeliveryError(
-                "The live pull-request requirements differ from the reviewed binding."
-            )
+        differing = expected.differing_fields(observed)
+        if differing:
+            raise RequirementsBindingChanged(differing)
 
     def snapshot(self) -> PullRequestSnapshot:
         query = """

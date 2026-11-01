@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import contextlib
 import io
+from dataclasses import replace
 from hashlib import sha256
 from types import ModuleType
-from typing import Any
+from typing import Any, cast
+from unittest.mock import patch
 
 import pytest
 
@@ -38,11 +40,11 @@ class MismatchedRequirementsForge:
         return self.live
 
     def verify_requirements_binding(self, expected: Any) -> None:
-        if self.live != expected:
-            message = (
-                "The live pull-request requirements differ from the reviewed binding."
-            )
-            raise self.delivery.DeliveryError(message)
+        # Mirror the production adapter: name each field that differs instead of
+        # raising one message for every difference.
+        differing = expected.differing_fields(self.live)
+        if differing:
+            raise self.delivery.RequirementsBindingChanged(differing)
 
 
 def requirements(delivery: ModuleType, digest: str) -> Any:
@@ -149,6 +151,80 @@ def test_stale_requirements_digest_still_blocks_without_warnings(
         delivery._warn_live_requirements(forge, requirements(delivery, "a" * 64), None)
 
 
+@pytest.mark.parametrize(
+    ("live", "field"),
+    [
+        (
+            lambda delivery: delivery.RequirementsBinding(
+                reviewed_scope_sha256="b" * 64,
+                requirements_sha256="a" * 64,
+                requirement_issue_urls=("https://github.com/LLM360/comet/issues/1",),
+            ),
+            "reviewed_scope_sha256",
+        ),
+        (
+            lambda delivery: delivery.RequirementsBinding(
+                reviewed_scope_sha256="0" * 64,
+                requirements_sha256="a" * 64,
+                requirement_issue_urls=("https://github.com/LLM360/comet/issues/2",),
+            ),
+            "requirement_issue_urls",
+        ),
+        (
+            lambda delivery: delivery.RequirementsBinding(
+                reviewed_scope_sha256="b" * 64,
+                requirements_sha256="b" * 64,
+                requirement_issue_urls=("https://github.com/LLM360/comet/issues/1",),
+            ),
+            "reviewed_scope_sha256",
+        ),
+    ],
+    ids=[
+        "changed-scope-digest",
+        "changed-requirement-urls",
+        "changed-scope-and-digest",
+    ],
+)
+def test_any_other_requirements_field_change_still_blocks(
+    delivery: ModuleType, live: Any, field: str
+) -> None:
+    # Only a changed requirements digest is a warning. A changed scope digest or
+    # a changed requirement-URL set keeps blocking even with a warnings collector.
+    del field
+    forge = MismatchedRequirementsForge(delivery, live(delivery))
+    warnings = delivery.DeliveryWarnings()
+
+    with pytest.raises(delivery.DeliveryError, match="requirements differ"):
+        delivery._warn_live_requirements(
+            forge, requirements(delivery, "a" * 64), warnings
+        )
+
+    assert warnings.records == []
+
+
+def test_changed_scope_digest_blocks_the_github_adapter_verification(
+    delivery: ModuleType,
+) -> None:
+    # The production adapter must raise the structured difference, not one
+    # shared message, so the warning path can never key on message text.
+    binding = binding_for(delivery, "a" * 40)
+    forge = delivery.GitHubForge(binding)
+    reviewed = delivery.RequirementsBinding(
+        reviewed_scope_sha256="0" * 64,
+        requirements_sha256="a" * 64,
+        requirement_issue_urls=("https://github.com/LLM360/comet/issues/1",),
+    )
+    observed = replace(reviewed, reviewed_scope_sha256="b" * 64)
+
+    with (
+        patch.object(forge, "collect_requirements_binding", return_value=observed),
+        pytest.raises(delivery.RequirementsBindingChanged) as error,
+    ):
+        forge.verify_requirements_binding(reviewed)
+
+    assert error.value.differing_fields == ("reviewed_scope_sha256",)
+
+
 class AncestorForge:
     """A forge that reports the first commit as an ancestor of the second."""
 
@@ -244,6 +320,112 @@ def test_malformed_annex_still_blocks_without_warnings(
         publication_anchors(
             delivery, annex(visible, annex_fields(delivery), delivery), None
         )
+
+
+def geometry_for(
+    delivery: ModuleType, fields: dict[str, object]
+) -> dict[str, tuple[str, str | None, int]] | None:
+    """Read partial geometry from one annex for the fixture carrier binding."""
+    return cast(
+        dict[str, tuple[str, str | None, int]] | None,
+        delivery.anchor_proofs.partial_geometry(
+            annex("Reviewed the current change.", fields, delivery),
+            head_oid="a" * 40,
+            base_oid="1" * 40,
+        ),
+    )
+
+
+def test_malformed_annex_without_head_or_base_binding_refuses_delivery(
+    delivery: ModuleType,
+) -> None:
+    # The exact reproduction from the round-1 review: an annex with no head_oid
+    # or base_oid must not supply geometry for a different file and line.
+    fields = annex_fields(delivery)
+    fields.pop("head_oid")
+    fields.pop("base_oid")
+    fields["findings"] = [
+        {
+            "id": "F-001",
+            "line": 9999,
+            "path": "attacker.py",
+            "publication": "inline",
+            "side": "RIGHT",
+        }
+    ]
+    warnings = delivery.DeliveryWarnings()
+
+    with pytest.raises(delivery.DeliveryError, match="anchor proof failed"):
+        publication_anchors(
+            delivery, annex("Reviewed the current change.", fields, delivery), warnings
+        )
+
+    assert warnings.records == []
+    assert geometry_for(delivery, fields) is None
+
+
+@pytest.mark.parametrize("present", ["head_oid", "base_oid"])
+def test_malformed_annex_with_one_missing_binding_refuses_delivery(
+    delivery: ModuleType, present: str
+) -> None:
+    fields = annex_fields(delivery)
+    fields.pop(present)
+
+    assert geometry_for(delivery, fields) is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("head_oid", "c" * 40), ("base_oid", "9" * 40)],
+)
+def test_malformed_annex_with_a_changed_binding_refuses_delivery(
+    delivery: ModuleType, field: str, value: str
+) -> None:
+    fields = annex_fields(delivery)
+    fields[field] = value
+
+    assert geometry_for(delivery, fields) is None
+
+
+def test_malformed_annex_with_an_unknown_field_refuses_delivery(
+    delivery: ModuleType,
+) -> None:
+    fields = annex_fields(delivery)
+    fields.pop("diff_policy", None)
+    fields["injected"] = "value"
+
+    assert geometry_for(delivery, fields) is None
+
+
+def test_malformed_annex_keeps_geometry_when_the_binding_survives(
+    delivery: ModuleType,
+) -> None:
+    fields = annex_fields(delivery)
+    fields.pop("diff_policy", None)
+
+    assert geometry_for(delivery, fields) == {
+        "F-001": ("src/comet/example.py", "RIGHT", 12)
+    }
+
+
+def test_malformed_annex_rejects_a_duplicate_finding_id(
+    delivery: ModuleType,
+) -> None:
+    fields = annex_fields(delivery)
+    fields.pop("diff_policy", None)
+    duplicate = dict(cast(list[dict[str, object]], fields["findings"])[0])
+    duplicate["path"] = "other.py"
+    fields["findings"] = [*cast(list[object], fields["findings"]), duplicate]
+
+    assert geometry_for(delivery, fields) is None
+
+
+def test_malformed_annex_rejects_a_boolean_line(delivery: ModuleType) -> None:
+    fields = annex_fields(delivery)
+    fields.pop("diff_policy", None)
+    cast(list[dict[str, object]], fields["findings"])[0]["line"] = True
+
+    assert geometry_for(delivery, fields) is None
 
 
 def terminal_carrier(delivery: ModuleType, exchange_id: str, binding: Any) -> Any:
@@ -352,6 +534,91 @@ def test_forked_exchange_still_blocks_without_warnings(
     with pytest.raises(delivery.DeliveryError, match="nonforking chain"):
         delivery._verify_state_chain(
             AncestorForge(), terminal, snapshot, binding, None, ()
+        )
+
+
+def test_stale_carrier_head_warns_but_a_moved_live_head_blocks(
+    delivery: ModuleType,
+) -> None:
+    """Owner decision on Comet #3848, recorded in LLM360/comet#3848.
+
+    A stale head earlier in the chain warns and continues. The terminal record
+    keeps the reviewed head. A live head past that binding warns and blocks.
+    """
+    approached_head = "a" * 40
+    live_head = "b" * 40
+    binding = binding_for(delivery, approached_head)
+    terminal, terminal_document = terminal_carrier(delivery, "pr3848-r1", binding)
+    # The terminal record binds the reviewed head and does not rebrand it.
+    assert terminal["state"]["artifact_binding"]["revision"] == approached_head
+
+    # An earlier carrier in the chain names an older head. The live head is
+    # still the reviewed head, so only the in-chain carrier is stale.
+    stale_review = delivery.ReviewRecord(
+        id="PRR_1",
+        body=terminal_document,
+        head_oid="c" * 40,
+        author="reviewer",
+        viewer_did_author=True,
+        includes_created_edit=False,
+        state="COMMENT",
+        submitted_at="2026-11-01T00:00:01Z",
+    )
+    current_review = delivery.ReviewRecord(
+        id="PRR_2",
+        body=terminal_document,
+        head_oid=approached_head,
+        author="reviewer",
+        viewer_did_author=True,
+        includes_created_edit=False,
+        state="COMMENT",
+        submitted_at="2026-11-01T00:00:02Z",
+    )
+    stale_snapshot = replace(
+        snapshot_for(delivery, binding, approached_head),
+        reviews=(stale_review, current_review),
+    )
+    stale_warnings = delivery.DeliveryWarnings()
+
+    _result, _stderr = warned(
+        lambda: delivery._warn_reviewed_head_binding(
+            AncestorForge(), stale_snapshot, binding, stale_warnings
+        )
+    )
+
+    # The terminal binding still names the reviewed head, not the live one.
+    assert binding.head_oid == approached_head
+    assert stale_warnings.records == []
+
+    # The live head moves past the terminal binding. It warns, then blocks.
+    moved_snapshot = replace(
+        snapshot_for(delivery, binding, live_head),
+        reviews=(
+            stale_review,
+            replace(current_review, head_oid=binding.head_oid),
+        ),
+    )
+    moved_warnings = delivery.DeliveryWarnings()
+
+    _moved, stderr = warned(
+        lambda: delivery._warn_reviewed_head_binding(
+            AncestorForge(), moved_snapshot, binding, moved_warnings
+        )
+    )
+
+    assert [warning.code for warning in moved_warnings.records] == [
+        "stale-reviewed-head"
+    ]
+    assert dict(moved_warnings.records[0].detail) == {
+        "live_head_oid": live_head,
+        "reviewed_head_oid": approached_head,
+    }
+    assert "behind" in stderr
+
+    with pytest.raises(delivery.DeliveryError, match="withhold GO delivery"):
+        delivery._snapshot(
+            type("MovedHeadForge", (), {"snapshot": lambda self: moved_snapshot})(),
+            binding,
         )
 
 

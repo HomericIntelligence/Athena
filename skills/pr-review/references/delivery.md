@@ -567,10 +567,23 @@ warning to the standard error stream. It also records each warning in the delive
 
 | Finding | Warning code | Helper action |
 | --- | --- | --- |
-| An anchor annex omits a declared field | `malformed-annex` | Warn and keep the published anchor geometry |
-| The reviewed head is not the live head | `stale-reviewed-head` | Warn and name the reviewed head and the live head |
+| An anchor annex omits a declared field other than `head_oid` or `base_oid`, and both bindings still match | `malformed-annex` | Warn and keep the published anchor geometry |
+| The reviewed head is not the live head | `stale-reviewed-head` | Warn and name the reviewed head and the live head, then withhold delivery when the live head has moved past the terminal binding |
 | The persisted exchange history forks | `forked-exchange` | Warn and keep the current-head chain |
-| The live requirements digest differs from the reviewed digest | `stale-requirements-digest` | Warn and keep the reviewed digest |
+| The live requirements digest differs from the reviewed digest, and every other requirements field matches | `stale-requirements-digest` | Warn and keep the reviewed digest |
+
+The terminal record always binds the reviewed head. The helper does not rebrand
+that binding to the live head. A stale head inside the chain, such as an earlier
+carrier in the same pull request that names an older head, warns and continues.
+A live head that has moved past the terminal binding warns and then blocks
+delivery.
+
+A malformed annex still has to name its carrier. The helper warns only when the
+annex presents `head_oid` and `base_oid` that equal the carrier values. An
+annex that omits, changes, or mistypes either binding, adds an unknown field,
+repeats a finding identifier, or gives a non-integer line stops delivery. The
+helper reads each requirements field and never matches the error text. A
+changed scope digest or a changed requirement-URL set stops delivery.
 
 A review verdict other than GO still blocks delivery, and the helper lists the findings. The
 `state:implementation-go` label stays the only CI/CD trigger. This change removes no gate and adds
