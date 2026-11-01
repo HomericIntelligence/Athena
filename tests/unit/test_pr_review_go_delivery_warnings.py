@@ -18,7 +18,11 @@ from unittest.mock import patch
 
 import pytest
 
-from tests.unit.test_pr_review_go_delivery import load_module
+from tests.unit.test_pr_review_go_delivery import (
+    FakeForge,
+    load_module,
+    prepared_go_fixture,
+)
 
 
 @pytest.fixture(scope="module")
@@ -675,3 +679,33 @@ def test_delivery_result_document_records_each_warning(
             "message": "The terminal carrier annex is malformed.",
         }
     ]
+
+
+def test_stale_head_warning_reaches_the_delivery_argument_path(
+    delivery: ModuleType,
+) -> None:
+    """The public deliver_go_v1 path emits the head warning before it blocks.
+
+    The owner decision keeps the current-head binding, and the terminal record
+    names its reviewed head. A live head that has moved past that binding still
+    withholds delivery. This test proves the warning is reachable through the
+    public argument path and is not only a private helper, and that the block
+    still holds.
+    """
+    thread, manifest, binding, history = prepared_go_fixture(delivery)
+    forge = FakeForge(delivery, threads=(thread,), binding=binding)
+    forge.reviews.extend(history)
+    forge.head_oid = "c" * 40
+    forge.ancestor_results[(binding.head_oid, "c" * 40)] = True
+
+    buffer = io.StringIO()
+    with pytest.raises(delivery.DeliveryError), contextlib.redirect_stderr(buffer):
+        delivery.deliver_go_v1(forge, binding, manifest)
+
+    assert "stale-reviewed-head" in buffer.getvalue()
+    assert binding.head_oid in buffer.getvalue()
+    assert "c" * 40 in buffer.getvalue()
+    assert "label" not in forge.events
+    assert "state:implementation-go" not in forge.labels
+    # Exactly one bound read, so the delivery read sequence does not change.
+    assert [event for event in forge.events if event == "read"] == ["read"]

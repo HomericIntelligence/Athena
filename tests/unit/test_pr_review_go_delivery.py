@@ -191,6 +191,25 @@ def load_module() -> ModuleType:
     return module
 
 
+def prepared_go_fixture(module: ModuleType) -> tuple[Any, Any, Any, tuple[Any, ...]]:
+    """Build one current-head GO fixture without collecting the parent suite.
+
+    Returns the reviewed thread, the closure manifest, the review binding, and
+    the persisted carrier history. The fixture methods are read straight from
+    the class so importing this module never collects that test case.
+    """
+    case = PrReviewGoDeliveryTests
+    case.setUpClass()
+    fixture = object.__new__(case)
+    fixture.delivery = module
+    fixture.carrier_history = {}
+    fixture.review_sequence = 0
+    thread = case.owned_thread(fixture)
+    manifest = case.v1_manifest(fixture, thread)
+    history = fixture.carrier_history[manifest.state_envelope["state_sha256"]]
+    return thread, manifest, case.binding(fixture), history
+
+
 class FakeForge:
     """Record delivery operations and expose mutable forge state."""
 
@@ -3956,10 +3975,19 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         manifest = self.v1_manifest(thread)
         self.add_history(forge, manifest)
 
-        with self.assertRaises(self.delivery.DeliveryError):
+        errors = io.StringIO()
+        with (
+            self.assertRaises(self.delivery.DeliveryError),
+            redirect_stderr(errors),
+        ):
             self.delivery.deliver_go_v1(forge, self.binding(), manifest)
 
-        self.assertEqual(["read"], forge.events)
+        # One bound read. The moved head names both heads in a warning, then
+        # withholds delivery because the terminal record binds the reviewed head.
+        self.assertEqual(["read"], [e for e in forge.events if e == "read"])
+        self.assertIn("stale-reviewed-head", errors.getvalue())
+        self.assertIn("c" * 40, errors.getvalue())
+        self.assertNotIn("label", forge.events)
 
     def test_v1_delivery_replays_author_event_without_final_newline(self) -> None:
         thread = self.owned_thread()

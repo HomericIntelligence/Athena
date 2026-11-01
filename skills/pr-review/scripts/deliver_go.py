@@ -528,6 +528,24 @@ def _snapshot(forge: Forge, binding: ReviewBinding) -> PullRequestSnapshot:
     return snapshot
 
 
+def _snapshot_with_head_warning(
+    forge: Forge, binding: ReviewBinding, warnings: DeliveryWarnings
+) -> PullRequestSnapshot:
+    """Bind the live snapshot, and warn about a stale head before the block.
+
+    One forge read serves both purposes, so a delivery keeps its exact read
+    sequence. A live head that has moved past the reviewed head names both
+    heads in one warning. The current-head binding still decides the outcome.
+    """
+    try:
+        snapshot = forge.snapshot()
+    except Exception as error:
+        raise DeliveryError(f"The forge snapshot failed: {error}") from error
+    _warn_reviewed_head_binding(forge, snapshot, binding, warnings)
+    _require_binding(snapshot, binding)
+    return snapshot
+
+
 def _collect_live_requirements(
     forge: Forge, requirement_issue_urls: tuple[str, ...]
 ) -> RequirementsBinding:
@@ -4560,8 +4578,7 @@ def deliver_go_v1(
 ) -> DeliveryResult:
     """Deliver one current-head v1 terminal record, closures, and GO label."""
     warnings = DeliveryWarnings()
-    initial = _snapshot(forge, binding)
-    _warn_reviewed_head_binding(forge, initial, binding, warnings)
+    initial = _snapshot_with_head_warning(forge, binding, warnings)
     if terminal_duplicate_repair is not None:
         initial = _apply_terminal_duplicate_repair(
             initial,

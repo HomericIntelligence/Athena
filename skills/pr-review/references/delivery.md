@@ -575,8 +575,8 @@ warning to the standard error stream. It also records each warning in the delive
 The terminal record always binds the reviewed head. The helper does not rebrand
 that binding to the live head. A stale head inside the chain, such as an earlier
 carrier in the same pull request that names an older head, warns and continues.
-A live head that has moved past the terminal binding warns and then blocks
-delivery.
+A live head that has moved past the terminal binding warns, names both heads,
+and then withholds delivery.
 
 A malformed annex still has to name its carrier. The helper warns only when the
 annex presents `head_oid` and `base_oid` that equal the carrier values. An
