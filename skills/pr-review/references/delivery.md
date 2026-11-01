@@ -589,6 +589,23 @@ it is present. The helper reads each requirements field and never matches the
 error text. A changed scope digest or a changed requirement-URL set stops
 delivery.
 
+#### Anchor side
+
+The strict path is the authority for the anchor side. It derives each entry from
+the finding, and it uses the side that the finding declares, or `RIGHT` when the
+finding declares none. The warning path resolves the side the same way:
+
+- An annex entry that states a side controls the geometry. A side that the
+  immutable source cannot bind still stops delivery, as in the strict path.
+- An annex entry that omits its side takes the side that the finding declares,
+  and `RIGHT` when the finding declares none. The geometry never carries a null
+  side.
+- An annex entry with a side other than `LEFT` or `RIGHT` stops delivery.
+
+So the warning path publishes the same side, path, and line that the strict path
+derives for the same finding. A test runs both paths on the same annex fixtures
+and requires this agreement.
+
 A review verdict other than GO still blocks delivery, and the helper lists the findings. The
 `state:implementation-go` label stays the only CI/CD trigger. This change removes no gate and adds
 no bypass.

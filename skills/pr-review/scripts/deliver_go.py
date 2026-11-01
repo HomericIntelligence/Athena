@@ -1729,6 +1729,9 @@ def _publication_anchors(
                         str, envelope["state"]["artifact_binding"]["revision"]
                     ),
                     base_oid=binding.base_oid,
+                    declared_sides={
+                        finding["id"]: finding.get("side") for finding in findings
+                    },
                 )
             except (ValueError, TypeError):
                 published = None
@@ -4257,6 +4260,9 @@ def _validate_terminal_inline_comments(
             manifest.terminal_visible_content,
             head_oid=cast(str, state["artifact_binding"]["revision"]),
             base_oid=binding.base_oid,
+            declared_sides={
+                finding["id"]: finding.get("side") for finding in state["findings"]
+            },
         )
         is None
     ):

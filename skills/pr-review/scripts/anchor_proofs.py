@@ -410,9 +410,27 @@ def partial_manifest(visible: str) -> dict[str, Any] | None:
     return value
 
 
+def _anchor_side(entry: object, declared: str | None) -> str | None:
+    """Resolve one annex entry's side the way the strict path resolves it.
+
+    The strict path builds ``prepare_manifest`` from the annex entry's side,
+    and defaults an omitted side to the finding's side, then to RIGHT
+    (``expected_anchors``). So the annex side controls eligibility, and the
+    finding's side is the fallback that the annex omits. Return None for an
+    invalid side, and let the eligibility check refuse a side that the source
+    cannot bind.
+    """
+    side = entry.get("side") if isinstance(entry, dict) else None
+    if side is None:
+        return declared if declared in {"LEFT", "RIGHT"} else "RIGHT"
+    if side not in {"LEFT", "RIGHT"}:
+        return None
+    return cast("str", side)
+
+
 def _partial_entry(
-    entry: object,
-) -> tuple[str, tuple[str, str | None, int] | None] | None:
+    entry: object, declared: str | None = None
+) -> tuple[str, tuple[str, str, int] | None] | None:
     """Read one annex entry, or None when its shape is not acceptable.
 
     Return the entry identifier with the geometry of an ``inline`` entry, or
@@ -422,11 +440,17 @@ def _partial_entry(
     ``reason`` is optional, and it must be a string when it is present. A
     summary entry that also states geometry stays a summary: it yields no
     geometry, and the caller can report the carrying shape as suspicious.
+
+    The side is resolved by ``_anchor_side``: the entry's own side, or the
+    finding's side when the annex omits it. The geometry therefore never
+    carries a null side, and a side the source cannot bind is refused later
+    by the caller's eligibility check, as on the strict path.
     """
     if not isinstance(entry, dict) or not isinstance(entry.get("id"), str):
         return None
     identity = cast("str", entry["id"])
-    if entry.get("side") not in {None, "LEFT", "RIGHT"}:
+    side = _anchor_side(entry, declared)
+    if side is None:
         return None
     publication = entry.get("publication")
     if publication == "summary":
@@ -440,7 +464,7 @@ def _partial_entry(
     line = entry.get("line")
     if not isinstance(path, str) or type(line) is not int:
         return None
-    return (identity, (path, entry.get("side"), line))
+    return (identity, (path, side, line))
 
 
 def summary_geometry(visible: str) -> tuple[str, ...]:
@@ -463,7 +487,11 @@ def summary_geometry(visible: str) -> tuple[str, ...]:
 
 
 def partial_geometry(
-    visible: str, *, head_oid: str, base_oid: str
+    visible: str,
+    *,
+    head_oid: str,
+    base_oid: str,
+    declared_sides: Mapping[str, str | None] | None = None,
 ) -> dict[str, tuple[str, str | None, int]] | None:
     """Read published anchor geometry from an annex that omits a declared field.
 
@@ -477,15 +505,25 @@ def partial_geometry(
     Only an ``inline`` entry states geometry, so only an ``inline`` entry needs
     ``path`` and ``line``, as in ``expected_anchors``. A ``summary`` entry
     yields no geometry.
+
+    ``declared_sides`` maps each finding identifier to the side that the
+    finding declares, or to None when it declares none. The annex side controls
+    the geometry, as in ``expected_anchors``. When the annex omits a side, the
+    geometry takes the finding's side, and RIGHT when the finding declares
+    none. The geometry never carries a null side. Without ``declared_sides``
+    an omitted side takes RIGHT.
     """
+    absent_field: str | None = None
     try:
         if visible_manifest(visible) is not None:
             return None
-    except MalformedAnnexError as error:
-        # Only an omitted declared field other than a carrier binding is a
-        # record-shape warning. A changed binding or an unknown field blocks.
-        if error.field in {None, "head_oid", "base_oid"}:
-            return None
+    except MalformedAnnexError as malformed:
+        # The handler clears ``malformed`` when it ends, so copy the field now.
+        absent_field = malformed.field
+    # Only an omitted declared field other than a carrier binding is a
+    # record-shape warning. A changed binding or an unknown field blocks.
+    if absent_field in {None, "head_oid", "base_oid"}:
+        return None
     manifest = partial_manifest(visible)
     if manifest is None:
         return None
@@ -496,10 +534,14 @@ def partial_geometry(
     entries = manifest.get("findings")
     if not isinstance(entries, list) or len(entries) > MAX_FINDINGS:
         return None
+    sides = declared_sides or {}
     inline: dict[str, tuple[str, str | None, int]] = {}
     identities: list[str] = []
     for entry in entries:
-        read = _partial_entry(entry)
+        declared = (
+            sides.get(cast("str", entry.get("id"))) if isinstance(entry, dict) else None
+        )
+        read = _partial_entry(entry, declared)
         # A dropped entry would let the caller publish the rest of the annex as
         # if the record were complete. One invalid entry rejects the whole
         # annex, so the caller keeps its strict block.

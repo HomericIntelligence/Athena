@@ -12,12 +12,14 @@ import contextlib
 import io
 from dataclasses import replace
 from hashlib import sha256
+from pathlib import Path
 from types import ModuleType
 from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
 
+from tests.unit.test_pr_review_anchor_proofs import git
 from tests.unit.test_pr_review_go_delivery import (
     FakeForge,
     load_module,
@@ -881,3 +883,263 @@ def test_stale_head_warning_reaches_the_delivery_argument_path(
     assert "state:implementation-go" not in forge.labels
     # Exactly one bound read, so the delivery read sequence does not change.
     assert [event for event in forge.events if event == "read"] == ["read"]
+
+
+def side_source(tmp_path: Path) -> tuple[Path, str, str]:
+    """Make one real source that changes line 10 and leaves line 80 unchanged."""
+    git(tmp_path, "init", "-q")
+    git(tmp_path, "config", "user.name", "Fixture")
+    git(tmp_path, "config", "user.email", "fixture@example.invalid")
+    lines = [f"line {n}\n" for n in range(1, 101)]
+    (tmp_path / "justfile").write_text("".join(lines))
+    git(tmp_path, "add", "justfile")
+    git(tmp_path, "commit", "-qm", "fixture base")
+    base = git(tmp_path, "rev-parse", "HEAD")
+    lines[9] = "changed line\n"
+    (tmp_path / "justfile").write_text("".join(lines))
+    git(tmp_path, "commit", "-qam", "fixture head")
+    return tmp_path, base, git(tmp_path, "rev-parse", "HEAD")
+
+
+def finding_at(line: int, side: str | None = None) -> dict[str, object]:
+    """Make one ordinary finding with an optional declared side."""
+    finding: dict[str, object] = {"id": "F-001", "location": f"justfile:{line}"}
+    if side is not None:
+        finding["side"] = side
+    return finding
+
+
+def strict_anchors(
+    delivery: ModuleType,
+    source: Path,
+    *,
+    base: str,
+    head: str,
+    visible: str,
+    finding: dict[str, object],
+) -> tuple[str, dict[str, tuple[str, str | None, int]] | None]:
+    """Run the strict publication path on one annex and one finding.
+
+    Return its outcome and its anchors. A malformed annex also blocks, so the
+    strict path never reads an entry from a tolerated shape.
+    """
+    try:
+        anchors = delivery.anchor_proofs.expected_anchors(
+            source=source,
+            target={
+                "provider": "github",
+                "repository": "LLM360/comet",
+                "number": 3848,
+                "url": "https://github.com/LLM360/comet/pull/3848",
+            },
+            envelope={"state": {"artifact_binding": {"revision": head}}},
+            visible=visible,
+            findings=[finding],
+            review_id=None,
+            legacy_proofs=(),
+        )
+    except (ValueError, TypeError):
+        return "block", None
+    return "deliver", anchors
+
+
+def warn_anchors(
+    delivery: ModuleType,
+    visible: str,
+    *,
+    base: str,
+    head: str,
+    finding: dict[str, object],
+    source: Path | None,
+) -> tuple[str, dict[str, tuple[str, str | None, int]] | None]:
+    """Run the public warning path on one annex and one finding."""
+    try:
+        anchors = delivery._publication_anchors(
+            delivery.ReviewBinding(
+                repository="LLM360/comet",
+                number=3848,
+                url="https://github.com/LLM360/comet/pull/3848",
+                base_oid=base,
+                head_oid=head,
+            ),
+            {
+                "state_sha256": "0" * 64,
+                "state": {"artifact_binding": {"revision": head}},
+            },
+            visible,
+            [finding],
+            source,
+            (),
+            None,
+            delivery.DeliveryWarnings(),
+        )
+    except delivery.DeliveryError:
+        return "block", None
+    return "deliver", anchors
+
+
+def both_paths(
+    delivery: ModuleType,
+    source: Path,
+    *,
+    base: str,
+    head: str,
+    fields: dict[str, object],
+    finding: dict[str, object],
+) -> tuple[
+    tuple[str, dict[str, tuple[str, str | None, int]] | None],
+    tuple[str, dict[str, tuple[str, str | None, int]] | None],
+]:
+    """Run the strict path and the warning path on the same real-source annex."""
+    visible = annex("Reviewed the current change.", fields, delivery)
+    return strict_anchors(
+        delivery, source, base=base, head=head, visible=visible, finding=finding
+    ), warn_anchors(
+        delivery, visible, base=base, head=head, finding=finding, source=source
+    )
+
+
+def fields_or(manifest: dict[str, Any], entry: dict[str, object]) -> dict[str, object]:
+    """Return the annex field set with the supplied entry."""
+    return dict(manifest) | {"findings": [entry]}
+
+
+def tolerant_fields(
+    delivery: ModuleType, manifest: dict[str, Any], entry: dict[str, object]
+) -> dict[str, object]:
+    """Make an annex that keeps every anchor field and drops one non-binding field."""
+    fields: dict[str, object] = dict(manifest)
+    fields["findings"] = [entry]
+    # A declared field that does not change an anchor geometry is the one
+    # record-shape omission that the owner decision tolerates.
+    fields.pop("hunks_sha256")
+    return fields
+
+
+def test_omitted_annex_side_agrees_on_both_paths(
+    delivery: ModuleType, tmp_path: Path
+) -> None:
+    """R3-M2 of the round-3 review, as the reviewer reproduced it.
+
+    With a real Git source, the annex drops its ``side`` and one declared
+    field. The strict path takes the finding's side, which is RIGHT, so the
+    warning path publishes that same side, and never a null side.
+    """
+    source, base, head = side_source(tmp_path)
+    finding = finding_at(10)
+    manifest = delivery.anchor_proofs.prepare_manifest(source, base, head, [finding])
+    entry = dict(cast("list[dict[str, object]]", manifest["findings"])[0])
+    assert entry["side"] == "RIGHT"
+    entry.pop("side")
+    fields = tolerant_fields(delivery, manifest, entry)
+
+    strict = strict_anchors(
+        delivery,
+        source,
+        base=base,
+        head=head,
+        visible=annex("Reviewed the current change.", manifest, delivery),
+        finding=finding,
+    )
+    tolerated = warn_anchors(
+        delivery,
+        annex("Reviewed the current change.", fields, delivery),
+        base=base,
+        head=head,
+        finding=finding,
+        source=source,
+    )
+
+    # The strict path derives RIGHT from the finding, never a null side.
+    assert strict == ("deliver", {"F-001": ("justfile", "RIGHT", 10)})
+    # The warning path publishes the same geometry for the tolerated annex.
+    assert tolerated == strict
+
+
+@pytest.mark.parametrize(
+    ("declared", "annex_side", "line", "expected"),
+    [
+        ("RIGHT", None, 10, ("deliver", {"F-001": ("justfile", "RIGHT", 10)})),
+        ("LEFT", None, 10, ("deliver", {"F-001": ("justfile", "LEFT", 10)})),
+        (None, None, 10, ("deliver", {"F-001": ("justfile", "RIGHT", 10)})),
+        ("RIGHT", "RIGHT", 10, ("deliver", {"F-001": ("justfile", "RIGHT", 10)})),
+        ("LEFT", "LEFT", 10, ("deliver", {"F-001": ("justfile", "LEFT", 10)})),
+        ("RIGHT", None, 80, ("deliver", {})),
+        ("LEFT", None, 80, ("deliver", {})),
+        # An explicit annex side drives the geometry on both paths, and the
+        # finding's side is only the fallback for an omitted annex side.
+        ("RIGHT", "LEFT", 10, ("deliver", {"F-001": ("justfile", "LEFT", 10)})),
+        ("LEFT", "RIGHT", 10, ("deliver", {"F-001": ("justfile", "RIGHT", 10)})),
+        # An invalid side refuses on both paths.
+        (None, "SIDEWAYS", 10, ("block", None)),
+    ],
+    ids=[
+        "omitted-side-right",
+        "omitted-side-left",
+        "omitted-side-no-declared-side",
+        "explicit-right",
+        "explicit-left",
+        "omitted-side-outside-hunks",
+        "omitted-side-left-outside-hunks",
+        "annex-side-overrides-finding",
+        "annex-side-overrides-left-finding",
+        "invalid-side",
+    ],
+)
+def test_both_anchor_paths_agree_on_every_side_shape(
+    delivery: ModuleType,
+    tmp_path: Path,
+    declared: str | None,
+    annex_side: str | None,
+    line: int,
+    expected: tuple[str, dict[str, tuple[str, str | None, int]] | None],
+) -> None:
+    """The two paths agree on every annex side shape.
+
+    The strict path derives the geometry from the finding, so the warning path
+    publishes that same side and geometry for a tolerated annex. Neither path
+    publishes a null side, and both refuse an invalid side.
+    """
+    source, base, head = side_source(tmp_path)
+    finding = finding_at(line, declared)
+    manifest = delivery.anchor_proofs.prepare_manifest(source, base, head, [finding])
+    entry = dict(cast("list[dict[str, object]]", manifest["findings"])[0])
+    if annex_side is None:
+        entry.pop("side")
+    else:
+        entry["side"] = annex_side
+
+    # The strict path is the authority for the geometry of this finding. It
+    # derives the annex from the finding, and an omitted annex side cannot
+    # change that derivation.
+    derived = delivery.anchor_proofs.prepare_manifest(source, base, head, [finding])
+    assert derived == manifest
+
+    if annex_side is None:
+        # The annex omits the side, so the strict path refuses the record shape
+        # before it derives any geometry. It refuses this annex.
+        assert strict_anchors(
+            delivery,
+            source,
+            base=base,
+            head=head,
+            visible=annex(
+                "Reviewed the current change.", fields_or(manifest, entry), delivery
+            ),
+            finding=finding,
+        ) == ("block", None)
+    # The warning path tolerates one omitted declared field. It publishes the
+    # side the strict path derives, never a null side.
+    _, warn = both_paths(
+        delivery,
+        source,
+        base=base,
+        head=head,
+        finding=finding,
+        fields=tolerant_fields(delivery, manifest, entry),
+    )
+    if annex_side is not None and annex_side not in {"LEFT", "RIGHT"}:
+        # An invalid side refuses on both paths.
+        assert warn == ("block", None)
+    else:
+        assert warn == expected
