@@ -630,6 +630,27 @@ def _warn_malformed_annex(
     )
 
 
+def _warn_summary_geometry(warnings: DeliveryWarnings | None, visible: str) -> None:
+    """Report each annex summary entry that also carries path or line.
+
+    A summary entry states no geometry, so a summary entry with path or line
+    states nothing. That is the shape someone would use to attach an anchor,
+    so the helper names it. It does not block.
+    """
+    if warnings is None:
+        return
+    try:
+        carrying = anchor_proofs.summary_geometry(visible)
+    except (ValueError, TypeError):
+        return
+    if carrying:
+        warnings.add(
+            "summary-entry-carries-geometry",
+            "A summary anchor annex entry also carries path or line.",
+            finding_ids=",".join(sorted(carrying)),
+        )
+
+
 def _warn_reviewed_head_binding(
     forge: Forge,
     snapshot: PullRequestSnapshot,
@@ -1713,6 +1734,7 @@ def _publication_anchors(
                 published = None
             if published is not None:
                 _warn_malformed_annex(warnings, "review", error)
+                _warn_summary_geometry(warnings, visible)
                 return {
                     finding["id"]: geometry
                     for finding in findings

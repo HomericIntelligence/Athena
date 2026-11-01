@@ -432,6 +432,178 @@ def test_malformed_annex_rejects_a_boolean_line(delivery: ModuleType) -> None:
     assert geometry_for(delivery, fields) is None
 
 
+def test_malformed_annex_with_a_summary_entry_warns_and_delivers(
+    delivery: ModuleType,
+) -> None:
+    # N1 of the round-2 review: a finding whose location is not a source line
+    # has no path and no line. The strict path accepts it, so the warning path
+    # must accept it too. A dropped non-binding field stays a warning.
+    fields = annex_fields(delivery)
+    fields.pop("diff_policy", None)
+    fields["findings"] = [
+        cast(list[object], fields["findings"])[0],
+        {"id": "F-002", "publication": "summary", "reason": "non_source_location"},
+    ]
+    warnings = delivery.DeliveryWarnings()
+
+    anchors, stderr = warned(
+        lambda: publication_anchors(
+            delivery, annex("Reviewed the current change.", fields, delivery), warnings
+        )
+    )
+
+    assert [warning.code for warning in warnings.records] == ["malformed-annex"]
+    # The inline entry keeps its geometry and the summary entry states none.
+    assert anchors == {"F-001": ("src/comet/example.py", "RIGHT", 12)}
+    assert "malformed-annex" in stderr
+
+
+def test_malformed_annex_summary_entry_without_reason_warns(
+    delivery: ModuleType,
+) -> None:
+    # The owner decision makes reason optional, because a dropped field can be
+    # any declared field, including a reason on a summary entry.
+    fields = annex_fields(delivery)
+    fields.pop("diff_policy", None)
+    fields["findings"] = [{"id": "F-002", "publication": "summary"}]
+
+    assert geometry_for(delivery, fields) == {}
+    assert summary_geometry(delivery, fields) == ()
+
+
+def test_malformed_annex_summary_entry_with_a_non_string_reason_refuses(
+    delivery: ModuleType,
+) -> None:
+    fields = annex_fields(delivery)
+    fields.pop("diff_policy", None)
+    fields["findings"] = [{"id": "F-002", "publication": "summary", "reason": 1}]
+
+    assert geometry_for(delivery, fields) is None
+
+
+def test_summary_entry_with_geometry_yields_no_anchor_and_warns(
+    delivery: ModuleType,
+) -> None:
+    # A summary entry that carries path and line states nothing. It stays a
+    # summary, so it yields no geometry, and the helper names the shape.
+    fields = annex_fields(delivery)
+    fields.pop("diff_policy", None)
+    fields["findings"] = [
+        cast(list[object], fields["findings"])[0],
+        {
+            "id": "F-002",
+            "line": 77,
+            "path": "src/comet/smuggled.py",
+            "publication": "summary",
+            "reason": "non_source_location",
+            "side": "RIGHT",
+        },
+    ]
+    warnings = delivery.DeliveryWarnings()
+
+    anchors, stderr = warned(
+        lambda: publication_anchors(
+            delivery, annex("Reviewed the current change.", fields, delivery), warnings
+        )
+    )
+
+    assert anchors == {"F-001": ("src/comet/example.py", "RIGHT", 12)}
+    assert [warning.code for warning in warnings.records] == [
+        "malformed-annex",
+        "summary-entry-carries-geometry",
+    ]
+    assert dict(warnings.records[1].detail) == {"finding_ids": "F-002"}
+    assert "summary-entry-carries-geometry" in stderr
+    assert summary_geometry(delivery, fields) == ("F-002",)
+
+
+def test_summary_entry_with_geometry_does_not_block_without_warnings(
+    delivery: ModuleType,
+) -> None:
+    # The suspicious shape warns. It does not block, so a caller with no
+    # collector sees the strict block for the dropped field only.
+    fields = annex_fields(delivery)
+    fields["findings"] = [
+        cast(list[object], fields["findings"])[0],
+        {"id": "F-002", "line": 77, "path": "smuggled.py", "publication": "summary"},
+    ]
+
+    assert geometry_for(delivery, fields) == {
+        "F-001": ("src/comet/example.py", "RIGHT", 12)
+    }
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"id": "F-001", "publication": "inline", "side": "RIGHT"},
+        {"id": "F-001", "line": True, "path": "a.py", "publication": "inline"},
+        {"id": "F-001", "line": 12, "publication": "inline", "side": "RIGHT"},
+        {"id": "F-001", "line": 12, "path": "a.py", "publication": "note"},
+    ],
+    ids=[
+        "inline-missing-path-and-line",
+        "inline-boolean-line",
+        "inline-missing-path",
+        "unknown-publication",
+    ],
+)
+def test_inline_entry_without_its_geometry_still_blocks(
+    delivery: ModuleType, entry: dict[str, object]
+) -> None:
+    # N1 narrows the path/line requirement to inline entries only. An inline
+    # entry still needs a path and an integer line, so a malformed one keeps
+    # the strict block.
+    fields = annex_fields(delivery)
+    fields.pop("diff_policy", None)
+    fields["findings"] = [entry]
+    warnings = delivery.DeliveryWarnings()
+
+    assert geometry_for(delivery, fields) is None
+    with pytest.raises(delivery.DeliveryError, match="anchor proof failed"):
+        publication_anchors(
+            delivery, annex("Reviewed the current change.", fields, delivery), warnings
+        )
+    assert warnings.records == []
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("head_oid", "b" * 40), ("base_oid", "9" * 40)],
+)
+def test_inline_entry_with_a_wrong_binding_still_blocks(
+    delivery: ModuleType, field: str, value: str
+) -> None:
+    # A summary entry in the same annex does not relax the carrier binding.
+    fields = annex_fields(delivery)
+    fields.pop("diff_policy", None)
+    fields[field] = value
+    fields["findings"] = [
+        {"id": "F-002", "publication": "summary", "reason": "non_source_location"},
+        cast(list[object], annex_fields(delivery)["findings"])[0],
+    ]
+    warnings = delivery.DeliveryWarnings()
+
+    assert geometry_for(delivery, fields) is None
+    with pytest.raises(delivery.DeliveryError, match="anchor proof failed"):
+        publication_anchors(
+            delivery, annex("Reviewed the current change.", fields, delivery), warnings
+        )
+    assert warnings.records == []
+
+
+def summary_geometry(
+    delivery: ModuleType, fields: dict[str, object]
+) -> tuple[str, ...]:
+    """Read the suspicious summary entries of one annex."""
+    return cast(
+        "tuple[str, ...]",
+        delivery.anchor_proofs.summary_geometry(
+            annex("Reviewed the current change.", fields, delivery)
+        ),
+    )
+
+
 def terminal_carrier(delivery: ModuleType, exchange_id: str, binding: Any) -> Any:
     """Build one reducer-derived, published terminal carrier."""
     visible = f"Reviewed the current change for {exchange_id}."

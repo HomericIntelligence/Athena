@@ -568,6 +568,7 @@ warning to the standard error stream. It also records each warning in the delive
 | Finding | Warning code | Helper action |
 | --- | --- | --- |
 | An anchor annex omits a declared field other than `head_oid` or `base_oid`, and both bindings still match | `malformed-annex` | Warn and keep the published anchor geometry |
+| An anchor annex summary entry also carries `path` or `line` | `summary-entry-carries-geometry` | Warn, and give that entry no geometry |
 | The reviewed head is not the live head | `stale-reviewed-head` | Warn and name the reviewed head and the live head, then withhold delivery when the live head has moved past the terminal binding |
 | The persisted exchange history forks | `forked-exchange` | Warn and keep the current-head chain |
 | The live requirements digest differs from the reviewed digest, and every other requirements field matches | `stale-requirements-digest` | Warn and keep the reviewed digest |
@@ -581,9 +582,12 @@ and then withholds delivery.
 A malformed annex still has to name its carrier. The helper warns only when the
 annex presents `head_oid` and `base_oid` that equal the carrier values. An
 annex that omits, changes, or mistypes either binding, adds an unknown field,
-repeats a finding identifier, or gives a non-integer line stops delivery. The
-helper reads each requirements field and never matches the error text. A
-changed scope digest or a changed requirement-URL set stops delivery.
+repeats a finding identifier, or gives a non-integer line stops delivery. Only
+an `inline` entry needs `path` and `line`, as in the strict path. A `summary`
+entry needs no geometry, and its `reason` is optional but must be a string when
+it is present. The helper reads each requirements field and never matches the
+error text. A changed scope digest or a changed requirement-URL set stops
+delivery.
 
 A review verdict other than GO still blocks delivery, and the helper lists the findings. The
 `state:implementation-go` label stays the only CI/CD trigger. This change removes no gate and adds

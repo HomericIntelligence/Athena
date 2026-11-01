@@ -11,7 +11,7 @@ import time
 from collections.abc import Mapping, Sequence
 from hashlib import sha256
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Any
+from typing import IO, TYPE_CHECKING, Any, cast
 
 import collect_evidence as evidence
 from pr_identity import require_commit_oid
@@ -410,6 +410,58 @@ def partial_manifest(visible: str) -> dict[str, Any] | None:
     return value
 
 
+def _partial_entry(
+    entry: object,
+) -> tuple[str, tuple[str, str | None, int] | None] | None:
+    """Read one annex entry, or None when its shape is not acceptable.
+
+    Return the entry identifier with the geometry of an ``inline`` entry, or
+    with None for an acceptable ``summary`` entry. Only an ``inline`` entry
+    states geometry, so only an ``inline`` entry needs ``path`` and an integer
+    ``line``. A ``summary`` entry needs ``id`` and ``publication``. Its
+    ``reason`` is optional, and it must be a string when it is present. A
+    summary entry that also states geometry stays a summary: it yields no
+    geometry, and the caller can report the carrying shape as suspicious.
+    """
+    if not isinstance(entry, dict) or not isinstance(entry.get("id"), str):
+        return None
+    identity = cast("str", entry["id"])
+    if entry.get("side") not in {None, "LEFT", "RIGHT"}:
+        return None
+    publication = entry.get("publication")
+    if publication == "summary":
+        reason = entry.get("reason")
+        if reason is not None and not isinstance(reason, str):
+            return None
+        return (identity, None)
+    if publication != "inline":
+        return None
+    path = entry.get("path")
+    line = entry.get("line")
+    if not isinstance(path, str) or type(line) is not int:
+        return None
+    return (identity, (path, entry.get("side"), line))
+
+
+def summary_geometry(visible: str) -> tuple[str, ...]:
+    """Name each annex summary entry that also carries ``path`` or ``line``.
+
+    Such an entry stays a summary and yields no geometry. Its shape is
+    suspicious, so the caller reports it as a warning and does not block.
+    """
+    value = _decode_annex(visible)
+    if not isinstance(value, dict) or not isinstance(value.get("findings"), list):
+        return ()
+    return tuple(
+        entry["id"]
+        for entry in cast("list[Any]", value["findings"])
+        if isinstance(entry, dict)
+        and entry.get("publication") == "summary"
+        and isinstance(entry.get("id"), str)
+        and ("path" in entry or "line" in entry)
+    )
+
+
 def partial_geometry(
     visible: str, *, head_oid: str, base_oid: str
 ) -> dict[str, tuple[str, str | None, int]] | None:
@@ -421,6 +473,10 @@ def partial_geometry(
     repeats a finding identifier yields None, so the caller keeps its strict
     block. Return None when the annex has every declared field; the caller
     must treat that case as an unsupported shape and keep its strict path.
+
+    Only an ``inline`` entry states geometry, so only an ``inline`` entry needs
+    ``path`` and ``line``, as in ``expected_anchors``. A ``summary`` entry
+    yields no geometry.
     """
     try:
         if visible_manifest(visible) is not None:
@@ -440,28 +496,22 @@ def partial_geometry(
     entries = manifest.get("findings")
     if not isinstance(entries, list) or len(entries) > MAX_FINDINGS:
         return None
-    valid = [
-        entry
-        for entry in entries
-        if isinstance(entry, dict)
-        and isinstance(entry.get("id"), str)
-        and isinstance(entry.get("path"), str)
-        and type(entry.get("line")) is int
-        and entry.get("side") in {None, "LEFT", "RIGHT"}
-        and isinstance(entry.get("publication"), str)
-    ]
-    # A dropped entry would let the caller publish the rest of the annex as if
-    # the record were complete. One invalid entry rejects the whole annex.
-    if len(valid) != len(entries):
-        return None
-    identities = [entry["id"] for entry in valid]
+    inline: dict[str, tuple[str, str | None, int]] = {}
+    identities: list[str] = []
+    for entry in entries:
+        read = _partial_entry(entry)
+        # A dropped entry would let the caller publish the rest of the annex as
+        # if the record were complete. One invalid entry rejects the whole
+        # annex, so the caller keeps its strict block.
+        if read is None:
+            return None
+        identity, geometry = read
+        identities.append(identity)
+        if geometry is not None:
+            inline[identity] = geometry
     if len(identities) != len(set(identities)):
         return None
-    return {
-        entry["id"]: (entry["path"], entry["side"], entry["line"])
-        for entry in valid
-        if entry["publication"] == "inline"
-    }
+    return inline
 
 
 def expected_anchors(
