@@ -558,6 +558,32 @@ Recompute the retained requirements binding at preflight, immediately before eac
 the final readback. A scope change, closing-reference change, selected-URL change, linked-issue
 content or comment change, incomplete evidence, or provider failure withholds delivery.
 
+### Delivery warnings
+
+A GO review always delivers. When the current-head verdict is GO, the helper continues terminal
+delivery and reports each record-shape or staleness finding as a warning. The helper prints each
+warning to the standard error stream. It also records each warning in the delivery result under
+`warnings`, and that key is absent when no warning occurred.
+
+| Finding | Warning code | Helper action |
+| --- | --- | --- |
+| An anchor annex omits a declared field | `malformed-annex` | Warn and keep the published anchor geometry |
+| The reviewed head is not the live head | `stale-reviewed-head` | Warn and name the reviewed head and the live head |
+| The persisted exchange history forks | `forked-exchange` | Warn and keep the current-head chain |
+| The live requirements digest differs from the reviewed digest | `stale-requirements-digest` | Warn and keep the reviewed digest |
+
+A review verdict other than GO still blocks delivery, and the helper lists the findings. The
+`state:implementation-go` label stays the only CI/CD trigger. This change removes no gate and adds
+no bypass.
+
+A warning does not weaken these remaining rules:
+
+- One current-head terminal carrier per exchange.
+- No private key material in a carrier.
+- The current-head artifact binding.
+- The scope, closing-reference, selected-URL, and linked-issue checks. An edit to a bound
+  requirement still stops delivery. Only a changed requirements digest is a warning.
+
 Resolve only Athena-owned findings whose validated closure-manifest reviewer disposition is
 `resolved`, `withdrawn`, `accepted_risk`, or `nonblocking`. An unanswered contest, partial or
 still-present finding, stale head, foreign open thread, missing capability, duplicate or conflicting

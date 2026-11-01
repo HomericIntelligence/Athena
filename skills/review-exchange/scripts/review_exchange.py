@@ -2235,6 +2235,8 @@ def parse_authority_record(body: str) -> dict[str, Any]:
     """Parse one exact canonical authority-comment body."""
     if not isinstance(body, str):
         raise ProtocolError("The authority record body must be text.")
+    # GitHub appends one final line feed to every stored comment body.
+    body = body.removesuffix("\n")
     try:
         encoded = body.encode("utf-8")
     except UnicodeEncodeError as error:
@@ -2264,7 +2266,9 @@ def verify_authority_record(
         raise ProtocolError("The extra-decision policy must be a Boolean.")
     authority = _authority(receipt, "authority receipt")
     actual = parse_authority_record(body)
-    if sha256_text(body) != authority["sha256"]:
+    # The receipt digest binds the canonical record. GitHub appends one final
+    # line feed to the stored body, and the parser already accepts it.
+    if sha256_text(body.removesuffix("\n")) != authority["sha256"]:
         raise ProtocolError("The authority receipt digest does not match its body.")
     normalized_expected = _authority_record(expected, "expected authority context")
     actual_context = {

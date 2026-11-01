@@ -336,8 +336,8 @@ def prepare_manifest(
     }
 
 
-def visible_manifest(visible: str) -> dict[str, Any] | None:
-    """Read the unique canonical annex whose bytes the existing carrier hashes."""
+def _decode_annex(visible: str) -> Any:
+    """Decode the unique canonical annex bytes of one visible carrier."""
     if "HomericIntelligence:review-anchors:" not in visible:
         return None
     if visible.count(MARKER) != 1:
@@ -354,6 +354,14 @@ def visible_manifest(visible: str) -> dict[str, Any] | None:
     value = json.loads(encoded)
     if canonical(value) != encoded:
         raise ValueError("The publication anchor annex is not canonical JSON.")
+    return value
+
+
+def visible_manifest(visible: str) -> dict[str, Any] | None:
+    """Read the unique canonical annex whose bytes the existing carrier hashes."""
+    value = _decode_annex(visible)
+    if value is None:
+        return None
     return exact_fields(
         value,
         {
@@ -368,6 +376,56 @@ def visible_manifest(visible: str) -> dict[str, Any] | None:
         },
         "anchor manifest",
     )
+
+
+def partial_manifest(visible: str) -> dict[str, Any] | None:
+    """Keep each declared annex field so a record-shape warning can still read geometry."""
+    value = _decode_annex(visible)
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise TypeError("The anchor manifest is not an object.")
+    return value
+
+
+def partial_geometry(visible: str) -> dict[str, tuple[str, str | None, int]] | None:
+    """Read published anchor geometry from an annex that omits a declared field.
+
+    Return None when the annex has every declared field. The caller must treat
+    that case as an unsupported shape and keep its strict path.
+    """
+    try:
+        if visible_manifest(visible) is not None:
+            return None
+    except ValueError as error:
+        if "fields" not in str(error):
+            raise
+    manifest = partial_manifest(visible)
+    if manifest is None:
+        return None
+    entries = manifest.get("findings")
+    if not isinstance(entries, list) or len(entries) > MAX_FINDINGS:
+        return None
+    by_id = {
+        entry["id"]: entry
+        for entry in entries
+        if isinstance(entry, dict)
+        and isinstance(entry.get("id"), str)
+        and isinstance(entry.get("path"), str)
+        and isinstance(entry.get("line"), int)
+        and entry.get("side") in {None, "LEFT", "RIGHT"}
+        and isinstance(entry.get("publication"), str)
+    }
+    return {
+        entry["id"]: (entry["path"], entry.get("side"), entry["line"])
+        for entry in entries
+        if isinstance(entry, dict)
+        and entry.get("id") in by_id
+        and entry.get("publication") == "inline"
+        and isinstance(entry.get("path"), str)
+        and isinstance(entry.get("line"), int)
+        and entry.get("side") in {None, "LEFT", "RIGHT"}
+    }
 
 
 def expected_anchors(

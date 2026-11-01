@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
@@ -106,10 +108,18 @@ class PrReviewBatchDeliveryTests(unittest.TestCase):
                 "unrelated", other, manifest.terminal_visible_content
             )
         )
-        with self.assertRaises(self.delivery.DeliveryError):
-            self.delivery.deliver_go_v1(forge, self.fixture.binding(), manifest)
-        self.assertEqual(2, len(forge.reviews))
-        self.assertNotIn("state:implementation-go", forge.labels)
+        # An unrelated exchange is a fork warning. The current-head GO still
+        # delivers, and the delivery result records the warning.
+        errors = io.StringIO()
+        with redirect_stderr(errors):
+            result = self.delivery.deliver_go_v1(
+                forge, self.fixture.binding(), manifest
+            )
+        self.assertEqual("delivered", result.status)
+        self.assertEqual(
+            ["forked-exchange"], [warning.code for warning in result.warnings]
+        )
+        self.assertIn("unrelated", errors.getvalue())
 
     def test_batch_stream_digest_is_bound_to_manifest(self) -> None:
         forge, manifest, _ = self.fixture_batches()
