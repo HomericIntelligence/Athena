@@ -1,7 +1,7 @@
 ---
 name: learn
 license: BSD-3-Clause
-description: Preserve an evidence-backed Mnemosyne lesson without a duplicate. Local discovery is best effort and can use a stale checkout. Specificity is not a rejection reason when a case adds a reusable decision branch. A durable write uses an isolated worktree and pull request with write-boundary validation.
+description: Preserve an evidence-backed Mnemosyne lesson without a duplicate. Discovery compares merged skills and open pull requests, is best effort, and can use a stale checkout. Specificity is not a rejection reason when a case adds a reusable decision branch. A durable write uses an isolated worktree and pull request with write-boundary validation.
 argument-hint: <lesson or session summary>
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, Agent]
 ---
@@ -105,12 +105,30 @@ This phase is read-only.
     Read legacy `.history` files only when they help establish provenance. Their absence or
     incomplete snapshots do not block a lesson.
 11. Use this inspection to find provenance and prior consolidation.
-12. During read-only discovery, inspect open PRs when the remote capability is available. Report a
-    failure as a limit. Before remote publication, enumerate the changed flat `skills/*.md` artifacts
-    in each open PR in the resolved Mnemosyne repository.
-13. Derive intent from changed content. Do not use a title or path as sufficient duplicate evidence.
-    A title or path can identify a candidate.
-14. Before a write, record exactly one disposition.
+12. Discover open PRs as the second required candidate source. Do not treat merged `skills/` as the
+    only corpus. A lesson can be in review before it reaches the default branch.
+13. List each open PR in the resolved Mnemosyne repository. Use
+    `gh pr list --state open --json number,title,files,headRefName --limit 200` when GitHub CLI
+    access is available.
+14. Enumerate the changed flat `skills/*.md` artifacts in each open PR. Exclude `.notes.md` and
+    `.history` companions from the candidate list; inspect them only after a main file is selected.
+15. Derive intent from changed content. Do not use a title or path as sufficient duplicate evidence.
+    A title or path can identify a candidate. A candidate that exists only in an open PR is still a
+    duplicate for disposition purposes.
+16. Apply these disposition rules to the combined merged and open-PR candidate set:
+
+    | Candidate state | Disposition rule |
+    | --- | --- |
+    | Merged entry already covers the intent | Use the normal rule. |
+    | Exactly one open PR changes the target | Use Existing-PR mode. Do not create a new PR. |
+    | More than one open PR changes the target | Select `blocked`. |
+    | A new intent exists only in an open PR | Amend that PR instead of creating a near-duplicate. |
+
+17. Report each open-PR candidate that you inspected: number, head commit identifier, target
+    artifact, and whether it was the selected target.
+18. If remote discovery is unavailable, report the limit. Record which duplicate and open-PR
+    checks remain unverified. Before publication, complete these checks.
+19. Before a write, record exactly one disposition.
 
 Use available corpus and remote evidence to select a provisional disposition. Complete missing
 duplicate checks before publication. Remote failure does not prevent safe local preparation.
@@ -416,3 +434,8 @@ commands. An explicit cleanup request can authorize more removal.
 - Do not put prior versions in the main entry or recreate companion `.history` files. Use Git
   provenance. Do not block a lesson only because a legacy snapshot is missing or incomplete.
 - If an open PR targets the selected canonical entry, do not create a competing PR.
+- Do not treat merged `skills/` as the only candidate corpus. A lesson can be in review in an open
+  PR before it merges.
+- Do not create a near-duplicate only because an intent exists in an open PR and not on the
+  default branch. Amend that PR in Existing-PR mode.
+- Do not report a duplicate decision when the open-PR check was unavailable. State the limit.
