@@ -319,7 +319,7 @@ jobs:
           }
           NODE
           "${{ steps.syft.outputs.cmd }}" scan \
-            "$PI_RUNTIME_ROOT/node_modules/@earendil-works/pi-coding-agent/npm-shrinkwrap.json" -o json \
+            "$PI_RUNTIME_ROOT/package-lock.json" -o json \
             > dist-internal/syft-pi-source.json
           "${{ steps.syft.outputs.cmd }}" scan "$PI_RUNTIME_ROOT" -o json \
             > dist-internal/syft-pi-subagents.json
