@@ -697,6 +697,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         visible: str,
         *,
         association: str = "NONE",
+        submitted_at: str | None = None,
     ) -> Any:
         kind = (
             "state"
@@ -713,7 +714,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             includes_created_edit=False,
             state="COMMENTED",
             author_association=association,
-            submitted_at=f"2026-01-01T00:00:{self.review_sequence:02d}Z",
+            submitted_at=submitted_at or f"2026-01-01T00:00:{self.review_sequence:02d}Z",
         )
         return record
 
@@ -7011,6 +7012,767 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         )
 
         return forge, manifest, old_record
+
+    def _superseded_nogo_findings(self) -> list[dict[str, Any]]:
+        locations = {
+            "F-001": "src/one.py:10",
+            "F-002": "src/two.py:20",
+            "F-003": "src/three.py:30",
+            "F-004": "src/four.py:40",
+        }
+        return [
+            {
+                "id": finding_id,
+                "category": None,
+                "severity": "major",
+                "disposition": "required",
+                "material_architecture": False,
+                "location": location,
+                "impact": f"The {finding_id} case is not satisfied.",
+                "evidence": [f"The {finding_id} case fails."],
+                "closure_condition": f"The {finding_id} case passes.",
+                "introduction": "initial",
+            }
+            for finding_id, location in locations.items()
+        ]
+
+    def _old_reviewer_assessment(
+        self,
+        *,
+        exchange_id: str,
+        requirements_sha256: str,
+        revision: str,
+        new_findings: list[dict[str, Any]],
+        stop_reason: str | None,
+        visible: str,
+    ) -> tuple[dict[str, Any], str]:
+        exchange = self.delivery.review_exchange
+        envelope = exchange.reduce_request(
+            {
+                "previous": None,
+                "event": {
+                    "event_type": "reviewer_assessment",
+                    "exchange_id": exchange_id,
+                    "prior_state_sha256": None,
+                    "round": 1,
+                    "surface": "pull_request",
+                    "target": {
+                        "provider": "github",
+                        "repository": "owner/repository",
+                        "number": 7,
+                        "url": "https://github.com/owner/repository/pull/7",
+                    },
+                    "requirements_sha256": requirements_sha256,
+                    "supersedes_state_sha256": None,
+                    "artifact_binding": {
+                        "revision": revision,
+                        "sha256": "7" * 64,
+                        "visible_content_sha256": exchange.sha256_text(visible),
+                    },
+                    "scope": ["path:src/old.py"],
+                    "coverage_complete": True,
+                    "responses": [],
+                    "new_findings": new_findings,
+                    "stop_reason": stop_reason,
+                },
+            }
+        )["envelope"]
+        return envelope, visible
+
+    def _old_nogo(self) -> tuple[dict[str, Any], str]:
+        return self._old_reviewer_assessment(
+            exchange_id="exchange-old",
+            requirements_sha256="e" * 64,
+            revision="a" * 40,
+            new_findings=self._superseded_nogo_findings(),
+            stop_reason="requirements_reframe",
+            visible="Round 1 review: four required findings.",
+        )
+
+    def _superseding_reframe(
+        self,
+        old: dict[str, Any],
+        old_visible: str,
+        *,
+        exchange_id: str,
+        requirements_sha256: str,
+        revision: str,
+        new_findings: list[dict[str, Any]],
+        authority_reference: str,
+        visible: str,
+        receipt_override: dict[str, str] | None = None,
+        authority_record_override: Any | None = None,
+        scope: list[str] | None = None,
+        stop_reason: str | None = None,
+        submitted_at: str = "2026-01-01T00:00:04Z",
+    ) -> tuple[dict[str, Any], str, Any]:
+        exchange = self.delivery.review_exchange
+        genesis = old["state"]["accepted_events"][0]
+        previous_ancestry = (
+            genesis["superseded_exchange_ids"] if genesis["event_type"] == "reframe" else []
+        )
+        superseded_exchange_ids = [*previous_ancestry, old["state"]["exchange_id"]]
+        authority_body = self.authority_body(
+            action="reframe",
+            exchange_id=exchange_id,
+            requirements_sha256=requirements_sha256,
+            supersedes_state_sha256=old["state_sha256"],
+            decisions=[],
+        )
+        receipt = receipt_override or {
+            "reference": f"review:{authority_reference}",
+            "sha256": exchange.sha256_text(authority_body),
+        }
+        envelope = exchange.reduce_request(
+            {
+                "previous": old,
+                "event": {
+                    "event_type": "reframe",
+                    "exchange_id": exchange_id,
+                    "prior_state_sha256": old["state_sha256"],
+                    "round": 1,
+                    "surface": "pull_request",
+                    "target": old["state"]["target"],
+                    "requirements_sha256": requirements_sha256,
+                    "supersedes_state_sha256": old["state_sha256"],
+                    "superseded_exchange_ids": superseded_exchange_ids,
+                    "authority_receipt": receipt,
+                    "artifact_binding": {
+                        "revision": revision,
+                        "sha256": "3" * 64,
+                        "visible_content_sha256": exchange.sha256_text(visible),
+                    },
+                    "scope": scope if scope is not None else ["path:src/current.py"],
+                    "coverage_complete": True,
+                    "responses": [],
+                    "new_findings": new_findings,
+                    "stop_reason": stop_reason,
+                },
+            }
+        )["envelope"]
+        authority = authority_record_override or self.delivery.ReviewRecord(
+            id=authority_reference,
+            body=authority_body,
+            head_oid=revision,
+            author="maintainer",
+            viewer_did_author=False,
+            includes_created_edit=False,
+            state="COMMENTED",
+            author_association="OWNER",
+            author_permission="ADMIN",
+            submitted_at=submitted_at,
+        )
+        return envelope, visible, authority
+
+    def _superseded_nogo(
+        self,
+        *,
+        rooted_findings: tuple[str, ...] = (),
+        root_overrides: dict[str, dict[str, Any]] | None = None,
+        child_receipt: dict[str, str] | None = None,
+        child_authority_record: Any | None = None,
+    ) -> tuple[Any, Any, Any, dict[str, Any], dict[str, Any], tuple[Any, ...]]:
+        old, old_visible = self._old_nogo()
+        return self._superseded_fixture(
+            old,
+            old_visible,
+            rooted_findings=rooted_findings,
+            root_overrides=root_overrides,
+            child_receipt=child_receipt,
+            child_authority_record=child_authority_record,
+        )
+
+    def _superseded_fixture(
+        self,
+        old: dict[str, Any],
+        old_visible: str,
+        *,
+        rooted_findings: tuple[str, ...] = (),
+        root_overrides: dict[str, dict[str, Any]] | None = None,
+        child_receipt: dict[str, str] | None = None,
+        child_authority_record: Any | None = None,
+        old_submitted_at: str = "2026-01-01T00:00:01Z",
+        authority_submitted_at: str = "2026-01-01T00:00:02Z",
+    ) -> tuple[Any, Any, Any, dict[str, Any], dict[str, Any], tuple[Any, ...]]:
+        exchange = self.delivery.review_exchange
+        threads_by_finding = {
+            thread.id.removeprefix("old-review-"): thread
+            for thread in self.carrier_threads(old, "old-review")
+        }
+        overrides = root_overrides or {}
+        threads: list[Any] = []
+        for finding_id in rooted_findings:
+            thread = threads_by_finding[finding_id]
+            if finding_id in overrides:
+                root = thread.comments[0]
+                root = replace(root, **overrides[finding_id])
+                thread = replace(thread, comments=(root,))
+            threads_by_finding[finding_id] = thread
+            threads.append(thread)
+        authority_body = self.authority_body(
+            action="reframe",
+            exchange_id="exchange-reframed-current",
+            requirements_sha256="c" * 64,
+            supersedes_state_sha256=old["state_sha256"],
+            decisions=[],
+        )
+        receipt = child_receipt or {
+            "reference": "review:reframe-authority",
+            "sha256": exchange.sha256_text(authority_body),
+        }
+        seed_entry_list = []
+        for finding_id in rooted_findings:
+            thread = threads_by_finding[finding_id]
+            seed_entry_list.append(
+                self.delivery.ThreadClosure(
+                    thread_id=thread.id,
+                    finding_id=finding_id,
+                    finding_exchange_id=old["state"]["exchange_id"],
+                    finding_state_sha256=old["state_sha256"],
+                    superseding_state_sha256="0" * 64,
+                    origin_comment_id=thread.comments[0].id,
+                    origin_review_head_oid="a" * 40,
+                    conversation_sha256=self.delivery.conversation_sha256(thread),
+                    finding_disposition="required",
+                    author_answer=None,
+                    author_artifact_revision=None,
+                    reviewer_disposition="withdrawn",
+                    closure_evidence=self.delivery._reframe_closure_evidence(
+                        old["state_sha256"]
+                    ),
+                    authority_receipt=receipt,
+                    author_event_review_id=None,
+                )
+            )
+        seed_entries = tuple(seed_entry_list)
+        binding = self.binding()
+        terminal_visible = self.delivery.terminal_visible_content(
+            binding, seed_entries
+        )
+        terminal, _, default_authority = self._superseding_reframe(
+            old,
+            old_visible,
+            exchange_id="exchange-reframed-current",
+            requirements_sha256="c" * 64,
+            revision="b" * 40,
+            new_findings=[],
+            authority_reference="reframe-authority",
+            visible=terminal_visible,
+            receipt_override=receipt,
+            authority_record_override=child_authority_record,
+            submitted_at=authority_submitted_at,
+        )
+        entries = tuple(
+            replace(entry, superseding_state_sha256=terminal["state_sha256"])
+            for entry in seed_entries
+        )
+        manifest = self.delivery.ClosureManifest(
+            state_envelope=terminal,
+            terminal_visible_content=terminal_visible,
+            entries=entries,
+            requirements_binding=self.requirements_binding(terminal),
+        )
+        old_record = self.carrier_record(
+            "old-review", old, old_visible, submitted_at=old_submitted_at
+        )
+        forge = FakeForge(self.delivery, threads=tuple(threads))
+        forge.reviews.extend((old_record, default_authority))
+        return forge, manifest, old_record, old, terminal, tuple(threads)
+
+    def test_superseded_nogo_carrier_with_no_roots_delivers(self) -> None:
+        forge, manifest, _, _, _, _ = self._superseded_nogo()
+
+        result = self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+
+        self.assertEqual("delivered", result.status)
+        self.assertEqual(1, forge.events.count("terminal"))
+        self.assertEqual(1, forge.events.count("labels"))
+
+    def test_superseded_nogo_carrier_with_partial_batch_delivers(self) -> None:
+        forge, manifest, _, _, _, threads = self._superseded_nogo(
+            rooted_findings=("F-004",)
+        )
+        thread_id = threads[0].id
+
+        result = self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+
+        self.assertEqual("delivered", result.status)
+        self.assertTrue(forge.threads[thread_id].is_resolved)
+        self.assertEqual(1, forge.events.count("terminal"))
+        self.assertEqual(1, forge.events.count("labels"))
+
+    def test_two_step_reframe_ancestry_delivers(self) -> None:
+        old, old_visible = self._old_nogo()
+        mid_findings = [
+            {
+                "id": finding_id,
+                "category": None,
+                "severity": "minor",
+                "disposition": "suggestion",
+                "material_architecture": False,
+                "location": location,
+                "impact": f"The {finding_id} name can be clearer.",
+                "evidence": [f"The {finding_id} name hides its purpose."],
+                "closure_condition": None,
+                "introduction": "initial",
+            }
+            for finding_id, location in (
+                ("F-001", "src/mid1.py:5"),
+                ("F-002", "src/mid2.py:6"),
+            )
+        ]
+        mid_visible = "The reframed requirements have two suggestions."
+        mid, _, mid_authority = self._superseding_reframe(
+            old,
+            old_visible,
+            exchange_id="exchange-mid",
+            requirements_sha256="2" * 64,
+            revision="a" * 40,
+            new_findings=mid_findings,
+            authority_reference="reframe-authority-mid",
+            visible=mid_visible,
+            scope=["path:src/mid.py"],
+            submitted_at="2026-01-01T00:00:02Z",
+        )
+        mid_receipt = mid["state"]["supersession_authority_receipt"]
+        mid_threads = self.carrier_threads(mid, "mid-review")
+        seed_entries = tuple(
+            self.delivery.ThreadClosure(
+                thread_id=thread.id,
+                finding_id=finding["id"],
+                finding_exchange_id="exchange-mid",
+                finding_state_sha256=mid["state_sha256"],
+                superseding_state_sha256="0" * 64,
+                origin_comment_id=thread.comments[0].id,
+                origin_review_head_oid="a" * 40,
+                conversation_sha256=self.delivery.conversation_sha256(thread),
+                finding_disposition="suggestion",
+                author_answer=None,
+                author_artifact_revision=None,
+                reviewer_disposition="withdrawn",
+                closure_evidence=self.delivery._reframe_closure_evidence(
+                    mid["state_sha256"]
+                ),
+                authority_receipt=mid_receipt,
+                author_event_review_id=None,
+            )
+            for thread, finding in zip(mid_threads, mid_findings, strict=True)
+        )
+        binding = self.binding()
+        terminal_visible = self.delivery.terminal_visible_content(
+            binding, seed_entries
+        )
+        terminal, _, terminal_authority = self._superseding_reframe(
+            mid,
+            mid_visible,
+            exchange_id="exchange-terminal",
+            requirements_sha256="3" * 64,
+            revision="b" * 40,
+            new_findings=[],
+            authority_reference="reframe-authority-terminal",
+            visible=terminal_visible,
+            submitted_at="2026-01-01T00:00:04Z",
+        )
+        entries = tuple(
+            replace(entry, superseding_state_sha256=terminal["state_sha256"])
+            for entry in seed_entries
+        )
+        manifest = self.delivery.ClosureManifest(
+            state_envelope=terminal,
+            terminal_visible_content=terminal_visible,
+            entries=entries,
+            requirements_binding=self.requirements_binding(terminal),
+        )
+        old_record = self.carrier_record(
+            "old-review", old, old_visible, submitted_at="2026-01-01T00:00:01Z"
+        )
+        mid_record = self.carrier_record(
+            "mid-review", mid, mid_visible, submitted_at="2026-01-01T00:00:03Z"
+        )
+        forge = FakeForge(self.delivery, threads=mid_threads)
+        forge.reviews.extend((old_record, mid_authority, mid_record, terminal_authority))
+
+        result = self.delivery.deliver_go_v1(forge, binding, manifest)
+
+        self.assertEqual("delivered", result.status)
+        for thread in mid_threads:
+            self.assertTrue(forge.threads[thread.id].is_resolved)
+        self.assertEqual(1, forge.events.count("terminal"))
+        self.assertEqual(1, forge.events.count("labels"))
+
+    def test_superseded_carrier_with_invalid_reframe_receipt_fails_closed(
+        self,
+    ) -> None:
+        cases = (
+            (
+                "digest",
+                {
+                    "reference": "review:reframe-authority",
+                    "sha256": "0" * 64,
+                },
+                None,
+            ),
+            (
+                "association",
+                None,
+                {"author_association": "NONE"},
+            ),
+            (
+                "permission",
+                None,
+                {"author_permission": "READ"},
+            ),
+        )
+        for case, receipt, record_override in cases:
+            authority_body = self.authority_body(
+                action="reframe",
+                exchange_id="exchange-reframed-current",
+                requirements_sha256="c" * 64,
+                supersedes_state_sha256=None,
+                decisions=[],
+            )
+            authority_override = None
+            if record_override is not None:
+                authority_override = self.delivery.ReviewRecord(
+                    id="reframe-authority",
+                    body=authority_body,
+                    head_oid="b" * 40,
+                    author="maintainer",
+                    viewer_did_author=False,
+                    includes_created_edit=False,
+                    state="COMMENTED",
+                    author_association=record_override.get(
+                        "author_association", "OWNER"
+                    ),
+                    author_permission=record_override.get(
+                        "author_permission", "ADMIN"
+                    ),
+                    submitted_at="2026-01-01T00:00:04Z",
+                )
+            with self.subTest(case=case):
+                forge, manifest, _, _, _, _ = self._superseded_nogo(
+                    child_receipt=receipt,
+                    child_authority_record=authority_override,
+                )
+                with self.assertRaises(self.delivery.DeliveryError):
+                    self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+
+                self.assertEqual(["read"], forge.events)
+
+    def test_superseded_carrier_with_own_receipt_keeps_strict_rule(self) -> None:
+        exchange = self.delivery.review_exchange
+        grandparent_visible = "The grandparent head completed its review."
+        grandparent, _ = self._old_reviewer_assessment(
+            exchange_id="exchange-grandparent",
+            requirements_sha256="1" * 64,
+            revision="a" * 40,
+            new_findings=[],
+            stop_reason=None,
+            visible=grandparent_visible,
+        )
+        old_visible = "Round 1 review: four required findings."
+        old, _, old_authority = self._superseding_reframe(
+            grandparent,
+            grandparent_visible,
+            exchange_id="exchange-old",
+            requirements_sha256="e" * 64,
+            revision="a" * 40,
+            new_findings=self._superseded_nogo_findings(),
+            authority_reference="reframe-authority-old",
+            visible=old_visible,
+            scope=["path:src/old.py"],
+            stop_reason="requirements_reframe",
+        )
+        forge, manifest, old_record, _, _, _ = self._superseded_fixture(
+            old, old_visible
+        )
+        grandparent_record = self.carrier_record(
+            "grandparent-review", grandparent, grandparent_visible
+        )
+        forge.reviews.insert(0, grandparent_record)
+        forge.reviews.insert(1, old_authority)
+
+        with self.assertRaises(self.delivery.DeliveryError) as raised:
+            self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+
+        self.assertIn(
+            "does not own its exact inline finding batch", str(raised.exception)
+        )
+        self.assertNotIn("terminal", forge.events)
+        self.assertNotIn("labels", forge.events)
+
+    def test_superseded_state_not_reducer_derived_fails_closed(self) -> None:
+        exchange = self.delivery.review_exchange
+        old, old_visible = self._old_nogo()
+        tampered_state = dict(old["state"])
+        findings = [dict(finding) for finding in tampered_state["findings"]]
+        findings[0]["state"] = "resolved"
+        tampered_state = {**tampered_state, "findings": findings}
+        tampered = {
+            "schema_id": old["schema_id"],
+            "schema_version": old["schema_version"],
+            "state": tampered_state,
+            "state_sha256": exchange.sha256_json(tampered_state),
+        }
+
+        forge, manifest, _, _, _, _ = self._superseded_fixture(
+            tampered, old_visible
+        )
+
+        with self.assertRaises(self.delivery.DeliveryError):
+            self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+
+        self.assertEqual(["read"], forge.events)
+
+    def test_unsuperseded_carrier_with_incomplete_batch_fails(self) -> None:
+        thread = self.owned_thread()
+        manifest = self.v1_manifest(thread)
+        old, old_visible = self.archived_suggestion_exchange(manifest)
+        forge = FakeForge(self.delivery, threads=(thread,))
+        self.add_history(forge, manifest)
+        old_record = replace(
+            self.carrier_record("old-terminal", old, old_visible),
+            submitted_at="2025-12-31T23:59:59Z",
+        )
+        forge.reviews.insert(0, old_record)
+
+        with self.assertRaises(self.delivery.DeliveryError) as raised:
+            self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+
+        self.assertIn(
+            "does not own its exact inline finding batch", str(raised.exception)
+        )
+        self.assertEqual(["read"], forge.events)
+
+    def test_superseded_carrier_with_invalid_roots_fails_closed(self) -> None:
+        cases = (
+            (
+                "unmarked",
+                {"body": "A finding has no marker."},
+            ),
+            (
+                "foreign",
+                {"viewer_did_author": False},
+            ),
+            (
+                "wrong-head",
+                {"review_head_oid": "c" * 40},
+            ),
+            (
+                "edited",
+                {"last_edited_at": "2026-01-01T00:03:00Z"},
+            ),
+        )
+        for case, overrides in cases:
+            with self.subTest(case=case):
+                forge, manifest, _, _, _, _ = self._superseded_nogo(
+                    rooted_findings=("F-004",),
+                    root_overrides={"F-004": overrides},
+                )
+                with self.assertRaises(self.delivery.DeliveryError):
+                    self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+
+                self.assertNotIn("terminal", forge.events)
+                self.assertNotIn("labels", forge.events)
+
+    def _anchor_git_fixture(self) -> tuple[Path, str, str]:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        self._git_fixture(root, "init", "-q")
+        self._git_fixture(root, "config", "user.name", "Fixture")
+        self._git_fixture(root, "config", "user.email", "fixture@example.invalid")
+        source = root / "src" / "publisher.py"
+        source.parent.mkdir()
+        lines = [f"line {number}\n" for number in range(1, 13)]
+        source.write_text("".join(lines), encoding="utf-8")
+        self._git_fixture(root, "add", "src/publisher.py")
+        self._git_fixture(root, "commit", "-qm", "synthetic base")
+        base_oid = self._git_fixture(root, "rev-parse", "HEAD")
+        lines[9] = "changed owner line\n"
+        source.write_text("".join(lines), encoding="utf-8")
+        self._git_fixture(root, "commit", "-am", "synthetic head")
+        head_oid = self._git_fixture(root, "rev-parse", "HEAD")
+        return root, base_oid, head_oid
+
+    def _anchored_superseded_go(
+        self,
+        *,
+        visible: str,
+        head_oid: str,
+        base_oid: str,
+        findings: list[dict[str, Any]],
+        manifest_kwargs: dict[str, Any],
+    ) -> tuple[Any, Any]:
+        binding = self.delivery.ReviewBinding(
+            repository="owner/repository",
+            number=7,
+            url="https://github.com/owner/repository/pull/7",
+            base_oid=base_oid,
+            head_oid=head_oid,
+        )
+        old, _ = self._old_reviewer_assessment(
+            exchange_id="exchange-old",
+            requirements_sha256="e" * 64,
+            revision=head_oid,
+            new_findings=findings,
+            stop_reason="requirements_reframe",
+            visible=visible,
+        )
+        terminal_visible = self.delivery.terminal_visible_content(binding, ())
+        terminal, _, authority = self._superseding_reframe(
+            old,
+            visible,
+            exchange_id="exchange-reframed-current",
+            requirements_sha256="c" * 64,
+            revision=head_oid,
+            new_findings=[],
+            authority_reference="reframe-authority",
+            visible=terminal_visible,
+            scope=["path:src/current.py"],
+        )
+        manifest = self.delivery.ClosureManifest(
+            state_envelope=terminal,
+            terminal_visible_content=terminal_visible,
+            entries=(),
+            requirements_binding=self.requirements_binding(terminal),
+            **manifest_kwargs,
+        )
+        old_record = self.carrier_record("old-review", old, visible)
+        forge = FakeForge(self.delivery, threads=(), binding=binding)
+        forge.reviews.extend((old_record, authority))
+        return forge, manifest
+
+    def test_superseded_carrier_with_annex_keeps_strict_rule(self) -> None:
+        root, base_oid, head_oid = self._anchor_git_fixture()
+        finding = {
+            "id": "F-001",
+            "category": None,
+            "severity": "major",
+            "disposition": "required",
+            "material_architecture": False,
+            "location": "src/publisher.py:10",
+            "impact": "The source owner is unresolved.",
+            "evidence": ["Controlled source evidence."],
+            "closure_condition": "The owner is repaired.",
+            "introduction": "initial",
+        }
+        manifest = self.delivery.anchor_proofs.prepare_manifest(
+            root, base_oid, head_oid, [finding]
+        )
+        visible = (
+            "# Review: NO-GO\n\n`F-001` blocks this pull request.\n\n"
+            f"<!-- HomericIntelligence:review-anchors:v1 -->\n```json\n"
+            f"{self.delivery.anchor_proofs.canonical(manifest)}\n```\n"
+        )
+
+        forge, manifest_obj = self._anchored_superseded_go(
+            visible=visible,
+            head_oid=head_oid,
+            base_oid=base_oid,
+            findings=[finding],
+            manifest_kwargs={"anchor_source": root},
+        )
+
+        with self.assertRaises(self.delivery.DeliveryError) as raised:
+            self.delivery.deliver_go_v1(
+                forge,
+                self.delivery.ReviewBinding(
+                    repository="owner/repository",
+                    number=7,
+                    url="https://github.com/owner/repository/pull/7",
+                    base_oid=base_oid,
+                    head_oid=head_oid,
+                ),
+                manifest_obj,
+            )
+
+        self.assertIn(
+            "does not own its exact inline finding batch", str(raised.exception)
+        )
+        self.assertEqual(["read"], forge.events)
+
+    def test_superseded_carrier_with_historical_proof_keeps_strict_rule(
+        self,
+    ) -> None:
+        root, base_oid, head_oid = self._anchor_git_fixture()
+        findings = [
+            {
+                "id": "F-001",
+                "category": None,
+                "severity": "major",
+                "disposition": "required",
+                "material_architecture": False,
+                "location": "src/publisher.py:10",
+                "impact": "The source owner is unresolved.",
+                "evidence": ["The failing case returns 0."],
+                "closure_condition": "The owner is repaired.",
+                "introduction": "initial",
+            },
+            {
+                "id": "F-002",
+                "category": None,
+                "severity": "minor",
+                "disposition": "suggestion",
+                "material_architecture": False,
+                "location": "src/publisher.py:1",
+                "impact": "The header comment can be clearer.",
+                "evidence": ["The name hides its purpose."],
+                "closure_condition": None,
+                "introduction": "initial",
+            },
+        ]
+        witness = (
+            f"Reviewed repository #7 at `{head_oid}`, against base/merge-base "
+            f"`{base_oid}` (zero commits behind)."
+        )
+        visible = f"{witness}\n\nRound 1 review: two findings."
+        exchange = self.delivery.review_exchange
+
+        forge, manifest_obj = self._anchored_superseded_go(
+            visible=visible,
+            head_oid=head_oid,
+            base_oid=base_oid,
+            findings=findings,
+            manifest_kwargs={},
+        )
+        binding = self.delivery.ReviewBinding(
+            repository="owner/repository",
+            number=7,
+            url="https://github.com/owner/repository/pull/7",
+            base_oid=base_oid,
+            head_oid=head_oid,
+        )
+        old = exchange.extract_carrier(forge.reviews[0].body)
+        proof = {
+            "schema_id": "athena.pr-review.historical-anchor-proof",
+            "schema_version": 1,
+            "target": {
+                "provider": "github",
+                "repository": "owner/repository",
+                "number": 7,
+                "url": "https://github.com/owner/repository/pull/7",
+            },
+            "review_id": "old-review",
+            "state_sha256": old["state_sha256"],
+            "visible_content_sha256": exchange.sha256_text(visible),
+            "base_oid": base_oid,
+            "head_oid": head_oid,
+            "merge_base_oid": base_oid,
+            "finding_ids": ["F-002"],
+            "witness": witness,
+        }
+        manifest_obj = replace(
+            manifest_obj, historical_anchor_proofs=(proof,), anchor_source=root
+        )
+
+        with self.assertRaises(self.delivery.DeliveryError) as raised:
+            self.delivery.deliver_go_v1(forge, binding, manifest_obj)
+
+        self.assertIn(
+            "does not own its exact inline finding batch", str(raised.exception)
+        )
+        self.assertEqual(["read"], forge.events)
 
     def test_reframe_with_one_extra_final_line_feed_delivers(self) -> None:
         forge, manifest, canonical = self._direct_completed_reframe()

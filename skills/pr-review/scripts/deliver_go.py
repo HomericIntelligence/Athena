@@ -1889,6 +1889,58 @@ def _recovered_root_matches(
     )
 
 
+def _uses_fallback_geometry(
+    visible: str,
+    original_state_sha256: str,
+    historical_anchor_proofs: Sequence[Mapping[str, Any]],
+) -> bool:
+    """Report whether one carrier binds the reviewed scope without proof bytes."""
+    try:
+        if anchor_proofs.visible_manifest(visible) is not None:
+            return False
+    except ValueError:
+        # The annex is unusable; the anchor verification rejects the carrier.
+        return False
+    return not any(
+        proof.get("state_sha256") == original_state_sha256
+        for proof in historical_anchor_proofs
+    )
+
+
+def _superseded_fallback_exempt(
+    *,
+    digest: str,
+    envelope: Mapping[str, Any],
+    original_envelope: Mapping[str, Any],
+    visible: str,
+    superseding_state_sha256s: Mapping[str, str],
+    verified_state_sha256s: set[str] | frozenset[str],
+    verified_envelopes: Mapping[str, dict[str, Any]],
+    historical_anchor_proofs: Sequence[Mapping[str, Any]],
+) -> bool:
+    """Report whether one verified reframe retired a carrier's batch binding.
+
+    The exemption applies only to the fallback publication geometry. A carrier
+    with an anchor annex or a historical proof keeps the strict rule, and an
+    invalid root never becomes acceptable.
+    """
+    child_digest = superseding_state_sha256s.get(digest)
+    if child_digest is None or child_digest not in verified_state_sha256s:
+        return False
+    child = verified_envelopes.get(child_digest)
+    if child is None:
+        return False
+    if envelope["state"].get("supersession_authority_receipt") is not None:
+        return False
+    if child["state"].get("supersession_authority_receipt") is None:
+        return False
+    return _uses_fallback_geometry(
+        visible,
+        cast(str, original_envelope["state_sha256"]),
+        historical_anchor_proofs,
+    )
+
+
 def _verify_carrier_review_roots(
     forge: Forge,
     snapshot: PullRequestSnapshot,
@@ -1900,10 +1952,11 @@ def _verify_carrier_review_roots(
     selected_author_ids: set[str],
     new_finding_ids_by_state: Mapping[str, frozenset[str]],
     anchor_source: Path | None = None,
-    historical_anchor_proofs: tuple[dict[str, Any], ...] = (),
+    historical_anchor_proofs: Sequence[dict[str, Any]] = (),
     format_only_compatibility: Mapping[str, Any] | None = None,
     format_only_recovered_thread_ids: frozenset[str] = frozenset(),
     misplaced_recoveries: Mapping[str, Mapping[str, Any]] | None = None,
+    superseding_state_sha256s: Mapping[str, str] | None = None,
 ) -> None:
     """Bind each selected carrier review to its complete atomic inline batch."""
     roots_by_review: dict[str, list[tuple[ReviewComment, ReviewThread]]] = {}
@@ -1948,6 +2001,7 @@ def _verify_carrier_review_roots(
         if state_record is None:
             continue
         review, envelope = state_record
+        visible = _carrier_visible(review.body)
         state = envelope["state"]
         introduced = [
             finding
@@ -1957,7 +2011,7 @@ def _verify_carrier_review_roots(
         expected = _publication_anchors(
             binding,
             original_states[digest],
-            _carrier_visible(review.body),
+            visible,
             introduced,
             anchor_source,
             historical_anchor_proofs,
@@ -2017,7 +2071,18 @@ def _verify_carrier_review_roots(
                     "A reviewer state message has an invalid inline finding batch."
                 )
             actual.add(finding_id)
-        if actual != set(expected):
+        if actual != set(expected) and not _superseded_fallback_exempt(
+            digest=digest,
+            envelope=envelope,
+            original_envelope=original_states[digest],
+            visible=visible,
+            superseding_state_sha256s=(
+                {} if superseding_state_sha256s is None else superseding_state_sha256s
+            ),
+            verified_state_sha256s=verified_state_sha256s,
+            verified_envelopes=verified_envelopes,
+            historical_anchor_proofs=historical_anchor_proofs,
+        ):
             raise DeliveryError(
                 "A reviewer state message does not own its exact inline finding batch."
             )
@@ -2937,6 +3002,7 @@ def _verify_state_chain(
         format_only_compatibility,
         format_only_recovered_thread_ids,
         misplaced_recoveries,
+        superseding_state_sha256s=superseding_state_sha256s,
     )
     verified_original_digests = {
         original_states[digest]["state_sha256"]
