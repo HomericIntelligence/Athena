@@ -21,8 +21,8 @@ materials (SBOMs) with each plugin archive:
 
 The locked coding-agent runtime comes from the official released
 `@earendil-works/pi-coding-agent` npm artifact. An integrity hash in
-`ci/pi-runtime/package-lock.json` pins the artifact. Athena scans its shipped
-`npm-shrinkwrap.json`.
+`ci/pi-runtime/package-lock.json` pins the artifact. Athena scans that locked
+contract. The artifact ships no `npm-shrinkwrap.json` since release 1.0.1.
 
 [Issue #63](https://github.com/HomericIntelligence/Athena/issues/63) retired the temporary
 source-commit build pin. The locked runtime replaces that pin. The package job first validates the
@@ -79,7 +79,8 @@ restoration lands. The pull request that restores the full inventory closes it.
 3. The `package` job installs only the pinned runtime, so it never has a full Pi source root. Add a
    step to the `package` job in `.github/workflows/_required.yml` that fetches the upstream source
    into a scratch root with the `git init` and `git fetch --depth=1` sequence that the watch job
-   uses. Then replace the coding-agent shrinkwrap scan with a Syft scan of that scratch root. Keep
+   uses. Then replace the coding-agent package-lock scan with a Syft scan of that scratch root.
+   Keep
    the `syft-pi-subagents.json` inventory of the isolated runtime. Remove the watch job only after
    this step exists, because a rescan of the installed runtime under a new name does not give full
    source coverage.
