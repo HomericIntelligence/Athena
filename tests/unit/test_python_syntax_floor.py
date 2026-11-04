@@ -8,7 +8,7 @@ for HomericIntelligence/Athena#301, where nothing verified that the packaged
 This repository uses two different interpreter levels, and each has its own
 contract:
 
-- `pyproject.toml` declares `requires-python = ">=3.14.8,<3.15"`. On that
+- `pyproject.toml` declares `requires-python = ">=3.14.10,<3.15"`. On that
   interpreter the Python 3.14 relaxation of multi-exception `except` clauses
   makes the old spelling legal again, so a plain compile on the declared floor
   cannot detect its return.
@@ -95,7 +95,7 @@ def test_declared_floor_is_recorded_in_pyproject() -> None:
     it. Recording the value keeps that dependency explicit.
     """
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'requires-python = ">=3.14.8,<3.15"' in text, (
+    assert 'requires-python = ">=3.14.10,<3.15"' in text, (
         "requires-python changed; re-check that the pr-review helpers still"
         " import on the declared floor before trusting the checks below"
     )

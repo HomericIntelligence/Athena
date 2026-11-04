@@ -280,7 +280,7 @@ def write_workflow(path: Path, action: str = "actions/checkout@" + "a" * 40) -> 
                             {"uses": action},
                             {
                                 "uses": "astral-sh/setup-uv@" + "b" * 40,
-                                "with": {"version": "0.12.24"},
+                                "with": {"version": "0.13.6"},
                             },
                         ]
                     },
@@ -362,7 +362,7 @@ class SbomTests(unittest.TestCase):
         self.assertNotIn("actions/download-artifact", package_names)
         self.assertEqual(1, len(document["documentDescribes"]))
         packages = {item["name"]: item for item in document["packages"]}
-        self.assertEqual("0.12.24", packages["uv"]["versionInfo"])
+        self.assertEqual("0.13.6", packages["uv"]["versionInfo"])
         self.assertEqual("1.2.3", packages["athena-build-linux-64"]["versionInfo"])
         relationship_types = {
             item["relationshipType"] for item in document["relationships"]
@@ -1715,7 +1715,7 @@ jobs:
         self.assertEqual(
             {
                 "pi-subagents": "0.58.0",
-                "@earendil-works/pi-coding-agent": "0.86.0",
+                "@earendil-works/pi-coding-agent": "1.5.0",
             },
             manifest["dependencies"],
         )
@@ -1778,7 +1778,7 @@ jobs:
         self.assertIn("--ignore-scripts --engine-strict", pi_step["run"])
         self.assertIn("find_pi_package_root.mjs", pi_step["run"])
         self.assertIn(
-            '"$PI_RUNTIME_ROOT/node_modules/@earendil-works/pi-coding-agent/npm-shrinkwrap.json"',
+            '"$PI_RUNTIME_ROOT/package-lock.json"',
             pi_step["run"],
         )
         self.assertIn('scan "$PI_RUNTIME_ROOT" -o json', pi_step["run"])

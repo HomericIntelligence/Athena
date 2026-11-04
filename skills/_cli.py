@@ -16,7 +16,7 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 # `pyproject.toml` states the supported interpreter floor. The packaged archive
 # does not carry that file, so this constant is the runtime reference and
 # `tests/unit/test_interpreter_floor.py` blocks it from drifting.
-MINIMUM_SUPPORTED_PYTHON: Final[tuple[int, int, int]] = (3, 14, 8)
+MINIMUM_SUPPORTED_PYTHON: Final[tuple[int, int, int]] = (3, 14, 10)
 
 
 def _version_text(version: tuple[int, ...]) -> str:
