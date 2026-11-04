@@ -1715,7 +1715,7 @@ jobs:
         self.assertEqual(
             {
                 "pi-subagents": "0.58.0",
-                "@earendil-works/pi-coding-agent": "0.86.0",
+                "@earendil-works/pi-coding-agent": "1.5.0",
             },
             manifest["dependencies"],
         )
@@ -1778,7 +1778,7 @@ jobs:
         self.assertIn("--ignore-scripts --engine-strict", pi_step["run"])
         self.assertIn("find_pi_package_root.mjs", pi_step["run"])
         self.assertIn(
-            '"$PI_RUNTIME_ROOT/node_modules/@earendil-works/pi-coding-agent/npm-shrinkwrap.json"',
+            '"$PI_RUNTIME_ROOT/package-lock.json"',
             pi_step["run"],
         )
         self.assertIn('scan "$PI_RUNTIME_ROOT" -o json', pi_step["run"])
