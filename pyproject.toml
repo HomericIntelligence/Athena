@@ -24,10 +24,11 @@ package = false
 default-groups = ["dev"]
 
 [tool.ruff]
-# The declared floor is 3.14.10, but the source stays within 3.12 syntax so a
-# host on an older interpreter can still import the packaged helpers. Pin the
-# lint target to the older version so the formatter keeps the parenthesised
-# `except (X, Y):` form instead of rewriting it to the 3.14-only spelling.
+# The repository-toolchain floor is 3.14.10, but the packaged runtime floor is
+# 3.12.3 and the source stays within 3.12 syntax so a host on the runtime floor
+# can still import the packaged helpers. Pin the lint target to the older
+# version so the formatter keeps the parenthesised `except (X, Y):` form
+# instead of rewriting it to the 3.14-only spelling.
 target-version = "py312"
 
 [tool.coverage.run]
