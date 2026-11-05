@@ -77,6 +77,12 @@ else:
 
 CORPUS_VERSION: Final[str] = "0.6.2"
 
+
+def declared_corpus_version() -> str:
+    """Return the corpus version declared by this helper module."""
+    return CORPUS_VERSION
+
+
 GO_LABEL = "state:implementation-go"
 NO_GO_LABEL = "state:implementation-no-go"
 V1_MANIFEST_SCHEMA_ID = "athena.pr-review.closure-manifest"

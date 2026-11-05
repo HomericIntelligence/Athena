@@ -39,6 +39,12 @@ FINALIZE_SCHEMA_ID = "athena.issue-exchange.finalize-result"
 SCHEMA_VERSION = 1
 CORPUS_VERSION: Final[str] = "0.6.2"
 
+
+def declared_corpus_version() -> str:
+    """Return the corpus version declared by this helper module."""
+    return CORPUS_VERSION
+
+
 PLAN_MARKER = "<!-- HomericIntelligence:plan-issue -->"
 REVIEW_MARKER = "<!-- HomericIntelligence:issue-review -->"
 PLAN_MARKERS = (

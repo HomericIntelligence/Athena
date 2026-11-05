@@ -301,6 +301,15 @@ def test_module_identity_reports_the_declared_corpus_version() -> None:
     }
 
 
+def test_each_helper_exposes_its_corpus_version() -> None:
+    """Each helper declares its corpus version through one public accessor."""
+    exchange = load_module(REVIEW_SCRIPT, "corpus_identity_accessor_exchange")
+    issue = load_module(ISSUE_SCRIPT, "corpus_identity_accessor_issue")
+    assert exchange.declared_corpus_version() == exchange.CORPUS_VERSION
+    assert issue.declared_corpus_version() == issue.CORPUS_VERSION
+    assert exchange.module_identity(issue)["declared_corpus_version"] == "0.6.2"
+
+
 def test_module_identity_marks_a_helper_without_a_declared_version() -> None:
     """A helper without the compiled constant reports the literal none."""
     exchange = load_module(REVIEW_SCRIPT, "corpus_identity_missing_declaration")

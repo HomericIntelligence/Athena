@@ -48,6 +48,13 @@ RESULT_SCHEMA_ID = "athena.review-exchange.reduce-result"
 AUTHORITY_SCHEMA_ID = "athena.review-exchange.authority"
 SCHEMA_VERSION = 1
 CORPUS_VERSION: Final[str] = "0.6.2"
+
+
+def declared_corpus_version() -> str:
+    """Return the corpus version declared by this helper module."""
+    return CORPUS_VERSION
+
+
 LEGACY_ENVELOPE_SCHEMA_VERSION = 1
 ENVELOPE_SCHEMA_VERSION = 2
 EVIDENCE_ENVELOPE_SCHEMA_VERSION = 3
@@ -284,7 +291,12 @@ def module_identity(module: ModuleType) -> dict[str, str]:
     """
     file_name = getattr(module, "__file__", None)
     module_file = Path(file_name) if isinstance(file_name, str) else None
-    declared = getattr(module, "CORPUS_VERSION", None)
+    declared_reader = getattr(module, "declared_corpus_version", None)
+    declared = (
+        declared_reader()
+        if callable(declared_reader)
+        else getattr(module, "CORPUS_VERSION", None)
+    )
     declared_version = (
         declared if isinstance(declared, str) and declared.strip() else "none"
     )
