@@ -8,14 +8,16 @@ for HomericIntelligence/Athena#301, where nothing verified that the packaged
 This repository uses two different interpreter levels, and each has its own
 contract:
 
-- `pyproject.toml` declares `requires-python = ">=3.14.10,<3.15"`. On that
-  interpreter the Python 3.14 relaxation of multi-exception `except` clauses
-  makes the old spelling legal again, so a plain compile on the declared floor
-  cannot detect its return.
-- `[tool.ruff] target-version = "py312"` pins the source syntax level, and
-  `README.md` documents Python 3.12 or newer on the host. A host below 3.14
-  rejects that spelling with a hard `SyntaxError`, so the source must stay
-  inside 3.12 syntax even though the declared floor is newer.
+- `pyproject.toml` declares the repository-toolchain floor
+  `requires-python = ">=3.14.10,<3.15"`. On that interpreter the Python 3.14
+  relaxation of multi-exception `except` clauses makes the old spelling legal
+  again, so a plain compile on the toolchain floor cannot detect its return.
+- `[tool.ruff] target-version = "py312"` pins the source syntax level.
+  `README.md` documents Python 3.12.3 or newer on the host, and
+  `skills._cli.MINIMUM_SUPPORTED_PYTHON` is the runtime floor of the packaged
+  helpers. A host below 3.14 rejects that spelling with a hard `SyntaxError`,
+  so the source must stay inside 3.12 syntax even though the toolchain floor is
+  newer.
 
 This module therefore checks that every tracked Python file compiles on the
 running interpreter, parses at the documented 3.12 syntax level, and that the
@@ -88,11 +90,11 @@ def test_enumeration_finds_the_repository_sources() -> None:
 
 
 def test_declared_floor_is_recorded_in_pyproject() -> None:
-    """The floor this test relies on must stay explicit in the project file.
+    """The repository-toolchain floor must stay explicit in the project file.
 
-    If `requires-python` is ever lowered below 3.14, the helpers stop importing
-    on the floor and this module's import check becomes the thing that catches
-    it. Recording the value keeps that dependency explicit.
+    This is the toolchain floor, not the runtime floor of the packaged
+    helpers. The helpers must still import on the 3.12.3 host floor. Recording
+    the toolchain value keeps that dependency explicit.
     """
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert 'requires-python = ">=3.14.10,<3.15"' in text, (
