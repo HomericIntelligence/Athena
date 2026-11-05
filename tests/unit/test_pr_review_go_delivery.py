@@ -7460,7 +7460,6 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                 self.assertEqual(["read"], forge.events)
 
     def test_superseded_carrier_with_own_receipt_keeps_strict_rule(self) -> None:
-        exchange = self.delivery.review_exchange
         grandparent_visible = "The grandparent head completed its review."
         grandparent, _ = self._old_reviewer_assessment(
             exchange_id="exchange-grandparent",
