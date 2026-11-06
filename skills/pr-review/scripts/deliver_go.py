@@ -75,7 +75,13 @@ else:
     argument_parser = _cli.argument_parser
     run_command = _cli.run_command
 
-CORPUS_VERSION: Final[str] = "0.6.1"
+CORPUS_VERSION: Final[str] = "0.6.2"
+
+
+def declared_corpus_version() -> str:
+    """Return the corpus version declared by this helper module."""
+    return CORPUS_VERSION
+
 
 GO_LABEL = "state:implementation-go"
 NO_GO_LABEL = "state:implementation-no-go"
