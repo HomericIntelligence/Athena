@@ -1753,7 +1753,7 @@ jobs:
                 step
                 for step in package_job["steps"]
                 if step.get("uses")
-                == "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
+                == "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1"
             ),
             None,
         )
