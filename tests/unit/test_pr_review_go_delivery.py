@@ -714,7 +714,8 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             includes_created_edit=False,
             state="COMMENTED",
             author_association=association,
-            submitted_at=submitted_at or f"2026-01-01T00:00:{self.review_sequence:02d}Z",
+            submitted_at=submitted_at
+            or f"2026-01-01T00:00:{self.review_sequence:02d}Z",
         )
         return record
 
@@ -7109,7 +7110,9 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         exchange = self.delivery.review_exchange
         genesis = old["state"]["accepted_events"][0]
         previous_ancestry = (
-            genesis["superseded_exchange_ids"] if genesis["event_type"] == "reframe" else []
+            genesis["superseded_exchange_ids"]
+            if genesis["event_type"] == "reframe"
+            else []
         )
         superseded_exchange_ids = [*previous_ancestry, old["state"]["exchange_id"]]
         authority_body = self.authority_body(
@@ -7246,9 +7249,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             )
         seed_entries = tuple(seed_entry_list)
         binding = self.binding()
-        terminal_visible = self.delivery.terminal_visible_content(
-            binding, seed_entries
-        )
+        terminal_visible = self.delivery.terminal_visible_content(binding, seed_entries)
         terminal, _, default_authority = self._superseding_reframe(
             old,
             old_visible,
@@ -7263,7 +7264,11 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             submitted_at=authority_submitted_at,
         )
         entries = tuple(
-            replace(entry, superseding_state_sha256=terminal["state_sha256"])
+            replace(
+                entry,
+                superseding_state_sha256=terminal["state_sha256"],
+                authority_receipt=terminal["state"]["supersession_authority_receipt"],
+            )
             for entry in seed_entries
         )
         manifest = self.delivery.ClosureManifest(
@@ -7334,7 +7339,17 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             scope=["path:src/mid.py"],
             submitted_at="2026-01-01T00:00:02Z",
         )
-        mid_receipt = mid["state"]["supersession_authority_receipt"]
+        preview_authority = self.authority_body(
+            action="reframe",
+            exchange_id="exchange-terminal",
+            requirements_sha256="3" * 64,
+            supersedes_state_sha256=mid["state_sha256"],
+            decisions=[],
+        )
+        preview_receipt = {
+            "reference": "review:reframe-authority-terminal",
+            "sha256": self.delivery.review_exchange.sha256_text(preview_authority),
+        }
         mid_threads = self.carrier_threads(mid, "mid-review")
         seed_entries = tuple(
             self.delivery.ThreadClosure(
@@ -7353,15 +7368,13 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                 closure_evidence=self.delivery._reframe_closure_evidence(
                     mid["state_sha256"]
                 ),
-                authority_receipt=mid_receipt,
+                authority_receipt=preview_receipt,
                 author_event_review_id=None,
             )
             for thread, finding in zip(mid_threads, mid_findings, strict=True)
         )
         binding = self.binding()
-        terminal_visible = self.delivery.terminal_visible_content(
-            binding, seed_entries
-        )
+        terminal_visible = self.delivery.terminal_visible_content(binding, seed_entries)
         terminal, _, terminal_authority = self._superseding_reframe(
             mid,
             mid_visible,
@@ -7371,6 +7384,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             new_findings=[],
             authority_reference="reframe-authority-terminal",
             visible=terminal_visible,
+            receipt_override=preview_receipt,
             submitted_at="2026-01-01T00:00:04Z",
         )
         entries = tuple(
@@ -7390,7 +7404,9 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             "mid-review", mid, mid_visible, submitted_at="2026-01-01T00:00:03Z"
         )
         forge = FakeForge(self.delivery, threads=mid_threads)
-        forge.reviews.extend((old_record, mid_authority, mid_record, terminal_authority))
+        forge.reviews.extend(
+            (old_record, mid_authority, mid_record, terminal_authority)
+        )
 
         result = self.delivery.deliver_go_v1(forge, binding, manifest)
 
@@ -7444,9 +7460,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                     author_association=record_override.get(
                         "author_association", "OWNER"
                     ),
-                    author_permission=record_override.get(
-                        "author_permission", "ADMIN"
-                    ),
+                    author_permission=record_override.get("author_permission", "ADMIN"),
                     submitted_at="2026-01-01T00:00:04Z",
                 )
             with self.subTest(case=case):
@@ -7481,12 +7495,14 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             visible=old_visible,
             scope=["path:src/old.py"],
             stop_reason="requirements_reframe",
+            submitted_at="2026-01-01T00:00:00Z",
         )
-        forge, manifest, old_record, _, _, _ = self._superseded_fixture(
-            old, old_visible
-        )
+        forge, manifest, _, _, _, _ = self._superseded_fixture(old, old_visible)
         grandparent_record = self.carrier_record(
-            "grandparent-review", grandparent, grandparent_visible
+            "grandparent-review",
+            grandparent,
+            grandparent_visible,
+            submitted_at="2025-12-31T23:59:58Z",
         )
         forge.reviews.insert(0, grandparent_record)
         forge.reviews.insert(1, old_authority)
@@ -7503,6 +7519,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
     def test_superseded_state_not_reducer_derived_fails_closed(self) -> None:
         exchange = self.delivery.review_exchange
         old, old_visible = self._old_nogo()
+        forge, manifest, _, _, _, _ = self._superseded_fixture(old, old_visible)
         tampered_state = dict(old["state"])
         findings = [dict(finding) for finding in tampered_state["findings"]]
         findings[0]["state"] = "resolved"
@@ -7513,10 +7530,29 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             "state": tampered_state,
             "state_sha256": exchange.sha256_json(tampered_state),
         }
-
-        forge, manifest, _, _, _, _ = self._superseded_fixture(
-            tampered, old_visible
+        marker = (
+            "<!-- HomericIntelligence:review-exchange:v1 "
+            f"kind=state sha256={tampered['state_sha256']} -->"
         )
+        forged = (
+            f"{old_visible}\n\n{marker}\n```json\n"
+            f"{exchange.canonical_json(tampered)}\n```\n"
+        )
+        tampered_record = self.delivery.ReviewRecord(
+            id="old-review",
+            body=forged,
+            head_oid="a" * 40,
+            author="reviewer",
+            viewer_did_author=True,
+            includes_created_edit=False,
+            state="COMMENTED",
+            author_association="NONE",
+            submitted_at="2026-01-01T00:00:01Z",
+        )
+        forge.reviews = [
+            tampered_record if record.id == "old-review" else record
+            for record in forge.reviews
+        ]
 
         with self.assertRaises(self.delivery.DeliveryError):
             self.delivery.deliver_go_v1(forge, self.binding(), manifest)
