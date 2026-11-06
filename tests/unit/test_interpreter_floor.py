@@ -5,10 +5,13 @@ opaque `SyntaxError` from a helper line that is correct for this project. The
 shared CLI factory now verifies `sys.version_info` against the declared floor
 and exits with a message that names both the required and the detected version.
 
-The floor is stated in `pyproject.toml`. `skills._cli.MINIMUM_SUPPORTED_PYTHON`
-is the runtime reference, and the drift test below blocks the two from
-disagreeing. Every other test derives its versions from that constant, so a
-correct floor bump does not break them.
+`skills._cli.MINIMUM_SUPPORTED_PYTHON` is the runtime floor of the packaged
+helpers. It is intentionally lower than the repository-toolchain floor in
+`pyproject.toml` and `.python-version`: consumers run the helpers on a host
+interpreter, and the npm and archive artifacts must work on Python 3.12.3. The
+drift test below pins the runtime floor and keeps it at or below the repository
+toolchain floor. Every other test derives its versions from the constant, so a
+correct floor change does not break them.
 """
 
 from __future__ import annotations
@@ -52,9 +55,14 @@ def version_above_floor() -> tuple[int, int, int]:
     return (major, minor, micro + 1)
 
 
-def test_minimum_supported_python_matches_the_declared_floor() -> None:
-    """The runtime floor must not drift from the declared floor."""
-    assert declared_python_floor() == FLOOR
+def test_minimum_supported_python_is_the_documented_host_floor() -> None:
+    """The packaged helpers must support the documented 3.12.3 host floor."""
+    assert FLOOR == (3, 12, 3)
+
+
+def test_minimum_supported_python_does_not_exceed_the_toolchain_floor() -> None:
+    """The runtime floor must not require an interpreter above the toolchain."""
+    assert FLOOR <= declared_python_floor()
 
 
 def test_factory_rejects_an_interpreter_below_the_floor(

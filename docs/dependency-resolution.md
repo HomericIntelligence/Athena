@@ -192,6 +192,12 @@ If the checkout is missing or inspection fails, report unavailable knowledge and
 task. Attempt scoped helper recovery. For delivery, prepare safe local changes from available
 verified source and record pending freshness, duplicate, or authority checks.
 
+The local checkout is one candidate source, not the full corpus. When `gh` and authentication are
+available, also inspect open pull requests in the resolved knowledge repository. A lesson can be in
+review before it reaches the default branch. The `advise` and `learn` skills define how to rank and
+use unmerged candidates. If open-pull-request inspection is unavailable, report the limit and
+continue. Do not present unmerged content as default-branch guidance.
+
 Authentication, fetch, clone, or fast-forward failures are recovery inputs, not whole-task stops.
 Preserve unexpected repositories and conflicting local work. Never silently retarget a checkout.
 Withhold dependency execution if its identity or necessary execution contract cannot be established.

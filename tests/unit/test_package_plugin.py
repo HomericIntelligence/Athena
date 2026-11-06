@@ -11,7 +11,6 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
-import tomllib
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from hashlib import sha256
@@ -50,14 +49,11 @@ def packaged_minimum_supported_python(source: str) -> tuple[int, int, int]:
     raise AssertionError("the module has no MINIMUM_SUPPORTED_PYTHON assignment")
 
 
-def declared_python_floor() -> tuple[int, ...]:
-    """Return the `>=` clause of the declared `requires-python` floor."""
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    clauses = project["project"]["requires-python"].split(",")
-    floors = [clause for clause in clauses if clause.startswith(">=")]
-    if len(floors) != 1:
-        raise AssertionError(f"expected one floor clause, found {floors}")
-    return tuple(int(part) for part in floors[0][2:].split("."))
+def source_runtime_python_floor() -> tuple[int, int, int]:
+    """Return the runtime floor that the source `skills/_cli.py` declares."""
+    return packaged_minimum_supported_python(
+        (ROOT / "skills" / "_cli.py").read_text(encoding="utf-8")
+    )
 
 
 def create_repository(root: Path, *, version: str = "1.2.3") -> None:
@@ -368,7 +364,7 @@ if (
         The installed-helper proof of this gate runs in the nightly lane. This
         test keeps the required change gate alert: it fails when the archive
         stops shipping `skills/_cli.py`, when that module stops declaring the
-        floor, or when the packaged floor differs from `pyproject.toml`.
+        floor, or when the packaged floor differs from the source runtime floor.
         """
         archive_path, checksum_path = build_package(ROOT)
         self.addCleanup(archive_path.unlink, missing_ok=True)
@@ -380,7 +376,7 @@ if (
             assert member is not None
             packaged_source = member.read().decode("utf-8")
         packaged_floor = packaged_minimum_supported_python(packaged_source)
-        self.assertEqual(declared_python_floor(), packaged_floor)
+        self.assertEqual(source_runtime_python_floor(), packaged_floor)
 
     def test_source_archive_requires_the_principles_catalog(self) -> None:
         """Every packaged harness receives the shared principles authority."""
