@@ -591,12 +591,13 @@ it is present. The helper reads each requirements field and never matches the
 error text. A changed scope digest or a changed requirement-URL set stops
 delivery.
 
-The `malformed-annex` and `summary-entry-carries-geometry` warnings fire together, on
-the one path where an annex omits a declared field other than `head_oid` or
-`base_oid` and both bindings still match. A complete annex that carries a
-`summary` entry with `path` or `line` keeps the strict block; it produces no
-warning. When the helper delivers a warning list before a pre-write block, the
-recorded result carries the warnings on a delivered result only.
+Both annex warnings are reachable only on the record-shape path, where an
+annex omits a declared field other than `head_oid` or `base_oid` and both
+bindings still match. The `summary-entry-carries-geometry` warning fires there
+only when a `summary` entry also carries `path` or `line`. A complete annex that
+carries a `summary` entry with `path` or `line` keeps the strict block and
+produces no warning. A pre-write block records no delivery result, and the
+warnings are lost with it.
 
 #### Anchor side
 
@@ -625,10 +626,11 @@ all, neither in `_publication_anchors` nor in `partial_geometry`:
 
 So the warning path does not publish the same side, path, and line as the strict
 path on every annex. The agreement that the tests pin is narrower: an annex
-side controls both paths, an omitted side resolves the same way on both paths,
-and an invalid side refuses on both paths. The publication anchor geometry is
-bound to the carrier head and base, not to the immutable source. The strict path
-remains the authority whenever it can bind.
+side controls both paths, an omitted side resolves the same way on both paths
+when the finding declares no side, and an invalid side refuses on both paths.
+The publication anchor geometry is bound to the carrier head and base, not to
+the immutable source. The strict path remains the authority whenever it can
+bind.
 
 A review verdict other than GO still blocks delivery, and the helper lists the findings. The
 `state:implementation-go` label stays the only CI/CD trigger. This change removes no gate and adds
