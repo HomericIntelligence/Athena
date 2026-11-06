@@ -1,7 +1,7 @@
 # This Containerfile builds the athena-ci image for Athena plugin validation.
 # Continuous integration (CI) uses this image.
 #
-# This image contains Python 3.14.8. This version satisfies requires-python >=3.14.8,<3.15.
+# This image contains Python 3.14.10. This version satisfies requires-python >=3.14.10,<3.15.
 # The image contains uv and the locked development environment.
 # The image uses the non-root user 'ci' for compatibility with rootless Podman.
 #
@@ -20,19 +20,19 @@
 # Each supported container engine downloads the same archive.
 # This method does not copy the official uv container image between registries.
 # ============================================================================
-FROM python:3.14.8-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS uv
+FROM python:3.14.10-slim@sha256:930e1abba7c4e8f96ed93e8012c35d174d7732752731bbd5e8e757d7ec6f3966 AS uv
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -fsSL https://github.com/astral-sh/uv/releases/download/0.12.24/uv-x86_64-unknown-linux-gnu.tar.gz -o /tmp/uv.tar.gz \
-    && echo "b4dfaef47d491a7296981f8374a4595f55dbf84e8937c8ecd2983574d8bb3da6  /tmp/uv.tar.gz" | sha256sum --check \
+    && curl -fsSL https://github.com/astral-sh/uv/releases/download/0.13.6/uv-x86_64-unknown-linux-gnu.tar.gz -o /tmp/uv.tar.gz \
+    && echo "f29c3e94ffabd7e6f3ba521dba169a9b7ec12100bf3257087f0f24f6123f3645  /tmp/uv.tar.gz" | sha256sum --check \
     && tar xzf /tmp/uv.tar.gz -C /usr/local/bin --strip-components=1 \
     && rm /tmp/uv.tar.gz
 
 # ============================================================================
 # Stage 1 installs uv and the locked project environment.
 # ============================================================================
-FROM python:3.14.8-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS builder
+FROM python:3.14.10-slim@sha256:930e1abba7c4e8f96ed93e8012c35d174d7732752731bbd5e8e757d7ec6f3966 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1 \
@@ -74,7 +74,7 @@ RUN uv sync --locked --no-install-project
 # ============================================================================
 # Stage 2 builds the minimal runtime image without build tools.
 # ============================================================================
-FROM python:3.14.8-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170
+FROM python:3.14.10-slim@sha256:930e1abba7c4e8f96ed93e8012c35d174d7732752731bbd5e8e757d7ec6f3966
 
 LABEL org.opencontainers.image.title="athena-ci"
 LABEL org.opencontainers.image.description="This Athena continuous integration container validates, lints, and builds packages."

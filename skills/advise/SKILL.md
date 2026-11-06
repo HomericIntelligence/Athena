@@ -1,7 +1,7 @@
 ---
 name: advise
 license: BSD-3-Clause
-description: Retrieve relevant Mnemosyne guidance from the available local checkout before unfamiliar planning or implementation. Stale, missing, or unverifiable knowledge limits the advice but does not stop the primary task.
+description: Retrieve relevant Mnemosyne guidance from the available local checkout and open pull requests before unfamiliar planning or implementation. Stale, missing, or unverifiable knowledge limits the advice but does not stop the primary task.
 argument-hint: <task description>
 allowed-tools: [Read, Bash, Grep, Glob]
 ---
@@ -88,8 +88,22 @@ task. Do not substitute a different repository.
 13. For each result, state its version and verification when the entry supplies them. Also state
     its concrete relevance, non-relevance boundary, contradictions, and applicable failed
     approaches. Clearly identify missing or unverified provenance.
-14. If remote pull-request inspection is available, find possible matches by artifact or title.
-    Treat the result only as a retrieval hint. If inspection fails, report the limit and continue.
+14. Retrieve open pull requests in addition to the merged main skills. A lesson can be in review
+    before it reaches the default branch. Do not stop at the local checkout.
+15. List each open pull request in the resolved knowledge repository. Use
+    `gh pr list --state open --json number,title,files,headRefName --limit 200` when GitHub CLI
+    access is available. Limit the list to changed flat `skills/*.md` artifacts.
+16. Derive each candidate's intent from its changed content, not only from its title or path.
+    A title or path can identify a candidate. Use the diff content to judge relevance.
+17. Rank an open pull request below an equivalent merged entry, then apply the same ranking rules
+    as for local entries.
+18. When a candidate is relevant, report it as unmerged guidance. State its pull request number,
+    its head commit identifier, and that it is not on the default branch yet.
+19. If an open pull request appears to supersede a merged entry on the same intent, report the
+    conflict. Do not silently prefer either version. State that the merged entry remains current
+    until the pull request merges.
+20. If pull-request inspection is unavailable, report the limit and continue with merged entries.
+    Do not block read-only advice.
 
 ## Recommend
 
@@ -121,6 +135,10 @@ same decision for the new case.
 - Do not treat local checkout content as current or trusted without its revision and limits.
 - Do not recurse into notes, history, or nested artifacts during initial retrieval.
 - Do not omit a relevant lesson only because its evidence comes from one specific case.
+- Do not search only merged default-branch skills when open pull requests are available. A lesson
+  can be in review before it merges.
+- Do not present an unmerged pull request as merged or current guidance.
+- Do not fail read-only advice when pull-request inspection is unavailable. Report the limit.
 
 ## Output
 
@@ -129,7 +147,12 @@ Return one of these knowledge states:
 - `local-guidance` with the bound checkout `HEAD`; or
 - `no-local-guidance` with the reason.
 
-Give concise applicable guidance. For each selected entry, include its name, version and
-verification when available, relevance, and boundary. Include contradictions, successful and failed
-actions, and parameters only when they change the recommendation. Clearly identify best-effort or
-unverified guidance. Do not require a table when a shorter format is clearer.
+Give concise applicable guidance. For each selected entry, include its name, version, and
+verification when available. Include its relevance and boundary. Include contradictions,
+successful and failed actions, and parameters only when they change the recommendation. Clearly
+identify best-effort or unverified guidance.
+
+Put merged guidance first. Then list unmerged guidance from open pull requests in its own group.
+For each unmerged item, state its pull request number and that it is not on the default branch.
+
+Do not require a table when a shorter format is clearer.
