@@ -2212,6 +2212,14 @@ class IssueReviewExchangeTests(unittest.TestCase):
             "<textarea>\n<!-- HomericIntelligence:plan-issue -->\n</textarea>",
             "<div>\n<!-- HomericIntelligence:plan-issue -->\n</div>",
             (
+                "<details>\n<summary>Code</summary>\n\n"
+                "```md\n<!-- HomericIntelligence:plan-issue -->\n```\n\n</details>"
+            ),
+            (
+                "<details>\n<summary>Code</summary>\n\n"
+                "`<!-- HomericIntelligence:plan-issue -->`\n\n</details>"
+            ),
+            (
                 '<x-review data-kind="plan">\n'
                 "<!-- HomericIntelligence:plan-issue -->\n\nVisible text."
             ),
@@ -2226,6 +2234,22 @@ class IssueReviewExchangeTests(unittest.TestCase):
                 self.assertEqual("ready", inspected["status"])
                 self.assertEqual("prepare_plan", inspected["next_action"])
                 self.assertIsNone(inspected["plan"])
+
+    def test_closed_disclosure_with_code_keeps_a_later_top_level_marker(self) -> None:
+        snapshot = self.snapshot()
+        snapshot["comments"] = [
+            self.comment(
+                "plan-disclosure",
+                "<details>\n<summary>Code</summary>\n\n"
+                "`inline` code\n\n```python\nx = 1\n```\n\n</details>\n\n"
+                "<!-- HomericIntelligence:plan-issue -->\n\nPlan body.",
+            )
+        ]
+
+        inspected = self.adapter.inspect_snapshot(snapshot)
+
+        self.assertEqual("ready", inspected["status"])
+        self.assertIsNotNone(inspected["plan"])
 
     def test_legacy_aliases_are_adopted_only_as_explicit_round_one(self) -> None:
         snapshot = self.snapshot()

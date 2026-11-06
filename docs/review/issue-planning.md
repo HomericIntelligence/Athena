@@ -99,8 +99,15 @@ locations:
 - inline code;
 - a blockquote;
 - a list item;
-- fenced code; or
-- indented code.
+- fenced code;
+- indented code; or
+- an HTML container, including a closed `<details>` disclosure.
+
+A closed `<details>`/`<summary>` disclosure can contain inline code or fenced code. The scanner
+accepts that disclosure only when the container closure is proven. Code content inside the container
+cannot close it. An unclosed, misnested, or unprovable container remains an ambiguous HTML and
+code-delimiter precedence error. A code delimiter after the container closes stays a top-level
+precedence conflict.
 
 Treat two qualifying lines in one comment as a repeated-marker conflict. Treat qualifying lines in
 different comments as a multiple-comment conflict. Apply this rule each time you resolve or publish
