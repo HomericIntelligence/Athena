@@ -555,8 +555,10 @@ Supersession is permanent. There is no un-supersede path. A wrong invocation lea
 override record on the forge. Recovery is escalation to the owner.
 
 Recompute the retained requirements binding at preflight, immediately before each write, and after
-the final readback. A scope change, closing-reference change, selected-URL change, linked-issue
-content or comment change, incomplete evidence, or provider failure withholds delivery.
+the final readback. A scope change, closing-reference change, selected-URL change, or linked-issue
+change that differs in any requirements field other than the digest alone withholds delivery. A
+linked-issue edit that changes only the digest, with every other requirements field unchanged, is a
+warning, not a hold. Incomplete evidence or provider failure withholds delivery.
 
 ### Delivery warnings
 
@@ -589,22 +591,44 @@ it is present. The helper reads each requirements field and never matches the
 error text. A changed scope digest or a changed requirement-URL set stops
 delivery.
 
+The `malformed-annex` and `summary-entry-carries-geometry` warnings fire together, on
+the one path where an annex omits a declared field other than `head_oid` or
+`base_oid` and both bindings still match. A complete annex that carries a
+`summary` entry with `path` or `line` keeps the strict block; it produces no
+warning. When the helper delivers a warning list before a pre-write block, the
+recorded result carries the warnings on a delivered result only.
+
 #### Anchor side
 
-The strict path is the authority for the anchor side. It derives each entry from
-the finding, and it uses the side that the finding declares, or `RIGHT` when the
-finding declares none. The warning path resolves the side the same way:
+The strict path is the authority for the anchor side. It builds its rebuild from
+the annex entry's side, and it uses `RIGHT` when the annex omits the side
+(`expected_anchors`). It then binds the geometry to immutable source and refuses
+an annex whose manifest does not match that source. An out-of-hunk inline anchor
+becomes `summary` geometry.
 
-- An annex entry that states a side controls the geometry. A side that the
-  immutable source cannot bind still stops delivery, as in the strict path.
+The warning path publishes only the geometry that the annex keeps and only when
+the annex still binds its carrier. It does not read the immutable source at
+all, neither in `_publication_anchors` nor in `partial_geometry`:
+
+- An annex entry that states a side controls the geometry. A side other than
+  `LEFT` or `RIGHT` stops delivery. The warning path does not bind that side,
+  `path`, or `line` to merge-base, head, blob, or hunk.
 - An annex entry that omits its side takes the side that the finding declares,
   and `RIGHT` when the finding declares none. The geometry never carries a null
-  side.
-- An annex entry with a side other than `LEFT` or `RIGHT` stops delivery.
+  side. An annex that omits `side` and a finding that declares `LEFT` publishes
+  `LEFT` on the warning path, while the strict path refuses that annex outright.
+- An annex entry with a side other than `LEFT` or `RIGHT` stops delivery, as in
+  the strict path.
+- An out-of-hunk `path` or a `line` outside the changed hunk is published as
+  geometry on the warning path, while the strict path demotes it to `summary`
+  geometry.
 
-So the warning path publishes the same side, path, and line that the strict path
-derives for the same finding. A test runs both paths on the same annex fixtures
-and requires this agreement.
+So the warning path does not publish the same side, path, and line as the strict
+path on every annex. The agreement that the tests pin is narrower: an annex
+side controls both paths, an omitted side resolves the same way on both paths,
+and an invalid side refuses on both paths. The publication anchor geometry is
+bound to the carrier head and base, not to the immutable source. The strict path
+remains the authority whenever it can bind.
 
 A review verdict other than GO still blocks delivery, and the helper lists the findings. The
 `state:implementation-go` label stays the only CI/CD trigger. This change removes no gate and adds
@@ -615,8 +639,10 @@ A warning does not weaken these remaining rules:
 - One current-head terminal carrier per exchange.
 - No private key material in a carrier.
 - The current-head artifact binding.
-- The scope, closing-reference, selected-URL, and linked-issue checks. An edit to a bound
-  requirement still stops delivery. Only a changed requirements digest is a warning.
+- The scope, closing-reference, and selected-URL checks. A linked-issue change that differs in
+  any requirements field other than the digest alone stops delivery. An edit to a bound
+  requirement whose requirements fields all match but whose digest differs is a warning, not a
+  hold.
 
 Resolve only Athena-owned findings whose validated closure-manifest reviewer disposition is
 `resolved`, `withdrawn`, `accepted_risk`, or `nonblocking`. An unanswered contest, partial or
