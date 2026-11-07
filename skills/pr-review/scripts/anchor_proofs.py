@@ -30,6 +30,122 @@ POLICY = "immutable-two-lens-v1"
 MAX_BYTES = 2 * 1024 * 1024
 MAX_DIFF_BYTES = 16 * 1024 * 1024
 MAX_FINDINGS = 100
+
+# Compatibility for the one immutable round-1 NO-GO carrier whose anchor annex
+# ends with an extra line feed before the review-exchange handshake. The carrier
+# is superseded; it is the only malformed annex this module accepts, and only
+# when every pinned identity matches the original publication exactly.
+ORIGINAL_ANNEX_COMPATIBILITY = {
+    "manifest_id": "comet-original-anchor-annex-line-feed-v1",
+    "repository": "LLM360/comet",
+    "review_id": "5188497556",
+    "base_oid": "26f1b540a6a78eea4504057a02272cd4a62e0ddd",
+    "head_oid": "e3ac2c1f2dc47567d2c2ae57eb52c8039861f981",
+    "merge_base_oid": "2707136eb8b3158d78681baeadc3d0d4caaa7c33",
+    "state_sha256": "edccaf2111c5928ad316e57d066bc94eab0e2865356c96c84e8bf4eb3fe0968f",
+    "visible_content_sha256": (
+        "233a0740341686b3fb22c9eb764ee29937444d22ec49aabfd0ab44df5cdba067"
+    ),
+    "annex_json_sha256": (
+        "2323f2fea13026c1459f6576f82de2823336fce8d819352acae74bd7289b4a8e"
+    ),
+    "hunks_sha256": {
+        "author_intent": "cd3546d951e31aff06cb1f53eecc15ace2c6b94e5c3e18b4ad9cee7d25094ade",
+        "current_target": (
+            "b04df5a07f34e231a3d7f8051e58f86854f8d9c1304b17f234f10634022b242f"
+        ),
+    },
+}
+
+
+def _sha256_text(value: str) -> str:
+    return sha256(value.encode("utf-8")).hexdigest()
+
+
+def _sha256_json(value: object) -> str:
+    return sha256(canonical(value).encode("utf-8")).hexdigest()
+
+
+def _original_annex(
+    visible: str,
+    source: Path | None,
+    target: Mapping[str, Any],
+    envelope: Mapping[str, Any],
+    review_id: str | None,
+    compatibility: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Return the one retained malformed annex, else None.
+
+    Every identity is pinned. The recovered annex is treated as a carrier that
+    publishes no anchor geometry; the delivery chain falls back to the factual
+    locations of the state that supersedes it.
+    """
+    if target.get("provider") != "github":
+        return None
+    if target.get("repository") != compatibility["repository"]:
+        return None
+    if review_id != compatibility["review_id"]:
+        return None
+    state = envelope.get("state")
+    if not isinstance(state, Mapping):
+        return None
+    if envelope.get("state_sha256") != _sha256_json(state):
+        return None
+    if _sha256_json(state) != compatibility["state_sha256"]:
+        return None
+    artifact = state.get("artifact_binding")
+    if not isinstance(artifact, Mapping):
+        return None
+    if artifact.get("revision") != compatibility["head_oid"]:
+        return None
+    if _sha256_text(visible) != compatibility["visible_content_sha256"]:
+        return None
+    if artifact.get("visible_content_sha256") != _sha256_text(visible):
+        return None
+    offset = visible.find(MARKER)
+    if offset < 0 or visible.count(MARKER) != 1:
+        return None
+    match = re.search(
+        r"```json\n(.*?)\n```", visible[offset + len(MARKER) :], re.DOTALL
+    )
+    if match is None:
+        return None
+    encoded = match.group(1)
+    try:
+        annex = json.loads(encoded)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(annex, dict) or canonical(annex) != encoded:
+        return None
+    if _sha256_json(annex) != compatibility["annex_json_sha256"]:
+        return None
+    if (
+        annex.get("schema_id") != SCHEMA
+        or type(annex.get("schema_version")) is not int
+        or annex.get("schema_version") != 1
+        or annex.get("diff_policy") != POLICY
+    ):
+        return None
+    if (
+        annex.get("base_oid") != compatibility["base_oid"]
+        or annex.get("head_oid") != compatibility["head_oid"]
+        or annex.get("merge_base_oid") != compatibility["merge_base_oid"]
+    ):
+        return None
+    if annex.get("hunks_sha256") != compatibility["hunks_sha256"]:
+        return None
+    if annex.get("findings") != []:
+        return None
+    if source is None:
+        return None
+    regenerated = prepare_manifest(
+        source, compatibility["base_oid"], compatibility["head_oid"], []
+    )
+    if canonical(regenerated) != canonical(annex):
+        return None
+    return annex
+
+
 DIFF_ARGS = (
     "-c",
     "core.quotePath=true",
@@ -381,18 +497,37 @@ def expected_anchors(
     legacy_proofs: Sequence[Mapping[str, Any]],
 ) -> dict[str, tuple[str, str | None, int]]:
     """Verify publication geometry without changing a finding or granting authority."""
-    manifest = visible_manifest(visible)
-    legacy = [
-        p for p in legacy_proofs if p.get("state_sha256") == envelope["state_sha256"]
-    ]
-    if len(legacy) > 1 or (legacy and manifest is not None):
-        raise ValueError("The historical publication proof is ambiguous.")
+    legacy: Sequence[Mapping[str, Any]] = []
     ordinary = [f for f in findings if not f["id"].startswith("native:")]
     fallback: dict[str, tuple[str, str | None, int]] = {
         f["id"]: (anchor[0], None, anchor[1])
         for f in ordinary
         if (anchor := source_location(f["location"])) is not None
     }
+    try:
+        manifest = visible_manifest(visible)
+    except ValueError:
+        if (
+            source is not None
+            and _original_annex(
+                visible,
+                source,
+                target,
+                envelope,
+                review_id,
+                ORIGINAL_ANNEX_COMPATIBILITY,
+            )
+            is not None
+        ):
+            # The original carrier publishes no anchor geometry; the factual
+            # locations govern and the delivery chain falls back to them.
+            return fallback
+        raise
+    legacy = [
+        p for p in legacy_proofs if p.get("state_sha256") == envelope["state_sha256"]
+    ]
+    if len(legacy) > 1 or (legacy and manifest is not None):
+        raise ValueError("The historical publication proof is ambiguous.")
     if manifest is None and not legacy:
         return fallback
     if source is None:

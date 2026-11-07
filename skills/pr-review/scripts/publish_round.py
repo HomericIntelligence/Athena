@@ -116,6 +116,17 @@ def _verify_anchor_annex(
         )
 
 
+def _verify_complete_carrier(body: str) -> None:
+    """Require the complete rendered carrier to pass the delivery parser."""
+    exchange = deliver_go.review_exchange
+    try:
+        exchange.extract_carrier_pair(body)
+    except exchange.ProtocolError as error:
+        raise deliver_go.DeliveryError(
+            f"The reviewer carrier is not publishable: {error}"
+        ) from error
+
+
 def _readback_anchor(comment: Mapping[str, Any]) -> tuple[str, str, int, str]:
     """Return one comparable anchor identity for one inline finding."""
     path = comment.get("path")
@@ -233,6 +244,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         binding = deliver_go._binding_from_args(args)
         body, envelope = _carrier_body(args.state_carrier_file, binding)
         comments = _batch_comments(args.batch_file, envelope)
+        _verify_complete_carrier(body)
         _verify_anchor_annex(
             deliver_go._carrier_visible(body), args.anchor_source, binding
         )
