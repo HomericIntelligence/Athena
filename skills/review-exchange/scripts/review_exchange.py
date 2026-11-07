@@ -3835,6 +3835,7 @@ def _has_html_code_precedence_conflict(body: str) -> bool:
     pending_type6_tag = False
     incomplete_type6_hazard = False
     html_parser = _HTMLContainerParser()
+    deferred_code_in_container = False
     for _offset, _content_end, _raw_end, line in _markdown_source_lines(body):
         if fence_character is not None:
             closing = re.fullmatch(r" {0,3}([`~]+)[ \t]*", line)
@@ -3863,19 +3864,54 @@ def _has_html_code_precedence_conflict(body: str) -> bool:
         is_indented_code = indentation >= 4 or line.startswith("\t")
         first_tick = line.find("`")
         html_start = _first_html_start(line)
-        if first_tick >= 0 and (
-            active_before
-            or (
-                not is_indented_code
-                and html_start is not None
-                and html_start < first_tick
+        # A code delimiter inside a live HTML container is deferred. The
+        # container must close for the scan to accept it, and the enclosed
+        # code is masked so it cannot push or pop the HTML stack.
+        code_in_container = False
+        if container_before and html_parser.stack and first_tick >= 0:
+            masked_line = _mask_markdown_code_spans(line)
+            outermost = html_parser.stack[0]
+            closing_match = re.search(
+                rf"</{re.escape(outermost)}\s*>", masked_line, re.IGNORECASE
+            )
+            if closing_match is None:
+                code_in_container = True
+            else:
+                close_end = closing_match.end()
+                code_in_container = "`" in line[:close_end]
+                if "`" in line[close_end:]:
+                    return True
+        if (
+            first_tick >= 0
+            and not code_in_container
+            and (
+                active_before
+                or (
+                    not is_indented_code
+                    and html_start is not None
+                    and html_start < first_tick
+                )
             )
         ):
             return True
         if is_indented_code and not active_before:
             continue
 
-        markdown_line = line if active_before else _mask_markdown_code_spans(line)
+        if container_before and opening_fence is not None:
+            fence = opening_fence.group(1)
+            if fence[0] != "`" or "`" not in opening_fence.group(2):
+                fence_character = fence[0]
+                fence_length = len(fence)
+                deferred_code_in_container = True
+                continue
+
+        if code_in_container:
+            deferred_code_in_container = True
+
+        if container_before:
+            markdown_line = _mask_markdown_code_spans(line)
+        else:
+            markdown_line = line if active_before else _mask_markdown_code_spans(line)
         markdown_stripped = markdown_line.lstrip(" ")
         block_prefix = _html_tag_prefix_at(markdown_stripped, 0)
         starts_type6_block = (
@@ -3913,6 +3949,15 @@ def _has_html_code_precedence_conflict(body: str) -> bool:
                 html_block = True
     incomplete_type6_tag = incomplete_type6_hazard or pending_type6_tag
     html_parser.close()
+    if deferred_code_in_container:
+        closure_proven = (
+            not html_parser.stack
+            and persistent_end is None
+            and not incomplete_type6_tag
+            and not html_parser.has_unfinished_input
+        )
+        if not closure_proven:
+            return True
     return incomplete_type6_tag
 
 

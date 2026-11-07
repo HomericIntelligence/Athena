@@ -3251,6 +3251,63 @@ class ReviewExchangeTests(unittest.TestCase):
             ],
         )
 
+    def test_shared_markdown_scanner_accepts_closed_disclosure_with_code(
+        self,
+    ) -> None:
+        scanner = self.exchange.top_level_markdown_lines
+        bodies = (
+            (
+                "backtick fence",
+                (
+                    "<details>\n<summary>Code</summary>\n\n`inline` code\n\n"
+                    "```python\nx = 1\n```\n\n</details>\n\nafter"
+                ),
+            ),
+            (
+                "tilde fence",
+                (
+                    "<details>\n<summary>Code</summary>\n\n`inline` code\n\n"
+                    "~~~python\nx = 1\n~~~\n\n</details>\n\nafter"
+                ),
+            ),
+            (
+                "crlf",
+                (
+                    "<details>\r\n<summary>Code</summary>\r\n\r\n`inline` code\r\n\r\n"
+                    "```python\r\nx = 1\r\n```\r\n\r\n</details>\r\n\r\nafter"
+                ),
+            ),
+            (
+                "enclosed closure",
+                "<details>\n```text\n</details>\n```\n</details>\n\nafter",
+            ),
+        )
+        for name, body in bodies:
+            with self.subTest(name=name):
+                scanned = scanner(body, require_closed=True)
+                self.assertEqual(
+                    ["", "after"],
+                    [line for _start, _end, line in scanned],
+                )
+                self.assertEqual(
+                    (body.rindex("after"), len(body), "after"),
+                    scanned[-1],
+                )
+
+        for body in (
+            "<details>\n<summary>Code</summary>\n\n`inline` code",
+            "<details>\n\n```python\nx = 1",
+            "<details>\n\n```python\n</details>\n```",
+        ):
+            with (
+                self.subTest(unclosed=body),
+                self.assertRaisesRegex(
+                    self.exchange.ProtocolError,
+                    "ambiguous HTML and code-delimiter precedence",
+                ),
+            ):
+                scanner(body, require_closed=True)
+
     def test_carrier_rejects_misnested_html_container_closures(self) -> None:
         visible_values = (
             "<details><p></details>",
