@@ -688,7 +688,7 @@ def test_forked_exchange_warns_and_keeps_the_current_head_chain(
 ) -> None:
     binding, terminal, snapshot, warnings = forked_case(delivery)
 
-    _chain, _stderr = warned(
+    _ = warned(
         lambda: delivery._verify_state_chain(
             AncestorForge(),
             terminal,
@@ -758,7 +758,7 @@ def test_stale_carrier_head_warns_but_a_moved_live_head_blocks(
     )
     stale_warnings = delivery.DeliveryWarnings()
 
-    _result, _stderr = warned(
+    _ = warned(
         lambda: delivery._warn_reviewed_head_binding(
             AncestorForge(), stale_snapshot, binding, stale_warnings
         )
