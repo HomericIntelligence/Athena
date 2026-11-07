@@ -191,6 +191,25 @@ def load_module() -> ModuleType:
     return module
 
 
+def prepared_go_fixture(module: ModuleType) -> tuple[Any, Any, Any, tuple[Any, ...]]:
+    """Build one current-head GO fixture without collecting the parent suite.
+
+    Returns the reviewed thread, the closure manifest, the review binding, and
+    the persisted carrier history. The fixture methods are read straight from
+    the class so importing this module never collects that test case.
+    """
+    case = PrReviewGoDeliveryTests
+    case.setUpClass()
+    fixture = object.__new__(case)
+    fixture.delivery = module
+    fixture.carrier_history = {}
+    fixture.review_sequence = 0
+    thread = case.owned_thread(fixture)
+    manifest = case.v1_manifest(fixture, thread)
+    history = fixture.carrier_history[manifest.state_envelope["state_sha256"]]
+    return thread, manifest, case.binding(fixture), history
+
+
 class FakeForge:
     """Record delivery operations and expose mutable forge state."""
 
@@ -3689,7 +3708,9 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
 
         self.assertEqual(["read"], forge.events)
 
-    def test_supersession_refuses_a_foreign_carrier_from_another_exchange(self) -> None:
+    def test_supersession_warns_about_a_foreign_carrier_from_another_exchange(
+        self,
+    ) -> None:
         forge, binding, manifest, _ = self.supersession_fixture()
         forge.reviews[-1] = self.foreign_exchange_terminal(
             manifest,
@@ -3697,12 +3718,19 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             number=manifest.state_envelope["state"]["target"]["number"],
         )
 
-        with self.assertRaises(self.delivery.DeliveryError):
-            self.delivery.deliver_go_v1(
+        # A foreign carrier from another exchange is a fork warning. The
+        # current-head GO still delivers, and the warning is recorded.
+        errors = io.StringIO()
+        with redirect_stderr(errors):
+            result = self.delivery.deliver_go_v1(
                 forge, binding, manifest, supersede_foreign_terminal=True
             )
 
-        self.assertEqual(["read"], forge.events)
+        self.assertEqual("delivered", result.status)
+        self.assertEqual(
+            ["forked-exchange"], [warning.code for warning in result.warnings]
+        )
+        self.assertIn("exchange-9", errors.getvalue())
 
     def test_supersession_refuses_a_foreign_carrier_from_another_target(self) -> None:
         forge, binding, manifest, _ = self.supersession_fixture()
@@ -3949,10 +3977,19 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         manifest = self.v1_manifest(thread)
         self.add_history(forge, manifest)
 
-        with self.assertRaises(self.delivery.DeliveryError):
+        errors = io.StringIO()
+        with (
+            self.assertRaises(self.delivery.DeliveryError),
+            redirect_stderr(errors),
+        ):
             self.delivery.deliver_go_v1(forge, self.binding(), manifest)
 
-        self.assertEqual(["read"], forge.events)
+        # One bound read. The moved head names both heads in a warning, then
+        # withholds delivery because the terminal record binds the reviewed head.
+        self.assertEqual(["read"], [e for e in forge.events if e == "read"])
+        self.assertIn("stale-reviewed-head", errors.getvalue())
+        self.assertIn("c" * 40, errors.getvalue())
+        self.assertNotIn("label", forge.events)
 
     def test_v1_delivery_replays_author_event_without_final_newline(self) -> None:
         thread = self.owned_thread()
@@ -6638,10 +6675,19 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
             self.carrier_record("unrelated-exchange", unrelated, visible)
         )
 
-        with self.assertRaises(self.delivery.DeliveryError):
-            self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+        # An unrelated exchange is a fork warning. The current-head GO still
+        # delivers, and the delivery result records the warning.
+        errors = io.StringIO()
+        with redirect_stderr(errors):
+            result = self.delivery.deliver_go_v1(forge, self.binding(), manifest)
 
-        self.assertNotIn("terminal", forge.events)
+        self.assertEqual("delivered", result.status)
+        self.assertIn("terminal", forge.events)
+        self.assertIn("labels", forge.events)
+        self.assertEqual(
+            ["forked-exchange"], [warning.code for warning in result.warnings]
+        )
+        self.assertIn("exchange-reset", errors.getvalue())
 
     def test_foreign_or_malformed_v1_carrier_withholds_delivery(self) -> None:
         thread = self.owned_thread()
@@ -6912,7 +6958,7 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         self.assertNotIn("terminal", forge.events)
         self.assertNotIn("labels", forge.events)
 
-    def test_new_requirements_need_an_authoritative_supersession(self) -> None:
+    def test_new_requirements_warn_and_keep_the_current_head_go(self) -> None:
         thread = self.owned_thread()
         forge = FakeForge(self.delivery, threads=(thread,))
         manifest = self.v1_manifest(thread)
@@ -6923,11 +6969,22 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         )
         forge.reviews.append(self.carrier_record("old-terminal", old, old_visible))
 
-        with self.assertRaises(self.delivery.DeliveryError):
-            self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+        # The completed exchange binds another requirements digest. That is a
+        # record finding and a warning. The current-head GO still delivers with
+        # the reviewed digest.
+        errors = io.StringIO()
+        with redirect_stderr(errors):
+            result = self.delivery.deliver_go_v1(forge, self.binding(), manifest)
 
-        self.assertNotIn("terminal", forge.events)
-        self.assertNotIn("labels", forge.events)
+        self.assertEqual("delivered", result.status)
+        self.assertIn("terminal", forge.events)
+        self.assertIn("labels", forge.events)
+        self.assertEqual(
+            ["forked-exchange"],
+            [warning.code for warning in result.warnings],
+        )
+        self.assertIn("exchange-previous-head", errors.getvalue())
+        self.assertEqual("c" * 64, manifest.requirements_binding.requirements_sha256)
 
     def test_authoritative_reframe_can_supersede_completed_old_requirements(
         self,
@@ -7897,11 +7954,19 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
         )
         forge.reviews.insert(0, duplicate_record)
 
-        with self.assertRaises(self.delivery.DeliveryError):
-            self.delivery.deliver_go_v1(forge, self.binding(), manifest)
+        # The duplicate exchange is a fork warning. The current-head GO still
+        # delivers, and the delivery result records the warning.
+        errors = io.StringIO()
+        with redirect_stderr(errors):
+            result = self.delivery.deliver_go_v1(forge, self.binding(), manifest)
 
-        self.assertNotIn("terminal", forge.events)
-        self.assertNotIn("labels", forge.events)
+        self.assertEqual("delivered", result.status)
+        self.assertIn("terminal", forge.events)
+        self.assertIn("labels", forge.events)
+        self.assertEqual(
+            ["forked-exchange"], [warning.code for warning in result.warnings]
+        )
+        self.assertIn("exchange-old", errors.getvalue())
 
     def test_authoritative_reframe_can_supersede_pending_author_state(
         self,

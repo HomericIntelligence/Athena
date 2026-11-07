@@ -11,7 +11,7 @@ import time
 from collections.abc import Mapping, Sequence
 from hashlib import sha256
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Any
+from typing import IO, TYPE_CHECKING, Any, cast
 
 import collect_evidence as evidence
 from pr_identity import require_commit_oid
@@ -192,6 +192,32 @@ def source_location(location: str) -> tuple[str, int] | None:
     ):
         return None
     return path, int(line)
+
+
+ANCHOR_FIELDS = frozenset(
+    {
+        "schema_id",
+        "schema_version",
+        "base_oid",
+        "head_oid",
+        "merge_base_oid",
+        "diff_policy",
+        "hunks_sha256",
+        "findings",
+    }
+)
+
+
+class MalformedAnnexError(ValueError):
+    """One anchor annex that omits a declared field or adds an unknown field.
+
+    The record appears under ``field`` so a caller can decide the outcome by
+    the field name instead of the message text.
+    """
+
+    def __init__(self, field: str | None) -> None:
+        super().__init__("Invalid anchor manifest fields.")
+        self.field = field
 
 
 def exact_fields(value: object, fields: set[str], description: str) -> dict[str, Any]:
@@ -452,8 +478,8 @@ def prepare_manifest(
     }
 
 
-def visible_manifest(visible: str) -> dict[str, Any] | None:
-    """Read the unique canonical annex whose bytes the existing carrier hashes."""
+def _decode_annex(visible: str) -> Any:
+    """Decode the unique canonical annex bytes of one visible carrier."""
     if "HomericIntelligence:review-anchors:" not in visible:
         return None
     if visible.count(MARKER) != 1:
@@ -470,20 +496,180 @@ def visible_manifest(visible: str) -> dict[str, Any] | None:
     value = json.loads(encoded)
     if canonical(value) != encoded:
         raise ValueError("The publication anchor annex is not canonical JSON.")
-    return exact_fields(
-        value,
-        {
-            "schema_id",
-            "schema_version",
-            "base_oid",
-            "head_oid",
-            "merge_base_oid",
-            "diff_policy",
-            "hunks_sha256",
-            "findings",
-        },
-        "anchor manifest",
+    return value
+
+
+def visible_manifest(visible: str) -> dict[str, Any] | None:
+    """Read the unique canonical annex whose bytes the existing carrier hashes."""
+    value = _decode_annex(visible)
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise MalformedAnnexError(None)
+    present = set(value)
+    if present - ANCHOR_FIELDS:
+        # An unknown field is not a record-shape omission and never warns.
+        raise MalformedAnnexError(None)
+    missing = ANCHOR_FIELDS - present
+    if missing:
+        raise MalformedAnnexError(next(iter(sorted(missing))))
+    return value
+
+
+def partial_manifest(visible: str) -> dict[str, Any] | None:
+    """Keep each declared annex field so a record-shape warning can still read geometry."""
+    value = _decode_annex(visible)
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise TypeError("The anchor manifest is not an object.")
+    return value
+
+
+def _anchor_side(entry: object, declared: str | None) -> str | None:
+    """Resolve one annex entry's side the way the strict path resolves it.
+
+    The strict path builds ``prepare_manifest`` from the annex entry's side,
+    and defaults an omitted side to the finding's side, then to RIGHT
+    (``expected_anchors``). So the annex side controls eligibility, and the
+    finding's side is the fallback that the annex omits. Return None for an
+    invalid side, and let the eligibility check refuse a side that the source
+    cannot bind.
+    """
+    side = entry.get("side") if isinstance(entry, dict) else None
+    if side is None:
+        return declared if declared in {"LEFT", "RIGHT"} else "RIGHT"
+    if side not in {"LEFT", "RIGHT"}:
+        return None
+    return cast("str", side)
+
+
+def _partial_entry(
+    entry: object, declared: str | None = None
+) -> tuple[str, tuple[str, str, int] | None] | None:
+    """Read one annex entry, or None when its shape is not acceptable.
+
+    Return the entry identifier with the geometry of an ``inline`` entry, or
+    with None for an acceptable ``summary`` entry. Only an ``inline`` entry
+    states geometry, so only an ``inline`` entry needs ``path`` and an integer
+    ``line``. A ``summary`` entry needs ``id`` and ``publication``. Its
+    ``reason`` is optional, and it must be a string when it is present. A
+    summary entry that also states geometry stays a summary: it yields no
+    geometry, and the caller can report the carrying shape as suspicious.
+
+    The side is resolved by ``_anchor_side``: the entry's own side, or the
+    finding's side when the annex omits it. The geometry therefore never
+    carries a null side, and a side the source cannot bind is refused later
+    by the caller's eligibility check, as on the strict path.
+    """
+    if not isinstance(entry, dict) or not isinstance(entry.get("id"), str):
+        return None
+    identity = cast("str", entry["id"])
+    side = _anchor_side(entry, declared)
+    if side is None:
+        return None
+    publication = entry.get("publication")
+    if publication == "summary":
+        reason = entry.get("reason")
+        if reason is not None and not isinstance(reason, str):
+            return None
+        return (identity, None)
+    if publication != "inline":
+        return None
+    path = entry.get("path")
+    line = entry.get("line")
+    if not isinstance(path, str) or type(line) is not int:
+        return None
+    return (identity, (path, side, line))
+
+
+def summary_geometry(visible: str) -> tuple[str, ...]:
+    """Name each annex summary entry that also carries ``path`` or ``line``.
+
+    Such an entry stays a summary and yields no geometry. Its shape is
+    suspicious, so the caller reports it as a warning and does not block.
+    """
+    value = _decode_annex(visible)
+    if not isinstance(value, dict) or not isinstance(value.get("findings"), list):
+        return ()
+    return tuple(
+        entry["id"]
+        for entry in cast("list[Any]", value["findings"])
+        if isinstance(entry, dict)
+        and entry.get("publication") == "summary"
+        and isinstance(entry.get("id"), str)
+        and ("path" in entry or "line" in entry)
     )
+
+
+def partial_geometry(
+    visible: str,
+    *,
+    head_oid: str,
+    base_oid: str,
+    declared_sides: Mapping[str, str | None] | None = None,
+) -> dict[str, tuple[str, str | None, int]] | None:
+    """Read published anchor geometry from an annex that omits a declared field.
+
+    Accept the geometry only when the annex still binds its carrier: it must
+    present ``head_oid == head_oid`` and ``base_oid == base_oid``. An annex
+    that omits, mistypes, or changes either binding, adds an unknown field, or
+    repeats a finding identifier yields None, so the caller keeps its strict
+    block. Return None when the annex has every declared field; the caller
+    must treat that case as an unsupported shape and keep its strict path.
+
+    Only an ``inline`` entry states geometry, so only an ``inline`` entry needs
+    ``path`` and ``line``, as in ``expected_anchors``. A ``summary`` entry
+    yields no geometry.
+
+    ``declared_sides`` maps each finding identifier to the side that the
+    finding declares, or to None when it declares none. The annex side controls
+    the geometry, as in ``expected_anchors``. When the annex omits a side, the
+    geometry takes the finding's side, and RIGHT when the finding declares
+    none. The geometry never carries a null side. Without ``declared_sides``
+    an omitted side takes RIGHT.
+    """
+    absent_field: str | None = None
+    try:
+        if visible_manifest(visible) is not None:
+            return None
+    except MalformedAnnexError as malformed:
+        # The handler clears ``malformed`` when it ends, so copy the field now.
+        absent_field = malformed.field
+    # Only an omitted declared field other than a carrier binding is a
+    # record-shape warning. A changed binding or an unknown field blocks.
+    if absent_field in {None, "head_oid", "base_oid"}:
+        return None
+    manifest = partial_manifest(visible)
+    if manifest is None:
+        return None
+    if set(manifest) - ANCHOR_FIELDS:
+        return None
+    if manifest.get("head_oid") != head_oid or manifest.get("base_oid") != base_oid:
+        return None
+    entries = manifest.get("findings")
+    if not isinstance(entries, list) or len(entries) > MAX_FINDINGS:
+        return None
+    sides = declared_sides or {}
+    inline: dict[str, tuple[str, str | None, int]] = {}
+    identities: list[str] = []
+    for entry in entries:
+        declared = (
+            sides.get(cast("str", entry.get("id"))) if isinstance(entry, dict) else None
+        )
+        read = _partial_entry(entry, declared)
+        # A dropped entry would let the caller publish the rest of the annex as
+        # if the record were complete. One invalid entry rejects the whole
+        # annex, so the caller keeps its strict block.
+        if read is None:
+            return None
+        identity, geometry = read
+        identities.append(identity)
+        if geometry is not None:
+            inline[identity] = geometry
+    if len(identities) != len(set(identities)):
+        return None
+    return inline
 
 
 def expected_anchors(

@@ -2185,7 +2185,7 @@ class ReviewExchangeTests(unittest.TestCase):
         invalid_bodies = (
             json.dumps(expected),
             self.exchange.canonical_json(invalid_record),
-            body + "\n",
+            body + "\n\n",
         )
         for invalid_body in invalid_bodies:
             with (
@@ -2193,6 +2193,12 @@ class ReviewExchangeTests(unittest.TestCase):
                 self.assertRaises(self.exchange.ProtocolError),
             ):
                 parser(invalid_body)
+
+        # GitHub appends one final line feed to every stored comment body.
+        self.assertEqual(expected, parser(body + "\n"))
+        self.assertEqual(expected, verifier(body + "\n", receipt, expected))
+        with self.assertRaises(self.exchange.ProtocolError):
+            verifier(body + "\n", {**receipt, "sha256": HEX_A}, expected)
 
         context_changes: list[tuple[str, dict[str, Any]]] = []
         other_target = copy.deepcopy(expected)

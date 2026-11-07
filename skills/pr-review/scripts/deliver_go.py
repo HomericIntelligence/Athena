@@ -271,6 +271,28 @@ class RequirementsBinding:
     requirements_sha256: str
     requirement_issue_urls: tuple[str, ...]
 
+    def differing_fields(self, observed: RequirementsBinding) -> tuple[str, ...]:
+        """Name each field whose live value differs from the retained value."""
+        return tuple(
+            name
+            for name in (
+                "reviewed_scope_sha256",
+                "requirements_sha256",
+                "requirement_issue_urls",
+            )
+            if getattr(self, name) != getattr(observed, name)
+        )
+
+
+class RequirementsBindingChanged(DeliveryError):
+    """One live requirements binding that names each field that differs."""
+
+    def __init__(self, differing_fields: tuple[str, ...]) -> None:
+        super().__init__(
+            "The live pull-request requirements differ from the reviewed binding."
+        )
+        self.differing_fields = differing_fields
+
 
 @dataclass(frozen=True)
 class TerminalSupersession:
@@ -336,6 +358,51 @@ class NoGoProof:
 
 
 @dataclass(frozen=True)
+class DeliveryWarning:
+    """One record-shape or staleness finding that does not block GO delivery."""
+
+    code: str
+    message: str
+    detail: tuple[tuple[str, str], ...] = ()
+
+    def document(self) -> dict[str, object]:
+        """Return the stable machine-readable warning record."""
+        return {
+            "code": self.code,
+            "message": self.message,
+            "detail": dict(self.detail),
+        }
+
+
+class DeliveryWarnings:
+    """Collect one set of delivery warnings and print each one to standard error."""
+
+    def __init__(self) -> None:
+        self.records: list[DeliveryWarning] = []
+        self._seen: set[tuple[str, str, tuple[tuple[str, str], ...]]] = set()
+
+    def add(self, code: str, message: str, **detail: str) -> DeliveryWarning:
+        """Record one unique warning and print it."""
+        warning = DeliveryWarning(
+            code=code, message=message, detail=tuple(sorted(detail.items()))
+        )
+        identity = (warning.code, warning.message, warning.detail)
+        if identity not in self._seen:
+            self._seen.add(identity)
+            self.records.append(warning)
+            suffix = " ".join(f"{key}={value}" for key, value in warning.detail)
+            print(
+                f"WARNING [{code}] {message}" + (f" ({suffix})" if suffix else ""),
+                file=sys.stderr,
+            )
+        return warning
+
+    def document(self) -> list[dict[str, object]]:
+        """Return the stable machine-readable warning list."""
+        return [warning.document() for warning in self.records]
+
+
+@dataclass(frozen=True)
 class DeliveryResult:
     """The verified result of a GO delivery."""
 
@@ -352,6 +419,7 @@ class DeliveryResult:
     reason: str | None = None
     superseded_terminal_review_id: str | None = None
     superseded_terminal_state_sha256: str | None = None
+    warnings: tuple[DeliveryWarning, ...] = ()
 
 
 class Forge(Protocol):
@@ -466,6 +534,24 @@ def _snapshot(forge: Forge, binding: ReviewBinding) -> PullRequestSnapshot:
     return snapshot
 
 
+def _snapshot_with_head_warning(
+    forge: Forge, binding: ReviewBinding, warnings: DeliveryWarnings
+) -> PullRequestSnapshot:
+    """Bind the live snapshot, and warn about a stale head before the block.
+
+    One forge read serves both purposes, so a delivery keeps its exact read
+    sequence. A live head that has moved past the reviewed head names both
+    heads in one warning. The current-head binding still decides the outcome.
+    """
+    try:
+        snapshot = forge.snapshot()
+    except Exception as error:
+        raise DeliveryError(f"The forge snapshot failed: {error}") from error
+    _warn_reviewed_head_binding(forge, snapshot, binding, warnings)
+    _require_binding(snapshot, binding)
+    return snapshot
+
+
 def _collect_live_requirements(
     forge: Forge, requirement_issue_urls: tuple[str, ...]
 ) -> RequirementsBinding:
@@ -491,6 +577,106 @@ def _verify_live_requirements(forge: Forge, expected: RequirementsBinding) -> No
         raise DeliveryError(
             f"The live requirements binding cannot be verified: {error}"
         ) from error
+
+
+def _warn_live_requirements(
+    forge: Forge,
+    expected: RequirementsBinding,
+    warnings: DeliveryWarnings | None,
+) -> None:
+    """Report a stale requirements digest as a warning and continue delivery.
+
+    The strict check stays in force when the caller passes no collector. Only a
+    changed requirements digest is a warning, and only when every other field
+    still matches. A changed scope digest, requirement-URL set, requirement
+    edit, or failed collection still blocks the delivery.
+    """
+    if warnings is None:
+        _verify_live_requirements(forge, expected)
+        return
+    try:
+        forge.verify_requirements_binding(expected)
+    except RequirementsBindingChanged as error:
+        if error.differing_fields != ("requirements_sha256",):
+            raise DeliveryError(
+                "The live pull-request requirements differ from the reviewed "
+                f"binding in: {', '.join(error.differing_fields)}."
+            ) from error
+        warnings.add(
+            "stale-requirements-digest",
+            "The live requirements differ from the reviewed requirements binding.",
+            reviewed_requirements_sha256=expected.requirements_sha256,
+            requirement_issue_urls=",".join(expected.requirement_issue_urls),
+            cause=str(error),
+        )
+    except DeliveryError:
+        # A provider failure or an unverifiable binding is not a changed digest.
+        raise
+    except Exception as error:
+        # A scope, closing-reference, or linked-content edit is not a changed
+        # digest. A failed collection also stays fatal.
+        raise DeliveryError(
+            f"The live requirements binding cannot be verified: {error}"
+        ) from error
+
+
+def _warn_malformed_annex(
+    warnings: DeliveryWarnings | None, where: str, error: Exception
+) -> None:
+    """Report a malformed anchor annex field as a warning and continue delivery.
+
+    The strict check stays in force when the caller passes no collector.
+    """
+    if warnings is None:
+        raise DeliveryError(f"Publication anchor proof failed: {error}") from error
+    warnings.add(
+        "malformed-annex",
+        f"The {where} carrier anchor annex is malformed.",
+        annex=str(error),
+    )
+
+
+def _warn_summary_geometry(warnings: DeliveryWarnings | None, visible: str) -> None:
+    """Report each annex summary entry that also carries path or line.
+
+    A summary entry states no geometry, so a summary entry with path or line
+    states nothing. That is the shape someone would use to attach an anchor,
+    so the helper names it. It does not block.
+    """
+    if warnings is None:
+        return
+    try:
+        carrying = anchor_proofs.summary_geometry(visible)
+    except (ValueError, TypeError):
+        return
+    if carrying:
+        warnings.add(
+            "summary-entry-carries-geometry",
+            "A summary anchor annex entry also carries path or line.",
+            finding_ids=",".join(sorted(carrying)),
+        )
+
+
+def _warn_reviewed_head_binding(
+    forge: Forge,
+    snapshot: PullRequestSnapshot,
+    binding: ReviewBinding,
+    warnings: DeliveryWarnings | None,
+) -> None:
+    """Report a reviewed head that differs from the live head as a warning."""
+    if warnings is None or snapshot.head_oid == binding.head_oid:
+        return
+    try:
+        behind = forge.is_ancestor(binding.head_oid, snapshot.head_oid)
+    except (DeliveryError, RuntimeError):
+        behind = False
+    relation = "behind" if behind else "not an ancestor of"
+    warnings.add(
+        "stale-reviewed-head",
+        f"The reviewed head is {relation} the live head.",
+        reviewed_head_oid=binding.head_oid,
+        live_head_oid=snapshot.head_oid,
+    )
 
 
 def _delivery_body(binding: ReviewBinding, response: ThreadResponse) -> str:
@@ -1517,6 +1703,7 @@ def _publication_anchors(
     source: Path | None,
     historical: Sequence[Mapping[str, Any]],
     review_id: str | None,
+    warnings: DeliveryWarnings | None = None,
 ) -> dict[str, tuple[str, str | None, int]]:
     """Source evidence controls publication geometry, never finding disposition."""
     try:
@@ -1536,6 +1723,32 @@ def _publication_anchors(
             legacy_proofs=historical,
         )
     except (OSError, RuntimeError, ValueError, TypeError, KeyError) as error:
+        if warnings is not None:
+            # A declared field that the annex omits is one record-shape
+            # warning. The published annex geometry still controls a finding
+            # that declares an inline location, but only when the surviving
+            # fields still bind this carrier head and base.
+            try:
+                published = anchor_proofs.partial_geometry(
+                    visible,
+                    head_oid=cast(
+                        str, envelope["state"]["artifact_binding"]["revision"]
+                    ),
+                    base_oid=binding.base_oid,
+                    declared_sides={
+                        finding["id"]: finding.get("side") for finding in findings
+                    },
+                )
+            except (ValueError, TypeError):
+                published = None
+            if published is not None:
+                _warn_malformed_annex(warnings, "review", error)
+                _warn_summary_geometry(warnings, visible)
+                return {
+                    finding["id"]: geometry
+                    for finding in findings
+                    if (geometry := published.get(finding["id"])) is not None
+                }
         raise DeliveryError(f"Publication anchor proof failed: {error}") from error
 
 
@@ -1962,6 +2175,7 @@ def _verify_carrier_review_roots(
     format_only_compatibility: Mapping[str, Any] | None = None,
     format_only_recovered_thread_ids: frozenset[str] = frozenset(),
     misplaced_recoveries: Mapping[str, Mapping[str, Any]] | None = None,
+    warnings: DeliveryWarnings | None = None,
     superseding_state_sha256s: Mapping[str, str] | None = None,
 ) -> None:
     """Bind each selected carrier review to its complete atomic inline batch."""
@@ -2022,6 +2236,7 @@ def _verify_carrier_review_roots(
             anchor_source,
             historical_anchor_proofs,
             review.id,
+            warnings,
         )
         actual: set[str] = set()
         for root, thread in roots_by_review.get(review.id, []):
@@ -2671,6 +2886,7 @@ def _verify_state_chain(
     misplaced_recoveries: Mapping[str, Mapping[str, Any]] | None = None,
     batch_manifest_path: Path | None = None,
     batch_manifest_sha256: str | None = None,
+    warnings: DeliveryWarnings | None = None,
 ) -> VerifiedStateChain:
     """Replay every persisted event that leads to one terminal reviewer state."""
     terminal_state = terminal["state"]
@@ -2975,13 +3191,28 @@ def _verify_state_chain(
             archived_terminal_sha256s.add(cast(str, completed[0]["state_sha256"]))
             archived = True
         if not archived:
-            raise DeliveryError(
-                "The persisted reviewer-state history is not one nonforking chain."
+            if warnings is None:
+                raise DeliveryError(
+                    "The persisted reviewer-state history is not one nonforking chain."
+                )
+            warnings.add(
+                "forked-exchange",
+                "The persisted reviewer-state history has a forked exchange.",
+                unfinished_exchange_ids=",".join(sorted(unused_by_exchange)),
             )
+            # No remaining exchange reaches the terminal state. Stop the replay
+            # so an unreachable fork cannot repeat this loop.
+            break
     all_author_ids = {record.id for record, _ in author_records}
     if all_author_ids != used_author_ids:
-        raise DeliveryError(
-            "The persisted author-event history is not one nonforking chain."
+        if warnings is None:
+            raise DeliveryError(
+                "The persisted author-event history is not one nonforking chain."
+            )
+        warnings.add(
+            "forked-exchange",
+            "The persisted author-event history has a forked event chain.",
+            unselected_author_ids=",".join(sorted(all_author_ids - used_author_ids)),
         )
     _verify_carrier_publication_order(
         terminal,
@@ -3008,6 +3239,7 @@ def _verify_state_chain(
         format_only_compatibility,
         format_only_recovered_thread_ids,
         misplaced_recoveries,
+        warnings,
         superseding_state_sha256s=superseding_state_sha256s,
     )
     verified_original_digests = {
@@ -3149,6 +3381,7 @@ def validate_closure_manifest(
     format_only_inline_root_recovery: Mapping[str, Any] | None = None,
     terminal_body: str | None = None,
     misplaced_marker_recoveries: Mapping[str, Mapping[str, Any]] | None = None,
+    warnings: DeliveryWarnings | None = None,
 ) -> dict[str, ThreadClosure]:
     """Validate one complete v1 closure ledger before any forge mutation."""
     _terminal_state(binding, manifest)
@@ -3182,6 +3415,7 @@ def validate_closure_manifest(
         misplaced_recoveries=misplaced,
         batch_manifest_path=manifest.batch_manifest_path,
         batch_manifest_sha256=manifest.batch_manifest_sha256,
+        warnings=warnings,
     )
     terminal_digest = cast(str, manifest.state_envelope["state_sha256"])
     terminal_exchange_id = cast(str, manifest.state_envelope["state"]["exchange_id"])
@@ -3202,11 +3436,12 @@ def validate_closure_manifest(
         binding, static_entries, manifest.terminal_supersession
     )
     visible = manifest.terminal_visible_content
+    annex: dict[str, Any] | None = None
     try:
         annex = anchor_proofs.visible_manifest(visible)
     except (ValueError, TypeError) as error:
-        raise DeliveryError(f"Publication anchor proof failed: {error}") from error
-    if annex is not None:
+        _warn_malformed_annex(warnings, "terminal", error)
+    if annex is not None or anchor_proofs.MARKER in visible:
         # The annex is separately source-verified before publication. It cannot
         # alter the deterministic closure ledger or its authority requirements.
         visible = visible.split("\n\n" + anchor_proofs.MARKER, 1)[0]
@@ -4063,6 +4298,7 @@ def _validate_terminal_inline_comments(
     binding: ReviewBinding,
     manifest: ClosureManifest,
     new_finding_ids: set[str],
+    warnings: DeliveryWarnings | None = None,
 ) -> tuple[TerminalInlineComment, ...]:
     comments = tuple(
         _terminal_inline_comment(_terminal_comment_dict(comment))
@@ -4080,10 +4316,34 @@ def _validate_terminal_inline_comments(
         manifest.anchor_source,
         (),
         None,
+        warnings,
     )
-    annex = anchor_proofs.visible_manifest(manifest.terminal_visible_content)
+    annex: dict[str, Any] | None = None
+    try:
+        annex = anchor_proofs.visible_manifest(manifest.terminal_visible_content)
+    except (ValueError, TypeError) as error:
+        _warn_malformed_annex(warnings, "terminal", error)
     if annex is not None and annex["base_oid"] != binding.base_oid:
         raise DeliveryError("The pending publication anchors have a different base.")
+    if (
+        annex is None
+        and anchor_proofs.MARKER in manifest.terminal_visible_content
+        and anchor_proofs.partial_geometry(
+            manifest.terminal_visible_content,
+            head_oid=cast(str, state["artifact_binding"]["revision"]),
+            base_oid=binding.base_oid,
+            declared_sides={
+                finding["id"]: finding.get("side") for finding in state["findings"]
+            },
+        )
+        is None
+    ):
+        # A malformed annex still has to bind its carrier. The warn path already
+        # refused an unbound annex through _publication_anchors; this check keeps
+        # the base binding when the terminal path reads the annex separately.
+        raise DeliveryError(
+            "The terminal publication anchors do not bind their carrier."
+        )
     comment_finding_ids: list[str] = []
     for comment in comments:
         marker = _finding_marker(
@@ -4166,6 +4426,7 @@ def _verify_go_state_history(
     body: str,
     format_only_inline_root_recovery: Mapping[str, Any] | None = None,
     misplaced_marker_recoveries: Mapping[str, Mapping[str, Any]] | None = None,
+    warnings: DeliveryWarnings | None = None,
 ) -> VerifiedStateChain:
     format_only_compatibility = _validate_format_only_recovery_reference(
         format_only_inline_root_recovery, binding, manifest.state_envelope
@@ -4196,9 +4457,10 @@ def _verify_go_state_history(
         misplaced_recoveries=misplaced,
         batch_manifest_path=manifest.batch_manifest_path,
         batch_manifest_sha256=manifest.batch_manifest_sha256,
+        warnings=warnings,
     )
     _validate_terminal_inline_comments(
-        binding, manifest, set(chain.terminal_new_finding_ids)
+        binding, manifest, set(chain.terminal_new_finding_ids), warnings
     )
     if _conflicting_terminal_review(
         snapshot,
@@ -4415,7 +4677,8 @@ def deliver_go_v1(
     supersede_foreign_terminal: bool = False,
 ) -> DeliveryResult:
     """Deliver one current-head v1 terminal record, closures, and GO label."""
-    initial = _snapshot(forge, binding)
+    warnings = DeliveryWarnings()
+    initial = _snapshot_with_head_warning(forge, binding, warnings)
     if terminal_duplicate_repair is not None:
         initial = _apply_terminal_duplicate_repair(
             initial,
@@ -4448,6 +4711,7 @@ def deliver_go_v1(
         body,
         format_only_inline_root_recovery,
         misplaced_marker_recoveries,
+        warnings=warnings,
     )
     if len(matching) > 1:
         raise DeliveryError("The current-head terminal COMMENT evidence is ambiguous.")
@@ -4463,8 +4727,9 @@ def deliver_go_v1(
         format_only_inline_root_recovery=format_only_inline_root_recovery,
         terminal_body=body,
         misplaced_marker_recoveries=misplaced_marker_recoveries,
+        warnings=warnings,
     )
-    _verify_live_requirements(forge, manifest.requirements_binding)
+    _warn_live_requirements(forge, manifest.requirements_binding, warnings)
     open_threads = [thread for thread in initial.threads if not thread.is_resolved]
     terminal_review_id = matching[0].id if matching else None
     responded = [
@@ -4505,7 +4770,7 @@ def deliver_go_v1(
 
     def write(action: str, callback: Any, *arguments: Any) -> None:
         nonlocal writes_started, uncertain_operation
-        _verify_live_requirements(forge, manifest.requirements_binding)
+        _warn_live_requirements(forge, manifest.requirements_binding, warnings)
         writes_started = True
         uncertain_operation = action
         _call_write(action, callback, *arguments)
@@ -4524,6 +4789,7 @@ def deliver_go_v1(
             pending_thread_ids=tuple(sorted(set(by_thread).difference(resolved))),
             observed_head_oid=last_snapshot.head_oid,
             observed_labels=tuple(sorted(last_snapshot.labels)),
+            warnings=tuple(warnings.records),
             superseded_terminal_review_id=(
                 None if superseded is None else superseded.superseded_review_id
             ),
@@ -4540,6 +4806,7 @@ def deliver_go_v1(
             uncertain_operation=uncertain_operation,
             recovery_read_required=True,
             reason=str(error),
+            warnings=tuple(warnings.records),
         )
         raise error
 
@@ -4561,6 +4828,7 @@ def deliver_go_v1(
                     body,
                     format_only_inline_root_recovery,
                     misplaced_marker_recoveries,
+                    warnings=warnings,
                 )
                 if (
                     GO_LABEL not in recovered.labels
@@ -4577,7 +4845,7 @@ def deliver_go_v1(
                 _require_closed_manifest_threads(
                     recovered, binding, manifest, by_thread, terminal_body=body
                 )
-                _verify_live_requirements(forge, manifest.requirements_binding)
+                _warn_live_requirements(forge, manifest.requirements_binding, warnings)
                 complete_write()
                 return result("delivered")
             if not initial_history.archived_terminal_sha256s:
@@ -4604,6 +4872,7 @@ def deliver_go_v1(
                 body,
                 format_only_inline_root_recovery,
                 misplaced_marker_recoveries,
+                warnings=warnings,
             )
             if len(terminal_matches) != 1:
                 raise DeliveryError(
@@ -4625,6 +4894,7 @@ def deliver_go_v1(
                 format_only_inline_root_recovery=format_only_inline_root_recovery,
                 terminal_body=body,
                 misplaced_marker_recoveries=misplaced_marker_recoveries,
+                warnings=warnings,
             )
             responded = [
                 thread_id
@@ -4726,6 +4996,7 @@ def deliver_go_v1(
             body,
             format_only_inline_root_recovery,
             misplaced_marker_recoveries,
+            warnings=warnings,
         )
         if len(_matching_terminal_reviews(current, body, binding.head_oid)) != 1:
             raise DeliveryError(
@@ -4743,6 +5014,7 @@ def deliver_go_v1(
             body,
             format_only_inline_root_recovery,
             misplaced_marker_recoveries,
+            warnings=warnings,
         )
         if len(_matching_terminal_reviews(final, body, binding.head_oid)) != 1:
             raise DeliveryError("The terminal COMMENT changed after GO label delivery.")
@@ -4753,7 +5025,7 @@ def deliver_go_v1(
         _require_closed_manifest_threads(
             final, binding, manifest, by_thread, terminal_body=body
         )
-        _verify_live_requirements(forge, manifest.requirements_binding)
+        _warn_live_requirements(forge, manifest.requirements_binding, warnings)
         complete_write()
         return result("delivered")
     except DeliveryError as error:
@@ -5087,10 +5359,9 @@ class GitHubForge:
 
     def verify_requirements_binding(self, expected: RequirementsBinding) -> None:
         observed = self.collect_requirements_binding(expected.requirement_issue_urls)
-        if observed != expected:
-            raise DeliveryError(
-                "The live pull-request requirements differ from the reviewed binding."
-            )
+        differing = expected.differing_fields(observed)
+        if differing:
+            raise RequirementsBindingChanged(differing)
 
     def snapshot(self) -> PullRequestSnapshot:
         query = """
@@ -6156,7 +6427,7 @@ def _binding_from_args(args: argparse.Namespace) -> ReviewBinding:
 
 def _delivery_result_document(result: DeliveryResult) -> dict[str, object]:
     """Return the stable machine-readable delivery result."""
-    return {
+    document: dict[str, object] = {
         "status": result.status,
         "label": result.label,
         "terminal_review_id": result.terminal_review_id,
@@ -6171,6 +6442,11 @@ def _delivery_result_document(result: DeliveryResult) -> dict[str, object]:
         "superseded_terminal_review_id": result.superseded_terminal_review_id,
         "superseded_terminal_state_sha256": result.superseded_terminal_state_sha256,
     }
+    if result.warnings:
+        # Record each warning only when one occurred, so an unchanged result
+        # keeps its stable key set.
+        document["warnings"] = [warning.document() for warning in result.warnings]
+    return document
 
 
 def main(argv: Sequence[str] | None = None) -> int:

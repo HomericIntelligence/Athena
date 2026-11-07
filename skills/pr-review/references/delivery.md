@@ -555,8 +555,96 @@ Supersession is permanent. There is no un-supersede path. A wrong invocation lea
 override record on the forge. Recovery is escalation to the owner.
 
 Recompute the retained requirements binding at preflight, immediately before each write, and after
-the final readback. A scope change, closing-reference change, selected-URL change, linked-issue
-content or comment change, incomplete evidence, or provider failure withholds delivery.
+the final readback. A scope change, closing-reference change, selected-URL change, or linked-issue
+change that differs in any requirements field other than the digest alone withholds delivery. A
+linked-issue edit that changes only the digest, with every other requirements field unchanged, is a
+warning, not a hold. Incomplete evidence or provider failure withholds delivery.
+
+### Delivery warnings
+
+A GO review always delivers. When the current-head verdict is GO, the helper continues terminal
+delivery and reports each record-shape or staleness finding as a warning. The helper prints each
+warning to the standard error stream. It also records each warning in the delivery result under
+`warnings`, and that key is absent when no warning occurred.
+
+| Finding | Warning code | Helper action |
+| --- | --- | --- |
+| An anchor annex omits a declared field other than `head_oid` or `base_oid`, and both bindings still match | `malformed-annex` | Warn and keep the published anchor geometry |
+| An anchor annex summary entry also carries `path` or `line` | `summary-entry-carries-geometry` | Warn, and give that entry no geometry |
+| The reviewed head is not the live head | `stale-reviewed-head` | Warn and name the reviewed head and the live head, then withhold delivery when the live head has moved past the terminal binding |
+| The persisted exchange history forks | `forked-exchange` | Warn and keep the current-head chain |
+| The live requirements digest differs from the reviewed digest, and every other requirements field matches | `stale-requirements-digest` | Warn and keep the reviewed digest |
+
+The terminal record always binds the reviewed head. The helper does not rebrand
+that binding to the live head. A stale head inside the chain, such as an earlier
+carrier in the same pull request that names an older head, warns and continues.
+A live head that has moved past the terminal binding warns, names both heads,
+and then withholds delivery.
+
+A malformed annex still has to name its carrier. The helper warns only when the
+annex presents `head_oid` and `base_oid` that equal the carrier values. An
+annex that omits, changes, or mistypes either binding, adds an unknown field,
+repeats a finding identifier, or gives a non-integer line stops delivery. Only
+an `inline` entry needs `path` and `line`, as in the strict path. A `summary`
+entry needs no geometry, and its `reason` is optional but must be a string when
+it is present. The helper reads each requirements field and never matches the
+error text. A changed scope digest or a changed requirement-URL set stops
+delivery.
+
+Both annex warnings are reachable only on the record-shape path, where an
+annex omits a declared field other than `head_oid` or `base_oid` and both
+bindings still match. The `summary-entry-carries-geometry` warning fires there
+only when a `summary` entry also carries `path` or `line`. A complete annex that
+carries a `summary` entry with `path` or `line` keeps the strict block and
+produces no warning. A pre-write block records no delivery result, and the
+warnings are lost with it.
+
+#### Anchor side
+
+The strict path is the authority for the anchor side. It builds its rebuild from
+the annex entry's side, and it uses `RIGHT` when the annex omits the side
+(`expected_anchors`). It then binds the geometry to immutable source and refuses
+an annex whose manifest does not match that source. An out-of-hunk inline anchor
+becomes `summary` geometry.
+
+The warning path publishes only the geometry that the annex keeps and only when
+the annex still binds its carrier. It does not read the immutable source at
+all, neither in `_publication_anchors` nor in `partial_geometry`:
+
+- An annex entry that states a side controls the geometry. A side other than
+  `LEFT` or `RIGHT` stops delivery. The warning path does not bind that side,
+  `path`, or `line` to merge-base, head, blob, or hunk.
+- An annex entry that omits its side takes the side that the finding declares,
+  and `RIGHT` when the finding declares none. The geometry never carries a null
+  side. An annex that omits `side` and a finding that declares `LEFT` publishes
+  `LEFT` on the warning path, while the strict path refuses that annex outright.
+- An annex entry with a side other than `LEFT` or `RIGHT` stops delivery, as in
+  the strict path.
+- An out-of-hunk `path` or a `line` outside the changed hunk is published as
+  geometry on the warning path, while the strict path demotes it to `summary`
+  geometry.
+
+So the warning path does not publish the same side, path, and line as the strict
+path on every annex. The agreement that the tests pin is narrower: an annex
+side controls both paths, an omitted side resolves the same way on both paths
+when the finding declares no side, and an invalid side refuses on both paths.
+The publication anchor geometry is bound to the carrier head and base, not to
+the immutable source. The strict path remains the authority whenever it can
+bind.
+
+A review verdict other than GO still blocks delivery, and the helper lists the findings. The
+`state:implementation-go` label stays the only CI/CD trigger. This change removes no gate and adds
+no bypass.
+
+A warning does not weaken these remaining rules:
+
+- One current-head terminal carrier per exchange.
+- No private key material in a carrier.
+- The current-head artifact binding.
+- The scope, closing-reference, and selected-URL checks. A linked-issue change that differs in
+  any requirements field other than the digest alone stops delivery. An edit to a bound
+  requirement whose requirements fields all match but whose digest differs is a warning, not a
+  hold.
 
 Resolve only Athena-owned findings whose validated closure-manifest reviewer disposition is
 `resolved`, `withdrawn`, `accepted_risk`, or `nonblocking`. An unanswered contest, partial or

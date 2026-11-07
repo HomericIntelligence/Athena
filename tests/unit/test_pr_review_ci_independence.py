@@ -203,4 +203,9 @@ def test_stale_source_still_prevents_delivery(
         deliver()
 
     assert forge.labels == labels
-    assert forge.events == ["read"]
+    # A GO delivery adds one read-only ancestry probe that names the stale head.
+    # A NO-GO delivery does not warn about the head. Neither path writes.
+    expected = ["read"]
+    if verdict == "GO":
+        expected.append("ancestry:" + "b" * 40 + "..." + "c" * 40)
+    assert forge.events == expected
