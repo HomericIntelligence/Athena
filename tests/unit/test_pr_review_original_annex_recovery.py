@@ -123,18 +123,23 @@ def _expected(
     review_id: str = "9001",
     findings: Any = FINDINGS,
 ) -> dict[str, tuple[str, str | None, int]]:
-    return delivery.anchor_proofs.expected_anchors(
-        source=source,
-        target=target,
-        envelope=envelope,
-        visible=visible,
-        findings=findings,
-        review_id=review_id,
-        legacy_proofs=(),
+    anchors: dict[str, tuple[str, str | None, int]] = (
+        delivery.anchor_proofs.expected_anchors(
+            source=source,
+            target=target,
+            envelope=envelope,
+            visible=visible,
+            findings=findings,
+            review_id=review_id,
+            legacy_proofs=(),
+        )
     )
+    return anchors
 
 
-def test_original_annex_is_recovered_as_factual_fallback(tmp_path, monkeypatch) -> None:
+def test_original_annex_is_recovered_as_factual_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     root, base, head = _git_source(tmp_path)
     delivery, envelope, visible, spec, target = _case(root, base, head)
     monkeypatch.setattr(delivery.anchor_proofs, "ORIGINAL_ANNEX_COMPATIBILITY", spec)
@@ -168,7 +173,7 @@ def test_original_annex_is_recovered_as_factual_fallback(tmp_path, monkeypatch) 
     ],
 )
 def test_original_annex_requires_each_pinned_identity(
-    tmp_path, monkeypatch, field: str, replacement: Any
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, replacement: Any
 ) -> None:
     root, base, head = _git_source(tmp_path)
     delivery, envelope, visible, spec, target = _case(root, base, head)
@@ -180,7 +185,9 @@ def test_original_annex_requires_each_pinned_identity(
         _expected(delivery, root, target, envelope, visible)
 
 
-def test_original_annex_rejects_a_tampered_state(tmp_path, monkeypatch) -> None:
+def test_original_annex_rejects_a_tampered_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     root, base, head = _git_source(tmp_path)
     delivery, envelope, visible, spec, target = _case(root, base, head)
     exchange = delivery.review_exchange
@@ -198,7 +205,7 @@ def test_original_annex_rejects_a_tampered_state(tmp_path, monkeypatch) -> None:
 
 
 def test_original_annex_rejects_a_different_target_provider(
-    tmp_path, monkeypatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root, base, head = _git_source(tmp_path)
     delivery, envelope, visible, spec, target = _case(root, base, head)
@@ -209,7 +216,9 @@ def test_original_annex_rejects_a_different_target_provider(
         _expected(delivery, root, target, envelope, visible)
 
 
-def test_original_annex_requires_immutable_source(tmp_path, monkeypatch) -> None:
+def test_original_annex_requires_immutable_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     root, base, head = _git_source(tmp_path)
     delivery, envelope, visible, spec, target = _case(root, base, head)
     monkeypatch.setattr(delivery.anchor_proofs, "ORIGINAL_ANNEX_COMPATIBILITY", spec)
@@ -234,7 +243,11 @@ def test_original_annex_requires_immutable_source(tmp_path, monkeypatch) -> None
     ],
 )
 def test_non_matching_carriers_with_source_corruption_raise(
-    tmp_path, monkeypatch, label: str, visible_mutation: Any, review_id: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    label: str,
+    visible_mutation: Any,
+    review_id: str,
 ) -> None:
     root, base, head = _git_source(tmp_path)
     delivery, envelope, visible, spec, target = _case(root, base, head)
@@ -251,7 +264,7 @@ def test_non_matching_carriers_with_source_corruption_raise(
         )
 
 
-def _publish_module():
+def _publish_module() -> Any:
     path = ROOT / "skills" / "pr-review" / "scripts" / "publish_round.py"
     name = "athena_publish_round_for_write_prevention"
     spec = importlib.util.spec_from_file_location(name, path)
@@ -263,7 +276,7 @@ def _publish_module():
     return module
 
 
-def test_complete_carrier_verification_accepts_valid_carrier(tmp_path) -> None:
+def test_complete_carrier_verification_accepts_valid_carrier(tmp_path: Path) -> None:
     root, base, head = _git_source(tmp_path)
     delivery, envelope, visible, _, _ = _case(root, base, head)
     publish = _publish_module()
@@ -272,7 +285,7 @@ def test_complete_carrier_verification_accepts_valid_carrier(tmp_path) -> None:
     publish._verify_complete_carrier(body)
 
 
-def test_complete_carrier_verification_rejects_broken_carrier(tmp_path) -> None:
+def test_complete_carrier_verification_rejects_broken_carrier(tmp_path: Path) -> None:
     publish = _publish_module()
     broken = (
         "Factual source review.\n\n"
@@ -289,7 +302,9 @@ def test_complete_carrier_verification_rejects_broken_carrier(tmp_path) -> None:
 
 
 def test_main_refuses_to_call_the_forge_for_invalid_visible(
-    tmp_path, monkeypatch, capsys
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     root, base, head = _git_source(tmp_path)
     delivery, envelope, visible, _, _ = _case(root, base, head)

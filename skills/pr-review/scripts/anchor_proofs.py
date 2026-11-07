@@ -105,7 +105,9 @@ def _original_annex(
     offset = visible.find(MARKER)
     if offset < 0 or visible.count(MARKER) != 1:
         return None
-    match = re.search(r"```json\n(.*?)\n```", visible[offset + len(MARKER) :], re.DOTALL)
+    match = re.search(
+        r"```json\n(.*?)\n```", visible[offset + len(MARKER) :], re.DOTALL
+    )
     if match is None:
         return None
     encoded = match.group(1)
@@ -142,6 +144,8 @@ def _original_annex(
     if canonical(regenerated) != canonical(annex):
         return None
     return annex
+
+
 DIFF_ARGS = (
     "-c",
     "core.quotePath=true",
