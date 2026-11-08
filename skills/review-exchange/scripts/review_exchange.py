@@ -2660,9 +2660,7 @@ def _decision_required_author_refresh(
     return False
 
 
-def _complete_go_head_refresh(
-    previous: dict[str, Any], event: dict[str, Any]
-) -> bool:
+def _complete_go_refresh(previous: dict[str, Any], event: dict[str, Any]) -> bool:
     """A pre-round-limit complete GO accepts an author refresh on a changed head.
 
     The pr-review skill permits an author response to start from a
@@ -2699,11 +2697,13 @@ def _author_reduce(
         event["artifact_binding"]["sha256"] != previous["artifact_binding"]["sha256"]
     )
     artifact_refresh = (
-        previous["surface"] == "pull_request"
-        and changed_revision
-        and previous["phase"] in {"awaiting_reviewer", "awaiting_evidence"}
-    ) or _decision_required_author_refresh(previous, event) or (
-        changed_revision and _complete_go_head_refresh(previous, event)
+        (
+            previous["surface"] == "pull_request"
+            and changed_revision
+            and previous["phase"] in {"awaiting_reviewer", "awaiting_evidence"}
+        )
+        or _decision_required_author_refresh(previous, event)
+        or (changed_revision and _complete_go_refresh(previous, event))
     )
     if previous["phase"] != "awaiting_author" and not artifact_refresh:
         raise ProtocolError("The exchange is not awaiting an author response.")
@@ -3205,8 +3205,7 @@ def _verify_state_history(expected: Mapping[str, Any]) -> None:
                 "A current-exchange history cannot contain this event type."
             )
         if current["phase"] == "complete" and not (
-            event_type == "author_response"
-            and _complete_go_head_refresh(current, event)
+            event_type == "author_response" and _complete_go_refresh(current, event)
         ):
             raise ProtocolError("State history continues after a terminal review.")
         if (
@@ -3323,7 +3322,7 @@ def reduce_request(value: object) -> dict[str, Any]:
         if (
             previous["phase"] == "complete"
             and event_type != "reframe"
-            and not _complete_go_head_refresh(previous, event)
+            and not _complete_go_refresh(previous, event)
         ):
             raise ProtocolError("A terminal review state cannot accept another event.")
         if (
