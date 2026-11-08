@@ -658,6 +658,58 @@ class ReviewExchangeTests(unittest.TestCase):
             corrected["envelope"],
         )["envelope"]
         self.assertEqual("GO", resolved["state"]["verdict"])
+        # A complete GO accepts a changed-head refresh, but every terminal
+        # required finding must be revalidated in the answer set.
+        refresh = self.author_event(resolved, "fix", revision="revision-3")
+        refresh["responses"] = []
+        with self.assertRaises(self.exchange.ProtocolError):
+            self.reduce(refresh, resolved)
+
+    def test_complete_go_accepts_a_changed_head_refresh(self) -> None:
+        """A merged base keeps its GO but re-binds the carrier to the new head."""
+        initial = self.reduce(self.initial_event())["envelope"]
+        corrected = self.reduce(self.author_event(initial, "fix"), initial)
+        resolved = self.reduce(
+            self.review_event(corrected["envelope"], "resolve"),
+            corrected["envelope"],
+        )["envelope"]
+        self.assertEqual("complete", resolved["state"]["phase"])
+        self.assertEqual("GO", resolved["state"]["verdict"])
+
+        refresh = self.author_event(resolved, "fix", revision="revision-3")
+        result = self.reduce(refresh, resolved)
+        state = result["envelope"]["state"]
+        self.assertEqual("revision-3", state["artifact_binding"]["revision"])
+        self.assertEqual(resolved["state"]["round"], state["round"])
+        self.assertEqual("answered_fix", state["findings"][0]["state"])
+        self.assertFalse(state["coverage_complete"])
+        self.assertEqual("review_assessment", state["next_action"])
+
+    def test_complete_go_refresh_requires_a_changed_revision(self) -> None:
+        initial = self.reduce(self.initial_event())["envelope"]
+        corrected = self.reduce(self.author_event(initial, "fix"), initial)
+        resolved = self.reduce(
+            self.review_event(corrected["envelope"], "resolve"),
+            corrected["envelope"],
+        )["envelope"]
+        same_head = self.author_event(
+            resolved,
+            "fix",
+            revision=resolved["state"]["artifact_binding"]["revision"],
+        )
+        with self.assertRaises(self.exchange.ProtocolError):
+            self.reduce(same_head, resolved)
+
+    def test_complete_go_refresh_requires_a_pull_request(self) -> None:
+        initial = self.initial_event()
+        initial["surface"] = "issue"
+        issue = self.reduce(initial)["envelope"]
+        corrected = self.reduce(self.author_event(issue, "fix"), issue)
+        resolved = self.reduce(
+            self.review_event(corrected["envelope"], "resolve"),
+            corrected["envelope"],
+        )["envelope"]
+        self.assertEqual("complete", resolved["state"]["phase"])
         refresh = self.author_event(resolved, "fix", revision="revision-3")
         with self.assertRaises(self.exchange.ProtocolError):
             self.reduce(refresh, resolved)
@@ -677,9 +729,15 @@ class ReviewExchangeTests(unittest.TestCase):
         )["envelope"]
         self.assertEqual("withdrawn", withdrawn["state"]["findings"][0]["state"])
 
+        # The withdrawn finding was terminal at the previous revision, so a
+        # changed-head refresh must revalidate it in the answer set.
         refresh = self.author_event(withdrawn, "contest", revision="revision-3")
+        refresh["responses"] = []
         with self.assertRaises(self.exchange.ProtocolError):
             self.reduce(refresh, withdrawn)
+        refresh = self.author_event(withdrawn, "contest", revision="revision-3")
+        refreshed = self.reduce(refresh, withdrawn)["envelope"]
+        self.assertEqual("contested", refreshed["state"]["findings"][0]["state"])
 
     def test_changed_pr_head_clears_accepted_risk_authority(self) -> None:
         initial = self.reduce(self.initial_event())["envelope"]
@@ -701,8 +759,13 @@ class ReviewExchangeTests(unittest.TestCase):
             "risk_acceptance",
             revision="revision-2",
         )
-        with self.assertRaises(self.exchange.ProtocolError):
-            self.reduce(refresh, accepted)
+        # A changed head clears the accepted-risk authority receipt: the risk
+        # was accepted for the old revision only.
+        refreshed = self.reduce(refresh, accepted)["envelope"]
+        self.assertIsNone(refreshed["state"]["findings"][0]["authority_receipt"])
+        self.assertEqual(
+            "answered_tradeoff", refreshed["state"]["findings"][0]["state"]
+        )
 
     def test_changed_pr_head_does_not_revalidate_nonblocking_findings(self) -> None:
         observation = self.finding(severity="minor", disposition="suggestion")
@@ -713,8 +776,12 @@ class ReviewExchangeTests(unittest.TestCase):
         refresh = self.author_event(conditional, "fix", revision="revision-2")
         refresh["responses"] = []
 
-        with self.assertRaises(self.exchange.ProtocolError):
-            self.reduce(refresh, conditional)
+        # A nonblocking suggestion is not required, so it needs no answer and
+        # the refresh is accepted with an empty answer set.
+        refreshed = self.reduce(refresh, conditional)["envelope"]
+        self.assertEqual(
+            "nonblocking", refreshed["state"]["findings"][0]["state"]
+        )
 
     def test_normal_pr_correction_revalidates_closed_sibling_findings(self) -> None:
         second = self.finding("F-002")
@@ -989,15 +1056,11 @@ class ReviewExchangeTests(unittest.TestCase):
         unexpected_answer = self.author_event(evidence, "fix", revision="revision-2")
         issue_refresh = self.author_event(issue, "fix", revision="revision-2")
         issue_refresh["responses"] = []
-        go_refresh = self.author_event(complete, "fix", revision="revision-2")
-        go_refresh["responses"] = []
-
         cases = (
             ("same head", same_head_answer, answered),
             ("missing active answer", missing_answer, answered),
             ("unexpected answer", unexpected_answer, evidence),
             ("issue refresh", issue_refresh, issue),
-            ("terminal GO", go_refresh, complete),
         )
         for label, event, previous in cases:
             with (
