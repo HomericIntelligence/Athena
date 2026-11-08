@@ -779,9 +779,7 @@ class ReviewExchangeTests(unittest.TestCase):
         # A nonblocking suggestion is not required, so it needs no answer and
         # the refresh is accepted with an empty answer set.
         refreshed = self.reduce(refresh, conditional)["envelope"]
-        self.assertEqual(
-            "nonblocking", refreshed["state"]["findings"][0]["state"]
-        )
+        self.assertEqual("nonblocking", refreshed["state"]["findings"][0]["state"])
 
     def test_normal_pr_correction_revalidates_closed_sibling_findings(self) -> None:
         second = self.finding("F-002")
@@ -1043,7 +1041,6 @@ class ReviewExchangeTests(unittest.TestCase):
         issue_event = self.initial_event(findings=[], coverage_complete=False)
         issue_event["surface"] = "issue"
         issue = self.reduce(issue_event)["envelope"]
-        complete = self.reduce(self.initial_event(findings=[]))["envelope"]
 
         same_head_answer = self.author_event(
             answered,
