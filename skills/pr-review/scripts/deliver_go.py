@@ -2357,19 +2357,13 @@ def _verify_initial_state(envelope: Mapping[str, Any]) -> bool:
 
 
 def _author_event_input(envelope: Mapping[str, Any]) -> dict[str, Any]:
+    """Project one persisted author event to the reducer's exact field set."""
     state = cast(Mapping[str, Any], envelope["state"])
-    return {
-        key: state[key]
-        for key in (
-            "event_type",
-            "exchange_id",
-            "prior_state_sha256",
-            "artifact_binding",
-            "scope",
-            "scope_change_reason",
-            "responses",
-        )
-    }
+    fields = (
+        review_exchange.CONTINUED_AUTHOR_EVENT_FIELDS
+        | review_exchange.CONTINUED_AUTHOR_EVENT_OPTIONAL_FIELDS
+    )
+    return {key: state[key] for key in sorted(fields) if key in state}
 
 
 def _infer_reviewer_event(
@@ -2411,6 +2405,9 @@ def _infer_reviewer_event(
     accepted = current_state["accepted_events"][-1]
     if "reassessment" in accepted:
         event["reassessment"] = accepted["reassessment"]
+    if current_state.get("requirement_evidence") is not None:
+        # A corrective assessment must replace the retained evidence record.
+        event["requirement_evidence"] = current_state["requirement_evidence"]
     return event
 
 
@@ -5718,7 +5715,14 @@ class GitHubForge:
         comments: Sequence[Mapping[str, Any]],
     ) -> str:
         """Publish one non-terminal reviewer round batch and return its review ID."""
-        review_id = self._create_comment_review(body, head_oid, comments).get("id")
+        response = self._create_comment_review(body, head_oid, comments)
+        # The REST review ID is an integer, and the GraphQL readback uses the
+        # opaque node ID. Prefer the node ID, and normalize an integer ID so a
+        # successful write is never reported as a missing review ID.
+        review_id: object = response.get("node_id")
+        if review_id is None:
+            raw_id = response.get("id")
+            review_id = None if raw_id is None else str(raw_id)
         if not isinstance(review_id, str) or not review_id:
             raise DeliveryError("The published review has no review ID.")
         return review_id

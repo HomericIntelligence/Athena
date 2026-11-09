@@ -57,6 +57,58 @@ ORIGINAL_ANNEX_COMPATIBILITY = {
     },
 }
 
+# Compatibility for the immutable round-1 carrier whose annex publishes F-001
+# through F-006 while its state retains F-001 through F-007. The carrier is
+# superseded and cannot be deleted. Every identity is pinned; the retained
+# annex publishes no geometry, so the factual fallback locations govern.
+RETAINED_ANNEX_COMPATIBILITY = {
+    "manifest_id": "comet-retained-anchor-annex-omitted-finding-v1",
+    "repository": "LLM360/comet",
+    "review_id": "5822080238",
+    "base_oid": "b3a331d4ea38d10987e685f4987948c21ca2cf59",
+    "head_oid": "2009b20eccb5d1c6e835442f30ceb2051564b8ca",
+    "merge_base_oid": "04132366986da87e4f638df94ae209375dea2259",
+    "state_sha256": "b046c8fbb12f7e8fbe25a214b3652319cc3479574b894e6381559a5f40972979",
+    "visible_content_sha256": (
+        "a0ae725759bfc9f36ceddf56cc0cbaa9e9d11c13942746a1e34fc11a26601536"
+    ),
+    "annex_json_sha256": (
+        "f854fdf010819ba5ad70da1c90c48e5224a5ee234ad07f14a267eae7af23fadf"
+    ),
+    "hunks_sha256": {
+        "author_intent": "f29e4ffa1df12c83aea4cf45b6641c51bcaf34c8ad67cd2073d9b0461845e3f5",
+        "current_target": (
+            "fdfe147459861a2fe538df91f8416379cb1e66937f04bba1f1618b820c9c563b"
+        ),
+    },
+}
+
+
+def _annex_compatibilities() -> tuple[Mapping[str, Any], ...]:
+    """Return every append-only pinned annex recovery, oldest first.
+
+    The original entry stays first so a caller can replace it in isolation
+    without adding the retained entry to the accepted set.
+    """
+    return (ORIGINAL_ANNEX_COMPATIBILITY, RETAINED_ANNEX_COMPATIBILITY)
+
+
+def _recovered_annex(
+    visible: str,
+    source: Path | None,
+    target: Mapping[str, Any],
+    envelope: Mapping[str, Any],
+    review_id: str | None,
+) -> bool:
+    """Return whether one pinned compatibility entry accepts its carrier."""
+    if source is None:
+        return False
+    return any(
+        _original_annex(visible, source, target, envelope, review_id, compatibility)
+        is not None
+        for compatibility in _annex_compatibilities()
+    )
+
 
 def _sha256_text(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
@@ -74,11 +126,13 @@ def _original_annex(
     review_id: str | None,
     compatibility: Mapping[str, Any],
 ) -> dict[str, Any] | None:
-    """Return the one retained malformed annex, else None.
+    """Return one pinned malformed annex, else None.
 
-    Every identity is pinned. The recovered annex is treated as a carrier that
-    publishes no anchor geometry; the delivery chain falls back to the factual
-    locations of the state that supersedes it.
+    Every identity is pinned. An empty published finding set must also
+    regenerate from immutable source. A nonempty set is the retained carrier
+    whose digest binds the exact published bytes. Both recoveries publish no
+    anchor geometry; the delivery chain falls back to the factual locations of
+    the state that supersedes the carrier.
     """
     if target.get("provider") != "github":
         return None
@@ -134,15 +188,17 @@ def _original_annex(
         return None
     if annex.get("hunks_sha256") != compatibility["hunks_sha256"]:
         return None
-    if annex.get("findings") != []:
-        return None
-    if source is None:
-        return None
-    regenerated = prepare_manifest(
-        source, compatibility["base_oid"], compatibility["head_oid"], []
-    )
-    if canonical(regenerated) != canonical(annex):
-        return None
+    if annex.get("findings") == []:
+        if source is None:
+            return None
+        regenerated = prepare_manifest(
+            source, compatibility["base_oid"], compatibility["head_oid"], []
+        )
+        if canonical(regenerated) != canonical(annex):
+            return None
+    # A pinned annex with a nonempty finding set is the retained malformed
+    # carrier. Its digest binds the exact published bytes, so source
+    # regeneration cannot accept it; the factual fallback governs instead.
     return annex
 
 
@@ -693,20 +749,7 @@ def expected_anchors(
     try:
         manifest = visible_manifest(visible)
     except ValueError:
-        if (
-            source is not None
-            and _original_annex(
-                visible,
-                source,
-                target,
-                envelope,
-                review_id,
-                ORIGINAL_ANNEX_COMPATIBILITY,
-            )
-            is not None
-        ):
-            # The original carrier publishes no anchor geometry; the factual
-            # locations govern and the delivery chain falls back to them.
+        if _recovered_annex(visible, source, target, envelope, review_id):
             return fallback
         raise
     legacy = [
@@ -749,6 +792,10 @@ def expected_anchors(
             source, manifest["base_oid"], manifest["head_oid"], requested
         )
         if canonical(manifest) != canonical(expected):
+            if _recovered_annex(visible, source, target, envelope, review_id):
+                # The recovered carrier publishes no anchor geometry; the
+                # factual fallback locations govern publication geometry.
+                return fallback
             raise ValueError(
                 "The publication anchor manifest does not match immutable source."
             )
