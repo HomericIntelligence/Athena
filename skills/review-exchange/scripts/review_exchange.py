@@ -2660,6 +2660,32 @@ def _decision_required_author_refresh(
     return False
 
 
+def _complete_go_refresh(previous: dict[str, Any], event: dict[str, Any]) -> bool:
+    """A pre-round-limit complete GO accepts an author refresh on a changed head.
+
+    The pr-review skill permits an author response to start from a
+    pre-round-5 complete GO when the pull-request revision changes. The
+    merged-base case is the common cause: the GO label stays valid across a
+    base merge, but the terminal carrier remains bound to the earlier head.
+    The refresh re-binds it.
+
+    The refresh must be an author event on a pull request, the round must be
+    below the limit, the phase must be complete on a GO, and the revision must
+    actually change. Nothing else is relaxed.
+    """
+    binding = event.get("artifact_binding")
+    if not isinstance(binding, dict):
+        return False
+    return (
+        previous.get("surface") == "pull_request"
+        and previous.get("phase") == "complete"
+        and previous.get("verdict") == "GO"
+        and previous.get("round", ROUND_LIMIT) < ROUND_LIMIT
+        and event.get("event_type") == "author_response"
+        and binding.get("revision") != previous["artifact_binding"]["revision"]
+    )
+
+
 def _author_reduce(
     previous: dict[str, Any], event: dict[str, Any], event_digest: str
 ) -> tuple[dict[str, Any], dict[str, Any], str]:
@@ -2671,10 +2697,14 @@ def _author_reduce(
         event["artifact_binding"]["sha256"] != previous["artifact_binding"]["sha256"]
     )
     artifact_refresh = (
-        previous["surface"] == "pull_request"
-        and changed_revision
-        and previous["phase"] in {"awaiting_reviewer", "awaiting_evidence"}
-    ) or _decision_required_author_refresh(previous, event)
+        (
+            previous["surface"] == "pull_request"
+            and changed_revision
+            and previous["phase"] in {"awaiting_reviewer", "awaiting_evidence"}
+        )
+        or _decision_required_author_refresh(previous, event)
+        or (changed_revision and _complete_go_refresh(previous, event))
+    )
     if previous["phase"] != "awaiting_author" and not artifact_refresh:
         raise ProtocolError("The exchange is not awaiting an author response.")
     active = _active_required(previous["findings"])
@@ -3174,7 +3204,9 @@ def _verify_state_history(expected: Mapping[str, Any]) -> None:
             raise ProtocolError(
                 "A current-exchange history cannot contain this event type."
             )
-        if current["phase"] == "complete":
+        if current["phase"] == "complete" and not (
+            event_type == "author_response" and _complete_go_refresh(current, event)
+        ):
             raise ProtocolError("State history continues after a terminal review.")
         if (
             current["phase"] == "decision_required"
@@ -3287,7 +3319,11 @@ def reduce_request(value: object) -> dict[str, Any]:
     event_digest = _event_digest(event)
     if previous_envelope is not None:
         previous = cast(dict[str, Any], previous_envelope["state"])
-        if previous["phase"] == "complete" and event_type != "reframe":
+        if (
+            previous["phase"] == "complete"
+            and event_type != "reframe"
+            and not _complete_go_refresh(previous, event)
+        ):
             raise ProtocolError("A terminal review state cannot accept another event.")
         if (
             previous["phase"] == "decision_required"

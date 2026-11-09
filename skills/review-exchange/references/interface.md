@@ -403,7 +403,10 @@ A continued author response has these fields:
 | `responses` | One author response for each required finding that the transition must answer |
 
 Normally, a continued author response applies to `awaiting_author`. For a pull request, it can also
-refresh a changed head in `awaiting_reviewer` or `awaiting_evidence`. A refresh must change `artifact_binding.revision`. A different artifact digest with
+refresh a changed head in `awaiting_reviewer`, `awaiting_evidence`, or a complete GO state below
+round 5. The common cause is a base-branch merge: the delivered GO label stays valid across the
+merge, but its terminal carrier remains bound to the earlier revision, and the refresh re-binds it.
+A refresh must change `artifact_binding.revision`. A different artifact digest with
 the same revision is not sufficient.
 
 A pull-request author can also refresh `decision_required` before round 5 when the latest accepted
