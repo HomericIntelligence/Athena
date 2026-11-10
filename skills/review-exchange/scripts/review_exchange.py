@@ -156,6 +156,22 @@ STOP_REASONS = frozenset(
 )
 TERMINAL_SUPERSESSION_REASONS = frozenset({"foreign-publication"})
 
+# One continued author event has one canonical field set. The delivery helper
+# projects a persisted author event back to this set, so it must not keep a
+# second partial copy.
+CONTINUED_AUTHOR_EVENT_FIELDS = frozenset(
+    {
+        "event_type",
+        "exchange_id",
+        "prior_state_sha256",
+        "artifact_binding",
+        "scope",
+        "scope_change_reason",
+        "responses",
+    }
+)
+CONTINUED_AUTHOR_EVENT_OPTIONAL_FIELDS = frozenset({"coverage_changes"})
+
 # One structured statement marks a check as not performed. One visible sentence
 # claims that a check produced a result. A carrier is inconsistent when a visible
 # claim names the same check and admits no unavailability.
@@ -1859,25 +1875,15 @@ def _continued_terminal_supersession_event(
 
 def _continued_author_event(value: object) -> dict[str, Any]:
     optional = (
-        {"coverage_changes"}
-        if isinstance(value, dict) and "coverage_changes" in value
-        else set()
+        CONTINUED_AUTHOR_EVENT_OPTIONAL_FIELDS
+        if isinstance(value, dict)
+        and CONTINUED_AUTHOR_EVENT_OPTIONAL_FIELDS.issubset(value)
+        else frozenset()
     )
     event = _object(
         value,
         "author response",
-        frozenset(
-            {
-                "event_type",
-                "exchange_id",
-                "prior_state_sha256",
-                "artifact_binding",
-                "scope",
-                "scope_change_reason",
-                "responses",
-            }
-            | optional
-        ),
+        CONTINUED_AUTHOR_EVENT_FIELDS | optional,
     )
     if event["event_type"] != "author_response":
         raise ProtocolError("The event is not an author response.")

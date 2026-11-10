@@ -264,6 +264,175 @@ def test_non_matching_carriers_with_source_corruption_raise(
         )
 
 
+RETAINED_REVIEW = ROOT / "tests" / "fixtures" / "pr4618-review-5822080238.md"
+
+
+def test_retained_annex_pins_the_published_carrier_identities() -> None:
+    delivery = load_module()
+    spec = delivery.anchor_proofs.RETAINED_ANNEX_COMPATIBILITY
+
+    assert spec["manifest_id"] == "comet-retained-anchor-annex-omitted-finding-v1"
+    assert spec["repository"] == "LLM360/comet"
+    assert spec["review_id"] == "5822080238"
+    assert spec["base_oid"] == "b3a331d4ea38d10987e685f4987948c21ca2cf59"
+    assert spec["head_oid"] == "2009b20eccb5d1c6e835442f30ceb2051564b8ca"
+    assert spec["merge_base_oid"] == "04132366986da87e4f638df94ae209375dea2259"
+    assert (
+        spec["state_sha256"]
+        == "b046c8fbb12f7e8fbe25a214b3652319cc3479574b894e6381559a5f40972979"
+    )
+    assert (
+        spec["visible_content_sha256"]
+        == "a0ae725759bfc9f36ceddf56cc0cbaa9e9d11c13942746a1e34fc11a26601536"
+    )
+    assert (
+        spec["annex_json_sha256"]
+        == "f854fdf010819ba5ad70da1c90c48e5224a5ee234ad07f14a267eae7af23fadf"
+    )
+    assert spec["hunks_sha256"] == {
+        "author_intent": "f29e4ffa1df12c83aea4cf45b6641c51bcaf34c8ad67cd2073d9b0461845e3f5",
+        "current_target": (
+            "fdfe147459861a2fe538df91f8416379cb1e66937f04bba1f1618b820c9c563b"
+        ),
+    }
+
+
+def test_retained_annex_is_recovered_from_the_exact_published_carrier(
+    tmp_path: Path,
+) -> None:
+    delivery = load_module()
+    body = RETAINED_REVIEW.read_text(encoding="utf-8")
+    exchange = delivery.review_exchange
+    envelope, _ = exchange.extract_carrier_pair(body)
+    visible = delivery._carrier_visible(body)
+
+    recovered = delivery.anchor_proofs._original_annex(
+        visible,
+        tmp_path,
+        envelope["state"]["target"],
+        envelope,
+        "5822080238",
+        delivery.anchor_proofs.RETAINED_ANNEX_COMPATIBILITY,
+    )
+
+    assert recovered is not None
+    assert [entry["id"] for entry in recovered["findings"]] == [
+        f"F-{index:03d}" for index in range(1, 7)
+    ]
+    assert {f["id"] for f in envelope["state"]["findings"]} == {
+        f"F-{index:03d}" for index in range(1, 8)
+    }
+
+
+def _retained_case(
+    root: Path,
+    base: str,
+    head: str,
+) -> tuple[Any, dict[str, Any], str, dict[str, Any], dict[str, Any]]:
+    delivery = load_module()
+    exchange = delivery.review_exchange
+    target = {
+        "provider": "github",
+        "repository": "LLM360/comet",
+        "number": 4618,
+        "url": "https://github.com/LLM360/comet/pull/4618",
+    }
+    annex = delivery.anchor_proofs.prepare_manifest(root, base, head, FINDINGS[:1])
+    visible = (
+        "Factual source review.\n\n"
+        + delivery.anchor_proofs.MARKER
+        + "\n```json\n"
+        + delivery.anchor_proofs.canonical(annex)
+        + "\n```\n\nThe superseding state carrier follows.\n"
+    )
+    event = {
+        "event_type": "reviewer_assessment",
+        "exchange_id": "exchange-retained",
+        "prior_state_sha256": None,
+        "round": 1,
+        "surface": "pull_request",
+        "target": target,
+        "requirements_sha256": "1" * 64,
+        "supersedes_state_sha256": None,
+        "artifact_binding": {
+            "revision": head,
+            "sha256": "3" * 64,
+            "visible_content_sha256": exchange.sha256_text(visible),
+        },
+        "scope": ["path:justfile"],
+        "coverage_complete": True,
+        "responses": [],
+        "new_findings": FINDINGS,
+        "stop_reason": "requirements_reframe",
+    }
+    envelope = exchange.reduce_request({"previous": None, "event": event})["envelope"]
+    spec = {
+        "manifest_id": "synthetic-retained-annex",
+        "repository": "LLM360/comet",
+        "review_id": "5822080238",
+        "base_oid": base,
+        "head_oid": head,
+        "merge_base_oid": annex["merge_base_oid"],
+        "state_sha256": envelope["state_sha256"],
+        "visible_content_sha256": exchange.sha256_text(visible),
+        "annex_json_sha256": hashlib.sha256(
+            delivery.anchor_proofs.canonical(annex).encode("utf-8")
+        ).hexdigest(),
+        "hunks_sha256": annex["hunks_sha256"],
+    }
+    return delivery, envelope, visible, spec, target
+
+
+def test_retained_annex_is_recovered_with_its_published_finding_subset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, base, head = _git_source(tmp_path)
+    delivery, envelope, visible, spec, target = _retained_case(root, base, head)
+    monkeypatch.setattr(delivery.anchor_proofs, "RETAINED_ANNEX_COMPATIBILITY", spec)
+
+    result = _expected(
+        delivery, root, target, envelope, visible, review_id="5822080238"
+    )
+
+    assert result == {
+        "F-001": ("justfile", None, 10),
+        "F-002": ("justfile", None, 80),
+    }
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("repository", "LLM360/other"),
+        ("review_id", "5822080239"),
+        ("base_oid", "0" * 40),
+        ("head_oid", "0" * 40),
+        ("merge_base_oid", "0" * 40),
+        ("state_sha256", "0" * 64),
+        ("visible_content_sha256", "0" * 64),
+        ("annex_json_sha256", "0" * 64),
+        (
+            "hunks_sha256",
+            {"author_intent": "0" * 64, "current_target": "0" * 64},
+        ),
+    ],
+)
+def test_retained_annex_requires_each_pinned_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    replacement: Any,
+) -> None:
+    root, base, head = _git_source(tmp_path)
+    delivery, envelope, visible, spec, target = _retained_case(root, base, head)
+    spec = dict(spec)
+    spec[field] = replacement
+    monkeypatch.setattr(delivery.anchor_proofs, "RETAINED_ANNEX_COMPATIBILITY", spec)
+
+    with pytest.raises(ValueError):
+        _expected(delivery, root, target, envelope, visible, review_id="5822080238")
+
+
 def _publish_module() -> Any:
     path = ROOT / "skills" / "pr-review" / "scripts" / "publish_round.py"
     name = "athena_publish_round_for_write_prevention"

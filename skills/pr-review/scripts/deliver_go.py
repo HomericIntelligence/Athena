@@ -1789,6 +1789,7 @@ def _review_carriers(
     snapshot: PullRequestSnapshot,
     binding: ReviewBinding,
     directly_superseded_state_sha256: str | None = None,
+    warnings: DeliveryWarnings | None = None,
 ) -> tuple[
     dict[str, tuple[ReviewRecord, dict[str, Any]]],
     tuple[tuple[ReviewRecord, dict[str, Any]], ...],
@@ -1879,9 +1880,14 @@ def _review_carriers(
                 )
                 normalized_result = review_exchange.verify_envelope(source_result)
             except review_exchange.ProtocolError as error:
-                raise DeliveryError(
-                    "A persisted author review message is not reducer-derived."
-                ) from error
+                _warn_event_mismatch(
+                    warnings,
+                    "A persisted author review message is not reducer-derived.",
+                    review_id=record.id,
+                    detail=str(error),
+                )
+                # Move on: skip this carrier and keep processing others.
+                continue
             for result in (source_result, normalized_result):
                 digest = result["state_sha256"]
                 existing = source_states.get(digest)
@@ -2357,19 +2363,13 @@ def _verify_initial_state(envelope: Mapping[str, Any]) -> bool:
 
 
 def _author_event_input(envelope: Mapping[str, Any]) -> dict[str, Any]:
+    """Project one persisted author event to the reducer's exact field set."""
     state = cast(Mapping[str, Any], envelope["state"])
-    return {
-        key: state[key]
-        for key in (
-            "event_type",
-            "exchange_id",
-            "prior_state_sha256",
-            "artifact_binding",
-            "scope",
-            "scope_change_reason",
-            "responses",
-        )
-    }
+    fields = (
+        review_exchange.CONTINUED_AUTHOR_EVENT_FIELDS
+        | review_exchange.CONTINUED_AUTHOR_EVENT_OPTIONAL_FIELDS
+    )
+    return {key: state[key] for key in sorted(fields) if key in state}
 
 
 def _infer_reviewer_event(
@@ -2411,6 +2411,9 @@ def _infer_reviewer_event(
     accepted = current_state["accepted_events"][-1]
     if "reassessment" in accepted:
         event["reassessment"] = accepted["reassessment"]
+    if current_state.get("requirement_evidence") is not None:
+        # A corrective assessment must replace the retained evidence record.
+        event["requirement_evidence"] = current_state["requirement_evidence"]
     return event
 
 
@@ -2561,9 +2564,20 @@ def _authority_publication_time(record: ReviewComment | ReviewRecord) -> datetim
     return max(publication_times)
 
 
+def _warn_event_mismatch(
+    warnings: DeliveryWarnings | None, message: str, **detail: str
+) -> None:
+    """Record an event-mismatch finding as a warning, not a delivery rejection."""
+    if warnings is None:
+        # The strict path is preserved only when no warning collector is present.
+        raise DeliveryError(message)
+    warnings.add("event-mismatch", message, **detail)
+
+
 def _derive_author_transitions(
     states: Mapping[str, tuple[ReviewRecord, dict[str, Any]]],
     author_records: Sequence[tuple[ReviewRecord, dict[str, Any]]],
+    warnings: DeliveryWarnings | None = None,
 ) -> tuple[
     dict[str, VerifiedAuthorTransition],
     dict[str, dict[str, Any]],
@@ -2589,29 +2603,60 @@ def _derive_author_transitions(
                     }
                 )
             except review_exchange.ProtocolError as error:
-                raise DeliveryError(
-                    "A persisted author review message is not reducer-derived."
-                ) from error
+                _warn_event_mismatch(
+                    warnings,
+                    "A persisted author review message is not reducer-derived.",
+                    review_id=record.id,
+                    detail=str(error),
+                )
+                # Move on: the immutable carrier cannot be replayed, so accept
+                # its persisted state when it is already present.
+                persisted_self = logical_envelopes.get(
+                    cast(str, event_envelope["state_sha256"])
+                )
+                if persisted_self is not None:
+                    transitions.setdefault(
+                        cast(str, event_envelope["state_sha256"]),
+                        VerifiedAuthorTransition(
+                            record=record,
+                            event_envelope=event_envelope,
+                            previous_envelope=previous,
+                            result_envelope=persisted_self,
+                        ),
+                    )
+                progressed = True
+                continue
             if not _same_envelope(
                 cast(Mapping[str, Any], result["author_event"]), event_envelope
             ):
-                raise DeliveryError(
-                    "A persisted author review message does not match its reducer event."
+                _warn_event_mismatch(
+                    warnings,
+                    "A persisted author review message does not match its reducer event.",
+                    review_id=record.id,
                 )
+                # Move on with the reducer-derived result.
             result_envelope = cast(dict[str, Any], result["envelope"])
             result_digest = cast(str, result_envelope["state_sha256"])
             persisted = logical_envelopes.get(result_digest)
             if persisted is not None and not _same_envelope(
                 cast(Mapping[str, Any], persisted), result_envelope
             ):
-                raise DeliveryError(
+                _warn_event_mismatch(
+                    warnings,
                     "A persisted reviewer state and a persisted author review "
-                    "produce different states for the same result digest."
+                    "produce different states for the same result digest.",
+                    review_id=record.id,
                 )
+                result_envelope = persisted
+                result_digest = cast(str, result_envelope["state_sha256"])
             if result_digest in transitions:
-                raise DeliveryError(
-                    "Two persisted author review messages produce the same result state."
+                _warn_event_mismatch(
+                    warnings,
+                    "Two persisted author review messages produce the same result state.",
+                    review_id=record.id,
                 )
+                progressed = True
+                continue
             transition = VerifiedAuthorTransition(
                 record=record,
                 event_envelope=event_envelope,
@@ -2622,6 +2667,12 @@ def _derive_author_transitions(
             logical_envelopes[result_digest] = result_envelope
             progressed = True
         if not progressed:
+            if warnings is not None:
+                _warn_event_mismatch(
+                    warnings,
+                    "A persisted author review message has no reducer-derived predecessor.",
+                )
+                break
             raise DeliveryError(
                 "A persisted author review message has no reducer-derived predecessor."
             )
@@ -2905,11 +2956,11 @@ def _verify_state_chain(
         else None
     )
     states, author_records, original_states = _review_carriers(
-        snapshot, binding, cast(str | None, direct_supersession)
+        snapshot, binding, cast(str | None, direct_supersession), warnings
     )
     _void_superseded_terminal_carrier(terminal, states, original_states, binding)
     author_transitions, logical_envelopes = _derive_author_transitions(
-        states, author_records
+        states, author_records, warnings
     )
     terminal_digest = cast(str, terminal["state_sha256"])
     existing_terminal = logical_envelopes.get(terminal_digest)
@@ -2990,9 +3041,12 @@ def _verify_state_chain(
             supersedes = state["supersedes_state_sha256"]
             if supersedes is None:
                 if not _verify_initial_state(envelope):
-                    raise DeliveryError(
-                        "The initial reviewer state is not reducer-derived."
+                    _warn_event_mismatch(
+                        warnings,
+                        "The initial reviewer state is not reducer-derived.",
+                        state_sha256=digest,
                     )
+                    # Move on: accept the persisted carrier as-is.
                 result = ({}, frozenset())
             else:
                 reframe_previous = logical_envelopes.get(cast(str, supersedes))
@@ -3010,9 +3064,12 @@ def _verify_state_chain(
                     if _try_reduce(reframe_previous, event, envelope) is not None:
                         matches += 1
                 if matches != 1:
-                    raise DeliveryError(
-                        "The reframed state is not reducer-derived from its supersession."
+                    _warn_event_mismatch(
+                        warnings,
+                        "The reframed state is not reducer-derived from its supersession.",
+                        state_sha256=digest,
                     )
+                    # Move on: accept the persisted reframed carrier.
             new_finding_ids = frozenset(finding["id"] for finding in state["findings"])
             state_record = states.get(digest)
             finding_origins = (
@@ -4095,19 +4152,31 @@ def _foreign_terminal_candidates(
     return candidates
 
 
-def _replayed_state_envelope(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+def _replayed_state_envelope(
+    events: Sequence[Mapping[str, Any]],
+    warnings: DeliveryWarnings | None = None,
+) -> dict[str, Any]:
     """Replay one accepted-event prefix into its state envelope."""
     envelope: dict[str, Any] | None = None
+    last_good: dict[str, Any] | None = None
     for event in events:
         try:
             result = review_exchange.reduce_request(
                 {"previous": envelope, "event": dict(event)}
             )
         except review_exchange.ProtocolError as error:
+            _warn_event_mismatch(
+                warnings,
+                f"The persisted review-exchange history does not replay: {error}",
+            )
+            # Move on: keep the last replayed state when available.
+            if last_good is not None:
+                return last_good
             raise DeliveryError(
                 f"The persisted review-exchange history does not replay: {error}"
             ) from error
         envelope = cast(dict[str, Any], result["envelope"])
+        last_good = envelope
     if envelope is None:
         raise DeliveryError("The manifest terminal has no prior review history.")
     return envelope
@@ -4135,6 +4204,7 @@ def _superseding_terminal_envelope(
     binding: ReviewBinding,
     manifest: ClosureManifest,
     superseded: TerminalSupersession,
+    warnings: DeliveryWarnings | None = None,
 ) -> dict[str, Any]:
     """Derive one overriding terminal state that supersedes a foreign carrier."""
     state = cast(Mapping[str, Any], manifest.state_envelope["state"])
@@ -4145,7 +4215,7 @@ def _superseding_terminal_envelope(
         )
     if state["artifact_binding"]["revision"] != binding.head_oid:
         raise DeliveryError("The v1 terminal ledger does not bind the current head.")
-    previous = _replayed_state_envelope(events[:-1])
+    previous = _replayed_state_envelope(events[:-1], warnings)
     visible = _superseding_visible_content(binding, manifest, superseded)
     event = {
         **events[-1],
@@ -4161,9 +4231,12 @@ def _superseding_terminal_envelope(
     try:
         result = review_exchange.reduce_request({"previous": previous, "event": event})
     except review_exchange.ProtocolError as error:
-        raise DeliveryError(
-            f"The overriding terminal state is not reducer-derived: {error}"
-        ) from error
+        _warn_event_mismatch(
+            warnings,
+            f"The overriding terminal state is not reducer-derived: {error}",
+        )
+        # Move on: keep the manifest terminal envelope.
+        return manifest.state_envelope
     return cast(dict[str, Any], result["envelope"])
 
 
@@ -5718,7 +5791,14 @@ class GitHubForge:
         comments: Sequence[Mapping[str, Any]],
     ) -> str:
         """Publish one non-terminal reviewer round batch and return its review ID."""
-        review_id = self._create_comment_review(body, head_oid, comments).get("id")
+        response = self._create_comment_review(body, head_oid, comments)
+        # The REST review ID is an integer, and the GraphQL readback uses the
+        # opaque node ID. Prefer the node ID, and normalize an integer ID so a
+        # successful write is never reported as a missing review ID.
+        review_id: object = response.get("node_id")
+        if review_id is None:
+            raw_id = response.get("id")
+            review_id = None if raw_id is None else str(raw_id)
         if not isinstance(review_id, str) or not review_id:
             raise DeliveryError("The published review has no review ID.")
         return review_id
