@@ -10,10 +10,10 @@ import os
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 from types import ModuleType
 from typing import Any, cast
-from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "skills/plan-issue/scripts/publish_plan.py"
@@ -827,7 +827,7 @@ class PlanIssuePublicationTests(unittest.TestCase):
         forge = FakeForge(self.snapshot())
         with tempfile.TemporaryDirectory() as directory:
             receipt_path = Path(directory) / "attempt.json"
-            with mock.patch.object(
+            with unittest.mock.patch.object(
                 self.adapter, "_update_receipt", side_effect=OSError("crash")
             ):
                 result = self.adapter.publish(prepared, str(receipt_path), forge=forge)
@@ -1212,7 +1212,7 @@ class PlanIssuePublicationTests(unittest.TestCase):
                 "PATH": f"{directory}{os.pathsep}{os.environ['PATH']}",
             }
             forge = self.adapter.GitHubForge(prepared["target"])
-            with mock.patch.dict(os.environ, environment, clear=False):
+            with unittest.mock.patch.dict(os.environ, environment, clear=False):
                 comment_id, url = forge.create_comment(body)
 
             captured = capture.read_bytes()
