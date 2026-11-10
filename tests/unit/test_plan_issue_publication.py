@@ -772,7 +772,7 @@ class PlanIssuePublicationTests(unittest.TestCase):
 
         def spy(value: dict[str, Any]) -> dict[str, Any]:
             captured["snapshot"] = copy.deepcopy(value["snapshot"])
-            return real_inventory(value)
+            return cast(dict[str, Any], real_inventory(value))
 
         module.issue_exchange.plan_marker_inventory = spy
         fresh = self.snapshot()

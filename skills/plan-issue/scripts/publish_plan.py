@@ -508,21 +508,21 @@ def _result(
 def _validated_prepared(value: object) -> dict[str, Any]:
     """Validate one prepared document through its public reducer projection."""
     try:
-        return issue_exchange.validate_prepared_document(value)
+        return cast(dict[str, Any], issue_exchange.validate_prepared_document(value))
     except review_exchange.ProtocolError as error:
         raise PublicationError(str(error)) from error
 
 
 def _document_payload(body: str) -> bytes:
     """Build exact UTF-8 request bytes for one body without locale encoding."""
-    document = review_exchange.canonical_json({"body": body})
+    payload = review_exchange.canonical_json({"body": body})
     try:
-        round_trip = review_exchange.parse_json_bytes(document.encode("utf-8"))
+        round_trip = review_exchange.parse_json_bytes(payload.encode("utf-8"))
     except review_exchange.ProtocolError as error:
         raise PublicationError(str(error)) from error
     if not isinstance(round_trip, dict) or round_trip.get("body") != body:
         raise PublicationError("The exact prepared body did not survive encoding.")
-    return document.encode("utf-8")
+    return cast(bytes, payload.encode("utf-8"))
 
 
 class GitHubForge:
@@ -547,11 +547,14 @@ class GitHubForge:
     def snapshot(self) -> dict[str, Any]:
         """Read one complete canonical issue snapshot."""
         try:
-            return mk_issue_snapshot.build_snapshot(
-                self.repository,
-                self.number,
-                self.host,
-                time.monotonic() + mk_issue_snapshot.SNAPSHOT_DEADLINE_SECONDS,
+            return cast(
+                dict[str, Any],
+                mk_issue_snapshot.build_snapshot(
+                    self.repository,
+                    self.number,
+                    self.host,
+                    time.monotonic() + mk_issue_snapshot.SNAPSHOT_DEADLINE_SECONDS,
+                ),
             )
         except review_exchange.ProtocolError as error:
             raise PublicationError(str(error)) from error
