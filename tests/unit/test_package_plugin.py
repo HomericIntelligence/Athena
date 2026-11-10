@@ -358,6 +358,19 @@ if (
                 if member.endswith(".py"):
                     self.assertEqual(0o755, packaged.mode)
 
+    def test_source_archive_requires_the_plan_issue_adapter(self) -> None:
+        """Every packaged harness receives the controlled publication adapter."""
+        member = "skills/plan-issue/scripts/publish_plan.py"
+        self.assertIn(member, REQUIRED_MEMBERS)
+
+        archive_path, checksum_path = build_package(ROOT)
+        self.addCleanup(archive_path.unlink, missing_ok=True)
+        self.addCleanup(checksum_path.unlink, missing_ok=True)
+
+        with tarfile.open(archive_path, mode="r:gz") as archive:
+            packaged = archive.getmember(member)
+        self.assertEqual(0o755, packaged.mode)
+
     def test_source_archive_requires_the_interpreter_floor(self) -> None:
         """The fast lane guards the interpreter floor that the archive carries.
 
