@@ -56,8 +56,10 @@ create a second plan comment. Do not implement code. Do
 not change labels or assignments. Do not create commits. Do not push branches. Do not create pull
 requests. Do not merge changes. Do not make other forge changes.
 
-Use the native issue-comment mechanism of the forge. If the forge cannot safely identify or update
-the actor-owned plan, return a ready-to-publish draft. Explain the capability or ownership gap.
+Use only the controlled publication sequence in steps 6 to 11 below. It invokes
+`publish_plan.py` with one exact prepared document and one dedicated attempt
+receipt. If the forge cannot complete that adapter or recovery cannot identify the outcome,
+return a ready-to-publish draft. Explain the capability or ownership gap.
 
 ## Plan
 
@@ -154,13 +156,18 @@ if you did not run it. Do not create a prose-string test to make the plan appear
 6. Run `issue_exchange.py prepare-plan` with the visible plan and author event.
 7. For `--draft`, return the prepared result and stop.
 8. Before publication, run a fresh producer snapshot and prepare the operation again.
-9. Require the same precondition and exact operation. If they differ, withhold the update.
-10. Make only the returned comment create or update operation.
-11. Read the issue again with a fresh producer snapshot and run `issue_exchange.py
-    verify-publication`.
+9. Persist each prepare result as one exact JSON document. Require the two preparations to be
+   identical in precondition and operation. If they differ, withhold the update.
+10. Invoke
+    [`publish_plan.py publish`](scripts/publish_plan.py)
+    with the exact prepared document and one dedicated attempt-receipt path. Do not extract
+    `operation.body` through Bash command substitution or another line-oriented transport. The
+    adapter submits the exact prepared bytes once and verifies the exact readback.
+11. If the result is `unknown_outcome`, preserve the prepared document and the attempt receipt,
+    stop, and give them to a separate recovery actor.
+    [`publish_plan.py recover`](scripts/publish_plan.py)
+    is read-only and never selects a blind retry.
 12. After verified publication, continue with reviewer assessment within task authority.
-13. If the write or readback result is indeterminate, report `unknown_outcome`. Preserve the
-    prepared operation and available receipt evidence. Reconcile exact readback before a retry.
 
 For an explicit requirements reframe, require changed requirements, the exact retained v1 review
 state, and one live repository-authoritative receipt. The state can be in any phase,

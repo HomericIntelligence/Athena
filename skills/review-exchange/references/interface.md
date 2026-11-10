@@ -1080,7 +1080,84 @@ it returns `verified`. A verified result authorizes cleanup only for `deletion_a
 unknown outcome, do not retry the body replacement.
 
 
-## Bounded task batches
+### Plan publication
+
+The controlled plan-issue publication adapter
+([`publish_plan.py`](../../plan-issue/scripts/publish_plan.py)) invokes these public projections of
+this module. The projections are network-free. They add one controlled publication surface without
+changing the reducer, the carrier codec, or any existing command. The adapter owns the GitHub write
+path, the attempt receipt, and the result envelope. These projections own validation and
+classification only. They are not command-line subcommands.
+
+| Projection | Schema ID | Request | Result |
+| --- | --- | --- | --- |
+| `validate_prepared_document` | Same as the prepared result (`athena.issue-exchange.prepare-result`) | One prepared issue-comment result value | The exact ready prepared result |
+| `publication_preflight` | `athena.issue-exchange.publication-preflight` | Object with exactly `prepared` and `snapshot` | Preflight result |
+| `plan_marker_inventory` | `athena.issue-exchange.plan-marker-inventory` | Object with exactly `snapshot` and `artifact` | Safe marker inventory |
+| `classify_plan_recovery` | `athena.issue-exchange.plan-recovery-classification` | Object with exactly `prepared`, `snapshot`, and `receipt` | Recovery classification |
+
+`validate_prepared_document(value)` applies the same validation that `verify-publication` applies to
+the prepared value: the shape, the controls, the recomputed precondition, the carrier role and
+bindings, the artifact revision binding, and the `next_action` match. It returns the validated
+prepared result. It raises `ProtocolError` on any violation. A caller must treat any violation as a
+refusal before an effect.
+
+`publication_preflight(request)` proves that one fresh snapshot permits one prepared operation. The
+check is stricter than the general foreign-marker tolerance. It requires complete snapshot evidence,
+one role marker for each retained artifact, no foreign role marker, the exact retained identities,
+and the exact derived precondition. The result has `schema_id`, `schema_version` `1`,
+`status` (`matched` or `no_write`), `preflight_code`, `derived_precondition_sha256`,
+`snapshot_sha256`, and `diagnostics`. `preflight_code` is `null` when `status` is `matched`.
+`snapshot_sha256` is the digest of the exact snapshot JSON, or `null` when the snapshot fails
+validation. Every `no_write` result keeps the provider write count at zero. The complete
+`no_write` codes are:
+
+| Code | Cause |
+| --- | --- |
+| `preflight_incomplete_snapshot` | The snapshot is missing, is incomplete, or fails validation. |
+| `preflight_target_drift` | The fresh target differs from the prepared target. |
+| `preflight_actor_drift` | The fresh actor differs from the prepared actor. |
+| `preflight_requirements_drift` | The fresh requirements digest differs from the prepared digest. |
+| `preflight_duplicate_plan_marker` | More than one actor-owned plan marker exists. |
+| `preflight_duplicate_review_marker` | More than one actor-owned review marker exists. |
+| `preflight_inspection_withheld` | One comment has conflicting role markers, or the inspection is withheld. |
+| `preflight_foreign_marker` | A foreign actor owns a plan or review role marker. |
+| `preflight_retained_plan_drift` | The retained plan differs from the prepared summary. |
+| `preflight_retained_review_drift` | The retained review differs from the prepared summary. |
+| `preflight_precondition_drift` | The derived precondition differs from the prepared precondition. |
+
+`plan_marker_inventory(request)` returns the ordered actor-owned plan or review marker inventory
+from one snapshot. `artifact` is `plan` or `review`. The result has `schema_id`, `schema_version`
+`1`, `artifact`, `actor_id`, `comment_count`, `comments`, `marker_comment_sha256`, and
+`foreign_marker_comment_count`. Each record in `comments` has exactly `id`, `author_id`,
+`body_sha256`, and `marker_count`. `comments` lists the actor-owned marker-bearing comments in
+snapshot order. `body_sha256` is the full-body digest. `marker_count` is the number of that role
+marker on top-level lines of the comment. `foreign_marker_comment_count` counts role-marker
+comments that a different actor owns. `marker_comment_sha256` is the digest of the canonical JSON of
+`{schema_id, schema_version, artifact, actor_id, comments}`. The inventory records no comment body,
+no URL, and no credential. It raises `ProtocolError` on an unsupported artifact or an invalid
+snapshot. A publication adapter persists it in the attempt receipt before a write.
+
+`classify_plan_recovery(request)` classifies one plan publication outcome as `absent`, `exact`,
+`malformed`, or `ambiguous`. `receipt` is the exact attempt receipt that the adapter wrote before
+the write (`athena.plan-issue.publication-receipt`, version `1`). Every result has `schema_id`,
+`schema_version` `1`, `status`, `classification` (same value), `binding` (`binding_direct`,
+`binding_recoverable_fence`, `binding_unprovable`, or `null`), `candidate_comment_id`,
+`candidate_url`, `snapshot_sha256`, and `diagnostics`. The classifier is read-only and nonmutating.
+It never selects, schedules, or permits a retry. At the adapter boundary, every recovery result
+keeps `retry_allowed` false. `absent` means the recovery set is empty. `exact` means one candidate
+body equals `operation.body` byte for byte. `malformed` means one candidate is uniquely attributable
+and changed. `ambiguous` means the outcome cannot be proved. The `ambiguous` diagnostics carry one
+of these codes: `recovery_incomplete_snapshot`, `recovery_receipt_invalid`,
+`recovery_receipt_identity_conflict`, `recovery_missing_retained_id`, `recovery_foreign_owner`,
+`recovery_conflicting_role`, `recovery_foreign_marker`, `recovery_prewrite_inventory_changed`,
+`recovery_multiple_candidates`, `recovery_duplicate_role_marker`, `recovery_missing_candidate`,
+`recovery_prewrite_plan_drift`, `recovery_duplicate_review_marker`, `recovery_precondition_drift`,
+or `recovery_unprovable_binding`.
+
+A separate, authorized recovery actor can use the malformed-carrier supersession contract on a later
+epoch. Recovery does not change the issue and does not authorize a blind retry after an
+`unknown_outcome`.
 
 Use `prepare-batches` when the findings or input exceed one operation. Its input is UTF-8 JSON
 lines. The first line is `{"event": <initial-reviewer-event>}` with no findings and no supersession.

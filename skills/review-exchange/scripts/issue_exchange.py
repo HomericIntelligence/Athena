@@ -36,6 +36,10 @@ INSPECT_SCHEMA_ID = "athena.issue-exchange.inspect-result"
 PREPARE_SCHEMA_ID = "athena.issue-exchange.prepare-result"
 PUBLICATION_SCHEMA_ID = "athena.issue-exchange.publication-result"
 FINALIZE_SCHEMA_ID = "athena.issue-exchange.finalize-result"
+PREFLIGHT_SCHEMA_ID = "athena.issue-exchange.publication-preflight"
+INVENTORY_SCHEMA_ID = "athena.issue-exchange.plan-marker-inventory"
+RECOVERY_SCHEMA_ID = "athena.issue-exchange.plan-recovery-classification"
+RECEIPT_SCHEMA_ID = "athena.plan-issue.publication-receipt"
 SCHEMA_VERSION = 1
 CORPUS_VERSION: Final[str] = "0.6.2"
 
@@ -2529,6 +2533,823 @@ def verify_publication(value: object) -> dict[str, Any]:
         "receipt": receipt,
         "diagnostics": diagnostics,
     }
+
+
+def validate_prepared_document(value: object) -> dict[str, Any]:
+    """Return one exact ready prepared issue-comment result.
+
+    This is the public, network-free entry point for a controlled publication
+    adapter. It applies the same validation that exact publication verification
+    applies to the prepared value.
+    """
+    return _validate_prepared_publication(value)
+
+
+def _role_marker_counts(
+    snapshot: Mapping[str, Any], markers: Sequence[str]
+) -> list[tuple[dict[str, Any], int]]:
+    """Return each comment that contains a role marker with its marker count."""
+    marker_set = frozenset(markers)
+    entries: list[tuple[dict[str, Any], int]] = []
+    for comment in snapshot["comments"]:
+        count = sum(
+            1
+            for _start, _end, line in review_exchange.top_level_markdown_lines(
+                comment["body"]
+            )
+            if line in marker_set
+        )
+        if count:
+            entries.append((comment, count))
+    return entries
+
+
+def _marker_lines(body: str, markers: Sequence[str]) -> list[str]:
+    """Return the role-marker lines of one comment body."""
+    marker_set = frozenset(markers)
+    return [
+        line
+        for _start, _end, line in review_exchange.top_level_markdown_lines(body)
+        if line in marker_set
+    ]
+
+
+def _inventory_record(comment: Mapping[str, Any], marker_count: int) -> dict[str, Any]:
+    """Return one safe actor-owned marker inventory record."""
+    return {
+        "id": comment["id"],
+        "author_id": comment["author"]["id"],
+        "body_sha256": _body_sha256(comment["body"]),
+        "marker_count": marker_count,
+    }
+
+
+def _inventory_digest(
+    artifact: str, actor_id: str, comments: Sequence[Mapping[str, Any]]
+) -> str:
+    """Return the stable digest of one ordered marker inventory."""
+    return review_exchange.sha256_json(
+        {
+            "schema_id": INVENTORY_SCHEMA_ID,
+            "schema_version": SCHEMA_VERSION,
+            "artifact": artifact,
+            "actor_id": actor_id,
+            "comments": list(comments),
+        }
+    )
+
+
+def plan_marker_inventory(value: object) -> dict[str, Any]:
+    """Return the ordered actor-owned plan or review marker inventory.
+
+    The inventory records only safe identities and digests. A controlled
+    publication adapter persists it before a write and a recovery actor compares
+    a later snapshot with it.
+    """
+    request = _object(
+        value,
+        "plan marker inventory request",
+        frozenset({"snapshot", "artifact"}),
+    )
+    artifact = _string(request["artifact"], "plan marker inventory.artifact")
+    if artifact not in {"plan", "review"}:
+        raise ProtocolError("The marker inventory artifact is not supported.")
+    snapshot = _snapshot(request["snapshot"])
+    markers = PLAN_MARKERS if artifact == "plan" else REVIEW_MARKERS
+    actor_id = snapshot["actor"]["id"]
+    records = [
+        _inventory_record(comment, count)
+        for comment, count in _role_marker_counts(snapshot, markers)
+        if comment["author"]["id"] == actor_id
+    ]
+    all_role_entries = _role_marker_counts(snapshot, (*PLAN_MARKERS, *REVIEW_MARKERS))
+    foreign_count = sum(
+        1 for comment, _count in all_role_entries if comment["author"]["id"] != actor_id
+    )
+    return {
+        "schema_id": INVENTORY_SCHEMA_ID,
+        "schema_version": SCHEMA_VERSION,
+        "artifact": artifact,
+        "actor_id": actor_id,
+        "comment_count": len(records),
+        "comments": records,
+        "marker_comment_sha256": _inventory_digest(artifact, actor_id, records),
+        "foreign_marker_comment_count": foreign_count,
+    }
+
+
+def _preflight_result(
+    status: str,
+    code: str | None,
+    message: str,
+    *,
+    derived: str | None,
+    snapshot_sha256: str | None,
+) -> dict[str, Any]:
+    """Return one stable publication preflight result."""
+    diagnostics = [] if code is None else [_diagnostic(code, message)]
+    return {
+        "schema_id": PREFLIGHT_SCHEMA_ID,
+        "schema_version": SCHEMA_VERSION,
+        "status": status,
+        "preflight_code": code,
+        "derived_precondition_sha256": derived,
+        "snapshot_sha256": snapshot_sha256,
+        "diagnostics": diagnostics,
+    }
+
+
+def publication_preflight(value: object) -> dict[str, Any]:
+    """Prove that one fresh snapshot permits one prepared comment publication.
+
+    The check is stricter than the general reducer foreign-marker tolerance.
+    It requires complete snapshot evidence, one role marker for each retained
+    artifact, no foreign role marker, the exact retained identities, and the
+    exact derived precondition. It is network-free.
+    """
+    request = _object(
+        value,
+        "publication preflight request",
+        frozenset({"prepared", "snapshot"}),
+    )
+    prepared = _validate_prepared_publication(request["prepared"])
+    try:
+        snapshot = _snapshot(request["snapshot"])
+    except ProtocolError as error:
+        return _preflight_result(
+            "no_write",
+            "preflight_incomplete_snapshot",
+            str(error),
+            derived=None,
+            snapshot_sha256=None,
+        )
+    snapshot_sha256 = review_exchange.sha256_json(snapshot)
+    if snapshot["target"] != prepared["target"]:
+        return _preflight_result(
+            "no_write",
+            "preflight_target_drift",
+            "The fresh snapshot target differs from the prepared target.",
+            derived=None,
+            snapshot_sha256=snapshot_sha256,
+        )
+    if snapshot["actor"]["id"] != prepared["actor_id"]:
+        return _preflight_result(
+            "no_write",
+            "preflight_actor_drift",
+            "The fresh snapshot actor differs from the prepared actor.",
+            derived=None,
+            snapshot_sha256=snapshot_sha256,
+        )
+    requirements = _requirements_sha256(snapshot)
+    if requirements != prepared["requirements_sha256"]:
+        return _preflight_result(
+            "no_write",
+            "preflight_requirements_drift",
+            "The fresh snapshot requirements differ from the prepared requirements.",
+            derived=None,
+            snapshot_sha256=snapshot_sha256,
+        )
+    actor_id = snapshot["actor"]["id"]
+    plan_entries = _role_marker_counts(snapshot, PLAN_MARKERS)
+    review_entries = _role_marker_counts(snapshot, REVIEW_MARKERS)
+    actor_plan = [
+        (comment, count)
+        for comment, count in plan_entries
+        if comment["author"]["id"] == actor_id
+    ]
+    actor_review = [
+        (comment, count)
+        for comment, count in review_entries
+        if comment["author"]["id"] == actor_id
+    ]
+    if len(actor_plan) > 1 or any(count > 1 for _comment, count in actor_plan):
+        return _preflight_result(
+            "no_write",
+            "preflight_duplicate_plan_marker",
+            "The fresh snapshot has a duplicate actor-owned plan marker.",
+            derived=None,
+            snapshot_sha256=snapshot_sha256,
+        )
+    if len(actor_review) > 1 or any(count > 1 for _comment, count in actor_review):
+        return _preflight_result(
+            "no_write",
+            "preflight_duplicate_review_marker",
+            "The fresh snapshot has a duplicate actor-owned review marker.",
+            derived=None,
+            snapshot_sha256=snapshot_sha256,
+        )
+    plan_comment = actor_plan[0][0] if actor_plan else None
+    review_comment = actor_review[0][0] if actor_review else None
+    if (
+        plan_comment is not None
+        and review_comment is not None
+        and plan_comment["id"] == review_comment["id"]
+    ):
+        return _preflight_result(
+            "no_write",
+            "preflight_inspection_withheld",
+            "The fresh snapshot has conflicting role markers.",
+            derived=None,
+            snapshot_sha256=snapshot_sha256,
+        )
+    if any(
+        comment["author"]["id"] != actor_id
+        for comment, _count in (*plan_entries, *review_entries)
+    ):
+        return _preflight_result(
+            "no_write",
+            "preflight_foreign_marker",
+            "The fresh snapshot has a foreign plan or review marker.",
+            derived=None,
+            snapshot_sha256=snapshot_sha256,
+        )
+    operation = prepared["operation"]
+    changed_summary = (
+        None
+        if operation["action"] == "create"
+        else {
+            "id": operation["comment_id"],
+            "author_id": actor_id,
+            "body_sha256": operation["expected_body_sha256"],
+        }
+    )
+    if operation["artifact"] == "plan":
+        expected_plan = changed_summary
+        expected_review = prepared["peer"]
+    else:
+        expected_plan = prepared["peer"]
+        expected_review = changed_summary
+    if _artifact_summary(plan_comment) != expected_plan:
+        return _preflight_result(
+            "no_write",
+            "preflight_retained_plan_drift",
+            "The fresh snapshot retained plan differs from the prepared plan.",
+            derived=None,
+            snapshot_sha256=snapshot_sha256,
+        )
+    if _artifact_summary(review_comment) != expected_review:
+        return _preflight_result(
+            "no_write",
+            "preflight_retained_review_drift",
+            "The fresh snapshot retained review differs from the prepared review.",
+            derived=None,
+            snapshot_sha256=snapshot_sha256,
+        )
+    derived = _precondition(
+        snapshot,
+        requirements,
+        plan_comment,
+        review_comment,
+        prepared["authority_receipt"],
+        prepared["recovery_authority_receipt"],
+    )
+    try:
+        inspection = inspect_snapshot(snapshot)
+    except ProtocolError as error:
+        return _preflight_result(
+            "no_write",
+            "preflight_inspection_withheld",
+            str(error),
+            derived=derived,
+            snapshot_sha256=snapshot_sha256,
+        )
+    if inspection["status"] != "ready":
+        return _preflight_result(
+            "no_write",
+            "preflight_inspection_withheld",
+            "The fresh snapshot inspection is withheld.",
+            derived=derived,
+            snapshot_sha256=snapshot_sha256,
+        )
+    if derived != prepared["precondition_sha256"]:
+        return _preflight_result(
+            "no_write",
+            "preflight_precondition_drift",
+            "The fresh snapshot precondition differs from the prepared precondition.",
+            derived=derived,
+            snapshot_sha256=snapshot_sha256,
+        )
+    return _preflight_result(
+        "matched",
+        None,
+        "",
+        derived=derived,
+        snapshot_sha256=snapshot_sha256,
+    )
+
+
+def _recovery_result(
+    status: str,
+    *,
+    binding: str | None,
+    comment: Mapping[str, Any] | None,
+    snapshot_sha256: str | None,
+    code: str | None = None,
+    message: str = "",
+) -> dict[str, Any]:
+    """Return one nonmutating recovery classification."""
+    diagnostics = [] if code is None else [_diagnostic(code, message)]
+    return {
+        "schema_id": RECOVERY_SCHEMA_ID,
+        "schema_version": SCHEMA_VERSION,
+        "status": status,
+        "classification": status,
+        "binding": binding,
+        "candidate_comment_id": None if comment is None else comment["id"],
+        "candidate_url": None if comment is None else comment["url"],
+        "snapshot_sha256": snapshot_sha256,
+        "diagnostics": diagnostics,
+    }
+
+
+def _recovery_receipt(value: object) -> dict[str, Any]:
+    """Validate one plan publication attempt receipt for recovery."""
+    fields = frozenset(
+        {
+            "schema_id",
+            "schema_version",
+            "stage",
+            "action",
+            "artifact",
+            "target",
+            "actor_id",
+            "requirements_sha256",
+            "precondition_sha256",
+            "operation_sha256",
+            "submitted_body_sha256",
+            "comment_id",
+            "url",
+            "comment_count",
+            "comments",
+            "marker_comment_sha256",
+            "foreign_marker_comment_count",
+        }
+    )
+    receipt = _object(value, "publication attempt receipt", fields)
+    if (
+        receipt["schema_id"] != RECEIPT_SCHEMA_ID
+        or type(receipt["schema_version"]) is not int
+        or receipt["schema_version"] != SCHEMA_VERSION
+    ):
+        raise ProtocolError("The publication attempt receipt is not supported.")
+    stage = _string(receipt["stage"], "publication attempt receipt.stage")
+    if stage not in {"pre_write", "post_response"}:
+        raise ProtocolError("The publication attempt receipt stage is not supported.")
+    action = _string(receipt["action"], "publication attempt receipt.action")
+    if action not in {"create", "update"}:
+        raise ProtocolError("The publication attempt receipt action is not supported.")
+    artifact = _string(receipt["artifact"], "publication attempt receipt.artifact")
+    if artifact != "plan":
+        raise ProtocolError(
+            "The publication attempt receipt artifact is not supported."
+        )
+    target = _prepared_target(receipt["target"])
+    actor_id = _string(receipt["actor_id"], "publication attempt receipt.actor_id")
+    requirements = _digest(
+        receipt["requirements_sha256"],
+        "publication attempt receipt.requirements_sha256",
+    )
+    precondition = _digest(
+        receipt["precondition_sha256"],
+        "publication attempt receipt.precondition_sha256",
+    )
+    operation_sha256 = _digest(
+        receipt["operation_sha256"],
+        "publication attempt receipt.operation_sha256",
+    )
+    submitted_body_sha256 = _digest(
+        receipt["submitted_body_sha256"],
+        "publication attempt receipt.submitted_body_sha256",
+    )
+    comment_id = _nullable_string(
+        receipt["comment_id"], "publication attempt receipt.comment_id"
+    )
+    url = _nullable_string(receipt["url"], "publication attempt receipt.url")
+    if stage == "pre_write" and (comment_id is not None or url is not None):
+        raise ProtocolError("A pre-write receipt cannot contain a comment identity.")
+    if stage == "post_response" and (comment_id is None or url is None):
+        raise ProtocolError("A post-response receipt needs a comment identity.")
+    comment_count = receipt["comment_count"]
+    if type(comment_count) is not int or comment_count < 0:
+        raise ProtocolError("The receipt comment count is not valid.")
+    comments_value = receipt["comments"]
+    if not isinstance(comments_value, list):
+        raise ProtocolError("The receipt inventory must be a list.")
+    comments: list[dict[str, Any]] = []
+    for index, raw in enumerate(comments_value):
+        record = _object(
+            raw,
+            f"publication attempt receipt.comments[{index}]",
+            frozenset({"id", "author_id", "body_sha256", "marker_count"}),
+        )
+        record_id = _string(
+            record["id"], f"publication attempt receipt.comments[{index}].id"
+        )
+        author_id = _string(
+            record["author_id"],
+            f"publication attempt receipt.comments[{index}].author_id",
+        )
+        body_sha256 = _digest(
+            record["body_sha256"],
+            f"publication attempt receipt.comments[{index}].body_sha256",
+        )
+        marker_count = record["marker_count"]
+        if type(marker_count) is not int or marker_count < 1:
+            raise ProtocolError("A receipt inventory marker count is not valid.")
+        comments.append(
+            {
+                "id": record_id,
+                "author_id": author_id,
+                "body_sha256": body_sha256,
+                "marker_count": marker_count,
+            }
+        )
+    if len({record["id"] for record in comments}) != len(comments):
+        raise ProtocolError("The receipt inventory contains a duplicate comment ID.")
+    if comment_count != len(comments):
+        raise ProtocolError("The receipt comment count does not match its inventory.")
+    marker_digest = _digest(
+        receipt["marker_comment_sha256"],
+        "publication attempt receipt.marker_comment_sha256",
+    )
+    if marker_digest != _inventory_digest("plan", actor_id, comments):
+        raise ProtocolError("The receipt inventory digest does not match its records.")
+    foreign_count = receipt["foreign_marker_comment_count"]
+    if type(foreign_count) is not int or foreign_count < 0:
+        raise ProtocolError("The receipt foreign marker count is not valid.")
+    assert (
+        requirements is not None
+        and precondition is not None
+        and operation_sha256 is not None
+        and submitted_body_sha256 is not None
+    )
+    return {
+        "schema_id": RECEIPT_SCHEMA_ID,
+        "schema_version": 1,
+        "stage": stage,
+        "action": action,
+        "artifact": artifact,
+        "target": target,
+        "actor_id": actor_id,
+        "requirements_sha256": requirements,
+        "precondition_sha256": precondition,
+        "operation_sha256": operation_sha256,
+        "submitted_body_sha256": submitted_body_sha256,
+        "comment_id": comment_id,
+        "url": url,
+        "comment_count": comment_count,
+        "comments": comments,
+        "marker_comment_sha256": marker_digest,
+        "foreign_marker_comment_count": foreign_count,
+    }
+
+
+def _candidate_binding(
+    body: str, prepared: Mapping[str, Any], operation: Mapping[str, Any]
+) -> str:
+    """Classify how one changed plan body binds the prepared operation."""
+    prepared_envelope = review_exchange.extract_carrier(operation["body"])
+    prepared_artifact = prepared_envelope["state"]["artifact_binding"]
+    visible_sha256 = prepared_artifact["visible_content_sha256"]
+    expected_revision = (
+        f"pending:{visible_sha256}"
+        if operation["action"] == "create"
+        else operation["comment_id"]
+    )
+    target = prepared["target"]
+    core_target = {
+        "provider": target["provider"],
+        "repository": target["repository"],
+        "number": target["number"],
+        "url": target["url"],
+    }
+
+    def matches(envelope: Mapping[str, Any]) -> bool:
+        state = envelope["state"]
+        artifact = state["artifact_binding"]
+        return bool(
+            envelope["schema_id"] == review_exchange.AUTHOR_EVENT_SCHEMA_ID
+            and state["target"] == core_target
+            and state["requirements_sha256"] == prepared["requirements_sha256"]
+            and artifact["revision"] == expected_revision
+            and artifact["sha256"] == artifact["visible_content_sha256"]
+        )
+
+    try:
+        envelope = review_exchange.extract_carrier_pair(body)[1]
+    except ProtocolError:
+        if not body.endswith("\n```\n\n"):
+            return "binding_unprovable"
+        try:
+            envelope = review_exchange.extract_carrier_pair(body[:-1])[1]
+        except ProtocolError:
+            return "binding_unprovable"
+        return (
+            "binding_recoverable_fence" if matches(envelope) else "binding_unprovable"
+        )
+    return "binding_direct" if matches(envelope) else "binding_unprovable"
+
+
+def classify_plan_recovery(value: object) -> dict[str, Any]:
+    """Classify one plan publication outcome without selecting a retry.
+
+    The classifier is network-free and nonmutating. It reads the exact prepared
+    operation, one fresh snapshot, and one attempt receipt. Every result forbids
+    a blind retry at the adapter boundary.
+    """
+    request = _object(
+        value,
+        "plan recovery request",
+        frozenset({"prepared", "snapshot", "receipt"}),
+    )
+    prepared = _validate_prepared_publication(request["prepared"])
+    operation = prepared["operation"]
+    if operation["artifact"] != "plan":
+        raise ProtocolError("Only a plan publication can be recovered.")
+    try:
+        snapshot = _snapshot(request["snapshot"])
+    except ProtocolError as error:
+        return _recovery_result(
+            "ambiguous",
+            binding=None,
+            comment=None,
+            snapshot_sha256=None,
+            code="recovery_incomplete_snapshot",
+            message=str(error),
+        )
+    snapshot_sha256 = review_exchange.sha256_json(snapshot)
+    try:
+        receipt = _recovery_receipt(request["receipt"])
+    except ProtocolError as error:
+        return _recovery_result(
+            "ambiguous",
+            binding=None,
+            comment=None,
+            snapshot_sha256=snapshot_sha256,
+            code="recovery_receipt_invalid",
+            message=str(error),
+        )
+    if (
+        receipt["operation_sha256"] != operation["operation_sha256"]
+        or receipt["target"] != prepared["target"]
+        or receipt["actor_id"] != prepared["actor_id"]
+        or receipt["submitted_body_sha256"] != operation["body_sha256"]
+        or receipt["requirements_sha256"] != prepared["requirements_sha256"]
+        or receipt["precondition_sha256"] != prepared["precondition_sha256"]
+        or receipt["action"] != operation["action"]
+    ):
+        return _recovery_result(
+            "ambiguous",
+            binding=None,
+            comment=None,
+            snapshot_sha256=snapshot_sha256,
+            code="recovery_receipt_identity_conflict",
+            message="The attempt receipt does not bind the prepared operation.",
+        )
+    if operation["action"] == "update":
+        retained_id = operation["comment_id"]
+        if receipt["comment_id"] not in {None, retained_id}:
+            return _recovery_result(
+                "ambiguous",
+                binding=None,
+                comment=None,
+                snapshot_sha256=snapshot_sha256,
+                code="recovery_receipt_identity_conflict",
+                message="The attempt receipt names a different retained comment.",
+            )
+    else:
+        retained_id = receipt["comment_id"]
+    if retained_id is not None:
+        matches = [
+            comment for comment in snapshot["comments"] if comment["id"] == retained_id
+        ]
+        if not matches:
+            return _recovery_result(
+                "ambiguous",
+                binding=None,
+                comment=None,
+                snapshot_sha256=snapshot_sha256,
+                code="recovery_missing_retained_id",
+                message="The retained comment identity is absent from the snapshot.",
+            )
+        comment = matches[0]
+        if comment["author"]["id"] != prepared["actor_id"]:
+            return _recovery_result(
+                "ambiguous",
+                binding=None,
+                comment=None,
+                snapshot_sha256=snapshot_sha256,
+                code="recovery_foreign_owner",
+                message="The retained comment is not owned by the prepared actor.",
+            )
+        plan_markers = _marker_lines(comment["body"], PLAN_MARKERS)
+        review_markers = _marker_lines(comment["body"], REVIEW_MARKERS)
+        if len(plan_markers) != 1 or review_markers:
+            return _recovery_result(
+                "ambiguous",
+                binding=None,
+                comment=None,
+                snapshot_sha256=snapshot_sha256,
+                code="recovery_conflicting_role",
+                message="The retained comment does not have one plan role marker.",
+            )
+        binding = _candidate_binding(comment["body"], prepared, operation)
+        if comment["body"] == operation["body"]:
+            return _recovery_result(
+                "exact",
+                binding=binding,
+                comment=comment,
+                snapshot_sha256=snapshot_sha256,
+            )
+        return _recovery_result(
+            "malformed",
+            binding=binding,
+            comment=comment,
+            snapshot_sha256=snapshot_sha256,
+        )
+    if operation["action"] == "update":
+        return _recovery_result(
+            "ambiguous",
+            binding=None,
+            comment=None,
+            snapshot_sha256=snapshot_sha256,
+            code="recovery_missing_retained_id",
+            message="The prepared update has no retained comment identity.",
+        )
+    actor_id = prepared["actor_id"]
+    plan_entries = _role_marker_counts(snapshot, PLAN_MARKERS)
+    review_entries = _role_marker_counts(snapshot, REVIEW_MARKERS)
+    all_role_entries = _role_marker_counts(snapshot, (*PLAN_MARKERS, *REVIEW_MARKERS))
+    if any(comment["author"]["id"] != actor_id for comment, _count in all_role_entries):
+        return _recovery_result(
+            "ambiguous",
+            binding=None,
+            comment=None,
+            snapshot_sha256=snapshot_sha256,
+            code="recovery_foreign_marker",
+            message="The recovery snapshot has a foreign role marker.",
+        )
+    plan_ids = {comment["id"] for comment, _count in plan_entries}
+    review_ids = {comment["id"] for comment, _count in review_entries}
+    if plan_ids & review_ids:
+        return _recovery_result(
+            "ambiguous",
+            binding=None,
+            comment=None,
+            snapshot_sha256=snapshot_sha256,
+            code="recovery_conflicting_role",
+            message="The recovery snapshot has conflicting role markers.",
+        )
+    current = plan_marker_inventory({"snapshot": snapshot, "artifact": "plan"})
+    current_records = cast(list[dict[str, Any]], current["comments"])
+    current_by_id = {record["id"]: record for record in current_records}
+    prewrite_ids = {record["id"] for record in receipt["comments"]}
+    for record in receipt["comments"]:
+        if current_by_id.get(record["id"]) != record:
+            return _recovery_result(
+                "ambiguous",
+                binding=None,
+                comment=None,
+                snapshot_sha256=snapshot_sha256,
+                code="recovery_prewrite_inventory_changed",
+                message="A pre-write plan marker record changed.",
+            )
+    recovery_set = [
+        record for record in current_records if record["id"] not in prewrite_ids
+    ]
+    if not recovery_set:
+        return _recovery_result(
+            "absent",
+            binding=None,
+            comment=None,
+            snapshot_sha256=snapshot_sha256,
+            code="recovery_absent",
+            message="The recovery snapshot has no new plan candidate.",
+        )
+    if len(recovery_set) > 1:
+        return _recovery_result(
+            "ambiguous",
+            binding=None,
+            comment=None,
+            snapshot_sha256=snapshot_sha256,
+            code="recovery_multiple_candidates",
+            message="The recovery snapshot has multiple new plan candidates.",
+        )
+    candidate_record = recovery_set[0]
+    if candidate_record["marker_count"] != 1:
+        return _recovery_result(
+            "ambiguous",
+            binding=None,
+            comment=None,
+            snapshot_sha256=snapshot_sha256,
+            code="recovery_duplicate_role_marker",
+            message="The new plan candidate has multiple role markers.",
+        )
+    candidate = next(
+        (
+            comment
+            for comment in snapshot["comments"]
+            if comment["id"] == candidate_record["id"]
+        ),
+        None,
+    )
+    if candidate is None:
+        return _recovery_result(
+            "ambiguous",
+            binding=None,
+            comment=None,
+            snapshot_sha256=snapshot_sha256,
+            code="recovery_missing_candidate",
+            message="The new plan candidate is not readable.",
+        )
+    if receipt["comments"]:
+        return _recovery_result(
+            "ambiguous",
+            binding=None,
+            comment=candidate,
+            snapshot_sha256=snapshot_sha256,
+            code="recovery_prewrite_plan_drift",
+            message="A create recovery cannot have a pre-write plan record.",
+        )
+    actor_review = [
+        comment
+        for comment, _count in review_entries
+        if comment["author"]["id"] == actor_id
+    ]
+    if len(actor_review) > 1:
+        return _recovery_result(
+            "ambiguous",
+            binding=None,
+            comment=candidate,
+            snapshot_sha256=snapshot_sha256,
+            code="recovery_duplicate_review_marker",
+            message="The recovery snapshot has multiple retained reviews.",
+        )
+    review_summary = _artifact_summary(actor_review[0]) if actor_review else None
+    if review_summary != prepared["peer"]:
+        return _recovery_result(
+            "ambiguous",
+            binding=None,
+            comment=candidate,
+            snapshot_sha256=snapshot_sha256,
+            code="recovery_precondition_drift",
+            message="The recovery snapshot does not reproduce the prepared review.",
+        )
+    requirements = _requirements_sha256(snapshot)
+    if (
+        snapshot["target"] != prepared["target"]
+        or snapshot["actor"]["id"] != actor_id
+        or requirements != prepared["requirements_sha256"]
+    ):
+        return _recovery_result(
+            "ambiguous",
+            binding=None,
+            comment=candidate,
+            snapshot_sha256=snapshot_sha256,
+            code="recovery_precondition_drift",
+            message="The recovery snapshot does not reproduce the prepared issue.",
+        )
+    derived = _precondition_sha256(
+        target=snapshot["target"],
+        actor_id=actor_id,
+        requirements_sha256=requirements,
+        plan=None,
+        review=review_summary,
+        authority_receipt=prepared["authority_receipt"],
+        recovery_authority_receipt=prepared["recovery_authority_receipt"],
+    )
+    if derived != prepared["precondition_sha256"]:
+        return _recovery_result(
+            "ambiguous",
+            binding=None,
+            comment=candidate,
+            snapshot_sha256=snapshot_sha256,
+            code="recovery_precondition_drift",
+            message="The recovery snapshot does not reproduce the prepared precondition.",
+        )
+    if candidate["body"] == operation["body"]:
+        return _recovery_result(
+            "exact",
+            binding="binding_direct",
+            comment=candidate,
+            snapshot_sha256=snapshot_sha256,
+        )
+    binding = _candidate_binding(candidate["body"], prepared, operation)
+    if binding == "binding_unprovable":
+        return _recovery_result(
+            "ambiguous",
+            binding=binding,
+            comment=candidate,
+            snapshot_sha256=snapshot_sha256,
+            code="recovery_unprovable_binding",
+            message="The changed plan candidate does not prove its operation epoch.",
+        )
+    return _recovery_result(
+        "malformed",
+        binding=binding,
+        comment=candidate,
+        snapshot_sha256=snapshot_sha256,
+    )
 
 
 def _source_token(comment: Mapping[str, Any]) -> dict[str, str]:

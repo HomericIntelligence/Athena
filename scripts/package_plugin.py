@@ -60,6 +60,7 @@ REQUIRED_MEMBERS: Final[frozenset[str]] = frozenset(
         "skills/realign/scripts/resolve_assessment.py",
         "skills/issue-review/SKILL.md",
         "skills/plan-issue/SKILL.md",
+        "skills/plan-issue/scripts/publish_plan.py",
         "skills/finalize-plan/SKILL.md",
         "docs/dependency-resolution.md",
         "docs/policies/autonomous-workflows.md",
