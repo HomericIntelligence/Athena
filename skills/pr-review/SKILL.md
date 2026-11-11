@@ -23,13 +23,13 @@ No particular structure, `.git` directory, or metadata file is required.
 
 ## Independence and coordinated reviews
 
-Aim for each review to run in a fresh context that did not author or respond to the reviewed artifact. One authenticated account can produce many independent reviews, because independence comes from the review context, not from the account.
+A review is independent only when it runs in a fresh context that did not author or author-respond to the reviewed artifact. One authenticated account can produce many independent reviews, because independence comes from the review context, not from the account.
 
-A coordinator may dispatch N independent reviews for one artifact. Each review can return its own report and judgement. Prefer to reduce an unresolved disagreement or partial result set rather than synthesize a consensus GO from the set.
+A coordinator may dispatch N independent reviews for one artifact. Each review can return its own report and judgement. An unresolved disagreement or partial review set cannot become a consensus GO.
 
-Prefer one delivery owner for each artifact. A delegated review can report findings and may never publish. The coordinator can publish, set the verdict label, and request auto-merge after an implementation GO.
+Exactly one delivery owner acts for each artifact. A delegated review can report findings and never publishes. The coordinator publishes, sets the verdict label, and may request auto-merge after an implementation GO.
 
-A context that already reviewed the artifact in a previous round is not independent for a later round. A later round is best served by a fresh context.
+A context that already reviewed the artifact is not independent for a later round on that artifact. A later round uses a fresh context.
 
 ## Workflow
 
@@ -52,6 +52,8 @@ A context that already reviewed the artifact in a previous round is not independ
 9. **Return the result.** State the comment location, the applied label, the auto-merge state, and any unexamined evidence.
 
 ## Delivery
+
+For a batch of coordinated reviews, use [`scripts/independence.py`](scripts/independence.py) to classify whether the reports are independent and whether the batch reaches GO. Independence belongs to the review context, not the authenticated account. A report made with fresh context that did not author or author-respond is independent.
 
 Use [`scripts/delivery.py`](scripts/delivery.py) to publish the report and apply the selected label. It may:
 - comment on a pull request or issue when the target is available;

@@ -42,7 +42,7 @@ def _run(
     return completed.returncode, completed.stdout, completed.stderr
 
 
-def _labels(repo: str, number: int) -> list[str]:
+def _labels(repo: str, number: int) -> list[str] | None:
     code, out, _ = _run(
         [
             "api",
@@ -53,7 +53,7 @@ def _labels(repo: str, number: int) -> list[str]:
         ]
     )
     if code != 0:
-        return []
+        return None
     return [line for line in out.splitlines() if line]
 
 
@@ -101,7 +101,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "label": label,
     }
     if args.print_only:
-        return _result("delivered", detail)
+        return _result("planned", detail)
     repo = args.repo
     if repo is None:
         code, out, _ = _run(
@@ -139,25 +139,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         detail["comment_error"] = err.strip()
     existing = _labels(repo, args.target)
-    desired = [name for name in existing if name not in SIBLING]
-    if label not in desired:
-        desired.append(label)
-    payload = json.dumps({"labels": desired}, separators=(",", ":"))
-    code, out, err = _run(
-        [
-            "api",
-            "--method",
-            "PATCH",
-            f"repos/{repo}/issues/{args.target}/labels",
-            "--input",
-            "-",
-        ],
-        input_text=payload,
-    )
-    if code == 0:
-        status.append("labelled")
+    if existing is None:
+        detail["label_error"] = "label read failed; label write skipped"
     else:
-        detail["label_error"] = err.strip()
+        sibling = SIBLING[label]
+        desired = [name for name in existing if name != sibling]
+        if label not in desired:
+            desired.append(label)
+        payload = json.dumps({"labels": desired}, separators=(",", ":"))
+        code, out, err = _run(
+            [
+                "api",
+                "--method",
+                "PATCH",
+                f"repos/{repo}/issues/{args.target}/labels",
+                "--input",
+                "-",
+            ],
+            input_text=payload,
+        )
+        if code == 0:
+            status.append("labelled")
+        else:
+            detail["label_error"] = err.strip()
     if (
         args.auto_merge
         and args.kind == IMPLEMENTATION
