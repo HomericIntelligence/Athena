@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import ModuleType
+from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "skills/pr-review/scripts/delivery.py"
@@ -28,7 +29,9 @@ class FakeGh:
         self.responses = responses
         self.calls: list[tuple[tuple[str, ...], str | None]] = []
 
-    def __call__(self, arguments: list[str], *, input_text: str | None = None):
+    def __call__(
+        self, arguments: list[str], *, input_text: str | None = None
+    ) -> tuple[int, str, str]:
         self.calls.append((tuple(arguments), input_text))
         for match, code, stdout, stderr in self.responses:
             if arguments[: len(match)] == match:
@@ -38,7 +41,7 @@ class FakeGh:
 
 class ReviewDeliveryTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.module = load_module()
+        self.module = cast(Any, load_module())
         self._original_run = self.module._run
 
     def tearDown(self) -> None:
@@ -73,7 +76,7 @@ class ReviewDeliveryTests(unittest.TestCase):
                 (["pr", "merge", "--auto", "--squash"], 0, "{}", ""),
             ]
         )
-        self.module._run = fake  # type: ignore[method-assign]
+        self.module._run = fake
         with tempfile.NamedTemporaryFile("w+", encoding="utf-8") as body:
             body.write("review body\n")
             body.flush()
@@ -96,7 +99,7 @@ class ReviewDeliveryTests(unittest.TestCase):
         patched = next(
             call for call in fake.calls if call[0][:2] == ("api", "--method")
         )
-        payload = json.loads(patched[1])
+        payload = json.loads(cast(str, patched[1]))
         self.assertIn("state:implementation-go", payload["labels"])
         self.assertNotIn("state:implementation-no-go", payload["labels"])
         self.assertTrue(any(call[0][:2] == ("pr", "merge") for call in fake.calls))
@@ -115,7 +118,7 @@ class ReviewDeliveryTests(unittest.TestCase):
                 (["api", "--method", "PATCH"], 0, "[]", ""),
             ]
         )
-        self.module._run = fake  # type: ignore[method-assign]
+        self.module._run = fake
         with tempfile.NamedTemporaryFile("w+", encoding="utf-8") as body:
             body.write("review body\n")
             body.flush()
@@ -137,7 +140,7 @@ class ReviewDeliveryTests(unittest.TestCase):
         patched = next(
             call for call in fake.calls if call[0][:2] == ("api", "--method")
         )
-        payload = json.loads(patched[1])
+        payload = json.loads(cast(str, patched[1]))
         self.assertIn("state:implementation-no-go", payload["labels"])
         self.assertNotIn("state:implementation-go", payload["labels"])
         self.assertFalse(any(call[0][:2] == ("pr", "merge") for call in fake.calls))
