@@ -1,47 +1,38 @@
 ---
 name: finalize-plan
 license: BSD-3-Clause
-description: Create an issue body after `plan-issue` and `issue-review` approve one exact actor-owned epoch with `GO`. `--draft` is read-only. Recover missing or stale inputs. Preserve foreign comments. Missing cleanup capability does not block an authorized body update.
+description: Create an issue body after `plan-issue` and `issue-review` deliver their results. `--draft` is read-only. Preserve foreign comments. Missing cleanup capability does not block an authorized body update.
 argument-hint: "[--draft] ISSUE_NUMBER_OR_URL"
 allowed-tools: [Read, Bash, Grep, Glob]
 ---
 
-# Finalize an approved issue plan
+# Finalize an issue plan
 
-Purpose: Make the approved plan the implementation entry point. Do not convert review history,
+Purpose: Make the delivered plan the implementation entry point. Do not convert review history,
 suggestions, or generated text into requirements.
 
 Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to all
 prose that it produces.
 
-Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
-[review contract](../../docs/review/common.md),
-[review-exchange mechanism](../review-exchange/SKILL.md),
-[design-document structure](../../docs/review/design-docs.md),
-[language routing](../../docs/review/language-routing.md), and
-[behavior-first testing](../../docs/review/behavior-first-testing.md).
-
 Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
 recovery, resources, validation, and delivery.
-For authority receipts, prefer forge records. If unavailable, use explicit conversation authority
-with its actual log ID under that policy. Keep decisions and successful publication verifiable.
 
 ## Engineering principles
 
 Use the canonical [engineering-principles catalog](../../docs/principles/README.md) to make these
 finalization decisions:
 
-- [P010 Scope Fidelity](../../docs/principles/README.md#p010): Change only the issue body and the two
-  sealed, actor-owned comments for the verified epoch.
+- [P010 Scope Fidelity](../../docs/principles/README.md#p010): Change only the issue body and, when
+  cleanup is authorized, the actor-owned plan and review comments.
 - [P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061): Before a
-  write, make sure that the epoch and authority agree with this skill's delivery contract.
+  write, make sure the target and your authority for the write agree with this skill's delivery
+  contract.
 - [P062 Human Approval for Irreversible or High-Risk Actions](../../docs/principles/README.md#p062):
   If the delivery contract gives authority for the write, continue without a second approval.
 - [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063): Map each source
   requirement to the issue body without information loss.
 - [P065 Verify Before Claiming Completion](../../docs/principles/README.md#p065): Before you report
-  that finalization is completed, read the issue body. Make sure that it is the same as the approved
-  body.
+  that finalization is completed, read the issue body. Make sure that it is the intended body.
 - [P044 Atomicity Where Possible](../../docs/principles/README.md#p044): Use one body update for the
   replacement.
 - [P083 Irreversible Actions Last](../../docs/principles/README.md#p083): Do not remove an applicable
@@ -51,10 +42,10 @@ finalization decisions:
 
 ## Scope and delivery
 
-`--draft` is read-only. If you do not use `--draft`, first revalidate the authority and target under
-[P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061). This skill
-can then replace the resolved issue body one time. Only after an exact body readback, it can delete
-the two sealed, actor-owned plan and review comments. Do not update these items:
+`--draft` is read-only. If you do not use `--draft`, first revalidate the target and your authority
+under [P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061). This skill
+can then replace the resolved issue body one time. Only after the body update is read back, it can
+delete actor-owned plan and review comments when cleanup is authorized. Do not update these items:
 
 - title;
 - labels;
@@ -66,130 +57,78 @@ the two sealed, actor-owned plan and review comments. Do not update these items:
 - pull requests; or
 - repository files.
 
-After the skill removes the intermediate comments, the finalized body must retain the required
-provenance.
-
-Use the forge's native issue-body mechanism. The host must have these capabilities:
+Use the forge's native issue-body mechanism. The host should have these capabilities:
 
 - authenticate the actor;
 - enumerate exact comments;
 - delete exact owned comments, only when cleanup is available and authorized;
 - read the issue body;
-- compare identities;
 - make one exact body update; and
 - read back that body update.
 
-If a body-write capability remains unavailable after recovery, return a ready-to-publish draft and
+If a body-write capability is unavailable after recovery, return a ready-to-publish draft and
 exact manual command. Missing comment deletion does not block the body update. Preserve foreign
-comments and report pending cleanup.
-Do not create plan or review comments to make finalization possible. Do not adopt plan or review
-comments for this purpose. Do not edit plan or review comments for this purpose. Do not replace plan
-or review comments for this purpose.
-
-## Finalized planning epoch
-
-Call only `issue_exchange.py verify-finalize`. Do not call `inspect`, `prepare-plan`,
-`prepare-review`, or `verify-publication`. Do not perform another review. Do not parse carrier prose
-or invent `R/P/V/F` values. Prefer the tested helper. If it fails, attempt repair and issue handling
-before an equivalent verified fallback. Record its actual method; never fabricate a helper receipt.
-
-A planning epoch is one set of these sealed source identities:
-
-- `R` is the canonical digest of the original issue requirements. It contains the exact issue ID,
-  title, body, and acceptance criteria before finalization.
-- `P` is the plan-source token over one actor-owned
-  `<!-- HomericIntelligence:plan-issue -->` comment ID and its complete-body digest.
-- `V` is the review-source token over one actor-owned
-  `<!-- HomericIntelligence:issue-review -->` comment ID and its complete-body digest.
-
-`P` and `V` must identify different comment IDs. Do not use one comment as both plan and review.
-
-The review must contain the same issue, `R`, plan-comment ID, and `P`. These values must match
-exactly. The review must have the exact `GO` verdict. It must not have an unresolved `critical`,
-`major`, or other `required` finding. Do not write if an artifact is conditional, partial,
-malformed, stale, duplicated, absent, or not verifiable until recovery establishes the exact epoch.
-Foreign comments remain unchanged and do not block an otherwise authorized body update.
-
-The remote repository target is not a sealed planning input. Movement of that target does not make
-an unchanged planning epoch stale.
-
-The helper records exactly one marker in the rendered body:
-`<!-- HomericIntelligence:finalize-plan R=<R> P=<P> V=<V> F=<F> -->`. It calculates `F` from the
-canonical final body with the literal `<F>` placeholder. For GitHub, the canonical final body is the
-exact issue-body form that GitHub publishes. That form has no final line feed. `F`, `body`,
-`body_sha256`, and `operation_sha256` bind that exact form. Every other provider keeps the generated
-terminal line feed. Do not add, edit, or move the returned
-marker. The marker identifies the sealed source identities separately from the generated body. It
-also permits later readback verification without recursion.
-
-For migration only, resolve the exact actor-owned legacy aliases in the shared issue-planning contract.
-Resolve an existing exact `<!-- athena:finalize-plan R=<R> P=<P> V=<V> F=<F> -->` body marker only as
-sealed historical evidence. New finalizations must write the `HomericIntelligence` markers. Do not emit
-both marker versions.
+comments. Do not adopt, edit, or replace plan or review comments from another actor.
 
 ## Finalize
 
-1. Build the issue snapshot with
-   [`mk_issue_snapshot.py`](../review-exchange/scripts/mk_issue_snapshot.py). This skill does not
-   build, normalize, or edit a snapshot.
-2. Build compact and lossless candidate content without a finalization marker.
-3. Do not parse a plan marker, review marker, carrier, ledger, or source digest in this skill.
-4. Apply [P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001) only to the
-   candidate content.
-5. Make the presentation simple.
-6. Do not remove a requirement.
-7. Do not change the meaning of the approved architecture.
-8. Start the candidate content with **Why**.
-9. Preserve the original problem, outcome, and requirements that cannot change.
-10. If a system diagram makes at least three relationships, boundaries, or state transitions
-    clearer, include it.
-11. Include the architecture description, implementation plan, operations, and provenance.
-12. Preserve all items in this list:
+1. Read the issue title, body, and comments. Read the plan comment and the review comment when
+   they exist. Read applicable repository context. If Git or forge metadata is absent, proceed
+   with the input you have; do not withhold the output because metadata is missing.
+2. Report what informed the judgement: the issue, the plan comment, the review comment, and the
+   repository files you read. Name what you could not inspect and why.
+3. Build the candidate body. It has no finalization marker:
 
-   - acceptance criteria;
-   - implementation boundaries;
-   - validation;
-   - migration or cutover steps;
-   - rollback conditions;
-   - dependencies;
-   - residual risks; and
-   - out-of-scope decisions.
+   - Start with **Why**.
+   - Preserve the original problem, outcome, and requirements that cannot change.
+   - Keep the architecture description, the implementation plan, and the operations summary.
+   - If a system diagram makes at least three relationships, boundaries, or state transitions
+     clearer, include it.
+   - Preserve all items in this list:
 
-13. Unless the reviewed canonical plan adopted a review suggestion, record the suggestion as optional
-    residual context.
-14. Do not invent files, commands, requirements, architecture, implementation results, or validation
-    evidence.
-15. If a smaller lossless result is sufficient, do not copy historical revision transcripts.
-16. If a smaller lossless result is sufficient, do not duplicate the plan and review verbatim.
-17. Call `issue_exchange.py verify-finalize` with the snapshot and candidate content.
-18. Accept only a `ready` result. It must include exact `GO`, current matching `R/P/V`, a terminal
-    ledger, no coverage gap, and authority receipts for accepted risks.
-19. Use the returned body, marker, source values, operation, and deletion allowlist without
-    modification.
-20. If the user selects `--draft`, return the complete prepared result and do not make a forge write.
-21. Immediately before publication, apply
-    [P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061).
-22. Run a fresh producer snapshot and call the same preflight form again. Require the same state,
-    precondition, and operation.
-23. If an input changed, refresh the affected evidence and prepare the body again. Preserve all
-    still-valid decisions. Do not publish stale content.
-24. Under [P044 Atomicity Where Possible](../../docs/principles/README.md#p044), publish exactly one
-    issue-body replacement.
-25. Immediately read the issue again. Call the readback form of `verify-finalize` with the snapshot
-    and prepared result.
-26. Continue only when the helper returns `verified`. Use only its deletion allowlist.
-27. If a timeout, indeterminate response, or readback mismatch occurs, report `unknown_outcome`.
-    Reconcile the exact body readback before any retry or dependent mutation.
-28. Only after verified body readback, use
-    [P083 Irreversible Actions Last](../../docs/principles/README.md#p083) to read each sealed comment
-    again.
-29. Verify the exact ID, actor, marker, and digest of each listed comment.
-30. Delete a listed comment only after its exact verification. Do not delete a foreign,
-    replacement, changed, or unlisted comment.
-31. If deletion fails, times out, or has an indeterminate result, report `partial_cleanup` and the
-    identities of the comments that remain.
-32. Preserve the finalized body. Reconcile comment state before retrying an authorized deletion.
-    Missing cleanup capability leaves comments intact and does not undo body publication.
+     - acceptance criteria;
+     - implementation boundaries;
+     - validation;
+     - migration or cutover steps;
+     - rollback conditions;
+     - dependencies;
+     - residual risks; and
+     - out-of-scope decisions.
+
+   - Unless the reviewed plan adopted a review suggestion, record the suggestion as optional
+     residual context.
+   - Do not invent files, commands, requirements, architecture, implementation results, or
+     validation evidence.
+   - Do not remove a requirement. Do not change the meaning of the approved architecture.
+   - If a smaller lossless result is sufficient, do not copy historical revision transcripts.
+   - If a smaller lossless result is sufficient, do not duplicate the plan and review verbatim.
+
+4. Apply [P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001) to the candidate
+   content. Make the presentation simple.
+5. Make sure the candidate content is complete with respect to the requirements. If a requirement
+   cannot be mapped, say so in the delivery instead of dropping it silently.
+6. If the user selects `--draft`, return the complete prepared result and do not make a forge write.
+7. Immediately before publication, apply
+   [P061 Separate Decision from High-Impact Execution](../../docs/principles/README.md#p061). Read the
+   issue again. If the issue or the target comment changed in a way that affects the body, refresh
+   the affected content and prepare the body again.
+8. Under [P044 Atomicity Where Possible](../../docs/principles/README.md#p044), publish exactly one
+   issue-body replacement with the forge's issue-body mechanism, using the exact candidate bytes.
+   On GitHub, use `gh issue edit <NUMBER> --repo <owner>/<repo> --body-file <BODY_FILE>`. On
+   GitLab, use the equivalent `glab` mechanism.
+9. Immediately read the issue body again. Report the exact readback result.
+10. If the write fails or its outcome is uncertain, report the outcome honestly. Do not retry a
+    body write until you read the current body and reconcile it.
+11. Only after the body update is read back as intended, and only when cleanup is authorized, use
+    [P083 Irreversible Actions Last](../../docs/principles/README.md#p083) to read each actor-owned
+    plan and review comment again.
+12. Delete a comment only if it is an actor-owned comment with its plan or review identity (for
+    example `<!-- HomericIntelligence:plan-issue -->` or
+    `<!-- HomericIntelligence:issue-review -->`). Skip and report any foreign, changed, or ambiguous
+    comment.
+13. If deletion fails, times out, or has an indeterminate result, report which comments remain.
+    Preserve the finalized body. Reconcile comment state before retrying an authorized deletion.
+    Missing cleanup capability leaves comments intact and does not undo the body publication.
 
 If the final material contains architecture, test, error, or security decisions, preserve the
 reviewed use of these principles:
@@ -203,55 +142,30 @@ Finalization does not reopen these decisions. Do not make new decisions.
 
 ## Finalize again or restart
 
-If the live body verifies its finalized marker exactly and both sealed comments are absent, a second
-run returns a documented `no_change` result. If a sealed comment remains, report
-`partial_cleanup`. Reconcile current comment state before an authorized cleanup retry. If the marker is
-absent, malformed, foreign, or has a canonical `F` mismatch, do not use the epoch as evidence. A
-later edit that keeps a stale finalization marker does not authorize a new exchange. After the
-sealed comments are removed, an authoritative person can replace the sealed body with clean new
-requirements and remove the obsolete marker. The next inspection then starts a new round-1 epoch.
-Do not treat generated plan text or provenance fields as new requirements from a person.
-
-## Behavior-first verification
-
-Use controlled issue, comment, actor, and forge fixtures to demonstrate these behaviors:
-
-- A clean `GO` plan and review epoch preserves requirements and operational details.
-- `--draft` returns the body without a forge mutation.
-- Publication makes one body update. It verifies the exact readback. Then it deletes only the two
-  sealed actor-owned comments.
-- A sealed epoch that did not change is idempotent.
-- A GitHub finalization binds a body without a final line feed. An unchanged GitHub readback returns
-  `verified`. Each other body change returns `unknown_outcome`.
-- Each absent, foreign, duplicate, mismatched, stale, `NO-GO`, required-finding, drift,
-  unsupported-write, timeout, readback-mismatch, or deletion-uncertainty case stops before an unsafe
-  mutation or retry.
-
-Verify the identities and order classes. Verify content preservation and the number and scope of
-mutations. Verify that failures occur before a write. Do not make tests depend on editorial wording,
-headings, paragraph counts, or an example issue body.
+If the live body already matches the prepared candidate and the actor-owned plan and review comments
+are absent, a second run can report that no change was needed. If an actor-owned comment remains and
+cleanup is authorized, remove it and report the result. Do not treat generated plan text as new
+requirements from a person. A person can replace the body with clean new requirements at any time.
+The next inspection then starts from that body.
 
 ## Failed approaches
 
-- Do not finalize an epoch again without a new request or a new requirements state.
-- Do not treat generated plan text or sealed provenance fields as new executable requirements from
-  a person.
-- Do not replace behavior-first verification with wording checks. Do not invent files, commands, or
-  validation evidence during synthesis.
+- Do not finalize an issue again without a new request or a new requirements state.
+- Do not treat generated plan text as new executable requirements from a person.
+- Do not invent files, commands, or validation evidence during synthesis.
 - After a timeout or readback mismatch, reconcile exact target state before retrying.
-- After an indeterminate deletion, report `partial_cleanup` and reconcile the result before retrying.
+- After an indeterminate deletion, report which comments remain and reconcile the result before
+  retrying.
 
 ## Result
 
 Return these items:
 
 - issue and actor identities;
-- `R/P/V/F`;
-- the `GO` decision and finding summary;
+- what informed the judgement, and what you could not inspect;
 - the requirement-preservation map;
-- the exact `draft`, `no_change`, `published`, `stale`, `partial_cleanup`, or `unknown_outcome`
-  status;
-- the body-update receipt;
-- readback evidence;
-- deleted-comment receipts, if present; and
+- the exact status: `draft`, `published`, `no_change`, `partial_cleanup`, or `unknown_outcome`;
+- the body-update result;
+- the readback result;
+- deleted-comment results, if any; and
 - each unresolved capability or residual risk.

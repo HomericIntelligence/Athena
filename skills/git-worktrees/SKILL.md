@@ -19,9 +19,6 @@ at the same time. You do not have to switch the active branch.
 Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to all
 prose that it produces.
 
-**Rule:** Select the directory systematically. Then complete the safety checks. These actions give
-reliable isolation.
-
 Use this location and verification policy for manual and delegated feature worktrees.
 
 ## Engineering principles
@@ -33,7 +30,7 @@ workflow-specific rules:
   branch and worktree. Delegate cleanup and unrelated changes to the applicable workflows.
 - [P012 — Evidence Before Modification](../../docs/principles/README.md#p012): Before creation,
   examine repository guidance, the selected base revision, directory state, ignore rules, and
-  baseline checks.
+  baseline checks. If a source is unavailable, say so and proceed with the input you have.
 - [P021 — Evolutionary and Reversible Design](../../docs/principles/README.md#p021): Put feature work
   in an isolated worktree at the selected base commit. Only if you have user authority and can use
   the cleanup workflow, remove the worktree.
@@ -41,30 +38,32 @@ workflow-specific rules:
   satisfactory, repair the setup before creation. If a test fails after creation, preserve the
   worktree, classify the failure, and continue authorized work.
 - [P053 — Validate at Trust Boundaries](../../docs/principles/README.md#p053): Use the tested helper
-  to validate branch, base, path, and path-root values. An equivalent fallback must verify the
+  to check branch, base, path, and path-root values. An equivalent fallback should check the
   same values.
 - [P058 — Bounded Agent Authority](../../docs/principles/README.md#p058): Make only the named branch
-  and worktree for the requested feature. Use the selected start commit and validated destination.
+  and worktree for the requested feature. Use the selected start commit and destination.
 - [P065 — Verify Before Claiming Completion](../../docs/principles/README.md#p065): Before you report
-  that you prepared the worktree, run available repository baseline checks. Report failures, the path
-  and start commit.
+  that you prepared the worktree, run available repository baseline checks. Report failures, the path,
+  the start commit, what informed the baseline, and what you could not inspect.
 - [P083 — Irreversible Actions Last](../../docs/principles/README.md#p083): Before creation, complete
-  the dry-run. Before creation, complete the safety validation. Use `tidy` for removal.
+  the dry-run and the safety checks. Use `tidy` for removal.
 
 ## Select and verify the directory
 
 Resolve the primary project checkout through Git worktree metadata. Create new worktrees and
 additional project clones below its `.worktrees/` directory. Existing checkouts elsewhere remain
-valid; do not move them only to satisfy the new default.
+valid; keep them where they are.
 
-Verify that Git ignores `.worktrees/`. If needed, add the ignore rule to Git’s local exclude file as part of the authorized
+Make sure that Git ignores `.worktrees/`. If needed, add the ignore rule to Git’s local exclude file as part of the authorized
 setup. Do not require a separate approval or commit before creation. Preserve other ignore rules.
-Reject a destination that resolves outside the intended root or traverses a symbolic link.
+Prefer a destination that resolves inside the intended root and does not traverse a symbolic link.
+If the available candidates all fail this check, report the conflict instead of writing outside the
+root.
 
 Use the installed `scripts/prepare_worktree.py` helper. If it fails, attempt repair and issue
-handling before an equivalent native Git fallback. Verify the branch, exact base commit,
-destination, absence of a conflicting worktree, and ignore rule in that fallback. Record the
-actual commands; do not claim the helper succeeded.
+handling before an equivalent native Git fallback. In the fallback, check the branch, exact base
+commit, destination, absence of a conflicting worktree, and ignore rule. Report the actual commands
+you ran and which checks ran; do not claim the helper succeeded when it did not.
 
 ## Create the worktree
 
@@ -79,11 +78,11 @@ actual commands; do not claim the helper succeeded.
 9. Use the same exact path and path-root values for dry-run and creation.
 10. Invoke the helper by its absolute path with the prepared dry-run arguments.
 11. Create the worktree with the same arguments without `--dry-run`.
-12. Do not replace the recorded SHA with the current `HEAD`.
+12. Keep the recorded SHA as the start commit. Report the SHA you used.
 13. Change to the returned path.
 14. If the repository defines a bootstrap, run it.
 15. Use available repository tests to record the baseline and classify pre-existing failures.
-16. Report the path, start SHA, and result.
+16. Report the path, start SHA, result, what informed the baseline, and what you could not inspect.
 
 After work starts, do not replace the initial local review base with a later remote target commit
 only because the remote target branch changes. Do not rebase because the remote target branch moves
@@ -93,8 +92,8 @@ Use the current target branch only for integration and merge-readiness checks. L
 merge queue do normal target integration. If a permitted rebase or conflict resolution changes
 candidate content, review that changed content.
 
-**If the tests fail:** Record the baseline failures. Use the shared issue-handling procedure and
-continue the task. Distinguish these failures from regressions introduced by the feature.
+**If the tests fail:** Record the baseline failures. Distinguish these failures from regressions
+introduced by the feature. Continue the task.
 
 **If the tests pass:** Report that the worktree is ready.
 
@@ -111,15 +110,15 @@ work and report it.
 
 ## Failed approaches
 
-- Do not create an unignored project-local worktree.
+- Create worktrees only under the ignored `.worktrees/` directory.
 - Do not treat a pre-existing baseline failure as a whole-task blocker.
-- Do not move an existing checkout solely because its location differs from the new default.
-- Do not remove unique work during cleanup.
+- Keep an existing checkout where it is, even when its location differs from the new default.
+- Preserve unique work during cleanup.
 
 ## Related workflow
 
 - Invoke `tidy` for dependency-locked delegation to Hephaestus branch and worktree cleanup.
-- Before you report completion or start cleanup, get fresh runnable evidence. Follow the
+- Before you report completion or start cleanup, run the available runnable checks. Follow the
   [evidence-integrity policy](../../docs/policies/evidence-integrity.md).
 
 ---

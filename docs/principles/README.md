@@ -1,47 +1,62 @@
 # Engineering principles
 
 This catalog is Athena's single inventory of engineering principles. Each stable `P` identifier has
-one canonical name and one short decision rule. The linked detail page has the definition,
-boundaries, examples, relationships, and sources. Skills have links to these anchors and show only how the
-principle changes a skill's workflow.
+one canonical name and one short decision rule. The linked detail page states the same goal in
+brief, with a "What it looks like" list and a "Limits" section. Skills link to these anchors and
+show only how the principle changes a skill's workflow.
 
-Identifiers are permanent. For each new principle, add a new identifier at the end. Do not change
-current numbers.
+The principles are advisory goals. They are not authorization to act. They are not a gate, a
+requirement, or a rejection criterion. They do not grant, expand, or restore task scope, tool
+permissions, write boundaries, or approval. They do not approve, block, or reject output. No output
+is rejected for missing evidence. Evidence can inform a choice; it is not a condition that work must
+meet. Credential, personal identifiable information (PII), and secret protection remains required.
+
+Identifiers are stable so that links to the catalog keep their meaning. For each new principle, add
+a new identifier at the end. Avoid renumbering existing identifiers, because skills and documents
+link to the anchors.
 
 ## Language standard
 
-Use the [ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.md) for descriptive and
+Aim to apply the [ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.md) for descriptive and
 procedural prose in this catalog. Use the
 [current official standard](https://www.asd-ste100.org/STE_downloads.html) as the authority.
-Each decision rule is for all programming languages.
-Each detail page has a diagram and equivalent examples in Python and Rust.
+Each decision rule is for all programming languages. Each detail page stays brief: a "What it
+looks like" list and a "Limits" section, not a full specification.
 
 Code, identifiers, formal titles, URLs, and quotations are technical or quoted content. Source titles
 keep their official wording. The standard lets authors use technical nouns and technical verbs for the subject
-field. Each diagram uses neutral system terms. The code examples show two possible implementations.
+field. Each detail page uses neutral system terms.
 
-Each `References` section has annotated sources for source information, applicable information, and
-more information.
+Each detail page ends with a link back to its catalog anchor.
 
 ## Authority and precedence
 
-These principles are decision rules. They do not give authority. System and user instructions,
-repository policy, security and evidence controls, and the active skill's explicit contract have
-precedence. A principle cannot increase task scope, tool permissions, write boundaries, or approval.
+These principles are advisory goals. They do not give authority. System and user instructions,
+repository policy, security controls, and the active skill's explicit contract have precedence. A
+principle cannot increase task scope, tool permissions, write boundaries, or approval.
 
-When principles give different directions, find the requirement and risk category. Obey the most
-applicable contract. Select the narrowest action that evidence shows is necessary.
+Credential, personal identifiable information (PII), and secret protection remains required. A
+principle cannot weaken, waive, or narrow that protection. This requirement holds independently of
+the advisory status of the other principles.
 
-A redundant prompt is not necessary for a scoped constructive action that the user and repository
-authorize. Action-bound approval continues to be necessary for destructive, privileged, or
-ungranted high-impact actions. A different party does an independent review. The party must have
-qualifications sufficient for the risk. Human review is necessary only when applicable policy specifies
-a human.
+No output is rejected, blocked, or gated for missing evidence. When a gap in evidence is visible,
+report it and continue the work that you are authorized to do.
+
+When principles point in different directions, find the requirement and the risk category. Prefer the
+most applicable contract. Select the narrowest action that seems necessary.
+
+A redundant prompt is usually not needed for a scoped constructive action that the user and
+repository authorize. Approval can still be needed where the task and applicable policy specify it.
+This is common for destructive, privileged, or ungranted high-impact actions. A different party can
+do an independent review when the risk warrants it. The party needs qualifications sufficient for
+the risk. Human review applies only when applicable policy specifies a human.
 
 ## Topic anchors
 
-Review contracts use these stable topic anchors to classify a surface. The numeric catalog below is
-authoritative. Each detail page describes relationships with other principles.
+These groups organize the catalog by subject. Skills link to the group anchors. The numeric
+catalog below is authoritative for the `PNNN` identifiers. Each detail page ends with a link back
+to its catalog anchor. The groups are a navigation aid, not a scope boundary, and not a condition
+that output must meet.
 
 ## Simplicity and change
 

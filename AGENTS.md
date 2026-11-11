@@ -1,7 +1,7 @@
 # Athena repository instructions
 
-This file is the authoritative contract for each AI coding harness that operates in Athena.
-Host-specific files point to this file. They do not copy it.
+This file guides each AI coding harness that operates in Athena.
+Host-specific files point to this file rather than copying it.
 
 ## Purpose and scope
 
@@ -19,24 +19,24 @@ Athena owns:
 - `tests/unit/`: behavior tests for repository scripts and skill-local scripts.
 - `docs/`, `assets/`, and `.github/`: policy, documentation, media, ownership, and automation.
 
-`skills/` is the only skill source. Do not create a nested plugin mirror or a host-specific copy.
-Put runtime repository requirements in the applicable skill descriptions and workflows. Do not put
-these requirements in this repository-agent contract.
+`skills/` is the single skill source. Prefer the applicable skill descriptions and workflows for
+runtime repository requirements, rather than this repository-agent contract.
 
 ## Technical English
 
 All Athena English technical prose must follow the
 [ASD-STE100 technical-English policy](skills/TECHNICAL_ENGLISH.md). This requirement applies to
 skills, agent directions, documents, user messages from skills, and user-interface text. Preserve
-literal text. Preserve all safety, security, evidence, permission, and failure requirements.
+literal text. Preserve all safety and security requirements.
 
-Use the current official issue of ASD-STE100. Do not state that repository checks certify
-conformance to ASD-STE100.
+Use the current official issue of ASD-STE100. Repository checks do not certify conformance to
+ASD-STE100; describe those checks as syntax and link checks only.
 
 ## Engineering principles
 
 The marked block is a generated mirror of the canonical
-[`engineering principles catalog`](docs/principles/README.md). Do not edit its rows manually.
+[`engineering principles catalog`](docs/principles/README.md). Update the block through the
+`agent-contract` renderer rather than by hand.
 
 <!-- pyml disable MD032 -->
 <!-- BEGIN ATHENA DEVELOPMENT PRINCIPLES: agent-contract-v1.0.0 -->
@@ -136,27 +136,28 @@ The marked block is a generated mirror of the canonical
 
 ## Multi-harness contract
 
-- Express capabilities. Do not require fixed vendor application programming interfaces (APIs).
-- Use the terms coordinator, specialist, executor, skill invocation, and subagent. Do not use
+- Express capabilities rather than fixed vendor application programming interfaces (APIs).
+- Use the terms coordinator, specialist, executor, skill invocation, and subagent rather than
   branded model tiers.
 - Use the host default model when tier selection is unavailable.
 - Run independent work sequentially when the host cannot delegate.
-- When the host supports delegation, a coordinator must select the applicable validation checks and
-  tests and delegate them to one or more bounded executors. One executor can run multiple explicitly
-  selected checks or tests. Otherwise, the coordinator must run the checks sequentially.
-- Each executor must run only the specified checks. It must not edit product files unless the user
-  separately directs it to do so.
+- With delegation support, a coordinator selects the applicable validation checks and tests and
+  hands them to one or more bounded executors. One executor can cover several explicitly selected
+  checks or tests. Otherwise the coordinator runs the checks sequentially.
+- An executor runs the specified checks. Executors touch product files with the user's separate
+  direction.
 - When the host can select executor capabilities, select each executor with the minimum capabilities
   for its specified checks. Otherwise, use the host-default executor.
-- When a check passes, the executor must report the exact command and a pass. When a check fails,
-  it must report the exact command, the failed check or test, concise relevant output, and an
-  evidence-based classification: product defect, environment failure, or flaky or unknown.
+- An executor reports the exact command and the outcome. When a check passes it reports the exact
+  command and a pass. When a check fails, it reports the exact command, the failed check or test,
+  concise relevant output, and an evidence-based classification: product defect, environment
+  failure, or flaky or unknown.
 - Treat invocation syntax as an example. Claude uses `/athena:<skill>`. Codex uses `$<skill>` or
   natural language. opencode uses natural language or its native skill invocation. Pi uses
   `/skill:<skill>`.
 - Read `AGENTS.md` for repository guidance. `CLAUDE.md` is only a pointer.
-- Use frontmatter tool names to describe required capabilities. Each skill must document a safe
-  failure or fallback when a host does not have a required capability.
+- Use frontmatter tool names to describe required capabilities. A skill documents a safe failure
+  or fallback when a host does not have a required capability.
 
 ## Autonomous completion
 
@@ -172,21 +173,20 @@ Agents can do these actions:
 
 - Read repository files.
 - Edit files in the scope that the user requested.
-- Delegate deterministic validation and use the executor report as evidence. When the host cannot
-  delegate, run deterministic validation sequentially.
+- Delegate checks and focused test runs to executors when the host supports it; otherwise run
+  them sequentially.
 - Create the isolated branches or worktrees that the work needs.
 - Inspect GitHub without a write when this inspection is relevant.
 
-Always start feature work in an isolated Git worktree. Fetch `origin/main` before you make a change.
+Start feature work in an isolated Git worktree. Fetch `origin/main` before a change.
 Create the feature branch at that commit and record it as the worktree start commit and initial
-local review base. Do not make feature edits in the primary checkout. After work starts, do not
-rebase because remote `main` changes or because the branch is behind. Rebase only when the work is
-blocked by required content from `main`, or after the work is complete when the forge reports a
-merge conflict that the agent must resolve. Do not bind an issue, plan, review, or test receipt to
-a later `main` commit only because `main` changed. Review the exact candidate content from the
-recorded initial base. Let the configured merge queue do normal target integration and merge-group
-validation. If an allowed rebase or conflict resolution changes candidate content, review that
-changed content.
+local review base. Keep feature edits in the isolated worktree rather than the primary checkout.
+After work starts, a rebase because remote `main` moved or because the branch is behind is rarely
+useful. Rebase when required content from `main` blocks the work, or after the work is complete
+when the forge reports a merge conflict to resolve. Binding an issue, plan, or test result to the
+recorded initial base keeps it independent of later `main` movement, and the configured merge
+queue handles normal target integration and merge-group validation. If an allowed rebase or
+conflict resolution changes candidate content, review that changed content.
 
 Agents can do constructive Git, GitHub CLI, and Hephaestus operations in the requested scope. These
 operations include:
@@ -199,22 +199,24 @@ operations include:
 - deployments; and
 - safe force-with-lease updates.
 
-These operations do not need an additional approval prompt. External-write scope and repository
-policy still apply. An explicit cleanup request authorizes removal of verified merged branches and clean worktrees
-with no unique work. Preserve ambiguous or unique work. Other destructive actions and discarding
-changes require explicit authority.
+These operations do not need an additional approval prompt. Task scope still applies. An explicit
+cleanup request is a useful signal for removing verified merged branches and clean worktrees
+with no unique work. Preserve ambiguous or unique work. Destructive actions and discarded
+changes go best with explicit authority.
 
 ## Prohibited actions
 
-- Never fabricate logs, metrics, tests, benchmarks, releases, or successful command output.
+- Aim not to fabricate logs, metrics, tests, benchmarks, releases, or successful command output.
+  Report runs that happened; invented success helps no one.
 - Never commit secrets, credentials, private keys, `.env` files, or personal data.
-- Never bypass hooks or required checks with `--no-verify`, silent shell fallbacks, or
+- Aim to let hooks and checks run rather than reach for `--no-verify`, silent shell fallbacks, or
   `continue-on-error: true`.
-- Never run `git reset --hard`.
-- Never discard changes without explicit authority. Use the guarded Hephaestus tidy workflow for
-  branch and worktree cleanup rather than improvised removal commands.
-- Never edit an accepted architecture decision record (ADR) in place. Write a superseding ADR.
-- Never overwrite unrelated user changes or silently retarget an existing dependency checkout.
+- Aim to keep history intact; `git reset --hard` discards uncommitted work and is best avoided.
+- Before discarding changes, seek explicit authority. For branch and worktree cleanup, the guarded
+  Hephaestus tidy workflow beats improvised removal.
+- Prefer a superseding architecture decision record (ADR) over editing an accepted ADR in place.
+- Preserve unrelated user changes. Retarget an existing dependency checkout only with an explicit
+  decision, not silently.
 
 ## Evidence and delivery
 
@@ -224,9 +226,10 @@ Follow the local policies:
 - [`docs/policies/development.md`](docs/policies/development.md)
 - [`docs/policies/required-checks.md`](docs/policies/required-checks.md)
 
-Include runnable evidence with each completion claim. Report a blocked or timed-out run accurately.
-Use signed, Developer Certificate of Origin (DCO)-attested Conventional Commits for pull requests.
-Each pull request must pass the required gate for its current head.
+A completion claim reads best with runnable evidence: a reproducible command, an immutable
+revision, and the result it produced. Report a blocked or timed-out run accurately. Signed,
+Developer Certificate of Origin (DCO)-attested Conventional Commits make the history easier to
+read and are the preferred convention.
 
 ## Authoring a skill
 
@@ -235,11 +238,11 @@ archives intentionally omit repository-only development tools such as `scripts/`
 `pyproject.toml`, `uv.lock`, and `justfile`.
 
 Create `skills/<name>/SKILL.md`. Put executable helpers in `skills/<name>/scripts/`. Reference each
-tested file from the skill. Do not put Bash or Python programs directly in Markdown.
-Each executable Python helper must construct its command-line interface with
-`skills._cli.argument_parser`. This rule also applies to repository tools. The factory keeps help,
-usage failures, and the plugin `--version` contract consistent. The repository validator rejects an
-executable script that bypasses this factory.
+tested file from the skill. Keep Bash or Python programs out of Markdown and in the scripts
+directory. Python helpers build their command-line interface with
+`skills._cli.argument_parser`; this applies to repository tools as well. The factory keeps help,
+usage failures, and the plugin `--version` contract consistent. The repository validator looks for
+the factory.
 
 ```yaml
 ---
@@ -249,7 +252,7 @@ allowed-tools: []
 ---
 ```
 
-The skill body must include these items:
+The skill body works best with these items:
 
 - the conditions that activate the skill;
 - the required inputs;
@@ -259,35 +262,36 @@ The skill body must include these items:
 - an output contract; and
 - attribution.
 
-Follow the [ASD-STE100 technical-English policy](skills/TECHNICAL_ENGLISH.md) for all English technical
-prose in the skill.
+Follow the [ASD-STE100 technical-English policy](skills/TECHNICAL_ENGLISH.md) for all English
+technical prose in the skill.
 
 Use placeholders for paths and commands in a target repository. Put repository-specific case studies
 in a `references/` file. Identify these case studies as examples.
 
-Each skill must link the canonical
+Each skill links the canonical
 [`engineering principles catalog`](docs/principles/README.md). Identify only the stable `PNNN`
 principles that have a material effect on the workflow. Describe that effect. Outside the marked
-generated block in this file, do not copy the general principle definitions.
+generated block in this file, the general principle definitions stay in the catalog.
 
 Follow the durable-artifact and behavior-test rules in
-[`docs/policies/development.md`](docs/policies/development.md). Do not tell an agent to pin prose with
-text-string tests. Do not create changelogs, generated documents, registries, inventories, or
+[`docs/policies/development.md`](docs/policies/development.md). Avoid pinning prose with
+text-string tests. Avoid changelogs, generated documents, registries, inventories, or
 unrelated files without a demonstrated product consumer.
 
-After editing, delegate the applicable non-pytest checks to an executor. Delegate a focused run of
-each new or changed test to an approved local or hosted runner. Confirm test selection and record
-the result. You can publish a pull request while validation is pending or unavailable. Report that
-status and the remaining checks. Before completion or merge, require successful applicable checks.
-When the host cannot delegate, run these checks sequentially within the execution boundary.
-Continuous integration and continuous delivery (CI/CD), not pre-commit, own automatic pytest runs.
+After editing, delegate the applicable non-pytest checks to an executor when the host supports it.
+A focused run of each new or changed test on a local or hosted runner, with test selection confirmed
+and the result recorded, gives the clearest picture. You can publish a pull request while
+validation is pending or unavailable; report that status and the remaining checks. A green run of
+the applicable checks is the aim before completion or merge. When the host cannot delegate, run
+these checks sequentially within the execution boundary. Continuous integration and continuous
+delivery (CI/CD), not pre-commit, own automatic pytest runs.
 
 ## Escalation
 
 First attempt recovery under the autonomous workflow policy. Request direction only for a specific
 unresolved requirement, conflict that prevents preservation of user work, or action outside existing
 authority. Continue independent work. Permission failures use supported host escalation first.
-Do not treat a resource batch, pre-existing failure, missing helper, or review round as a reason to
+A resource batch, pre-existing failure, or missing helper is rarely a reason to
 stop the whole task.
 
 ## Task entry points
@@ -305,6 +309,6 @@ stop the whole task.
 | `just package` | Build and inspect the portable plugin archive. |
 | `just all` | Run the local validation, test, static, Markdown, workflow, and package checks. |
 
-Software bill of materials (SBOM) generation and software composition analysis (SCA) are CI-only
-required gates. `just sbom` and `just sca` need CI-pinned Syft and Grype. See
+Software bill of materials (SBOM) generation and software composition analysis (SCA) are continuous
+integration jobs. `just sbom` and `just sca` need CI-pinned Syft and Grype. See
 [`docs/policies/required-checks.md`](docs/policies/required-checks.md).

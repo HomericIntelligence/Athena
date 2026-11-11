@@ -1,7 +1,7 @@
 ---
 name: issue-review
 license: BSD-3-Clause
-description: Use before implementation to review a GitHub or GitLab issue and its current `plan-issue` artifact. Check architecture, scope, risk, and behavior-first verification. Use `--report-only` for read-only work.
+description: Use before implementation to review a GitHub or GitLab issue and its current plan. Check architecture, scope, risk, and behavior-first verification. Use `--report-only` for read-only work. Delivers the review as a comment and sets the matching state label from the verdict.
 argument-hint: "[--report-only] ISSUE_NUMBER_OR_URL"
 allowed-tools: [Read, Bash, Grep, Glob, Agent, WebFetch]
 ---
@@ -9,16 +9,12 @@ allowed-tools: [Read, Bash, Grep, Glob, Agent, WebFetch]
 # Review an issue and plan
 
 Purpose: Review the plan before implementation. Early review helps you find architecture, scope,
-and verification gaps before code changes start.
+and verification gaps before code changes start. The goal is a delivered review operation: inspect
+what you can, report what informed the judgement, name what you could not inspect, and set the
+matching state label from the verdict.
 
 Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to all
 prose that it produces.
-
-Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
-[review contract](../../docs/review/common.md),
-[review-exchange mechanism](../review-exchange/SKILL.md),
-[language routing](../../docs/review/language-routing.md), and
-[behavior-first testing](../../docs/review/behavior-first-testing.md).
 
 Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
 recovery, resources, validation, and delivery.
@@ -28,18 +24,19 @@ recovery, resources, validation, and delivery.
 Use the canonical [engineering-principles catalog](../../docs/principles/README.md) for these review
 decisions:
 
-- [P010 Scope Fidelity](../../docs/principles/README.md#p010): Use the current issue and canonical
+- [P010 Scope Fidelity](../../docs/principles/README.md#p010): Use the current issue and current
   plan as the full review target.
 - [P066 Preserve Existing Work](../../docs/principles/README.md#p066): Do not rewrite historical
   artifacts or artifacts that a different actor owns.
 - [P012 Evidence Before Modification](../../docs/principles/README.md#p012): Before you accept a
-  plan, examine current requirements and repository evidence.
+  plan, examine current requirements and repository evidence. If a source is unavailable, say so
+  and proceed with the input you have.
 - [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063): For each gap,
   find the related requirement or contract.
 - [P072 Technical Evidence Over Preference](../../docs/principles/README.md#p072): Give technical
   evidence for each gap. Do not use personal preference as evidence.
 - [P015 Architecture Conformance](../../docs/principles/README.md#p015): If a boundary violation has
-  no explanation, do not accept the plan.
+  no explanation, it is a finding, not a pass.
 - [P071 Consistency Over Personal Preference](../../docs/principles/README.md#p071): If technical
   evidence does not show a necessary change, obey repository conventions.
 - [P008 Understand Before Subtracting](../../docs/principles/README.md#p008): Before you accept
@@ -47,19 +44,17 @@ decisions:
 
 ## Scope and delivery
 
-Use the issue as the requirements source. Review only its current canonical plan. Use the
-issue-planning contract to identify the plan owner, marker, presence or absence, and identity. Use
-historical plans and reviews only as background information. For explicit legacy adoption, give the
-helper the exact current unversioned plan and optional review in a producer snapshot. Do not
-interpret edit history or other prose as current requirements or proof of closure.
+Use the issue as the requirements source. Review the current plan. Use historical plans and reviews
+only as background information. If no plan is present or it is unreadable, review the issue
+requirements and report that the plan could not be inspected. Do not withhold the review because
+the plan or external metadata is missing.
 
-If the request includes `--report-only`, this skill is read-only. Do not publish a comment. If the
-request does not include this option, first compare the required identities. Then, confirm a safe
-forge capability. Create the canonical review comment only when it is absent. Each later reviewer
-round updates that exact actor-owned comment. Never create a second review marker. Do not
-expand the scope to these items:
+If the request includes `--report-only`, this skill is read-only. Do not publish a comment and do
+not change a label. If the request does not include this option, publish the review comment and
+set the matching state label as described in Deliver. Preserve foreign comments. Do not expand the
+scope to anything except the review comment and the verdict label (`state:plan-go` or
+`state:plan-no-go`). Do not touch these items:
 
-- labels;
 - assignment;
 - implementation;
 - commit;
@@ -70,46 +65,24 @@ expand the scope to these items:
 
 ## Review
 
-Before the substantive review, build the issue snapshot with
-[`mk_issue_snapshot.py`](../review-exchange/scripts/mk_issue_snapshot.py) and run `issue_exchange.py
-inspect` with it. This skill does not build, normalize, or edit a snapshot.
-Withhold on an absent plan or an identity error. Use the inspect result and the caller's explicit
-event to select exactly one path. Evaluate these paths in order:
-
-- For the verified `pending_reframe` diagnostic with `next_action=prepare_review`, require an
-  explicit `reframe` event and go directly to the reframe transition below.
-- For a verified pending-reframe result with any other or no event, stop and report the event
-  mismatch. Do not do a substantive reviewer assessment.
-- For an explicit `human_decision` event when `next_action` is `prepare_plan`, `prepare_review`, or
-  `human_decision`, go directly to the human-decision transition below. Do not do a substantive
-  reviewer assessment. The reducer rejects a decision that is not valid for the retained finding
-  state.
-- For any other `next_action=prepare_review` result without an authority event, do the substantive
-  review below.
-- For each other result, continue through the workflow that owns the next transition. Do not
-  publish a reviewer comment for a different transition.
-
-Reject an event that does not match the selected path. Do not infer an authority event or decision
-from the retained state, an authority comment, or other prose. For an active unversioned plan or
-review, set `legacy_import` only when the issue-planning contract permits explicit round-1 adoption.
-
-1. Read the issue, linked work, canonical plan, repository guidance, architecture decision records
-   (ADRs), applicable code, tests, and public contracts.
-2. Under [P015 Architecture Conformance](../../docs/principles/README.md#p015), select one architecture
-   result:
+1. Read the issue, linked work, the current plan comment, repository guidance, architecture
+   decision records (ADRs), applicable code, tests, and public contracts. If the plan cannot be
+   read, review the issue alone and name the limit.
+2. Under [P015 Architecture Conformance](../../docs/principles/README.md#p015), select one
+   architecture result:
 
    - aligned;
    - intentional and justified change; or
    - unexplained violation.
 
-   A material violation prevents a positive assessment.
+   Report the result. A material violation is a blocking finding.
 3. Under [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063), map each
    acceptance criterion to a concrete plan step, affected boundary, and behavior-first validation
-   step.
-4. If the plan contains a material architecture change, verify that it includes or cites a
-   [design record](../../docs/review/design-docs.md).
-5. Under [P012 Evidence Before Modification](../../docs/principles/README.md#p012), verify these claims
-   against current repository evidence:
+   step. Report unmapped criteria as findings.
+4. If the plan contains a material architecture change, check that it includes or cites a design
+   record.
+5. Under [P012 Evidence Before Modification](../../docs/principles/README.md#p012), verify these
+   claims against current repository evidence:
 
    - paths;
    - symbols;
@@ -134,16 +107,13 @@ review, set `legacy_import` only when the issue-planning contract permits explic
    - Use [P048 Secure by Design](../../docs/principles/README.md#p048) for security or new trust
      boundaries.
 
-9. Reconcile every active prior finding before you add a finding. This set includes each stable
-   finding identifier that `plan-issue` revalidated after an artifact change. Use these response
-   rules:
+9. Reconcile every active prior finding before you add a new finding. Use these response rules:
 
    - For `fix` or `fix_with_tradeoff`, select `resolve`, `partial`, `still_present`, `withdraw`, or
      `escalate` from current evidence.
-   - For `contest`, select `accept`, `counter`, `refute`, or `escalate`. A counter supplies a revised
-     closure condition and new evidence. A refutation supplies new evidence.
-   - For `risk_acceptance`, select `withdraw`, `still_present`, or `escalate`. Only an authoritative
-     `accept_risk` decision produces `accepted_risk`.
+   - For `contest`, select `accept`, `counter`, `refute`, or `escalate`. A counter supplies a
+     revised closure condition and new evidence. A refutation supplies new evidence.
+   - For `risk_acceptance`, select `withdraw`, `still_present`, or `escalate`.
 
    Acknowledgment alone does not resolve a finding.
 
@@ -159,102 +129,55 @@ Give priority to these findings:
 - empty selections; and
 - unsupported claims.
 
-After a finalized epoch, do not treat generated plan text or sealed provenance as new requirements.
-An unchanged finalized epoch is not a new review target. A stale or malformed finalization marker
-must withhold the review. Review a later material issue change only after an authoritative person
-replaces the sealed body with clean requirements, removes the obsolete marker, and publishes its
-new canonical plan.
+Do not treat generated plan text as new requirements from a person. Judge the plan against the
+issue requirements as they exist now.
 
-Build one independent expected inventory for the bound issue requirements, the canonical plan, and
-the declared scope. Freeze its digest before assessment. Follow the
-[requirement-to-evidence contract](../../docs/review/requirement-evidence.md). Map every applicable
-acceptance criterion and contract to the proposed implementation, tests, documentation, and operation
-evidence. Mark a cell not applicable only with a reason. Assess every expected cell, then report the
-material findings as one bounded batch. A correction to one finding repeats only the affected
-sections, and the repeat cause names the finding or the changed source.
+For each requirement you examined, map it to the proposed implementation and test steps. Mark a
+mapping not applicable only with a reason. Report the material findings as one bounded batch. A
+correction to one finding repeats only the affected sections, and the repeat cause names the
+finding or the changed source.
 
-Build one reviewer event with complete coverage status, the requirement evidence record, responses for
-every active prior required finding, new findings, an applicable stop reason, and the declared scope. Supply scope for a first or
-legacy round. Preserve it on later rounds.
+## Deliver
 
-Run `issue_exchange.py prepare-review`. For `--report-only`, return the prepared result and stop.
-Immediately before publication, run a fresh producer snapshot and prepare the operation again.
-Require the same precondition and exact create or update operation. If one of these conditions is
-true, withhold the comment:
-
-- identity drift;
-- an unresolved canonical marker identity;
-- multiple unresolved actor-owned canonical markers;
-- a change to verified absence; or
-- no safe forge capability.
-
-Remote target-branch movement is not identity drift. It does not make an unchanged plan review
-stale. Repeat the review only if the issue requirements or canonical plan content changes.
-
-If prepared identity changed, refresh affected evidence and prepare again. Select the actor-owned
-canonical comment and preserve foreign comments. Withhold only an unresolved identity or write
-capability after recovery.
-
-Otherwise, publish only the exact prepared comment operation. Read the issue again and run
-`issue_exchange.py verify-publication`. After a verified result, continue to the applicable author-response or
-finalization workflow. Ask only for a human decision not already given. If the write or readback result is indeterminate, report
-`unknown_outcome`. Preserve the operation and receipts; reconcile exact readback before retrying.
-The reducer selects the verdict. At the fifth reviewer round, supply `reassessment` with the
-assessed continuation as decision evidence. The fifth round is the hard limit: an unresolved
-exchange at that round requires a human decision. Continue through distinct author and reviewer
-transitions within the limit.
-
-After a verified `legacy_reframe` plan update, use the normal `reframe` reviewer event. Set
-`legacy_import` to `false`. Verify the same old state, authority receipt, and target set. Do not
-import or change the old state.
-
-### Authority transitions
-
-Use these paths only when the action dispatch selects them. The selected authority transition owns
-the one retained-review update and its readback. It must not also prepare a reviewer-assessment
-event.
-
-For a human decision, accept only an explicit `human_decision` event that the reducer permits for
-the retained nonterminal state. This includes an accepted recorded-risk request before the state
-has `next_action=human_decision`. Prefer forge-owned permission data and one exact live authority
-comment. If unavailable, use explicit conversation authority with its actual log ID under the
-autonomous workflow policy. Use `prepare-review` to bind the
-decision to the current state and finding. This event does not increment the reviewer round. It can
-accept only a recorded risk request or select one active closure condition. A round-5 closure
-selection cannot start another round.
-
-Before a requirements reframe, require the retained plan and review to identify the same current
-logical state. If the plan has a pending author event that the review has not accepted, complete and
-verify one reviewer assessment before the requirements change. Do not overwrite the pending author
-event or supersede the older persisted review state.
-
-For the second step of an explicit requirements reframe, require the reframed plan, the same exact
-old retained v1 state, the same live authority receipt, and the same declared target set that
-`plan-issue` used. Call `prepare-review` with the `reframe` event. Update the retained review comment
-with round 1 of the new exchange. The new state must store the `supersession_authority_receipt` and
-superseded state digest. Do not create a new review comment or carry old finding identities into the
-new exchange.
-
-For either authority transition, `--report-only` returns the prepared update and stops. Otherwise,
-get a fresh producer snapshot and run `prepare-review` again. Require the same precondition and exact
-retained comment update. Publish only that update and run `verify-publication` against an exact
-readback. If the write or readback is uncertain, report `unknown_outcome` and reconcile exact
-readback before any retry. Continue independent work.
-
-A `requirements_drift` diagnostic against a carrier that a historic ad-hoc producer published is a
-rebind condition. Do not rebuild the carrier in this skill. Report the diagnostic to the author. The
-author deletes the stale plan comment through `plan-issue` authority, prepares a new plan from a
-producer snapshot, and publishes and verifies it. Then run this review again.
+1. Build the review comment. Include the architecture decision first, the requirement map,
+   severity-ranked findings, the `N/A` sections, the residual risks, and the verdict (`GO` or
+   `NO-GO`). Start the comment with the marker `<!-- HomericIntelligence:issue-review -->` so
+   later rounds and readers can find it.
+2. For `--report-only`, return the prepared review and stop. Do not publish and do not set a
+   label.
+3. Immediately before publication, read the issue again. If it changed in a way that affects the
+   review, refresh the affected evidence and prepare the review again.
+4. Publish the review and set the matching state label from the verdict you just delivered:
+   `state:plan-go` for `GO`, `state:plan-no-go` for `NO-GO`. Use
+   [`../pr-review/scripts/delivery.py`](../pr-review/scripts/delivery.py). It comments on the
+   issue when the target is available, applies one target label, removes the sibling label, and
+   returns the report locally otherwise. Run it as
+   `python3 "<installed-pr-review-skill-directory>/scripts/delivery.py" --target <NUMBER> --kind plan --decision <GO|NO-GO> --body <REVIEW_FILE>`.
+   If the helper is unavailable, publish one comment on the issue with the forge's issue-comment
+   mechanism (for example `gh issue comment <NUMBER> --body-file <REVIEW_FILE>`), then
+   read the issue's labels with
+   `gh api repos/<owner>/<repo>/issues/<NUMBER>/labels --paginate --jq '.[].name'`,
+   and set the label set with
+   `gh api --method PATCH repos/<owner>/<repo>/issues/<NUMBER>/labels --input -`
+   and a JSON body of the form `{"labels": ["<kept-labels>", "state:plan-go"]}` (or
+   `state:plan-no-go`).
+5. Read the comment and the labels back when the forge permits it. Report the exact result.
+6. If the write fails or its outcome is uncertain, report the outcome honestly. Preserve the
+   prepared review. Reconcile the live issue state before any retry.
+7. Report what informed the judgement: the issue, its comments, the plan, the code and tests you
+   read, and the guidance you used. Name what you could not inspect and why. Do not withhold
+   output because external or `.git` metadata is missing. Proceed with the input you have.
 
 ## Failed approaches
 
-- Do not review issues or plans outside the requested scope. Do not treat historical plans as the
-  artifact under review.
-- Do not edit the issue, labels, or assignment. If publication is authorized, report findings only in
-  the structured review comment. For `--report-only`, return the findings without publication.
+- Review only the issue and its current plan. Treat historical plans and reviews as background.
+- Do not edit the issue body, assignment, milestone, or labels other than the verdict label.
+  For `--report-only`, return the findings without publication.
 - Do not invent acceptance criteria that the reporter did not state. Do not accept an unresolved
   prior finding only because someone acknowledged it.
-- After drift, refresh affected evidence and prepare the current comment before publication.
+- Do not publish more than one delivered review per invocation.
+- If the write fails or its outcome is uncertain, report the outcome; reconcile the live state
+  before retrying.
 
 ## Result
 
@@ -262,13 +185,14 @@ Return these items:
 
 - issue and plan identities;
 - the architecture decision first;
+- what informed the judgement, and what you could not inspect;
 - the requirement map;
 - severity-ranked findings;
 - test-quality coverage;
 - `N/A` sections;
 - residual risks;
-- exchange round, state digest, verdict, and next action;
-- publication receipt or helper diagnostics; and
+- the verdict (`GO` or `NO-GO`) and the delivery result: the comment identity, the label applied,
+  or the reason the delivery was withheld; and
 - whether you published or withheld the comment.
 
 Do not expand the review scope to implementation or merge.

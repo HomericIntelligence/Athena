@@ -13,9 +13,9 @@ triggers are requests to watch many sessions, to find why session work does not 
 pull requests, or to supervise hephaestus-automation-loop runs until a release boundary.
 
 The coordinator role keeps authority. Subordinate sessions and loops do the implementation work
-inside their own scope. Do not use this skill to do the subordinate work directly. Use
-`myrmidon-swarm` for bounded delegation of discrete work items. Use the review skills for artifact
-reviews. This skill composes those skills; it does not replace them.
+inside their own scope. Use this skill to coordinate; it does not do the subordinate work itself.
+Use `myrmidon-swarm` for bounded delegation of discrete work items. Use the review skills for
+artifact reviews. This skill composes those skills; it does not replace them.
 
 Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to all
 prose that it produces.
@@ -34,13 +34,14 @@ workflow rules:
   bounded instruction. Give the monitor an explicit event list and exit rule.
 - [P033 — State-Safe Failure Semantics](../../docs/principles/README.md#p033): When a monitor or a
   managed lane ends, keep the tracker and the durable state necessary to continue or escalate.
-- [P035 — Fail Secure / Fail Closed](../../docs/principles/README.md#p035): Withhold instructions
-  for a session whose ownership, liveness, or scope is not established.
+- [P035 — Fail Secure / Fail Closed](../../docs/principles/README.md#p035): Prefer to withhold
+  instructions for a session whose ownership, liveness, or scope is not established. Where the
+  state cannot be established, report the gap.
 - [P036 — Graceful Degradation](../../docs/principles/README.md#p036): If the session store, a log,
   or local guidance is missing or stale, report the limit and continue with the evidence that is
   available.
 - [P039 — Bounded Waiting](../../docs/principles/README.md#p039): Give the monitor a bounded cycle
-  and a maximum lifetime. Do not let a watcher run without an end rule.
+  and a maximum lifetime. A watcher has an end rule.
 - [P046 — Resumability](../../docs/principles/README.md#p046): Record coordinator state in a
   durable tracker so an interrupted coordination session can resume.
 - [P047 — Observability Is Part of Correctness](../../docs/principles/README.md#p047): Keep a
@@ -48,7 +49,7 @@ workflow rules:
 - [P050 — Least Privilege](../../docs/principles/README.md#p050): Do reconnaissance read-only.
   Give subordinate agents only the scope, paths, and authority that their task needs.
 - [P058 — Bounded Agent Authority](../../docs/principles/README.md#p058): Keep each instruction
-  inside the scope that the user assigned. Do not let an instruction expand itself.
+  inside the scope that the user assigned. An instruction does not expand its own scope.
 
 ## Roles
 
@@ -66,7 +67,7 @@ workflow rules:
 1. Resolve the agent session store. For OpenCode, resolve the store path with
    `opencode debug paths db` (it applies XDG redirects, the `OPENCODE_DB` override, and the
    release channel). When resolution is not available, use `~/.local/share/opencode/opencode.db`
-   and record the fallback. Read the store with `sqlite3 -readonly` and `SELECT` statements only.
+   and record the fallback. Read the store with `sqlite3 -readonly` and `SELECT` statements.
    List the requested sessions from `session_v2` (identifier, title, directory, parent, idle
    outcome, update times). When the host has no session store or session-resume capability, skip
    store-based steps and classify from process, log, git, and forge evidence only.
@@ -103,9 +104,9 @@ Confirm with the user before you act on live infrastructure or on subordinate ag
 
 1. Resume each targeted session by its identifier with a bounded instruction, for example with
    `opencode run -s <session-id> --auto "<instruction text>"`. The `--auto` grant approves each
-   permission that is not explicitly denied, so bind it: use `--auto` only when the user confirmed
-   the instruction policy in step 2. Without that confirmation, run the resume without `--auto` so
-   the session's own permission rules gate each action. Keep each instruction:
+   permission that is not explicitly denied, so bind it: prefer `--auto` when the user confirmed
+   the instruction policy in step 2. Without that confirmation, prefer to run the resume without
+   `--auto` so the session's own permission rules gate each action. Aim to give each instruction:
    - scoped to that session's ownership set, with explicit isolation guards against other live
      lanes (named directories, intake clones, or running loops);
    - explicit about the required artifacts and the delivery path of every pull request: the
@@ -113,7 +114,8 @@ Confirm with the user before you act on live infrastructure or on subordinate ag
    - ended by the stop-and-report rule: if a step has no simple fix, the agent stops and states
      the blocker plainly in its final message. The agent does not guess.
 2. Stagger launches. Log each run to a file for audit.
-3. Do not resume sessions whose liveness or ownership is not established (P035).
+3. Prefer not to resume sessions whose liveness or ownership is not established (P035). Where
+   the gap is temporary, wait for the inventory evidence and report it.
 
 ### 5. Arm the event-driven monitor
 
@@ -133,11 +135,11 @@ Monitor these event types as applicable:
 
 Monitor rules (P033, P035):
 
-- Kill orchestration processes by recorded PID only. Never use `pkill -f` on a scripted path; a
+- Prefer to kill orchestration processes by recorded PID. Avoid `pkill -f` on a scripted path; a
   probe whose own command line contains the same pattern kills itself.
 - Give the monitor a bounded cycle and a maximum lifetime, after which it exits and the
   coordinator re-arms it.
-- Write a heartbeat to a log file. Do not stream heartbeats to the monitor's primary output; that
+- Write a heartbeat to a log file. Prefer the log file over the monitor's primary output; that
   output is event evidence.
 
 ### 6. Manage until the boundary
@@ -150,7 +152,8 @@ Monitor rules (P033, P035):
 3. Escalate to the user when a subordinate agent reports a blocker that has no simple fix, when
    different owned lanes collide on one resource, or when the completion boundary requires a user
    decision.
-4. When the completion boundary is reached, verify it with evidence before you report completion.
+4. When the completion boundary is reached, aim to verify it with the available evidence before you
+   report completion. Report the verification result, or report that the evidence is missing.
 
 ## Tracker
 
@@ -161,19 +164,19 @@ hold the coordinator's plan; the tracker file holds the working state.
 
 ## Failed approaches
 
-- Do not resume or instruct a session before the inventory establishes its task, state, and
-  ownership. Cold instructions duplicate or collide with in-flight work.
-- Do not let many sessions write in one intake or checkout at the same time. Give each lane its
-  isolated projects directory and check liveness before a lane becomes active.
-- Do not leave large changes uncommitted in detached-HEAD worktrees while you wait for tests or
-  decisions. Commit to a branch and open a draft pull request first.
-- Do not busy-wait on subprocesses with repeated sleeps and output reads. Arm the bounded monitor
-  and continue only on its events.
-- Do not use `pkill -f` on supervisor script paths for cleanup; kill recorded PIDs only.
-- Do not silently absorb a subordinate failure with no simple fix. Record the first cause and
-  escalate it.
-- Do not describe monitor or session state as healthy without time-stamped heartbeat or log
-  evidence.
+- Resume or instruct a session after the inventory establishes its task, state, and ownership.
+  A cold instruction duplicates or collides with in-flight work.
+- Give each lane its isolated projects directory, and check liveness before a lane becomes active.
+  Many sessions writing in one intake or checkout collide.
+- Commit to a branch and open a draft pull request before you wait for tests or decisions. Large
+  uncommitted changes in detached-HEAD worktrees are easy to lose.
+- Arm the bounded monitor instead of busy-waiting on subprocesses with repeated sleeps and output
+  reads; continue on its events.
+- Kill recorded PIDs for cleanup. `pkill -f` on supervisor script paths can kill the wrong process.
+- Record the first cause and escalate it instead of silently absorbing a subordinate failure with
+  no simple fix.
+- Describe monitor or session state as healthy when time-stamped heartbeat or log evidence
+  supports it. Otherwise report the limit.
 
 ## Status format
 

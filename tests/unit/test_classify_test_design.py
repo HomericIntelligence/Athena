@@ -119,7 +119,6 @@ def test_parser_diagnostic_is_accepted() -> None:
 @pytest.mark.parametrize(
     "relative_path",
     [
-        "tests/unit/test_python_syntax_floor.py",
         "tests/unit/test_precommit_single_source.py",
         "tests/unit/test_semver.py",
         "tests/unit/test_change_review_scope_hardening.py",

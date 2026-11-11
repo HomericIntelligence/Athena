@@ -8,7 +8,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -104,112 +103,9 @@ class PackageOpenCodeTests(unittest.TestCase):
         self.assertTrue((staged / "NOTICE").is_file())
         self.assertTrue((staged / "skills" / "_cli.py").is_file())
         self.assertTrue((staged / "skills" / "advise" / "SKILL.md").is_file())
-        review_exchange = staged / "skills" / "review-exchange"
-        self.assertTrue((review_exchange / "SKILL.md").is_file())
-        self.assertTrue((review_exchange / "references" / "interface.md").is_file())
-        for helper in ("issue_exchange.py", "review_exchange.py"):
-            path = review_exchange / "scripts" / helper
-            self.assertTrue(path.is_file())
-            self.assertNotEqual(0, path.stat().st_mode & 0o111)
-
-    def test_staged_review_exchange_helpers_execute_outside_source(self) -> None:
-        """The opencode artifact contains runnable review-exchange helpers."""
-        staged = self.stage()
-        outside = self.fixture.parent / "outside-source"
-        outside.mkdir()
-        environment = os.environ.copy()
-        environment.pop("PYTHONPATH", None)
-        scripts = staged / "skills" / "review-exchange" / "scripts"
-        before = self.artifact_snapshot(staged)
-        reduction_request = {
-            "previous": None,
-            "event": {
-                "event_type": "reviewer_assessment",
-                "exchange_id": "installed-exchange",
-                "prior_state_sha256": None,
-                "round": 1,
-                "surface": "pull_request",
-                "target": {
-                    "provider": "github",
-                    "repository": "example/project",
-                    "number": 7,
-                    "url": "https://github.com/example/project/pull/7",
-                },
-                "requirements_sha256": "a" * 64,
-                "supersedes_state_sha256": None,
-                "artifact_binding": {
-                    "revision": "head-7",
-                    "sha256": "b" * 64,
-                    "visible_content_sha256": "c" * 64,
-                },
-                "scope": ["path:src/example.py"],
-                "coverage_complete": True,
-                "responses": [],
-                "new_findings": [],
-                "stop_reason": None,
-            },
-        }
-        reduced = subprocess.run(
-            [sys.executable, str(scripts / "review_exchange.py"), "reduce", "-"],
-            cwd=outside,
-            env=environment,
-            input=json.dumps(reduction_request),
-            capture_output=True,
-            check=False,
-            text=True,
+        self.assertTrue(
+            (staged / "skills" / "pr-review" / "scripts" / "delivery.py").is_file()
         )
-        self.assertEqual(0, reduced.returncode, reduced.stderr)
-        reduction_result = json.loads(reduced.stdout)
-        self.assertEqual("accepted", reduction_result["status"])
-        self.assertEqual("GO", reduction_result["envelope"]["state"]["verdict"])
-
-        verified = subprocess.run(
-            [sys.executable, str(scripts / "review_exchange.py"), "verify", "-"],
-            cwd=outside,
-            env=environment,
-            input=json.dumps(reduction_result["envelope"]),
-            capture_output=True,
-            check=False,
-            text=True,
-        )
-        self.assertEqual(0, verified.returncode, verified.stderr)
-        self.assertEqual(reduction_result["envelope"], json.loads(verified.stdout))
-
-        issue_snapshot = {
-            "schema_id": "athena.issue-exchange.snapshot",
-            "schema_version": 1,
-            "target": {
-                "provider": "github",
-                "host": "github.com",
-                "repository": "example/project",
-                "issue_id": "I_7",
-                "number": 7,
-                "url": "https://github.com/example/project/issues/7",
-            },
-            "actor": {"id": "actor-7", "login": "reviewer"},
-            "issue": {
-                "state": "open",
-                "title": "Bound the review exchange",
-                "body": "Implement the bounded exchange.",
-                "acceptance_criteria": [],
-            },
-            "comments": [],
-            "comments_complete": True,
-        }
-        inspected = subprocess.run(
-            [sys.executable, str(scripts / "issue_exchange.py"), "inspect", "-"],
-            cwd=outside,
-            env=environment,
-            input=json.dumps(issue_snapshot),
-            capture_output=True,
-            check=False,
-            text=True,
-        )
-        self.assertEqual(0, inspected.returncode, inspected.stderr)
-        inspection_result = json.loads(inspected.stdout)
-        self.assertEqual("ready", inspection_result["status"])
-        self.assertEqual("prepare_plan", inspection_result["next_action"])
-        self.assertEqual(before, self.artifact_snapshot(staged))
 
     def test_staged_local_markdown_links_resolve_inside_the_package(self) -> None:
         """The staged package contains each local Markdown link target."""
@@ -425,32 +321,6 @@ class PackageOpenCodeTests(unittest.TestCase):
             self.stage()
 
         self.assertIn("skills/TECHNICAL_ENGLISH.md", str(context.exception))
-
-    def test_missing_review_exchange_member_fails_staging(self) -> None:
-        """Staging requires the complete executable review-exchange skill."""
-        required = (
-            "skills/review-exchange/SKILL.md",
-            "skills/review-exchange/references/interface.md",
-            "skills/review-exchange/scripts/issue_exchange.py",
-            "skills/review-exchange/scripts/review_exchange.py",
-        )
-        configured = {path.as_posix() for path in package_opencode.REQUIRED_SKILL_FILES}
-        self.assertLessEqual(set(required), configured)
-
-        for relative in required:
-            with self.subTest(relative=relative):
-                source = self.fixture / relative
-                contents = source.read_bytes()
-                mode = source.stat().st_mode
-                source.unlink()
-                try:
-                    with self.assertRaises(package_opencode.PackageError) as context:
-                        self.stage()
-                    self.assertIn(relative, str(context.exception))
-                finally:
-                    source.parent.mkdir(parents=True, exist_ok=True)
-                    source.write_bytes(contents)
-                    source.chmod(mode)
 
     def test_staging_skips_generated_python_cache(self) -> None:
         cache = self.fixture / "skills" / "advise" / "scripts" / "__pycache__"

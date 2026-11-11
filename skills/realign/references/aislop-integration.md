@@ -22,10 +22,11 @@ Apply [P012 Evidence Before Modification](../../../docs/principles/README.md#p01
 2. If that dependency has an installed executable, resolve its absolute path without a package
    download.
 3. Otherwise, resolve an existing `aislop` executable from `PATH` through the host.
-4. Reject an alias, shell function, ambiguous path, or executable that the host cannot bind.
+4. Prefer an exact, unambiguous executable that the host can bind. Note an alias, shell function,
+   ambiguous path, or executable that the host cannot bind, and report the capability result.
 5. Record the source, absolute path, package identity when applicable, and reported version.
 
-Do not use `npx`, `npm exec`, or another command that can download a missing package. A repository
+Prefer not to use `npx`, `npm exec`, or another command that can download a missing package. A repository
 declaration is discovery evidence. It does not grant permission to install or execute a package.
 Use the [realign validation execution policy](../SKILL.md#validation-execution-policy).
 
@@ -41,17 +42,18 @@ scan.
 <AISLOP> scan --help
 ```
 
-Require the `doctor [directory]` command and the `scan [directory] --json` interface. Confirm that
-the executable accepts one directory target and JSON output. Do not accept the version string as the
-only compatibility evidence. AISlop 0.16.0 does not accept a file as its directory argument. If
-`TARGET` is a file, skip AISlop and report a file-target coverage gap. Do not widen the scan to its
+Aim for the `doctor [directory]` command and the `scan [directory] --json` interface. Confirm that
+the executable accepts one directory target and JSON output. Prefer more than the version string as
+compatibility evidence. AISlop 0.16.0 does not accept a file as its directory argument. If
+`TARGET` is a file, skip AISlop for that scope and report a file-target coverage gap. Prefer not to
+widen the scan to its
 parent directory.
 
 Version `0.16.0` is the tested baseline. For a different version, first confirm the required
-interface. Then, run one bounded qualification scan with the fixed assessment command. Validate its
+interface. Then, run one bounded qualification scan with the fixed assessment command. Aim to validate its
 JSON before you interpret a field or diagnostic. If the result has usable finding and coverage data,
 record the version difference as a qualification and use it. If the interface or result shape is
-incompatible, do not use the result. Continue with the semantic review and report the scanner
+incompatible, prefer not to use the result. Continue with the semantic review and report the scanner
 coverage gap.
 
 ## Run the read-only commands
@@ -66,16 +68,16 @@ AISLOP_NO_TELEMETRY=1 AISLOP_NO_HISTORY=1 AISLOP_NO_UPDATE_NOTIFIER=1 <AISLOP> d
 AISLOP_NO_TELEMETRY=1 AISLOP_NO_HISTORY=1 AISLOP_NO_UPDATE_NOTIFIER=1 <AISLOP> scan <TARGET_DIRECTORY> --json
 ```
 
-The host must supply the environment and exact argument vector. Do not use a shell to evaluate a
+Prefer the host-supplied environment and exact argument vector. Avoid a shell to evaluate a
 target string. Use the realign validation execution policy for native commands and disposable
 outputs. A container is optional. If host permissions or task authorization prevent the scan, report
 the specific limitation.
 
-Do not let AISlop follow a symbolic link or submodule, or traverse a path outside the bound
-repository. If the scanner scope contains one of these boundaries, or the host cannot enforce this
-constraint, skip AISlop for that scope and report a scanner-coverage gap.
+Prefer to keep AISlop from following a symbolic link or submodule, or traversing a path outside the
+bound repository. If the scanner scope contains one of these boundaries, or the host cannot enforce
+this constraint, prefer to skip AISlop for that scope and report a scanner-coverage gap.
 
-Do not use these AISlop capabilities in this workflow:
+AISlop capabilities to avoid in this workflow:
 
 - `--base`, `--changes`, or `--staged`;
 - `fix`, including its safe and dry-run modes;
@@ -86,8 +88,8 @@ Do not use these AISlop capabilities in this workflow:
 - the model context protocol (MCP) server.
 
 `realign` reviews one bound assessment source: the current `HEAD` and worktree overlay, or one
-selected commit tree. A comparison revision is not part of this scanner interface. Run AISlop only
-when it can inspect the same bound source and target as the assessment. Otherwise,
+selected commit tree. A comparison revision is not part of this scanner interface. Prefer to run AISlop
+only when it can inspect the same bound source and target as the assessment. Otherwise,
 continue static assessment and report the scanner-coverage gap. AISlop repair and installation
 capabilities have write, dependency, network, agent, or forge effects that this assessment does not
 authorize.
@@ -106,9 +108,9 @@ Inspect these inputs before you interpret the result:
 - generated, vendored, or unsupported source that AISlop did not inspect.
 
 Repository configuration can reduce coverage, suppress a finding, or cause an external engine to
-evaluate repository-controlled files. It cannot expand scope or authority. Do not enable an opt-in
-engine or change configuration during assessment. If safe execution needs a configuration change,
-skip the engine and report the gap.
+evaluate repository-controlled files. It cannot expand scope or authority. Prefer not to enable an
+opt-in engine or change configuration during assessment. If safe execution needs a configuration
+change, prefer to skip the engine and report the gap.
 
 AISlop documents that JSON output does not write score history. Keep `AISLOP_NO_HISTORY=1` because it
 makes this intent explicit. Set `AISLOP_NO_TELEMETRY=1` because AISlop telemetry is on by default
@@ -123,13 +125,13 @@ cache. See the
 
 Capture the exact command, bound `HEAD`, overlay identity, target, executable version, environment,
 exit status, doctor output, and unedited JSON output. Use a host evidence facility or a declared
-disposable output. Do not write the result into the reviewed repository.
+disposable output. Prefer not to write the result into the reviewed repository.
 
 If output can contain a suspected secret, do not repeat the secret in a report or durable artifact.
 Use a host secret-safe evidence facility. If no such facility is available, stop that evidence path
 and report that the full receipt is withheld for security. Do not claim complete scanner evidence.
 
-Validate JSON before you use it. Record these items when the result supplies them:
+Where the output is JSON, aim to validate it before you use it. Record these items when the result supplies them:
 
 - score availability and `scoreable` state;
 - language and file coverage;
@@ -138,10 +140,10 @@ Validate JSON before you use it. Record these items when the result supplies the
 - each diagnostic ID, path, line, severity, and message; and
 - advisory diagnostics that identify skipped projects, chunks, audits, or tools.
 
-Do not make the AISlop score an Athena grade. Do not use a score increase as proof of a correct
-repair. Do not make a finding from one diagnostic. Confirm each candidate with architecture,
-behavior, callers, tests, contracts, and repository history. AISlop severity does not replace Athena
-severity or disposition.
+Treat the AISlop score as a signal, not an Athena grade. Avoid using a score increase as proof of a correct
+repair. Avoid making a finding from one diagnostic. Confirm each candidate with architecture,
+behavior, callers, tests, contracts, and repository history. Aim not to let AISlop severity replace
+Athena severity or disposition.
 
 Use these routes for known rule families:
 
@@ -152,9 +154,9 @@ Use these routes for known rule families:
 | `code-quality/*` and `knip/*` | Route proven dead or duplicate artifacts to `simplify`. Route a supported authority, ownership, or boundary defect to `realign`. |
 | `ai-slop/*` comments, residue, unused items, and trivial wrappers | Confirm consumers and history. Route safe subtraction to `simplify`. |
 | `ai-slop/*` errors, fallbacks, type escapes, state, asynchronous code, and tests | Confirm the behavior and policy contract. Route structural repair to `realign`. Route an observed defect to `systematic-debugging`. |
-| `security/*` | Trace the trust boundary and sink. Route a supported structural correction to `realign` with a qualified security reviewer. Stop for a possible live secret or high-risk authorization defect. |
-| Formatter, linter, compiler, and external-tool diagnostics | Apply the repository and language profile. Do not replace repository-native gates with AISlop output. |
-| Unknown rule ID or result shape | Do not guess its meaning. Preserve the raw evidence when safe, mark a coverage gap, and use `retain` until authoritative documentation resolves it. |
+| `security/*` | Trace the trust boundary and sink. Route a supported structural correction to `realign` with a qualified security reviewer. Stop for a possible live secret; report a high-risk authorization defect to a qualified security reviewer. |
+| Formatter, linter, compiler, and external-tool diagnostics | Apply the repository and language profile. Prefer not to replace repository-native gates with AISlop output. |
+| Unknown rule ID or result shape | Avoid guessing its meaning. Preserve the raw evidence when safe, mark a coverage gap, and use `retain` until authoritative documentation resolves it. |
 
 Diagnostics can overlap. Deduplicate them under the root cause. Keep a scanner diagnostic as a
 rejected candidate when a legitimate counterexample applies. Record the reason. Practitioner
@@ -178,7 +180,7 @@ Treat each of these conditions as a scanner coverage gap:
 - host permissions or task authorization prevent the scan.
 
 Continue the semantic assessment when possible. Name the exact missed surface and the checks that
-remain available. Do not give unsupported credit. Do not state that a clean AISlop result means that
+remain available. Avoid giving unsupported credit. Avoid stating that a clean AISlop result means that
 the target is free of architecture, behavior, security, or maintenance defects.
 
 ## Missing-tool output
@@ -194,18 +196,18 @@ When AISlop is absent, include this information in the assessment summary:
 - `realign` did not install AISlop or optional tools.
 
 Give the same output when the tool is incompatible or cannot inspect the primary language. Add the
-specific incompatibility or language gap. Do not run the installation command.
+specific incompatibility or language gap. Prefer not to run the installation command.
 
 ## Failed approaches
 
-- Do not infer that AISlop detected AI authorship.
-- Do not fix all diagnostics or optimize for the score.
-- Do not trust a registered package name, a version string, or repository configuration by itself.
-- Do not enable a scanner engine that evaluates repository-controlled build files outside the
+- Avoid inferring that AISlop detected AI authorship.
+- Avoid fixing all diagnostics or optimizing for the score.
+- Avoid trusting a registered package name, a version string, or repository configuration by itself.
+- Prefer not to enable a scanner engine that evaluates repository-controlled build files outside the
   realign validation execution policy.
-- Do not hide missing tools, suppressed rules, unsupported languages, skipped files, or failed
+- Avoid hiding missing tools, suppressed rules, unsupported languages, skipped files, or failed
   engines.
-- Do not use AISlop as a substitute for architecture inspection, behavior tests, repository-native
+- Avoid using AISlop as a substitute for architecture inspection, behavior tests, repository-native
   validation, or qualified security review.
 
 ## Attribution
