@@ -71,6 +71,17 @@ class IndependenceTests(unittest.TestCase):
             "NO-GO", self.module.assess_batch([{"verdict": "GO"}])["status"]
         )
 
+    def test_empty_artifact_id_prevents_go(self) -> None:
+        reports = [self.report("GO", artifact="")]
+        self.assertEqual("NO-GO", self.module.assess_batch(reports)["status"])
+
+    def test_duplicate_instance_prevents_go(self) -> None:
+        reports = [
+            self.report("GO", instance="same"),
+            self.report("GO", instance="same"),
+        ]
+        self.assertEqual("NO-GO", self.module.assess_batch(reports)["status"])
+
 
 if __name__ == "__main__":
     unittest.main()
