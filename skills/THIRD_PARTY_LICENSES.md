@@ -73,8 +73,6 @@ Athena changed the source protocol. The primary adapted files are:
 
 | Athena file | Adapted material and changes |
 | --- | --- |
-| `docs/review/common.md` | Two-sided author and reviewer exchange, contest handling, later-round reconciliation, convergence stops, and the selected five-assessment limit. Athena adds its existing severity, disposition, architecture, evidence, exact-binding, carrier, and delivery rules. |
-| `skills/review-exchange/SKILL.md` | Host-neutral invocation and safe fallback for Athena's executable state mechanism. |
 
 Athena also adds an original standard-library state reducer, forge adapters, canonical JSON digests,
 and tests. The source did not supply these implementations.

@@ -1,10 +1,7 @@
 # Control flow and error catalog
 
-Use this catalog with the
-[errors and reliability profile](../../../docs/review/common.md#errors-and-reliability) and the
-[language-routing contract](../../../docs/review/language-routing.md). Apply the error model of the
-target language. Exceptions, error values, result types, status values, and cancellation signals can
-carry the same policy concerns.
+Use this catalog with the target language. Exceptions, error values, result types, status values,
+and cancellation signals can carry the same policy concerns.
 
 Handle a failure at the nearest responsible boundary. This is the nearest boundary that has enough
 policy context to complete recovery, cleanup, compensation, bounded retry, redaction, translation,
@@ -12,25 +9,25 @@ termination, or another specified outcome. It is not always the local function. 
 outermost boundary. If a layer cannot complete the outcome, preserve the cause and propagate the
 failure.
 
-Do not infer a defect from branch count, nesting depth, exception count, or a generated diagnostic.
-Confirm a reachable behavior or architecture effect. Route the lead to `retain` when the evidence
-does not support a change.
+Aim not to infer a defect from branch count, nesting depth, exception count, or a generated
+diagnostic. Confirm a reachable behavior or architecture effect. Where the evidence does not support
+a change, prefer to route the lead to `retain`.
 
 ## Branch or guard structure that hides a state model
 
 - **Signal:** Nested conditions, repeated predicates, Boolean flags, early exits, and switch branches
   encode combinations of the same domain state. Different branches perform the same transition or
   use incompatible transition rules.
-- **Required evidence:** Enumerate the reachable states and transitions. Identify repeated decisions,
+- **Useful evidence:** Enumerate the reachable states and transitions. Identify repeated decisions,
   unreachable paths, or inconsistent outcomes. Bind them to a contract, caller, or test. A complexity
-  score or nesting threshold is not sufficient evidence.
+  score or nesting threshold is a signal, not proof.
 - **Impact:** State the incorrect transition, hidden invariant, duplicate policy, or maintenance
   action that the flow causes.
 - **Legitimate counterexample:** Retain explicit branches when they are the clearest form of a small
   decision. Retain a decision table or state machine when the domain has necessary states and the
   repository makes their transitions explicit.
 - **Smallest safe correction:** Name the state or predicate one time at its owner. Use an existing
-  state type, decision table, or guard form when it makes the transitions explicit. Do not add a
+  state type, decision table, or guard form when it makes the transitions explicit. Avoid adding a
   framework only to reduce nesting.
 - **Validation:** Test each applicable transition, boundary value, and invalid state. Confirm that the
   refactor starts from a green behavior baseline.
@@ -44,8 +41,7 @@ does not support a change.
   [P070](../../../docs/principles/README.md#p070),
   [P072](../../../docs/principles/README.md#p072), and
   [P075](../../../docs/principles/README.md#p075).
-- **Sources:** [Athena behavior-first testing contract](../../../docs/review/behavior-first-testing.md),
-  [AISlop rule catalog](https://github.com/scanaislop/aislop/blob/v0.16.0/docs/rules.md), and
+- **Sources:** [AISlop rule catalog](https://github.com/scanaislop/aislop/blob/v0.16.0/docs/rules.md), and
   [a practitioner discussion of generated nesting and broad catches](https://news.ycombinator.com/item?id=45535937).
 
 ## Duplicate validation or validation at the wrong boundary
@@ -53,9 +49,9 @@ does not support a change.
 - **Signal:** Core functions repeatedly check a representation that an earlier trusted boundary
   already validated. Parsing, normalization, validation, and operation occur in many layers. An
   external or trust boundary has no validation, while downstream code adds defensive guards.
-- **Required evidence:** Identify the trust and construction boundaries. Trace the value from its
+- **Useful evidence:** Identify the trust and construction boundaries. Trace the value from its
   untrusted form to its trusted form. Show the duplicated invariant or the path that can bypass
-  validation. Similar checks are not sufficient evidence when they enforce different contracts.
+  validation. Similar checks can enforce different contracts; check the contract.
 - **Impact:** State the inconsistent rejection, missing protection, branch growth, type erosion, or
   duplicate maintenance that the placement causes.
 - **Legitimate counterexample:** Retain independent checks for different trust boundaries. Retain a
@@ -78,8 +74,7 @@ does not support a change.
   [P053](../../../docs/principles/README.md#p053),
   [P054](../../../docs/principles/README.md#p054), and
   [P076](../../../docs/principles/README.md#p076).
-- **Sources:** [Athena architecture and simplicity profile](../../../docs/review/common.md#architecture-and-simplicity),
-  [GitHub guidance for review of generated code](https://docs.github.com/en/copilot/tutorials/review-ai-generated-code),
+- **Sources:** [GitHub guidance for review of generated code](https://docs.github.com/en/copilot/tutorials/review-ai-generated-code),
   and [AISlop rule catalog](https://github.com/scanaislop/aislop/blob/v0.16.0/docs/rules.md).
 
 ## Hidden default or semantic fallback
@@ -87,9 +82,9 @@ does not support a change.
 - **Signal:** A catch, error branch, null-coalescing path, or feature fallback returns an empty,
   cached, permissive, or default result without a public contract for that result. The caller cannot
   distinguish success from degraded operation.
-- **Required evidence:** Trace the reachable failure to the fallback and its consumers. Identify the
+- **Useful evidence:** Trace the reachable failure to the fallback and its consumers. Identify the
   stated result contract, security state, freshness rule, and observability requirement. A default
-  value is not sufficient evidence when it is part of the documented contract.
+  value is accepted when it is part of the documented contract.
 - **Impact:** State the incorrect success signal, stale result, denied diagnostic, weakened security,
   or state divergence that the fallback causes.
 - **Legitimate counterexample:** Retain a documented graceful-degradation mode when it keeps correct
@@ -111,8 +106,7 @@ does not support a change.
   [P033](../../../docs/principles/README.md#p033),
   [P034](../../../docs/principles/README.md#p034), and
   [P036](../../../docs/principles/README.md#p036).
-- **Sources:** [Athena errors and reliability profile](../../../docs/review/common.md#errors-and-reliability),
-  [AISlop rule catalog](https://github.com/scanaislop/aislop/blob/v0.16.0/docs/rules.md), and
+- **Sources:** [AISlop rule catalog](https://github.com/scanaislop/aislop/blob/v0.16.0/docs/rules.md), and
   [a reproduced exception-handling regression report](https://github.com/anthropics/claude-code/issues/40355).
 
 ## Error handling without policy ownership
@@ -120,9 +114,9 @@ does not support a change.
 - **Signal:** A local function catches or converts all failures but cannot recover, retry, compensate,
   redact, translate a public contract, or stop correctly. An outer boundary handles unrelated
   failures with one outcome. Intermediate layers repeatedly change the error form.
-- **Required evidence:** Map the initial cause through each boundary. For every handler, identify its
+- **Useful evidence:** Map the initial cause through each boundary. For every handler, identify its
   policy decision and ability to complete that decision. Show the consumer contract and state after
-  failure. Catch width alone is not sufficient evidence.
+  failure. Catch width alone is a signal, not proof.
 - **Impact:** State the lost cause, incorrect response, duplicate handling, unsafe continuation, or
   policy coupling that the boundary causes.
 - **Legitimate counterexample:** Retain local handling when it completes a specified recovery or
@@ -130,7 +124,7 @@ does not support a change.
   it records the failure before safe continuation.
 - **Smallest safe correction:** Keep handling at the nearest boundary that owns the outcome. If the
   current layer has no outcome to select, preserve type, cause, and useful context, and propagate one
-  time. Do not move all handling to the outermost boundary as a universal rule.
+  time. Avoid moving all handling to the outermost boundary as a universal rule.
 - **Validation:** Test each public error outcome, recovery path, cleanup path, and failure state.
   Verify language-specific cause chaining or error wrapping. Confirm that one policy owner handles
   each failure.
@@ -143,8 +137,7 @@ does not support a change.
   [P030](../../../docs/principles/README.md#p030),
   [P031](../../../docs/principles/README.md#p031),
   [P032](../../../docs/principles/README.md#p032).
-- **Sources:** [Athena errors and reliability profile](../../../docs/review/common.md#errors-and-reliability),
-  [Exception Handling Bugs in Python](https://doi.org/10.1016/j.infsof.2026.108264), and
+- **Sources:** [Exception Handling Bugs in Python](https://doi.org/10.1016/j.infsof.2026.108264), and
   [a practitioner discussion of blanket catches](https://news.ycombinator.com/item?id=45535937).
 
 ## Duplicate handling or lost causal information
@@ -152,9 +145,9 @@ does not support a change.
 - **Signal:** Code catches, logs, and throws the same failure without a policy decision. It converts
   all causes to one string, Boolean, null value, or generic status. Several layers emit the same
   failure as separate incidents. A replacement error omits the initial cause.
-- **Required evidence:** Trace error identity, cause, context, and diagnostics from source to the
+- **Useful evidence:** Trace error identity, cause, context, and diagnostics from source to the
   responsible boundary. Identify the information that a caller or operator needs. Similar log
-  messages alone are not sufficient evidence.
+  messages alone are a signal, not proof.
 - **Impact:** State the incorrect classification, duplicate alert, lost diagnosis, false success, or
   public-contract error that results.
 - **Legitimate counterexample:** Retain a local span event, metric, or context addition when it has a
@@ -174,8 +167,7 @@ does not support a change.
   [P031](../../../docs/principles/README.md#p031),
   [P032](../../../docs/principles/README.md#p032), and
   [P047](../../../docs/principles/README.md#p047).
-- **Sources:** [Athena language-routing contract](../../../docs/review/language-routing.md),
-  [AISlop rule catalog](https://github.com/scanaislop/aislop/blob/v0.16.0/docs/rules.md), and
+- **Sources:** [AISlop rule catalog](https://github.com/scanaislop/aislop/blob/v0.16.0/docs/rules.md), and
   [a reproduced exception-handling regression report](https://github.com/anthropics/claude-code/issues/40355).
 
 ## Unsafe or duplicate retry policy
@@ -183,14 +175,14 @@ does not support a change.
 - **Signal:** A loop retries all failures, has no finite budget, or repeats a non-idempotent effect.
   Several layers retry the same operation. Timeouts cause retries that continue after the caller has
   stopped. A circuit breaker or backoff is added without dependency-failure evidence.
-- **Required evidence:** Identify the retry owner, transient-failure classification, total deadline,
+- **Useful evidence:** Identify the retry owner, transient-failure classification, total deadline,
   attempt budget, idempotency or reconciliation mechanism, and retries in lower or higher layers.
   Show the duplicate effect or availability requirement. The presence or absence of retry code alone
-  is not sufficient evidence.
+  is a signal, not proof.
 - **Impact:** State the duplicate side effect, request amplification, delayed failure, capacity loss,
   or unmet availability contract.
 - **Legitimate counterexample:** Retain a repository or client-library retry when it has the complete
-  policy, obeys the caller deadline, and makes repeated effects safe. Do not require retry for a
+  policy, obeys the caller deadline, and makes repeated effects safe. Avoid requiring retry for a
   permanent failure or an operation that cannot repeat safely.
 - **Smallest safe correction:** Give one responsible boundary the retry policy. Make the operation
   idempotent or reconcilable before retry. Classify transient failures and use a finite budget within
@@ -207,17 +199,16 @@ does not support a change.
   [P037](../../../docs/principles/README.md#p037),
   [P038](../../../docs/principles/README.md#p038), and
   [P070](../../../docs/principles/README.md#p070).
-- **Sources:** [Athena errors and reliability profile](../../../docs/review/common.md#errors-and-reliability)
-  and [AWS guidance for timeouts and retries](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/).
+- **Sources:** [AWS guidance for timeouts and retries](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/).
 
 ## Missing or broken timeout and cancellation propagation
 
 - **Signal:** An external operation, lock, queue wait, or child task has no applicable bound. Code
   catches or replaces cancellation. A child operation outlives its owner. A timeout is reported as
   success or as an unrelated failure.
-- **Required evidence:** Identify the lifecycle owner, caller deadline, cancellation source, cleanup
+- **Useful evidence:** Identify the lifecycle owner, caller deadline, cancellation source, cleanup
   duties, and result contract. Show a reachable unbounded wait, orphaned operation, or lost
-  cancellation. A function without a timeout parameter is not sufficient evidence.
+  cancellation. A function without a timeout parameter is a signal, not proof.
 - **Impact:** State the resource leak, capacity loss, stale write, delayed shutdown, or incorrect
   caller outcome.
 - **Legitimate counterexample:** Retain a process-lifetime task, local bounded computation, or
@@ -227,7 +218,7 @@ does not support a change.
   interface. Give child work the owner lifecycle. On cancellation, stop new work and release owned
   resources. Preserve the cancellation outcome.
 - **Validation:** Use controlled time and explicit synchronization. Test cancellation before start,
-  during work, and during cleanup. Test deadline expiry and shutdown. Do not use a wall-clock sleep
+  during work, and during cleanup. Test deadline expiry and shutdown. Avoid using a wall-clock sleep
   as the only proof.
 - **Routing owner:** Use `realign`. Use `systematic-debugging` first when the repository has a
   reproduced hang or orphaned task. Use `simplify` only for a proven unused timeout wrapper.
@@ -239,19 +230,17 @@ does not support a change.
   [P039](../../../docs/principles/README.md#p039),
   [P070](../../../docs/principles/README.md#p070), and
   [P082](../../../docs/principles/README.md#p082).
-- **Sources:** [Athena behavior-first testing contract](../../../docs/review/behavior-first-testing.md),
-  [Athena language-routing contract](../../../docs/review/language-routing.md), and
-  [AWS guidance for timeouts and retries](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/).
+- **Sources:** [AWS guidance for timeouts and retries](https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/).
 
 ## Partial state change without atomicity or compensation
 
 - **Signal:** One logical operation writes multiple state owners and can stop between writes. A catch
   continues after partial progress without a state contract. Compensation is best-effort but has no
   durable progress, idempotency, or reconciliation rule.
-- **Required evidence:** Identify the invariant, commit boundaries, irreversible step, each failure
+- **Useful evidence:** Identify the invariant, commit boundaries, irreversible step, each failure
   point, and state after interruption. Show that one transaction is possible or that the distributed
-  workflow needs compensation. Multiple writes are not sufficient evidence when partial progress is
-  the documented state.
+  workflow needs compensation. Multiple writes can be expected partial progress; check the
+  documented state.
 - **Impact:** State the lost update, duplicate effect, unrecoverable state, incorrect resume, or
   operator action that can result.
 - **Legitimate counterexample:** Retain an eventually consistent or resumable workflow when progress,
@@ -275,17 +264,16 @@ does not support a change.
   [P046](../../../docs/principles/README.md#p046),
   [P070](../../../docs/principles/README.md#p070), and
   [P083](../../../docs/principles/README.md#p083).
-- **Sources:** [Athena errors and reliability profile](../../../docs/review/common.md#errors-and-reliability)
-  and [Microsoft compensating-transaction guidance](https://learn.microsoft.com/en-us/azure/architecture/patterns/compensating-transaction).
+- **Sources:** [Microsoft compensating-transaction guidance](https://learn.microsoft.com/en-us/azure/architecture/patterns/compensating-transaction).
 
 ## Unclear resource or task lifetime
 
 - **Signal:** A file, connection, lock, transaction, subscription, temporary file, child process, or
   asynchronous task has no clear owner. Cleanup occurs only on success. Cleanup failure replaces the
   initial failure without an explicit policy. A detached task has no result consumer.
-- **Required evidence:** Trace acquisition, ownership transfer, use, release, and all failure exits.
+- **Useful evidence:** Trace acquisition, ownership transfer, use, release, and all failure exits.
   Identify the repository or language lifetime convention. Show a reachable leak, deadlock, orphan,
-  lost failure, or invalid cleanup order. Manual cleanup alone is not sufficient evidence.
+  lost failure, or invalid cleanup order. Manual cleanup alone is a signal, not proof.
 - **Impact:** State the resource exhaustion, blocked progress, data loss, duplicate work, or lost
   diagnostic that can result.
 - **Legitimate counterexample:** Retain a process-lifetime pool, framework-owned resource, or detached
@@ -306,18 +294,16 @@ does not support a change.
   [P030](../../../docs/principles/README.md#p030),
   [P032](../../../docs/principles/README.md#p032), and
   [P079](../../../docs/principles/README.md#p079).
-- **Sources:** [Athena language-routing contract](../../../docs/review/language-routing.md),
-  [Athena errors and reliability profile](../../../docs/review/common.md#errors-and-reliability), and
-  [Exception Handling Bugs in Python](https://doi.org/10.1016/j.infsof.2026.108264).
+- **Sources:** [Exception Handling Bugs in Python](https://doi.org/10.1016/j.infsof.2026.108264).
 
 ## Detached or uncoordinated concurrent work
 
 - **Signal:** Code starts parallel work without a measured need, shared-state contract, result owner,
   sibling-failure policy, cancellation rule, or capacity bound. One task failure is ignored while
   other tasks continue to change state.
-- **Required evidence:** Identify the concurrency requirement, task owner, shared state,
+- **Useful evidence:** Identify the concurrency requirement, task owner, shared state,
   synchronization, maximum work, failure aggregation, and cancellation path. Show a reachable race,
-  orphan, duplicate effect, or resource growth. Parallel syntax alone is not sufficient evidence.
+  orphan, duplicate effect, or resource growth. Parallel syntax alone is a signal, not proof.
 - **Impact:** State the incorrect result, state race, failure loss, shutdown delay, or capacity
   problem.
 - **Legitimate counterexample:** Retain repository-standard structured concurrency or a supervised
@@ -338,7 +324,4 @@ does not support a change.
   [P072](../../../docs/principles/README.md#p072),
   [P080](../../../docs/principles/README.md#p080), and
   [P082](../../../docs/principles/README.md#p082).
-- **Sources:** [Athena errors and reliability profile](../../../docs/review/common.md#errors-and-reliability),
-  [Athena behavior-first testing contract](../../../docs/review/behavior-first-testing.md),
-  [Athena language-routing contract](../../../docs/review/language-routing.md), and
-  [Notes on structured concurrency](https://vorpus.org/blog/notes-on-structured-concurrency-or-go-statement-considered-harmful/).
+- **Sources:** [Notes on structured concurrency](https://vorpus.org/blog/notes-on-structured-concurrency-or-go-statement-considered-harmful/).

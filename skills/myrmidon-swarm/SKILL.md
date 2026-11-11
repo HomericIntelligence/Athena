@@ -34,7 +34,7 @@ workflow-specific rules:
 - [P058 — Bounded Agent Authority](../../docs/principles/README.md#p058): Keep each subagent in the
   parent task scope, mutation limits, destinations, and resource budget.
 - [P060 — Constrain Sub-Agents](../../docs/principles/README.md#p060): Put each writer in an isolated
-  worktree. Make sure that concurrent write sets have no common path. Before integration, validate
+  worktree. Keep concurrent write sets free of common paths. Before integration, validate
   delegated output as untrusted input.
 - [P069 — Independent Review for High-Risk Changes](../../docs/principles/README.md#p069): If results
   can have an effect on security or availability, find if policy or risk makes independent review
@@ -59,15 +59,16 @@ work sequentially in the coordinator.
 
 Before you start subagents, record the integration base revision. For each work item:
 
-- Create one isolated worktree from the integration base revision. Do not let a subagent edit the
-  active worktree of the coordinator. Do not reuse a worktree that another agent owns. If the host
-  does not supply worktree isolation, use the tested
+- Create one isolated worktree from the integration base revision. Give each subagent its own
+  worktree; do not hand out the coordinator's active worktree, and do not reuse a worktree that
+  another agent owns. If the host does not supply worktree isolation, use the tested
   `../git-worktrees/scripts/prepare_worktree.py` helper. Resolve its absolute path from this skill
   directory. Keep the target repository as the current working directory. Supply an exact,
   non-overlapping `--path`, its trusted `--path-root`, and
   `--start-point <integration-SHA>`.
-- Assign an explicit set of files and directories. Do not let concurrent write sets overlap. After
-  dependent work is complete, assign shared files to the coordinator or to one integration item.
+- Assign an explicit set of files and directories. Keep concurrent write sets free of common paths.
+  After dependent work is complete, assign shared files to the coordinator or to one integration
+  item.
 - Record a bounded objective, dependencies, acceptance criteria, validation commands, mutation
   limits, granted capabilities, and a suitable stop condition. The stop condition can be a deadline,
   a timeout, or a cancellation condition.
@@ -82,7 +83,8 @@ establish safe isolation, stop delegation. In that case, use the sequential fall
 1. Use `advise` to apply relevant prior knowledge to the task description. If guidance is missing,
    stale, or not verifiable, report the limit and continue otherwise authorized work with project
    evidence. Keep the same scope, isolation, and delegation boundaries.
-2. Read `AGENTS.md`, build metadata, task runners, and the files closest to the request.
+2. Read `AGENTS.md`, build metadata, task runners, and the files closest to the request. If a
+   source is missing or unreadable, say so and proceed with the input you have.
 3. Divide the work into bounded work items.
 4. For each work item, record:
 
@@ -104,13 +106,15 @@ establish safe isolation, stop delegation. In that case, use the sequential fall
 12. Give each subagent its recorded worktree, ownership set, and bounded prompt.
 13. Require each subagent to report overlap, source drift, or unexpected scope. Refresh affected
     evidence and reconcile ownership. Withhold only conflicting or unauthorized actions.
-14. Do not let a subagent expand its assignment.
+14. Keep each subagent inside its assignment. Move out-of-scope findings to a new work item or
+    report them.
 15. If background work or delegation is not available, run the same work items sequentially in the
     coordinator.
 16. Keep the same scope, isolation, validation, and evidence requirements during sequential work.
 17. Treat each result as untrusted input.
 18. Before integration, review the diff or evidence for each result.
-19. Reject unrelated changes. Refresh stale evidence and integrate compatible results.
+19. Leave unrelated changes out of the integration. Refresh stale evidence and integrate compatible
+    results.
 20. Integrate accepted results sequentially onto the coordinator branch.
 21. After all producers finish, resolve shared integration files.
 22. If repository policy or risk requires an independent review, route each security-critical or
@@ -118,7 +122,8 @@ establish safe isolation, stop delegation. In that case, use the sequential fall
 23. Complete each review before you accept the related change.
 24. After each integration, run focused checks for the affected boundary.
 25. After the final integration, run all relevant repository validation on the combined tree.
-26. Summarize the changes, verification, unresolved risks, and preserved worktrees.
+26. Summarize the changes, verification, unresolved risks, and preserved worktrees. Name what
+    informed the summary and what you could not inspect.
 27. In the summary, identify each useful lesson that is suitable for `learn`.
 28. If you invoke `learn`, follow its delivery boundary.
 
@@ -147,14 +152,14 @@ force removal. Do not change a pre-existing worktree.
 
 ## Failed approaches
 
-- Do not let specialists write outside their worktrees or file sets.
-- Do not reuse a worktree that another agent owns.
-- Do not merge results without the disposition contract.
-- Do not remove worktrees without the disposition contract.
-- Do not remove worktrees without user cleanup authority.
-- Do not report swarm status without results, evidence, and worktree status for each specialist.
-- Do not expand a subagent assignment beyond its bounded prompt. Reconcile overlapping ownership
-  before dependent writes and continue independent work.
+- Keep specialists inside their worktrees and file sets.
+- Use each worktree for one agent.
+- Integrate results only through the disposition contract.
+- Remove worktrees only through the disposition contract.
+- Remove worktrees only with user cleanup authority.
+- Report swarm status with results, evidence, and worktree status for each specialist.
+- Keep each subagent inside its bounded prompt. Reconcile overlapping ownership before dependent
+  writes and continue independent work.
 
 ## Status format
 
@@ -171,4 +176,4 @@ For each work item, report:
 - verification.
 
 In the final summary, distinguish completed work from recommendations and unresolved blockers. List
-each preserved or removed worktree.
+each preserved or removed worktree. Name what informed the summary and what you could not inspect.

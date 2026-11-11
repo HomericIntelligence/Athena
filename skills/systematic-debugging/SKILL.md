@@ -21,8 +21,8 @@ all prose that it produces.
 
 ## Working rules
 
-Find the root cause before you attempt a repair. Do not repair only the symptom. Follow each
-required step in this process.
+Aim to find the root cause before you attempt a repair. Avoid repairing only the symptom. Follow the
+steps in this process.
 
 ## Engineering principles
 
@@ -34,7 +34,7 @@ principle definitions. Use these principles in this workflow:
 - [P015 — Architecture Conformance](../../docs/principles/README.md#p015): Before you change the
   architecture, compare the failure path with the repository boundaries.
 - [P022 — Test Behavior, Not Implementation](../../docs/principles/README.md#p022): Reproduce the
-  observable contract. Add a test for this contract. Do not add a test for the private
+  observable contract. Add a test for this contract. Avoid a test for the private
   implementation.
 - [P029 — Generalize Error Policy; Preserve Specific Cause](../../docs/principles/README.md#p029):
   Use a stable error policy at the boundary. Keep the initial cause.
@@ -43,21 +43,21 @@ principle definitions. Use these principles in this workflow:
 - [P047 — Observability Is Part of Correctness](../../docs/principles/README.md#p047): Collect the
   minimum evidence that is necessary to find the fault. Correlate the evidence. Use a structured
   data format. Do not include sensitive data.
-- [P065 — Verify Before Claiming Completion](../../docs/principles/README.md#p065): Before you tell the
-  user that you corrected the fault, do the initial reproduction again. Then, do the applicable
-  repository checks.
+- [P065 — Verify Before Claiming Completion](../../docs/principles/README.md#p065): Before you tell
+  the user that you corrected the fault, redo the initial reproduction. Then, run the applicable
+  repository checks. When they cannot run, state what is missing.
 - [P072 — Technical Evidence Over Preference](../../docs/principles/README.md#p072): Use only collected
   evidence to accept or reject a hypothesis.
 
 ## Before you start
 
 Run `advise` with the error description. If guidance is missing, stale, or not verifiable, report
-the limit and continue otherwise authorized investigation with source and failure evidence.
-Do not skip the best-effort retrieval attempt.
+the limit and continue otherwise authorized investigation with source and failure evidence. Keep the
+best-effort retrieval attempt.
 
-## Required sequence
+## Sequence
 
-Complete phase 1 before you propose a repair.
+Aim for phase 1 before any repair.
 
 ## When to use
 
@@ -80,11 +80,12 @@ Use this skill especially in these conditions:
 
 ## Workflow
 
-Complete each phase before you continue to the next phase.
+Aim to complete each phase before you continue to the next phase. Keep this order where you can; when a phase
+cannot be completed, note what is missing and continue with the next phase that can run.
 
 ### Phase 1: Root cause investigation
 
-Before you attempt a repair, complete these steps:
+Before you attempt a repair, prefer to complete these steps:
 
 1. Record these items from the complete failure output:
 
@@ -94,11 +95,11 @@ Before you attempt a repair, complete these steps:
    - file paths;
    - error codes.
 
-2. Do not skip an error or warning. An error message can identify the cause.
+2. Avoid skipping an error or warning. An error message can identify the cause.
 3. Reproduce the failure consistently.
 4. Record the exact conditions, steps, and frequency of the failure.
 5. If you cannot reproduce the failure, collect more data.
-6. Do not guess the cause.
+6. Avoid guessing the cause.
 7. Compare the failed state with recent repository history.
 8. Inspect these possible sources of the failure:
 
@@ -110,7 +111,7 @@ Before you attempt a repair, complete these steps:
 
 9. If the system has multiple components, isolate the failed boundary.
 10. Before you propose a repair, add only the minimum non-sensitive diagnostic instrumentation that
-   [P047 — Observability Is Part of Correctness](../../docs/principles/README.md#p047) requires.
+   [P047 — Observability Is Part of Correctness](../../docs/principles/README.md#p047) calls for.
 11. At each component boundary:
 
     - log the input data;
@@ -125,17 +126,16 @@ Before you attempt a repair, complete these steps:
 16. Identify where the incorrect value starts and which caller supplied it.
 17. Continue the trace until you find the source.
 18. Identify the source as the repair location.
-19. Do not repair only the symptom.
+19. Avoid repairing only the symptom.
 
 ### Phase 2: Pattern analysis
 
 Identify the pattern before you make a repair:
 
 1. Find correct examples of similar code in the same repository.
-2. Read each applicable reference implementation completely.
-3. Do not read only a sample.
-4. List each difference between the correct code and the code that fails.
-5. Identify all dependencies and all configuration and environment assumptions.
+2. Read each applicable reference implementation completely; avoid reading only a sample.
+3. List each difference between the correct code and the code that fails.
+4. Identify all dependencies and all configuration and environment assumptions.
 
 ### Phase 3: Hypothesis and test
 
@@ -147,13 +147,13 @@ Use this method to test a hypothesis:
 4. If the result supports the hypothesis, continue to phase 4.
 5. If the result does not support the hypothesis, state a new hypothesis.
 6. If you do not understand X, state `I do not understand X.`
-7. Do not claim that you understand X.
+7. Avoid claiming that you understand X.
 
 ### Phase 4: Implementation
 
 Repair the root cause.
 
-Do not repair only the symptom.
+Avoid repairing only the symptom.
 Before you add code, check whether removal, reuse, consolidation, or deletion of an obsolete
 workaround is the smallest safe repair. If that repair preserves the contract, choose it.
 
@@ -164,13 +164,14 @@ workaround is the smallest safe repair. If that repair preserves the contract, c
 4. Under [P028](../../docs/principles/README.md#p028), make the test cover the applicable failure
    path.
 5. Implement one repair that corrects the root cause.
-6. Under [P065](../../docs/principles/README.md#p065), run this validation:
+6. Under [P065](../../docs/principles/README.md#p065), aim to run this validation:
 
    - Rerun the reproduction.
    - Run the applicable test suite.
-7. Under [P027](../../docs/principles/README.md#p027), keep the test deterministic and isolated.
-8. Under [P067](../../docs/principles/README.md#p067), do not weaken tests.
-9. Under [P068](../../docs/principles/README.md#p068), do not bypass validation.
+   - When a check cannot run, state what is missing.
+7. Under [P027](../../docs/principles/README.md#p027), prefer deterministic and isolated tests.
+8. Under [P067](../../docs/principles/README.md#p067), prefer not to weaken tests.
+9. Under [P068](../../docs/principles/README.md#p068), prefer not to bypass validation.
 
 If the repair changes failure behavior, complete these steps:
 
@@ -191,7 +192,7 @@ If the repair does not correct the issue, complete these steps:
 1. Stop the current repair attempt.
 2. Count the failed repair attempts.
 3. If fewer than three repairs failed, return to phase 1 with the new information.
-4. After three failed repairs, start an architecture review.
+4. After three failed repairs, prefer an architecture review over another guess.
 
 ### After three failed repairs
 
@@ -205,12 +206,11 @@ Review the evidence for these conditions:
 - Each repair creates a new symptom in another component.
 
 Before another repair attempt, reassess the collected evidence and select a viable approach. If the evidence shows
-an incorrect hypothesis, return to phase 1. Propose an architecture change only if the evidence
-supports it.
+an incorrect hypothesis, return to phase 1. Propose an architecture change when the evidence supports it.
 
-## Stop conditions
+## Signals to return to phase 1
 
-Stop if one of these conditions applies:
+Return to phase 1 instead of continuing the change when one of these conditions applies:
 
 - You plan a temporary repair before an investigation.
 - You plan to change X only to see the result.
@@ -220,25 +220,26 @@ Stop if one of these conditions applies:
 - You plan another repair without reassessing failed attempts.
 - Each repair reveals a new problem in a different component.
 
-After you stop, return to phase 1.
+When you return to phase 1, use the new information to refine the hypothesis or the model.
 
 ## Failed approaches
 
-- Do not omit this process for a simple issue. A simple issue also has a root cause.
-- Do not omit this process during an emergency. Systematic debugging is faster than repairs without
+- Avoid omitting this process for a simple issue. A simple issue also has a root cause.
+- Avoid omitting this process during an emergency. Systematic debugging is faster than repairs
+  without evidence.
+- Prefer not to attempt a repair before the investigation. The first repair can affect the next
   evidence.
-- Do not attempt a repair before the investigation. The first repair can affect the next evidence.
-- Do not make multiple repairs at the same time. You cannot identify which repair changed the
-  result, and the repairs can cause new bugs.
-- After three failed repairs, do not make another repair from a guess. Start an architecture review.
+- Prefer not to make multiple repairs at the same time. You cannot identify which repair changed
+  the result, and the repairs can cause new bugs.
+- After three failed repairs, avoid another repair from a guess. Prefer an architecture review.
 
 ## Repository command discovery
 
 Before you run a check, find the target repository commands. Inspect `AGENTS.md`, task runners,
 manifests, lockfiles, and continuous integration (CI) configuration. Prefer the command that required
 CI uses.
-If the sources conflict or you cannot find a safe command, ask the user. Do not use Athena commands
-as a substitute.
+If the sources conflict or you cannot find a safe command, ask the user. Prefer not to use Athena
+commands as a substitute.
 
 Keep the target repository as the current working directory. Resolve
 `scripts/repository_evidence.py` against this installed skill directory. Invoke that absolute helper
@@ -249,9 +250,10 @@ output as evidence.
 
 ## After resolution
 
-Before you state that the bug is fixed, verify the result with fresh runnable evidence under the
-[evidence-integrity policy](../../docs/policies/evidence-integrity.md). Rerun the original
-reproduction. Run the repository-defined checks again.
+Before you state that the bug is fixed, rerun the original reproduction and the repository-defined
+checks when they are available; when they cannot run, state the result and what is missing. The
+[evidence-integrity policy](../../docs/policies/evidence-integrity.md) describes good practice for
+durable evidence; note which of its expectations were met and which are missing.
 
 If the session produces durable debugging knowledge, offer to invoke `learn`. An indirect `learn`
 invocation is read-only and does not increase the requested scope. If the user requests durable

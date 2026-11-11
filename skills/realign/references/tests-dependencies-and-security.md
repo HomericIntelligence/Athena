@@ -1,14 +1,12 @@
 # Tests, dependencies, security, and evidence
 
-Read the [shared review contract](../../../docs/review/common.md), the
-[behavior-first testing contract](../../../docs/review/behavior-first-testing.md), and the
-[language-routing contract](../../../docs/review/language-routing.md) before you use this catalog.
 Apply the [ASD-STE100 technical-English policy](../../TECHNICAL_ENGLISH.md) to the assessment and
 repair output.
 
-Use each pattern as an investigation signal. Do not infer authorship from a pattern. Do not make a
-finding until the required evidence shows an effect on behavior, architecture, security, or
-maintenance. A scanner result, metric, test name, or passing command is not sufficient evidence.
+Use each pattern as an investigation signal. Aim not to infer authorship from a pattern. Confirm
+each finding with evidence of an effect on behavior, architecture, security, or maintenance; where
+the evidence is thin, prefer to report the lead as rejected or `retain` with the reason. A scanner
+result, metric, test name, or passing command is a lead, not proof.
 
 ## Test theater, weak oracles, and mock-only proof
 
@@ -16,7 +14,7 @@ maintenance. A scanner result, metric, test name, or passing command is not suff
   values without an observable product result. Expected values come from the implementation or the
   same speculative hypothesis as the change. A snapshot or golden file has no authoritative
   contract. The product path can be absent or wrong while the test stays green.
-- **Required evidence:** Identify the product contract. Trace the test input through real product
+- **Useful evidence:** Identify the product contract. Trace the test input through real product
   code to the assertion. Bind an independent oracle, property, metamorphic relation, canonical
   implementation, or authoritative example. Show the missing connection between the assertion and
   the contract. Inspect the substitute boundary, test runner, and applicable callers. Try a bounded
@@ -26,14 +24,14 @@ maintenance. A scanner result, metric, test name, or passing command is not suff
   implementation.
 - **Legitimate counterexample:** A controlled substitute represents a real external boundary. The
   test exercises core product code and asserts the observable result or failure contract. An
-  approved snapshot or golden file is itself the public compatibility contract.
+  accepted snapshot or golden file can itself be the public compatibility contract.
 - **Smallest safe correction:** Keep substitutes only at external boundaries. Assert the observable
   contract. Derive expected results independently from the implementation. Add the smallest
   falsifying, boundary, or property case that distinguishes the incorrect hypothesis. Remove
   duplicate implementation assertions only after the behavior test gives equivalent coverage.
 - **Validation:** Run the focused test and confirm that it selects an applicable test. Exercise the
   product path and the applicable failure path. Confirm that a controlled wrong implementation or
-  counterexample makes the test fail. Use repository-approved mutation testing only when it is
+  counterexample makes the test fail. Use repository-selected mutation testing when it is
   already available and proportionate to the risk.
 - **Routing owner:** Use `realign` for test-architecture repair. Use `systematic-debugging` when the
   test exposes an observed defect. Use `simplify` for proven duplicate or obsolete tests.
@@ -42,8 +40,7 @@ maintenance. A scanner result, metric, test name, or passing command is not suff
   [P028](../../../docs/principles/README.md#p028),
   [P064](../../../docs/principles/README.md#p064), and
   [P067](../../../docs/principles/README.md#p067).
-- **Sources:** [Athena behavior-first testing](../../../docs/review/behavior-first-testing.md),
-  [Are Coding Agents Generating Over-Mocked Tests? An Empirical Study](https://andrehora.github.io/pub/2026-msr-agents-over-mocked-tests.pdf),
+- **Sources:** [Are Coding Agents Generating Over-Mocked Tests? An Empirical Study](https://andrehora.github.io/pub/2026-msr-agents-over-mocked-tests.pdf),
   [EvalPlus](https://arxiv.org/abs/2305.01210), and
   [OpenAI Codex issue 40639](https://github.com/openai/codex/issues/40639).
 
@@ -52,7 +49,7 @@ maintenance. A scanner result, metric, test name, or passing command is not suff
 - **Signal:** A test starts asynchronous work but does not await or join it. An exception occurs
   after the runner reports success. A filtered command selects no tests. A test fixture hides
   cancellation, timeout, or cleanup behavior.
-- **Required evidence:** Inspect the test signature, scheduler boundary, returned task or promise,
+- **Useful evidence:** Inspect the test signature, scheduler boundary, returned task or promise,
   runner configuration, and assertion path. Record the selected-test count. Trace asynchronous
   failures to the runner result.
 - **Impact:** The suite can report success before the behavior finishes. Failure, cancellation, and
@@ -71,16 +68,15 @@ maintenance. A scanner result, metric, test name, or passing command is not suff
   [P028](../../../docs/principles/README.md#p028),
   [P064](../../../docs/principles/README.md#p064), and
   [P065](../../../docs/principles/README.md#p065).
-- **Sources:** [Athena behavior-first testing](../../../docs/review/behavior-first-testing.md),
-  the [AISlop 0.16.0 rules reference](https://github.com/scanaislop/aislop/blob/v0.16.0/docs/rules.md),
+- **Sources:** [AISlop 0.16.0 rules reference](https://github.com/scanaislop/aislop/blob/v0.16.0/docs/rules.md),
   and [Unit Testing Asynchronous Code](https://learn.microsoft.com/en-us/archive/msdn-magazine/2014/november/async-programming-unit-testing-asynchronous-code).
 
 ## Weakened validation gates
 
 - **Signal:** A change skips, deletes, disables, or marks an applicable test as an expected failure.
   It lowers a threshold, adds a silent continuation, excludes an applicable path, or suppresses a
-  diagnostic without an approved exception.
-- **Required evidence:** Bind the gate definition, repository policy, current result, change history,
+  diagnostic without a documented exception.
+- **Useful evidence:** Bind the gate definition, repository policy, current result, change history,
   and affected requirement. Show that the change reduces applicable coverage or changes a failure
   into success. Distinguish a pre-existing failure from a new regression.
 - **Impact:** Continuous integration (CI) can accept a defect or a policy violation. A passing badge
@@ -90,10 +86,10 @@ maintenance. A scanner result, metric, test name, or passing command is not suff
   an owner and an end condition.
 - **Smallest safe correction:** Correct the product or gate cause. Restore the applicable check. If
   the contract changed, replace the old check with a behavior test that traces to the new contract.
-- **Validation:** Run the focused check and all required repository gates. Record the command,
+- **Validation:** Run the focused check and the repository-selected gates, where available. Record the command,
   revision, environment, exit status, and unedited output.
 - **Routing owner:** Use `realign` for validation-architecture repair. Use `simplify` only after
-  evidence proves that a gate artifact is obsolete. Require qualified review when the gate protects
+  evidence shows that a gate artifact is obsolete. Prefer qualified review when the gate protects
   security or availability.
 - **Applicable principles:** [P063](../../../docs/principles/README.md#p063),
   [P064](../../../docs/principles/README.md#p064),
@@ -109,7 +105,7 @@ maintenance. A scanner result, metric, test name, or passing command is not suff
 - **Signal:** Code imports an undeclared or unresolved package. It calls a symbol that the bound
   dependency version does not provide. It adds a package or wrapper although the repository,
   language, framework, or standard library already owns the capability.
-- **Required evidence:** Inspect manifests, locks, generated sources, package resolution, the exact
+- **Useful evidence:** Inspect manifests, locks, generated sources, package resolution, the exact
   dependency version, authoritative API documentation, current repository mechanisms, and runtime
   consumers. Confirm that dynamic loading or generation does not supply the symbol.
 - **Impact:** Builds or runtime paths can fail. A new package can add maintenance, license, security,
@@ -131,25 +127,26 @@ maintenance. A scanner result, metric, test name, or passing command is not suff
 - **Sources:** [GitHub guidance for review of AI-generated code](https://docs.github.com/en/copilot/tutorials/review-ai-generated-code)
   and [We Have a Package for You!](https://www.usenix.org/conference/usenixsecurity25/presentation/spracklen).
 
-## Dependency trust and provenance
+## Dependency trust
 
 - **Signal:** A change adds or updates a dependency, uses a mutable source reference, leaves a lock
   mismatch, trusts a package name as identity, enables an install-time script, or adds permissions
   and transitive dependencies without a stated need.
-- **Required evidence:** Bind the package identity, source, version, lock entry, checksum or signature,
-  provenance, license, maintainer status, advisories, lifecycle scripts, permissions, transitive
-  graph, and the current requirement. Inspect repository dependency policy.
+- **Useful evidence:** Where available, check the package identity, source, version, lock entry,
+  checksum or signature, provenance, license, maintainer status, advisories, lifecycle scripts,
+  permissions, transitive graph, and the current requirement. Aim to inspect repository dependency
+  policy. Where a check is unavailable, report what informed the result and name the limit.
 - **Impact:** The change can execute untrusted code, introduce a vulnerable or deceptive package,
   expand privileges, or create an unmaintained build input.
-- **Legitimate counterexample:** Repository policy already approves the exact pinned artifact. The
-  dependency is necessary, its provenance is verified, its authority is bounded, and no existing
-  mechanism meets the requirement.
+- **Legitimate counterexample:** Repository policy already selects the exact pinned artifact. The
+  dependency is necessary, its origin is checked where available, its authority is bounded, and no
+  existing mechanism meets the requirement.
 - **Smallest safe correction:** Remove or replace an unnecessary dependency. Otherwise, pin and lock
-  the approved artifact. Keep provenance and integrity evidence. Disable unnecessary lifecycle
-  behavior and permissions. Do not install a package under `realign` authority alone.
-- **Validation:** Use repository-approved software composition analysis and lock verification. In an
+  the selected artifact. Keep the integrity evidence you have. Prefer to disable unnecessary
+  lifecycle behavior and permissions. Prefer not to install a package under review authority alone.
+- **Validation:** Use repository-selected software composition analysis and lock verification, where available. In an
   authorized isolated environment, reproduce installation and required behavior from the lock.
-- **Routing owner:** Use `simplify` for proven removal. Use `realign` for dependency-boundary repair. Stop for
+- **Routing owner:** Use `simplify` for proven removal. Use `realign` for dependency-boundary repair. Request
   explicit authority when the correction needs an installation, license decision, credential, or
   external write.
 - **Applicable principles:** [P048](../../../docs/principles/README.md#p048),
@@ -167,7 +164,7 @@ maintenance. A scanner result, metric, test name, or passing command is not suff
   validation. It fails open when security state is unknown. Untrusted input reaches an evaluation,
   command, query, markup, or deserialization sink. A credential or sensitive value appears in code,
   a fixture, a prompt, a log, or an artifact.
-- **Required evidence:** Trace the untrusted source to the protected operation or sink. Bind the
+- **Useful evidence:** Trace the untrusted source to the protected operation or sink. Bind the
   authorization policy, trust boundary, data classification, validation and encoding rules, failure
   state, and credential owner. Do not print or copy a suspected secret.
 - **Impact:** The defect can disclose data, grant an unauthorized capability, execute injected input,
@@ -179,10 +176,10 @@ maintenance. A scanner result, metric, test name, or passing command is not suff
   constrain, and safely encode untrusted data. Use parameterized APIs. Remove a secret from source and
   history only through an authorized security procedure. Rotate or revoke an exposed credential.
 - **Validation:** Add or run behavior tests for denied access, invalid input, failure state, and safe
-  encoding. Run repository-approved secret and security checks. Do not put secret material in the
+  encoding. Run repository-selected secret and security checks. Do not put secret material in the
   validation receipt.
-- **Routing owner:** Use `realign` with a qualified security reviewer. Treat a possible live secret or a
-  material authorization bypass as a stop condition. Deleting a secret from one file is not complete
+- **Routing owner:** Use `realign` with a qualified security reviewer for a possible live secret or a
+  material authorization bypass; report both with priority. Deleting a secret from one file is not complete
   remediation because it does not revoke the credential or remove history.
 - **Applicable principles:** [P035](../../../docs/principles/README.md#p035),
   [P048](../../../docs/principles/README.md#p048),
@@ -200,7 +197,7 @@ maintenance. A scanner result, metric, test name, or passing command is not suff
 - **Signal:** A change adds a cache, concurrency, batching, pooling, manual memory control, or a more
   complex algorithm without a measured constraint. A claim uses only a complexity warning, intuition,
   or a benchmark result that is not bound to the reviewed revision.
-- **Required evidence:** Identify the product constraint and representative workload. Bind the
+- **Useful evidence:** Identify the product constraint and representative workload. Bind the
   baseline and candidate revisions, environment, benchmark command, samples, variance, resource
   limits, and correctness checks. Separate latency, throughput, memory, and cost claims.
 - **Impact:** Speculative optimization can add state, races, invalidation defects, and maintenance
@@ -225,8 +222,8 @@ maintenance. A scanner result, metric, test name, or passing command is not suff
 - **Signal:** A comment only narrates mechanics, refers to an agent or implementation phase, or
   repeats a symbol name. Documentation claims behavior that the product does not have. A change
   includes unrelated formatting, renames, compatibility residue, TODO stubs, or broad rewrites.
-- **Required evidence:** Compare the prose with code, contracts, public behavior, history, generation
-  policy, and the requested scope. Identify the maintenance or review effect. Do not use comment
+- **Useful evidence:** Compare the prose with code, contracts, public behavior, history, generation
+  policy, and the requested scope. Identify the maintenance or review effect. Avoid using comment
   length or changed-line count alone.
 - **Impact:** Misleading prose can hide an invariant or false behavior claim. Unrelated churn can
   conceal a defect, create conflicts, and make ownership history difficult to inspect.
@@ -234,8 +231,8 @@ maintenance. A scanner result, metric, test name, or passing command is not suff
   constraint, compatibility evidence, or a required generation notice. A mechanical rewrite is a
   separately authorized migration with reproducible validation.
 - **Smallest safe correction:** Make code show its mechanics. Keep necessary rationale. Correct
-  behavior claims. Remove obsolete prose and unrelated residue only after consumer and history
-  evidence makes deletion safe.
+  behavior claims. Remove obsolete prose and unrelated residue after consumer and history
+  checks make deletion safe.
 - **Validation:** Run documentation, link, example, formatting, and behavior checks that the changed
   surface activates. Inspect the final diff for unrelated paths and stale identifiers.
 - **Routing owner:** Use `simplify` for safe deletion, consolidation, or churn removal. Use `realign` only
@@ -255,7 +252,7 @@ maintenance. A scanner result, metric, test name, or passing command is not suff
 
 ## Catalog boundary
 
-Do not create a finding because a repository contains mocks, comments, dependencies, asynchronous
-code, or optimization. Do not remove a security check as simplification. Do not add a dependency to
+Aim not to create a finding because a repository contains mocks, comments, dependencies, asynchronous
+code, or optimization. Prefer not to remove a security check as simplification. Avoid adding a dependency to
 repair an unsupported scanner diagnostic. Route an observed defect through the workflow that owns
 behavior repair. Route a safe subtraction through `simplify`.

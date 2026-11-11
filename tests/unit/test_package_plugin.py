@@ -338,29 +338,9 @@ if (
         with tarfile.open(archive_path, mode="r:gz") as archive:
             self.assertIsNotNone(archive.getmember("skills/finalize-plan/SKILL.md"))
 
-    def test_source_archive_requires_the_review_exchange_helpers(self) -> None:
-        """Every packaged harness receives the executable exchange contract."""
-        members = {
-            "skills/review-exchange/SKILL.md",
-            "skills/review-exchange/references/interface.md",
-            "skills/review-exchange/scripts/issue_exchange.py",
-            "skills/review-exchange/scripts/review_exchange.py",
-        }
-        self.assertLessEqual(members, REQUIRED_MEMBERS)
-
-        archive_path, checksum_path = build_package(ROOT)
-        self.addCleanup(archive_path.unlink, missing_ok=True)
-        self.addCleanup(checksum_path.unlink, missing_ok=True)
-
-        with tarfile.open(archive_path, mode="r:gz") as archive:
-            for member in sorted(members):
-                packaged = archive.getmember(member)
-                if member.endswith(".py"):
-                    self.assertEqual(0o755, packaged.mode)
-
-    def test_source_archive_requires_the_plan_issue_adapter(self) -> None:
-        """Every packaged harness receives the controlled publication adapter."""
-        member = "skills/plan-issue/scripts/publish_plan.py"
+    def test_source_archive_requires_the_review_delivery_helper(self) -> None:
+        """Every packaged harness receives the low-ceremony review delivery helper."""
+        member = "skills/pr-review/scripts/delivery.py"
         self.assertIn(member, REQUIRED_MEMBERS)
 
         archive_path, checksum_path = build_package(ROOT)

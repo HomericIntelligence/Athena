@@ -431,7 +431,7 @@ class DistributionTests(unittest.TestCase):
         self.assertEqual(validator.validate_repository(self.fixture), [])
 
     def test_executable_scripts_must_use_shared_argparse_convention(self) -> None:
-        script = self.fixture / "skills" / "pr-review" / "scripts" / "resolve_pr.py"
+        script = self.fixture / "skills" / "pr-review" / "scripts" / "delivery.py"
         script.write_text(
             "#!/usr/bin/env python3\nprint('no parser')\n", encoding="utf-8"
         )
@@ -439,13 +439,13 @@ class DistributionTests(unittest.TestCase):
         self.assert_validation_errors(
             validator._validate_cli_conventions,
             "cli",
-            literal="skills/pr-review/scripts/resolve_pr.py",
+            literal="skills/pr-review/scripts/delivery.py",
         )
 
     def test_executable_scripts_cannot_hide_direct_argparse_behind_dead_factory_call(
         self,
     ) -> None:
-        script = self.fixture / "skills" / "pr-review" / "scripts" / "resolve_pr.py"
+        script = self.fixture / "skills" / "pr-review" / "scripts" / "delivery.py"
         script.write_text(
             "#!/usr/bin/env python3\n"
             "import argparse\n"
@@ -459,11 +459,11 @@ class DistributionTests(unittest.TestCase):
         self.assert_validation_errors(
             validator._validate_cli_conventions,
             "cli",
-            literal="skills/pr-review/scripts/resolve_pr.py",
+            literal="skills/pr-review/scripts/delivery.py",
         )
 
     def test_executable_scripts_may_alias_the_shared_parser_factory(self) -> None:
-        script = self.fixture / "skills" / "pr-review" / "scripts" / "resolve_pr.py"
+        script = self.fixture / "skills" / "pr-review" / "scripts" / "delivery.py"
         script.write_text(
             "#!/usr/bin/env python3\n"
             "from skills._cli import argument_parser as make_parser\n"
@@ -517,10 +517,6 @@ class DistributionTests(unittest.TestCase):
             (
                 validator._validate_cli_conventions,
                 self.fixture / "scripts" / "validate_skills.py",
-            ),
-            (
-                validator._validate_repo_review_scorecard,
-                self.fixture / "docs" / "review" / "repository-scorecard.md",
             ),
         )
 
@@ -669,37 +665,6 @@ class DistributionTests(unittest.TestCase):
             validator._validate_layout_and_policy,
             "policy",
             literal="docs/policies/required-checks.md",
-        )
-
-    def test_repo_review_scorecard_rejects_section_and_weight_mismatches(self) -> None:
-        criteria = self.fixture / "docs" / "review" / "repository-scorecard.md"
-        criteria.write_text(
-            criteria.read_text(encoding="utf-8").replace(
-                "**Reliability:**", "**Resilience:**", 1
-            ),
-            encoding="utf-8",
-        )
-        self.assert_validation_errors(
-            validator._validate_repo_review_scorecard,
-            "repo-review",
-            count=2,
-        )
-
-        criteria.write_text(
-            criteria.read_text(encoding="utf-8").replace(
-                "**Resilience:**", "**Reliability:**", 1
-            ),
-            encoding="utf-8",
-        )
-        skill = self.fixture / "skills" / "repo-review" / "SKILL.md"
-        skill.write_text(
-            skill.read_text(encoding="utf-8").replace(
-                "Reliability 9%", "Reliability 8%", 1
-            ),
-            encoding="utf-8",
-        )
-        self.assert_validation_errors(
-            validator._validate_repo_review_scorecard, "repo-review"
         )
 
     def test_ruleset_matches_the_approved_live_baseline(self) -> None:

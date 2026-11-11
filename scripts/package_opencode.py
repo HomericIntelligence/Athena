@@ -35,10 +35,7 @@ LEGAL_FILES: Final[tuple[PurePosixPath, ...]] = (
 SKILLS_ROOT: Final[PurePosixPath] = PurePosixPath("skills")
 REQUIRED_SKILL_FILES: Final[tuple[PurePosixPath, ...]] = (
     SKILLS_ROOT / "TECHNICAL_ENGLISH.md",
-    SKILLS_ROOT / "review-exchange" / "SKILL.md",
-    SKILLS_ROOT / "review-exchange" / "references" / "interface.md",
-    SKILLS_ROOT / "review-exchange" / "scripts" / "issue_exchange.py",
-    SKILLS_ROOT / "review-exchange" / "scripts" / "review_exchange.py",
+    SKILLS_ROOT / "pr-review" / "scripts" / "delivery.py",
 )
 STAGED_SUPPORT_ROOT: Final[PurePosixPath] = SKILLS_ROOT / "_support"
 SUPPORT_ROOTS: Final[tuple[PurePosixPath, ...]] = (
@@ -47,7 +44,6 @@ SUPPORT_ROOTS: Final[tuple[PurePosixPath, ...]] = (
     PurePosixPath("docs") / "policies" / "development.md",
     PurePosixPath("docs") / "policies" / "evidence-integrity.md",
     PurePosixPath("docs") / "principles",
-    PurePosixPath("docs") / "review",
 )
 VERSION_MANIFEST: Final[PurePosixPath] = PurePosixPath(".codex-plugin") / "plugin.json"
 DEFAULT_OUTPUT: Final[PurePosixPath] = PurePosixPath("dist") / "opencode-npm"

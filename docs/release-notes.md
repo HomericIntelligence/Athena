@@ -1,13 +1,11 @@
 # Athena release notes
 
-Apply the [ASD-STE100 technical-English policy](../skills/TECHNICAL_ENGLISH.md) to all English
-technical prose in the release notes.
+Release notes aim to follow the [ASD-STE100 technical-English policy](../skills/TECHNICAL_ENGLISH.md).
 
 Install Athena through its Git-backed skill or plugin source. Installation and invocation commands
 depend on the coding harness. The root [`README.md`](../README.md) gives the general instructions.
 
-Each release includes a checksummed portable plugin archive. Use it for offline distribution and
-provenance.
+Each release includes a checksummed portable plugin archive. Use it for offline distribution.
 
 The archive contains only these items:
 

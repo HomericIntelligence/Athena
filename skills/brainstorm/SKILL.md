@@ -32,7 +32,7 @@ definition source. Use these principles to make workflow decisions:
 - [P001 — KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001): Make the design
   sufficient for the problem that the evidence shows. Select the minimum solution that obeys
   all requirements.
-- [P002 — YAGNI — You Ain't Gonna Need It](../../docs/principles/README.md#p002): Do not include a
+- [P002 — YAGNI — You Ain't Gonna Need It](../../docs/principles/README.md#p002): Avoid adding a
   capability, extension point, or infrastructure that has no specified current requirement.
 - [P007 — Subtraction Over Addition](../../docs/principles/README.md#p007): Before you recommend a new
   component, find if removal, consolidation, or an existing mechanism can give the necessary
@@ -44,7 +44,7 @@ definition source. Use these principles to make workflow decisions:
 - [P015 — Architecture Conformance](../../docs/principles/README.md#p015): If the requirement does
   not change the architecture, obey the established boundaries and dependency direction.
 - [P071 — Consistency Over Personal Preference](../../docs/principles/README.md#p071): If repository
-  conventions obey the requirement, use them. Do not select a different style because of
+  conventions obey the requirement, use them. Prefer not to select a different style because of
   personal preference.
 - [P074 — Prefer Existing Mechanisms](../../docs/principles/README.md#p074): Before you make a
   mechanism, find an applicable existing mechanism. If it obeys the requirement, use it.
@@ -52,14 +52,14 @@ definition source. Use these principles to make workflow decisions:
 ## Failed approaches
 
 Use this process for each feature. A short design can be sufficient for a simple change. Before
-implementation, the design must show its assumptions and constraints.
+implementation, aim to show its assumptions and constraints.
 
-- Do not skip `advise` retrieval. Without this retrieval, the design can duplicate an existing
+- Advise retrieval stays part of the process. Without it, the design can duplicate an existing
   solution or repeat a problem that prior guidance already resolved.
 
 ## Checklist
 
-Complete in order:
+Work through these steps in order:
 
 1. **Advise retrieval.** Run `advise` with the feature description. If guidance is missing, stale,
    or not verifiable, report the limit and continue otherwise authorized work with project evidence.
@@ -71,13 +71,13 @@ Complete in order:
 6. **Recommendation.** Identify your recommended approach.
 7. **Design presentation.** Present sections that have sufficient detail for their complexity.
 8. **Material ambiguity.** Ask a question only to resolve a material ambiguity.
-9. **Durable specification.** Write `docs/specs/YYYY-MM-DD-<topic>-design.md` only if complexity,
+9. **Durable specification.** Write `docs/specs/YYYY-MM-DD-<topic>-design.md` when complexity,
    project policy, or a current downstream consumer requires it.
 10. **Design review.** Check the design for placeholders, contradictions, ambiguities, and scope
     errors.
 11. **Saved path.** If you saved a specification, report its path.
 12. **User review.** Make the saved specification available for review and continue authorized work.
-13. **Continuation.** Do not stop unless a requirement remains unresolved.
+13. **Continuation.** Aim to continue unless a requirement remains unresolved.
 14. **Implementation.** Start the requested implementation.
 15. **Complex work.** For a complex implementation, invoke `myrmidon-swarm`.
 16. **Planning skill.** If an installed planning skill is available, use it to track the design.
@@ -94,7 +94,7 @@ Complete in order:
   divide the request into subprojects.
 - If the project has a suitable scope, ask questions one at a time.
 - Use multiple-choice questions when possible.
-- Ask only one question in each message.
+- Ask one question in each message.
 - Ask about the purpose, constraints, and success criteria.
 
 ### Compare approaches
@@ -108,7 +108,7 @@ Complete in order:
 
 ### Present the design
 
-- Present the design in sections. Ask only about material unresolved decisions.
+- Present the design in sections. Ask about material unresolved decisions.
 - Give each section sufficient detail for its complexity.
 - Include architecture, components, data flow, error handling, and the test strategy.
 - Use these principles to define component responsibilities and boundaries:
@@ -139,7 +139,7 @@ Complete in order:
   goal. Then use [P011 — Minimal Coherent Change](../../docs/principles/README.md#p011) and
   [P012 — Evidence Before Modification](../../docs/principles/README.md#p012) to select the smallest
   complete change that the evidence supports.
-- Use [P009 — General Mechanisms Over Special Cases](../../docs/principles/README.md#p009) only if
+- Use [P009 — General Mechanisms Over Special Cases](../../docs/principles/README.md#p009) when
   current repeated cases show the need for a reusable mechanism. Use
   [P013 — AHA — Avoid Hasty Abstractions](../../docs/principles/README.md#p013) to delay an unstable
   abstraction.
@@ -150,7 +150,7 @@ Complete in order:
 
 - Follow existing patterns in the target repository.
 - Invoke `advise` first to check for existing implementations.
-- Do not propose unrelated refactoring. Keep the work in the current goal.
+- Keep the proposal inside the current goal. Avoid unrelated refactoring.
 
 ## After the design
 

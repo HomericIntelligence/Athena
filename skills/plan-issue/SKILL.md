@@ -1,7 +1,7 @@
 ---
 name: plan-issue
 license: BSD-3-Clause
-description: Draft or publish one canonical implementation plan for a GitHub or GitLab issue. Use this skill after architecture and knowledge review when an issue needs an executable, behavior-first plan. The `--draft` mode is read-only.
+description: Draft or publish one implementation plan for a GitHub or GitLab issue. Use this skill after architecture and knowledge review when an issue needs an executable, behavior-first plan. The `--draft` mode is read-only.
 argument-hint: "[--draft] ISSUE_NUMBER_OR_URL"
 allowed-tools: [Read, Bash, Grep, Glob, Agent]
 ---
@@ -14,16 +14,8 @@ Include behavior-first verification in the plan. Create the plan before implemen
 Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to
 all prose that it produces.
 
-Use the shared [issue-planning contract](../../docs/review/issue-planning.md),
-[review contract](../../docs/review/common.md),
-[review-exchange mechanism](../review-exchange/SKILL.md),
-[language routing](../../docs/review/language-routing.md), and
-[behavior-first testing](../../docs/review/behavior-first-testing.md).
-
 Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
 recovery, resources, validation, and delivery.
-For authority receipts, prefer forge records. If unavailable, use explicit conversation authority
-with its actual log ID under that policy. Keep decisions and successful publication verifiable.
 
 ## Engineering principles
 
@@ -35,7 +27,8 @@ decisions:
 - [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063):
   - For each plan step, record a link to the applicable issue requirement.
 - [P012 Evidence Before Modification](../../docs/principles/README.md#p012):
-  - Before you put files or abstractions in the plan, examine repository evidence.
+  - Before you put files or abstractions in the plan, examine repository evidence. If a source is
+    unavailable, say so and proceed with the input you have.
 - [P015 Architecture Conformance](../../docs/principles/README.md#p015):
   - When you make the plan, obey established architecture boundaries and dependency directions.
 - [P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001):
@@ -50,16 +43,11 @@ decisions:
 
 ## Scope and delivery
 
-`--draft` is read-only. If the request does not include `--draft`, you may create the actor-owned
-canonical-plan comment only when it is absent. Otherwise, update that exact retained comment. Never
-create a second plan comment. Do not implement code. Do
-not change labels or assignments. Do not create commits. Do not push branches. Do not create pull
-requests. Do not merge changes. Do not make other forge changes.
-
-Use only the controlled publication sequence in steps 6 to 11 below. It invokes
-`publish_plan.py` with one exact prepared document and one dedicated attempt
-receipt. If the forge cannot complete that adapter or recovery cannot identify the outcome,
-return a ready-to-publish draft. Explain the capability or ownership gap.
+`--draft` is read-only. If the request does not include `--draft`, you may publish the plan as
+one comment on the issue. Create the actor-owned plan comment when it is absent. Update that same
+comment on a later round when it exists and you own it. Preserve foreign comments. Do not
+implement code. Do not change labels or assignments. Do not create commits. Do not push branches.
+Do not create pull requests. Do not merge changes. Do not make other forge changes.
 
 ## Plan
 
@@ -81,16 +69,16 @@ return a ready-to-publish draft. Explain the capability or ownership gap.
 8. If `advise` gives an explicit no-guidance result, report that result.
 9. Continue issue planning after you report the `advise` result.
 10. Before you propose files or abstractions, establish the architecture under
-   [P015 Architecture Conformance](../../docs/principles/README.md#p015) from these sources:
+    [P015 Architecture Conformance](../../docs/principles/README.md#p015) from these sources:
 
-   - repository guidance;
-   - architecture decision records;
-   - boundaries;
-   - dependency direction;
-   - public interfaces.
+    - repository guidance;
+    - architecture decision records;
+    - boundaries;
+    - dependency direction;
+    - public interfaces.
 
 11. Under [P012 Evidence Before Modification](../../docs/principles/README.md#p012), verify current
-   code, tests, commands, dependencies, paths, and symbols.
+    code, tests, commands, dependencies, paths, and symbols.
 12. Treat the issue and an earlier plan as sources to verify, not as verified evidence.
 13. Under [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063), map each
     current acceptance criterion to a minimum architecture-aligned change and behavior-first
@@ -103,10 +91,12 @@ return a ready-to-publish draft. Explain the capability or ownership gap.
 16. Do not include speculative abstractions or unrelated cleanup.
 17. Before you delete or consolidate a mechanism, apply
     [P008 Understand Before Subtracting](../../docs/principles/README.md#p008).
-18. Follow the canonical-plan content, ownership, and identity rules in the issue-planning contract.
+18. Make the plan content simple. Start with the problem and the desired outcome. Preserve each
+    issue requirement. Do not remove a requirement. Do not invent files, commands, requirements,
+    architecture, or validation evidence.
 19. Preserve all content that another actor owns.
-20. If ownership or identity is ambiguous, return the draft.
-21. Do not overwrite content with ambiguous ownership or identity.
+20. If ownership is ambiguous, return the draft and name the ambiguity. Do not overwrite content
+    with ambiguous ownership.
 
 Activate these shared profiles only for the specified surface:
 
@@ -117,13 +107,7 @@ Activate these shared profiles only for the specified surface:
 - For security or a new trust boundary, activate
   [P048 Secure by Design](../../docs/principles/README.md#p048).
 
-If the issue body has a valid finalized-planning marker, use only its sealed provenance as
-implementation context. Use the generated plan text for the same purpose. Do not treat them as new
-requirements. If the finalized epoch is unchanged, do not create a new plan. A later material edit
-that keeps a stale or malformed finalization marker does not authorize a new exchange. After the
-sealed comments are removed, an authoritative person can replace the sealed body with clean new
-requirements and remove the obsolete marker. The next inspection then starts a new round-1 epoch.
-Do not use generated plan text or sealed provenance as the new requirements.
+Do not treat generated plan text as new requirements from a person.
 
 Do not bind plan validity to a moving remote target branch. Before implementation, the plan can name
 the commit from which the worktree must start. After work starts, use the recorded worktree start
@@ -131,62 +115,36 @@ commit as the initial local review base. Do not update the plan or require a reb
 remote target branch changes. If a permitted rebase or conflict resolution changes candidate
 content, update the affected review evidence.
 
-For a material architecture decision, include or cite a
-[design record](../../docs/review/design-docs.md). Start the design record with the reason for the
-decision. Then, give the block diagram and high-level design before clear component details. Do not
-create a durable design artifact for a simple change unless the repository needs it.
+For a material architecture decision, include or cite a design record. Start the design record with
+the reason for the decision. Then, give the block diagram and high-level design before clear
+component details. Do not create a durable design artifact for a simple change unless the
+repository needs it.
 
 Name only validation commands that you find in the repository. Do not claim that a command passed
 if you did not run it. Do not create a prose-string test to make the plan appear verifiable.
 
-## Exchange projection
+## Publish
 
-1. Build the issue snapshot with
-   [`mk_issue_snapshot.py`](../review-exchange/scripts/mk_issue_snapshot.py). Then run
-   `issue_exchange.py inspect` with that snapshot. A hand-built or hand-edited snapshot is not a
-   valid input.
-2. For a normal plan, use `prepare_plan`. If another transition is due, invoke its owning workflow
-   within existing task authority, then resume when planning is applicable.
-3. Declare the plan targets with the supported target kinds in the issue-planning contract.
-4. For a continuation, answer every active required finding with `fix`, `fix_with_tradeoff`,
-   `contest`, or `risk_acceptance`. When the visible plan changes, also re-answer each required
-   finding in `resolved`, `withdrawn`, or `accepted_risk` state. Keep its identifier. Do not re-answer
-   a nonblocking finding. A prior risk-acceptance receipt does not authorize the changed plan.
-5. Give `scope_change_reason` if and only if the declared target set changes.
-6. Run `issue_exchange.py prepare-plan` with the visible plan and author event.
-7. For `--draft`, return the prepared result and stop.
-8. Before publication, run a fresh producer snapshot and prepare the operation again.
-9. Persist each prepare result as one exact JSON document. Require the two preparations to be
-   identical in precondition and operation. If they differ, withhold the update.
-10. Invoke
-    [`publish_plan.py publish`](scripts/publish_plan.py)
-    with the exact prepared document and one dedicated attempt-receipt path. Do not extract
-    `operation.body` through Bash command substitution or another line-oriented transport. The
-    adapter submits the exact prepared bytes once and verifies the exact readback.
-11. If the result is `unknown_outcome`, preserve the prepared document and the attempt receipt,
-    stop, and give them to a separate recovery actor.
-    [`publish_plan.py recover`](scripts/publish_plan.py)
-    is read-only and never selects a blind retry.
-12. After verified publication, continue with reviewer assessment within task authority.
-
-For an explicit requirements reframe, require changed requirements, the exact retained v1 review
-state, and one live repository-authoritative receipt. The state can be in any phase,
-including `complete`. Call `prepare-plan` with the `reframe` event, that receipt, the old state, and
-the new target set. Update the same plan comment and verify its exact readback. This step prepares
-the new exchange. It does not complete the reframe or increment the old round. Continue to
-`issue-review`, which must verify the same old state, receipt, and target set before it updates the
-retained review comment.
-
-The retained plan and review must identify the same current logical state before this reframe. If
-the plan has a pending author event that the review has not accepted, first complete and verify one
-reviewer assessment before the requirements change. Do not overwrite the pending event or
-supersede the older persisted review state.
-
-For one complete imported legacy exchange that has no plan author review message, use the
-`legacy_reframe` event. Require the exact terminal review envelope and one live reframe authority
-receipt. For GitHub, require positive REST numeric identities for both retained comments. Require
-each identity to match its issue-comment URL. Publish only the returned plan update. Preserve the
-old review and authority comments. After verified publication, continue to `issue-review`.
+1. Draft the plan comment. Include the marker `<!-- HomericIntelligence:plan-issue -->` as its
+   first line so later runs can find it. If the issue already carries a plan comment from you
+   (for example one with that marker), update it with the same content. If you cannot tell who
+   owns the existing plan comment, return the draft and say why.
+2. For `--draft`, return the prepared plan and stop.
+3. Immediately before publication, read the issue and the target comment again. If either changed
+   in a way that affects the plan, refresh the affected content and prepare again.
+4. Publish with the forge's issue-comment mechanism, using the exact prepared bytes. Prefer a
+   file-based body over inline text. On GitHub, use
+   `gh issue comment <ISSUE_NUMBER> --body-file <PLAN_FILE>` to create a new comment, or
+   `gh api --method PATCH repos/<owner>/<repo>/issues/comments/<COMMENT_ID> -F body=@<PLAN_FILE>`
+   to update an existing one. On GitLab, use the equivalent `glab` mechanism.
+5. Read the comment back when the forge permits it. Report the exact result.
+6. If the write fails or its outcome is uncertain, report the outcome honestly. Preserve the
+   prepared document. Do not retry a body write until you read the current comment and reconcile
+   it.
+7. Report what informed the judgement: the issue, its comments, the code and tests you read, and
+   the guidance you used. Name what you could not inspect and why. Do not withhold output because
+   external or `.git` metadata is missing. Proceed with the input you have.
+8. After a successful publication, continue with reviewer assessment within task authority.
 
 Invoke the workflow for the next transition within task authority. Ask only when an actual human
 decision remains unresolved. Do not infer a response or approval from old prose.
@@ -195,23 +153,13 @@ decision remains unresolved. Do not infer a response or approval from old prose.
 
 - Do not plan from the issue title alone.
 - Do not infer requirements from a similar issue.
-- Do not include an assumption before you verify paths, symbols, and commands in current repository
-  evidence. Cite the evidence as `file:line`.
+- Verify paths, symbols, and commands against current repository evidence before you rely on them.
+  Cite the evidence as `file:line`.
 - Do not start implementation during planning.
-- Do not deliver changes beyond the canonical-plan comment.
+- Do not deliver changes beyond the plan comment.
 - Do not claim that a validation command passed if you did not run it.
-- Do not build, normalize, or edit an issue snapshot in this skill. Only
-  [`mk_issue_snapshot.py`](../review-exchange/scripts/mk_issue_snapshot.py) builds one.
-- Do not overwrite content from another actor if ownership is ambiguous.
-
-## Migration
-
-A plan carrier that a historic ad-hoc producer published can report `requirements_drift` or a
-`plan_requirements_rebind` diagnostic under the canonical producer. A plan-only epoch has no review
-comment, so a needs-reframe route cannot apply. The author confirms that the plan comment is the
-single actor-owned plan, deletes that plan comment through the invoking workflow, builds a fresh
-producer snapshot, prepares a new plan, and publishes and verifies it. A completed exchange needs no
-action.
+- Do not overwrite content owned by another actor. If ownership is ambiguous, return the draft.
+- Do not treat generated plan text as new requirements from a person.
 
 ## Result
 
@@ -222,11 +170,9 @@ Return these items:
 - Mnemosyne revision or no-guidance status;
 - applicable guidance;
 - plan action or draft;
-- exchange state digest and next action;
-- exact operation or publication receipt;
+- what informed the judgement, and what you could not inspect;
 - requirement mapping;
 - validation plan;
+- publication result: the forge URL or comment identity, or the reason the publication was
+  withheld and the exact state you could verify; and
 - each unresolved decision.
-
-If you publish the plan, return the forge URL or comment identity. If you withhold publication,
-return the helper diagnostics and state the reason.

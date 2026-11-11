@@ -1,11 +1,11 @@
 # ASD-STE100 technical-English policy
 
-All Athena English technical prose must follow
-[ASD-STE100 Simplified Technical English](https://www.asd-ste100.org/). This requirement applies to
+All Athena English technical prose aims to follow
+[ASD-STE100 Simplified Technical English](https://www.asd-ste100.org/). This policy applies to
 skills, agent directions, public documents, user messages that a skill produces, and text in a user
 interface.
 
-The literal text that this policy identifies does not have to obey it.
+The literal text that this policy identifies aims to keep its exact form.
 
 ## Authority
 
@@ -16,7 +16,7 @@ This repository policy does not copy or replace the standard. It does not replac
 training. Repository checks can find Markdown errors, broken package contracts, and some style
 risks. The checks do not certify conformance to ASD-STE100.
 
-## Required method
+## Method
 
 Use these steps when you write or change technical prose:
 
@@ -24,11 +24,11 @@ Use these steps when you write or change technical prose:
 2. Use approved words with their approved meanings and parts of speech.
 3. Use a technical noun or a technical verb when the approved dictionary has no necessary term.
 4. Use one term for one meaning.
-5. Do not use a different synonym for the same item or action.
+5. Prefer the approved term over a synonym for the same item or action.
 6. Use American English spelling unless an exact external name uses a different spelling.
 7. Use active voice when you know the actor.
 8. Use the imperative form for a direct instruction.
-9. Put a condition before the related action when the reader must know the condition first.
+9. Put a condition before the related action when the reader needs the condition first.
 10. Give one primary instruction in each numbered step.
 11. Keep sentences short.
 12. Split a sentence when it contains more than one independent idea.
@@ -36,13 +36,14 @@ Use these steps when you write or change technical prose:
 14. Avoid an `-ing` form when an approved, unambiguous form gives the same meaning.
 15. Define each abbreviation at its first use unless the intended readers always know it.
 16. Keep the technical meaning.
-17. Do not remove a necessary safety, evidence, permission, or failure condition to make a sentence
-    shorter.
+17. Keep necessary safety, evidence, permission, and failure conditions even when a shorter sentence
+    is possible.
 18. Review the result against the current official standard.
 
 ## Literal text
 
-Do not change literal text only to make it conform to this policy. Literal text includes:
+Literal text keeps its exact form when its only change would make it conform to this policy.
+Literal text includes:
 
 - programming-language syntax and generated code;
 - commands, options, identifiers, paths, URLs, and API field names;
@@ -73,6 +74,6 @@ If you cannot use the current official standard:
 - Apply this policy.
 - Report the verification gap.
 
-Do not state that the text conforms to ASD-STE100.
+State only what the available review supports. Avoid claiming that the text conforms to ASD-STE100.
 
-Do not state that a person or tool certified or verified ASD-STE100 conformance.
+Avoid stating that a person or tool certified or verified ASD-STE100 conformance.

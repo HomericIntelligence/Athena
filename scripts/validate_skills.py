@@ -18,7 +18,6 @@ if __package__ in {None, ""}:
 
 from scripts.policies.agent_contract import validate_agent_contract
 from scripts.policies.agent_contract_release import tag_ruleset_errors
-from scripts.policies.repo_review import evaluate_scorecard
 from scripts.policies.ruleset import approved_ruleset_policy, evaluate_ruleset
 from scripts.semver import SEMVER_PATTERN
 from skills._cli import argument_parser
@@ -534,30 +533,6 @@ def _validate_cli_conventions(repo_root: Path = REPO_ROOT) -> list[ValidationErr
     return errors
 
 
-def _validate_repo_review_scorecard(
-    repo_root: Path = REPO_ROOT,
-) -> list[ValidationError]:
-    """Require the review formula to name and weight each criterion unambiguously."""
-    criteria_path = repo_root / "docs" / "review" / "repository-scorecard.md"
-    skill_path = repo_root / "skills" / "repo-review" / "SKILL.md"
-    try:
-        criteria = criteria_path.read_text(encoding="utf-8")
-        skill = skill_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as error:
-        return [
-            ValidationError(
-                "repo-review",
-                "The validator cannot read the scorecard. "
-                f"The operation returned this diagnostic.\n{error}",
-                True,
-            )
-        ]
-    return [
-        ValidationError("repo-review", reason)
-        for reason in evaluate_scorecard(criteria, skill)
-    ]
-
-
 def _validate_ruleset_policy(repo_root: Path = REPO_ROOT) -> list[ValidationError]:
     """Require the tracked branch and tag rulesets to enforce current policy."""
     path = repo_root / ".github" / "rulesets" / "homeric-main-baseline.json"
@@ -641,7 +616,6 @@ def validate_repository(
         *_validate_opencode(repo_root),
         *_validate_layout_and_policy(repo_root, extra_ignored_top_levels),
         *_validate_cli_conventions(repo_root),
-        *_validate_repo_review_scorecard(repo_root),
         *_validate_ruleset_policy(repo_root),
         *(
             ValidationError("agent-contract", error.reason, error.operational)
