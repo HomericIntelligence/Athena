@@ -148,3 +148,75 @@ class ReviewDeliveryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_failed_label_read_skips_label_write() -> None:
+    module = cast(Any, load_module())
+    fake = FakeGh(
+        [
+            (["pr", "view"], 0, "{}", ""),
+            (["pr", "comment"], 0, "{}", ""),
+            (["api", "repos/acme/widget/issues/7/labels"], 1, "", "failed"),
+        ]
+    )
+    module._run = fake
+    assert (
+        module.main(
+            [
+                "--repo",
+                "acme/widget",
+                "--target",
+                "7",
+                "--body",
+                "/dev/null",
+                "--decision",
+                "no-go",
+            ]
+        )
+        == 0
+    )
+    assert not any(call[0][:2] == ("api", "--method") for call in fake.calls)
+
+
+def test_implementation_decision_preserves_plan_pair() -> None:
+    module = cast(Any, load_module())
+    fake = FakeGh(
+        [
+            (["pr", "view"], 0, "{}", ""),
+            (["pr", "comment"], 0, "{}", ""),
+            (
+                ["api", "repos/acme/widget/issues/7/labels"],
+                0,
+                "bug\nstate:implementation-no-go\nstate:plan-go\n",
+                "",
+            ),
+            (["api", "--method", "PATCH"], 0, "[]", ""),
+        ]
+    )
+    module._run = fake
+    with tempfile.NamedTemporaryFile("w+", encoding="utf-8") as body:
+        body.write("review body\n")
+        body.flush()
+        assert (
+            module.main(
+                [
+                    "--repo",
+                    "acme/widget",
+                    "--target",
+                    "7",
+                    "--kind",
+                    "implementation",
+                    "--decision",
+                    "go",
+                    "--body",
+                    body.name,
+                ]
+            )
+            == 0
+        )
+    patched = next(call for call in fake.calls if call[0][:2] == ("api", "--method"))
+    payload = json.loads(cast(str, patched[1]))
+    assert "state:plan-go" in payload["labels"]
+    assert "state:implementation-go" in payload["labels"]
+    assert "state:implementation-no-go" not in payload["labels"]
+    assert "state:plan-no-go" not in payload["labels"]
