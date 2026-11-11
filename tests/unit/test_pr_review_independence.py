@@ -82,6 +82,15 @@ class IndependenceTests(unittest.TestCase):
         ]
         self.assertEqual("NO-GO", self.module.assess_batch(reports)["status"])
 
+    def test_blank_instance_prevents_go(self) -> None:
+        reports = [self.report("GO", instance="   ")]
+        self.assertEqual("NO-GO", self.module.assess_batch(reports)["status"])
+
+    def test_non_string_instance_prevents_go(self) -> None:
+        report = self.report("GO")
+        report["instance_id"] = None
+        self.assertEqual("NO-GO", self.module.assess_batch([report])["status"])
+
 
 if __name__ == "__main__":
     unittest.main()

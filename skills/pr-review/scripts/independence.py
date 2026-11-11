@@ -32,11 +32,13 @@ def assess_batch(reports: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     details: list[dict[str, str]] = []
     seen: set[str] = set()
     for report in reports:
-        instance = str(report.get("instance_id", ""))
-        if not instance or instance in seen:
-            details.append(
-                {"instance_id": instance or "missing", "verdict": "rejected"}
-            )
+        raw_instance = report.get("instance_id")
+        if not isinstance(raw_instance, str) or not raw_instance.strip():
+            details.append({"instance_id": "missing", "verdict": "rejected"})
+            continue
+        instance = raw_instance.strip()
+        if instance in seen:
+            details.append({"instance_id": instance, "verdict": "rejected"})
             continue
         seen.add(instance)
         context_fresh = report.get("context_fresh") is True

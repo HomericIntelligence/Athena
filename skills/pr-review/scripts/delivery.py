@@ -145,6 +145,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     existing = _labels(repo, args.target)
     if existing is None:
         detail["label_error"] = "label read failed; label write skipped"
+        detail["applied"] = status
+        return _result("delivery_failed", detail, 1)
     else:
         sibling = SIBLING[label]
         desired = [name for name in existing if name != sibling]
@@ -166,6 +168,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             status.append("labelled")
         else:
             detail["label_error"] = err.strip()
+            detail["applied"] = status
+            return _result("delivery_failed", detail, 1)
+    if "labelled" not in status:
+        detail["label_error"] = "verdict label write failed; delivery incomplete"
+        detail["applied"] = status
+        return _result("delivery_failed", detail, 1)
     if (
         args.auto_merge
         and args.kind == IMPLEMENTATION
@@ -179,9 +187,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             status.append("auto-merge")
         else:
             detail["auto_merge_error"] = err.strip()
+            detail["applied"] = status
+            return _result("delivery_failed", detail, 1)
     detail["applied"] = status
-    if not status:
-        return _result("delivery_failed", detail, 1)
     print(json.dumps({"status": "delivered", **detail}, sort_keys=True))
     return 0
 

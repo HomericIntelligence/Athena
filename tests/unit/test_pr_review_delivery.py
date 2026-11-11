@@ -159,7 +159,7 @@ class ReviewDeliveryTests(unittest.TestCase):
             body.write("review body\n")
             body.flush()
             self.assertEqual(
-                0,
+                1,
                 module.main(
                     [
                         "--repo",
@@ -291,6 +291,78 @@ class ReviewDeliveryTests(unittest.TestCase):
         self.assertIn("state:implementation-go", payload["labels"])
         self.assertIn("state:plan-go", payload["labels"])
         self.assertNotIn("state:plan-no-go", payload["labels"])
+
+    def test_label_patch_failure_exits_nonzero(self) -> None:
+        module = cast(Any, load_module())
+        fake = FakeGh(
+            [
+                (["pr", "view"], 0, "{}", ""),
+                (["pr", "comment"], 0, "{}", ""),
+                (
+                    ["api", "repos/acme/widget/issues/7/labels"],
+                    0,
+                    "state:implementation-go\n",
+                    "",
+                ),
+                (["api", "--method", "PATCH"], 1, "", "failed"),
+            ]
+        )
+        module._run = fake
+        with tempfile.NamedTemporaryFile("w+", encoding="utf-8") as body:
+            body.write("review body\n")
+            body.flush()
+            self.assertEqual(
+                1,
+                module.main(
+                    [
+                        "--repo",
+                        "acme/widget",
+                        "--target",
+                        "7",
+                        "--body",
+                        body.name,
+                        "--decision",
+                        "no-go",
+                    ]
+                ),
+            )
+
+    def test_auto_merge_failure_exits_nonzero(self) -> None:
+        module = cast(Any, load_module())
+        fake = FakeGh(
+            [
+                (["pr", "view"], 0, "{}", ""),
+                (["pr", "comment"], 0, "{}", ""),
+                (
+                    ["api", "repos/acme/widget/issues/7/labels"],
+                    0,
+                    "state:implementation-no-go\n",
+                    "",
+                ),
+                (["api", "--method", "PATCH"], 0, "[]", ""),
+                (["pr", "merge", "--auto"], 1, "", "failed"),
+            ]
+        )
+        module._run = fake
+        with tempfile.NamedTemporaryFile("w+", encoding="utf-8") as body:
+            body.write("review body\n")
+            body.flush()
+            self.assertEqual(
+                1,
+                module.main(
+                    [
+                        "--repo",
+                        "acme/widget",
+                        "--target",
+                        "7",
+                        "--body",
+                        body.name,
+                        "--decision",
+                        "go",
+                        "--auto-merge",
+                    ]
+                ),
+            )
 
 
 if __name__ == "__main__":
