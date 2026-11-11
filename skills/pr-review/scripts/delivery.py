@@ -57,9 +57,9 @@ def _labels(repo: str, number: int) -> list[str] | None:
     return [line for line in out.splitlines() if line]
 
 
-def _result(status: str, detail: dict[str, Any]) -> int:
+def _result(status: str, detail: dict[str, Any], exit_code: int = 0) -> int:
     print(json.dumps({"status": status, **detail}, sort_keys=True))
-    return 0
+    return exit_code
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -138,6 +138,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         status.append("commented")
     else:
         detail["comment_error"] = err.strip()
+    if "commented" not in status:
+        detail["label_error"] = "comment write failed; label write skipped"
+        detail["applied"] = status
+        return _result("delivery_failed", detail, 1)
     existing = _labels(repo, args.target)
     if existing is None:
         detail["label_error"] = "label read failed; label write skipped"
@@ -176,7 +180,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             detail["auto_merge_error"] = err.strip()
     detail["applied"] = status
-    return _result("delivered" if status else "delivery_failed", detail)
+    if not status:
+        return _result("delivery_failed", detail, 1)
+    print(json.dumps({"status": "delivered", **detail}, sort_keys=True))
+    return 0
 
 
 if __name__ == "__main__":

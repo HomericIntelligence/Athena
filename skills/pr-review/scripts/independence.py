@@ -25,13 +25,20 @@ def assess_batch(reports: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     if not reports:
         return {"status": NO_GO, "reason": "no-independent-reviewer", "independent": 0}
     artifact_id = reports[0].get("artifact_id")
-    if not isinstance(artifact_id, str):
+    if not isinstance(artifact_id, str) or not artifact_id.strip():
         return {"status": NO_GO, "reason": "unbound-artifact", "independent": 0}
 
     independent = 0
     details: list[dict[str, str]] = []
+    seen: set[str] = set()
     for report in reports:
         instance = str(report.get("instance_id", ""))
+        if not instance or instance in seen:
+            details.append(
+                {"instance_id": instance or "missing", "verdict": "rejected"}
+            )
+            continue
+        seen.add(instance)
         context_fresh = report.get("context_fresh") is True
         author_restricted = (
             report.get("authored") is True or report.get("author_responded") is True
