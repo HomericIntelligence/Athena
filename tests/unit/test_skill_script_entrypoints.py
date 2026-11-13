@@ -831,5 +831,54 @@ class PrepareWorktreeTests(unittest.TestCase):
             self.assertIn("my-branch", data["branch"])
 
 
+class SkillCliUpdateTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.module = cast(Any, load_module(MODULES["cli"]))
+
+    def test_check_update_prints_versions_without_network(self) -> None:
+        import io
+        from contextlib import redirect_stdout
+
+        original = self.module.opencode_latest_version
+        self.module.opencode_latest_version = lambda: "0.7.0"
+        buffer = io.StringIO()
+        try:
+            with redirect_stdout(buffer):
+                code = self.module.main(["check-update"])
+        finally:
+            self.module.opencode_latest_version = original
+
+        output = buffer.getvalue()
+        self.assertEqual(0, code)
+        self.assertIn("athena-opencode installed version:", output)
+        self.assertIn("athena-opencode npm registry latest: 0.7.0", output)
+
+    def test_check_update_reports_unreachable_registry(self) -> None:
+        import io
+        from contextlib import redirect_stdout
+
+        original = self.module.opencode_latest_version
+        self.module.opencode_latest_version = lambda: None
+        buffer = io.StringIO()
+        try:
+            with redirect_stdout(buffer):
+                code = self.module.main(["check-update"])
+        finally:
+            self.module.opencode_latest_version = original
+
+        self.assertEqual(1, code)
+        self.assertIn("could not query the npm registry", buffer.getvalue())
+
+    def test_update_report_compares_semver_tuples(self) -> None:
+        self.assertIn("behind", self.module.opencode_update_report("0.6.0", "0.7.0"))
+        self.assertIn(
+            "up to date", self.module.opencode_update_report("0.7.0", "0.7.0")
+        )
+        self.assertIn(
+            "up to date", self.module.opencode_update_report("0.7.1", "0.7.0")
+        )
+        self.assertIn("differ", self.module.opencode_update_report("dev", "0.7.0"))
+
+
 if __name__ == "__main__":
     unittest.main()
