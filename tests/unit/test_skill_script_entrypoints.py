@@ -817,7 +817,8 @@ class PrepareWorktreeTests(unittest.TestCase):
                 from contextlib import redirect_stdout
 
                 with (
-                    redirect_stdout(open(buffer_path, "w", encoding="utf-8")),
+                    open(buffer_path, "w", encoding="utf-8") as handle,
+                    redirect_stdout(handle),
                     patch.object(system, "argv", argv),
                 ):
                     rc = self.module.main()
