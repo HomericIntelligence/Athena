@@ -61,12 +61,9 @@ merge or release readiness.
   - the linked Athena issue is open;
   - it retains the full JavaScript Object Notation (JSON) reports.
 
-- `security/pi-upstream-inventory-watch` is the single advisory job. It runs on the weekly schedule
-  or by manual dispatch. A manual dispatch also runs the other jobs. The job scans the full
-  upstream Pi source tree. It records upstream inventory evidence for tracking only and stays out
-  of `required-checks-gate` while upstream-only findings can fail the scan. It tracks
-  [Issue #74](https://github.com/HomericIntelligence/Athena/issues/74). Athena retires it when the
-  full Pi source inventory is restored into the gate.
+- The `package` job scans the full upstream Pi source tree at every merge. The dependency scan
+  gates on that inventory. The full Pi source inventory is restored; the advisory watch is retired.
+  [Issue #74](https://github.com/HomericIntelligence/Athena/issues/74) records the restoration.
 
 - On pull requests, `pr-policy` checks these items:
 

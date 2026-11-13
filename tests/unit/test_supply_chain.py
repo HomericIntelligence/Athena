@@ -1396,14 +1396,10 @@ jobs:
         required_jobs = required["jobs"]
         release_jobs = release["jobs"]
         self.assertEqual(
-            set(required_jobs)
-            - {"required-checks-gate", "pi-upstream-inventory-watch"},
+            set(required_jobs) - {"required-checks-gate"},
             set(required_jobs["required-checks-gate"]["needs"]),
         )
-        for name in set(required_jobs) - {
-            "agent-contract",
-            "pi-upstream-inventory-watch",
-        }:
+        for name in set(required_jobs) - {"agent-contract"}:
             with self.subTest(workflow="required", job=name):
                 self.assertTrue(
                     self._depends_on(required_jobs, name, "agent-contract"),
@@ -1489,7 +1485,6 @@ jobs:
         self.assertEqual(
             {
                 "workflow_call",
-                "workflow_dispatch",
                 "pull_request",
                 "push",
                 "merge_group",
@@ -1715,7 +1710,7 @@ jobs:
         self.assertEqual(
             {
                 "pi-subagents": "0.83.1",
-                "@earendil-works/pi-coding-agent": "1.5.0",
+                "@earendil-works/pi-coding-agent": "1.5.2",
             },
             manifest["dependencies"],
         )
@@ -1778,11 +1773,11 @@ jobs:
         self.assertIn("--ignore-scripts --engine-strict", pi_step["run"])
         self.assertIn("find_pi_package_root.mjs", pi_step["run"])
         self.assertIn(
-            '"$PI_RUNTIME_ROOT/package-lock.json"',
+            '"$PI_RUNTIME_LOCK_ROOT/package-lock.json"',
             pi_step["run"],
         )
         self.assertIn('scan "$PI_RUNTIME_ROOT" -o json', pi_step["run"])
-        self.assertIn("syft-pi-source.json", json.dumps(package_job))
+        self.assertIn("syft-pi-source-full.json", json.dumps(package_job))
         self.assertIn("syft-pi-subagents.json", json.dumps(package_job))
 
         scan_job = required["jobs"]["security-dependency-scan"]
@@ -1792,7 +1787,7 @@ jobs:
             if "scripts/scan_vulnerabilities.py" in step.get("run", "")
         )
         self.assertIn("syft-environment.json", scan_step["run"])
-        self.assertIn("syft-pi-source.json", scan_step["run"])
+        self.assertIn("syft-pi-source-full.json", scan_step["run"])
         self.assertIn("syft-pi-subagents.json", scan_step["run"])
 
     def test_all_external_actions_are_commit_pinned(self) -> None:
@@ -1818,10 +1813,8 @@ jobs:
             with self.subTest(job=job_name):
                 self.assertNotIn("${{ runner.", json.dumps(job.get("env", {})))
 
-    def test_pi_upstream_inventory_watch_stays_outside_required_gate(
-        self,
-    ) -> None:
-        """The upstream full-tree scan stays outside the required gate."""
+    def test_full_pi_source_inventory_is_scanned_in_required_gate(self) -> None:
+        """The upstream full-tree scan runs inside the required package job."""
         root = Path(__file__).resolve().parents[2]
         required = yaml.safe_load(
             (root / ".github" / "workflows" / "_required.yml").read_text(
@@ -1829,52 +1822,41 @@ jobs:
             )
         )
         jobs = required["jobs"]
-        watch = jobs["pi-upstream-inventory-watch"]
 
-        self.assertEqual("security/pi-upstream-inventory-watch", watch["name"])
-        self.assertEqual(
-            "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
-            watch["if"],
+        self.assertNotIn("pi-upstream-inventory-watch", jobs)
+        self.assertNotIn("workflow_dispatch", required["on"])
+
+        package_job = jobs["package"]
+        full_scan_step = next(
+            step
+            for step in package_job["steps"]
+            if step.get("name")
+            == "Fetch the upstream Pi source and scan the full inventory"
         )
-        self.assertEqual(
-            {"contents": "read", "issues": "read"},
-            watch["permissions"],
+        self.assertIn('git -C "$PI_UPSTREAM_SOURCE_ROOT" init', full_scan_step["run"])
+        self.assertIn(
+            'git -C "$PI_UPSTREAM_SOURCE_ROOT" fetch --depth=1 origin "$PI_UPSTREAM_REF"',
+            full_scan_step["run"],
         )
+        self.assertIn(
+            'git -C "$PI_UPSTREAM_SOURCE_ROOT" checkout --detach FETCH_HEAD',
+            full_scan_step["run"],
+        )
+        self.assertIn('scan "$PI_UPSTREAM_SOURCE_ROOT" -o json', full_scan_step["run"])
+        self.assertIn("syft-pi-source-full.json", full_scan_step["run"])
         self.assertNotIn(
             "pi-upstream-inventory-watch", jobs["required-checks-gate"]["needs"]
         )
-        self.assertIn("workflow_dispatch", required["on"])
-        fetch_step = next(
-            step
-            for step in watch["steps"]
-            if step.get("name") == "Fetch the upstream Pi source inventory"
-        )
+        self.assertIn("syft-pi-source-full.json", json.dumps(package_job))
+
+        scan_job = jobs["security-dependency-scan"]
         scan_step = next(
             step
-            for step in watch["steps"]
-            if step.get("name") == "Scan the full upstream Pi source tree"
+            for step in scan_job["steps"]
+            if "scripts/scan_vulnerabilities.py" in step.get("run", "")
         )
-        self.assertIn('git -C "$PI_UPSTREAM_SOURCE_ROOT" init', fetch_step["run"])
-        self.assertIn(
-            'git -C "$PI_UPSTREAM_SOURCE_ROOT" fetch --depth=1 origin "$PI_UPSTREAM_REF"',
-            fetch_step["run"],
-        )
-        self.assertIn('scan "$PI_UPSTREAM_SOURCE_ROOT" -o json', scan_step["run"])
-        self.assertIn("scripts/scan_vulnerabilities.py", scan_step["run"])
         self.assertIn("syft-pi-source-full.json", scan_step["run"])
         self.assertIn("grype-pi-source-full.json", scan_step["run"])
-
-        expected_pins = {
-            reference.split("@", 1)[0]: reference
-            for job_name, job in jobs.items()
-            if job_name != "pi-upstream-inventory-watch"
-            for step in job.get("steps", [])
-            if (reference := step.get("uses")) and not reference.startswith("./")
-        }
-        for step in watch["steps"]:
-            reference = step.get("uses")
-            if reference:
-                self.assertEqual(expected_pins[reference.split("@", 1)[0]], reference)
 
 
 if __name__ == "__main__":
