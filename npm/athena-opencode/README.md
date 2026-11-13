@@ -26,14 +26,68 @@ files:
 Quit opencode. Then, restart opencode. During startup, the plugin copies the bundled `skills/` corpus
 to this location:
 
-```
-$XDG_CONFIG_HOME/opencode/skills/athena/
+```text
+XDG_CONFIG_HOME/opencode/skills/athena/
 ```
 
 If `XDG_CONFIG_HOME` does not have a value, the target is
 `~/.config/opencode/skills/athena/`. The plugin writes only in the `athena/` namespace. It does not
 change other skills in your configuration. At each restart, the plugin makes the namespace agree
 with the installed plugin version. Thus, a package update also updates the skills.
+
+## Update
+
+OpenCode installs this package into its cache one time. At each start, it loads that cached copy.
+OpenCode checks unpinned npm plugins for updates, but it does not replace the installed package.
+A restart alone is not an upgrade.
+
+The minimum loadable version is `0.6.0`. The published `0.4.4`, `0.5.0`, `0.5.1`, `0.5.2`, and
+`0.5.3` artifacts cannot load on OpenCode 2.
+
+To upgrade a cached install:
+
+1. Remove `"@homericintelligence/athena-opencode"` from the `plugins` array in your opencode
+   configuration, or delete the cached install:
+
+   ```bash
+   rm -rf ~/.cache/opencode/npm/@homericintelligence/athena-opencode@latest
+   ```
+
+2. Add `"@homericintelligence/athena-opencode"` to the `plugins` array again.
+3. Restart opencode. It installs the missing package in the background.
+4. Check the result:
+
+   - `opencode plugin list` shows the installed version;
+   - `opencode plugin check @homericintelligence/athena-opencode` shows update availability;
+   - `opencode plugin update @homericintelligence/athena-opencode` upgrades a configured plugin;
+   - or run the on-demand version check from the corpus:
+
+     ```bash
+     python3 ~/.config/opencode/skills/athena/_cli.py check-update
+     ```
+
+   Quit and restart opencode after an upgrade so the server loads the new package.
+
+If you install through the CLI, `opencode plugin add @homericintelligence/athena-opencode` writes
+the unpinned entry to `opencode.json` and installs the current version at the next start. It
+records no pinned version, so the entry stays unpinned and is treated like the hand-edited form.
+
+## Troubleshooting
+
+### The server log shows a plugin load failure
+
+Server log entries like this one mean the cached package is too old:
+
+```text
+failed to load plugin @homericintelligence/athena-opencode
+cause="Cause([Fail(PluginModule.LoadError: Plugin must export a default definition
+with an id and an effect or setup function. ...)])"
+```
+
+The `0.4.x` and `0.5.x` artifacts carry a load failure on OpenCode 2. The release workflow checks
+that they are deprecated on npm and blocks the release until a maintainer deprecates them.
+Remove the cached install and add the plugin again (see [Update](#update)), then verify that the
+installed version is `0.6.0` or newer.
 
 ## Use
 
@@ -42,7 +96,7 @@ Use the native opencode skill mechanism. For example, ask opencode to use the `r
 [`README.md`](https://github.com/HomericIntelligence/Athena#readme) for this information:
 
 - the full skill catalog;
-- dependency requirements for Git and Python 3.12 or newer;
+- dependency requirements for Git and Python 3.12.3 or newer;
 - the authenticated GitHub CLI (`gh`) requirement for forge routes; and
 - capability fallbacks.
 

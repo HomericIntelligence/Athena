@@ -7,6 +7,8 @@ import json
 import os
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Final
@@ -200,6 +202,79 @@ def plugin_version() -> str:
     return version
 
 
+OPENCODE_PACKAGE_NAME: Final[str] = "@homericintelligence/athena-opencode"
+OPENCODE_REGISTRY_LATEST_URL: Final[str] = (
+    f"https://registry.npmjs.org/{OPENCODE_PACKAGE_NAME}/latest"
+)
+_OPENCODE_CHECK_TIMEOUT_SECONDS: Final[float] = 10.0
+
+
+def _semver_key(version: str) -> tuple[int, ...] | None:
+    parts = version.strip().split(".")
+    if len(parts) != 3 or not all(part.isdigit() for part in parts):
+        return None
+    return tuple(int(part) for part in parts)
+
+
+def opencode_latest_version() -> str | None:
+    """Return the npm registry's latest published plugin version, or None.
+
+    This function performs one bounded network request. Callers invoke it only
+    on demand; importing ``skills._cli`` and any parser action stay offline.
+    """
+    try:
+        with urllib.request.urlopen(
+            OPENCODE_REGISTRY_LATEST_URL, timeout=_OPENCODE_CHECK_TIMEOUT_SECONDS
+        ) as response:
+            payload = response.read()
+        document = json.loads(payload.decode("utf-8"))
+    except (OSError, ValueError, urllib.error.URLError):
+        return None
+    version = document.get("version") if isinstance(document, dict) else None
+    if not isinstance(version, str) or not version.strip():
+        return None
+    return version.strip()
+
+
+def opencode_update_report(installed: str, latest: str) -> str:
+    """Return one status line comparing the installed plugin with the registry."""
+    installed_key = _semver_key(installed)
+    latest_key = _semver_key(latest)
+    if installed_key is not None and latest_key is not None:
+        if installed_key >= latest_key:
+            return "athena-opencode is up to date."
+        return (
+            f"athena-opencode is behind the registry (installed {installed}; "
+            f"latest {latest}). Remove and re-add the plugin or delete the cached "
+            f"install, then restart opencode."
+        )
+    if installed == latest:
+        return "athena-opencode is up to date."
+    return (
+        f"athena-opencode installed {installed}; registry latest {latest}; "
+        f"the versions differ."
+    )
+
+
+def _opencode_check_update() -> int:
+    try:
+        installed = plugin_version()
+    except (OSError, TypeError, UnicodeError, json.JSONDecodeError) as error:
+        print(f"athena-opencode could not read the installed plugin version: {error}")
+        return 2
+    print(f"athena-opencode installed version: {installed}")
+    latest = opencode_latest_version()
+    if latest is None:
+        print(
+            "athena-opencode could not query the npm registry for the latest "
+            f"version ({OPENCODE_REGISTRY_LATEST_URL})."
+        )
+        return 1
+    print(f"athena-opencode npm registry latest: {latest}")
+    print(opencode_update_report(installed, latest))
+    return 0
+
+
 class _PluginVersionAction(argparse.Action):
     """Resolve the plugin version only when the option is requested."""
 
@@ -243,3 +318,24 @@ def argument_parser(
         help="Show the Athena plugin version and exit.",
     )
     return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the opt-in management commands. Importing this module never uses the network."""
+    parser = argument_parser(
+        description="Athena corpus management. Network access only for explicit commands.",
+    )
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser(
+        "check-update",
+        help="Print the installed plugin version next to the npm registry latest version.",
+    )
+    args = parser.parse_args(argv)
+    if args.command == "check-update":
+        return _opencode_check_update()
+    parser.error(f"Unknown command: {args.command}")
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -402,3 +402,104 @@ class PackageOpenCodeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PackageOpenCodeSetupTests(unittest.TestCase):
+    """Exercise the setup hook's reporting and swap behavior."""
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary_directory.cleanup)
+        self.fixture = Path(self.temporary_directory.name) / "Athena"
+        shutil.copytree(
+            ROOT,
+            self.fixture,
+            ignore=shutil.ignore_patterns(
+                ".git",
+                ".venv",
+                "dist",
+                "build",
+                "__pycache__",
+                "*.pyc",
+                ".coverage*",
+            ),
+        )
+
+    def stage(self) -> Path:
+        staged: Path = package_opencode.stage_package(
+            self.fixture, self.fixture / "staged-npm"
+        )
+        return staged
+
+    def _run_setup(
+        self, staged: Path, config_home: Path
+    ) -> subprocess.CompletedProcess[str]:
+        environment = os.environ.copy()
+        environment["XDG_CONFIG_HOME"] = str(config_home)
+        script = (
+            f"import({json.dumps((staged / 'plugin.js').as_uri())}).then("
+            "(module) => module.default.setup());"
+        )
+        return subprocess.run(
+            ["node", "--input-type=module", "--eval", script],
+            capture_output=True,
+            check=False,
+            env=environment,
+            text=True,
+        )
+
+    @unittest.skipUnless(shutil.which("node"), "Plugin installation requires Node.js")
+    def test_setup_reports_the_loaded_version(self) -> None:
+        """The hook prints the package version once per start."""
+        staged = self.stage()
+        config_home = self.fixture.parent / "xdg-config-version"
+
+        result = self._run_setup(staged, config_home)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        expected = json.loads((staged / "package.json").read_text(encoding="utf-8"))[
+            "version"
+        ]
+        self.assertIn(f"[athena-opencode] loaded {expected}", result.stdout)
+
+    @unittest.skipUnless(shutil.which("node"), "Plugin installation requires Node.js")
+    def test_setup_swap_replaces_stale_corpus_without_residue(self) -> None:
+        """A reinstall swaps in the new corpus and leaves no staging residue."""
+        staged = self.stage()
+        config_home = self.fixture.parent / "xdg-config-swap"
+        target = config_home / "opencode" / "skills" / "athena"
+        target.mkdir(parents=True)
+        stale = target / "stale-entry.txt"
+        stale.write_text("stale", encoding="utf-8")
+
+        result = self._run_setup(staged, config_home)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertFalse(stale.exists())
+        self.assertTrue((target / "_cli.py").is_file())
+        residue = sorted(
+            path.name
+            for path in target.parent.glob("athena.*")
+            if path.name.startswith(("athena.staging-", "athena.backup-"))
+        )
+        self.assertEqual([], residue)
+
+    @unittest.skipUnless(shutil.which("node"), "Plugin installation requires Node.js")
+    def test_setup_keeps_previous_corpus_when_stage_fails(self) -> None:
+        """A failed stage keeps the previously installed corpus in place."""
+        staged = self.stage()
+        os.chmod(staged / "skills", 0)
+        try:
+            config_home = self.fixture.parent / "xdg-config-fail"
+            target = config_home / "opencode" / "skills" / "athena"
+            target.mkdir(parents=True)
+            sentinel = target / "keep-me.txt"
+            sentinel.write_text("previous", encoding="utf-8")
+
+            result = self._run_setup(staged, config_home)
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("could not install the skills", result.stderr)
+            self.assertEqual("previous", sentinel.read_text(encoding="utf-8"))
+        finally:
+            os.chmod(staged / "skills", 0o755)
