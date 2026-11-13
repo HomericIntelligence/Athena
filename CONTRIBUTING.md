@@ -13,7 +13,9 @@ Before you change the repository:
 
 ## Environment setup
 
-Install Git, uv, Just, and Python 3.12 or newer. Athena uses these tools only for repository validation.
+Install Git, uv, Just, and Python 3.14.10 (the interpreter pinned in `.python-version`). Athena
+uses these tools only for repository validation. uv can download the pinned interpreter
+automatically.
 
 ```bash
 git clone https://github.com/HomericIntelligence/Athena
