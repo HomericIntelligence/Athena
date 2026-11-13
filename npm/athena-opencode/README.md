@@ -84,9 +84,10 @@ cause="Cause([Fail(PluginModule.LoadError: Plugin must export a default definiti
 with an id and an effect or setup function. ...)])"
 ```
 
-The `0.4.x` and `0.5.x` artifacts predate the object plugin definition that OpenCode 2 requires.
-They are deprecated on npm. Remove the cached install and add the plugin again (see
-[Update](#update)). Then verify that the installed version is `0.6.0` or newer.
+The `0.4.x` and `0.5.x` artifacts carry a load failure on OpenCode 2. The release workflow checks
+that they are deprecated on npm and blocks the release until a maintainer deprecates them.
+Remove the cached install and add the plugin again (see [Update](#update)), then verify that the
+installed version is `0.6.0` or newer.
 
 ## Use
 

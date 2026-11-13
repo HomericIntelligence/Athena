@@ -97,7 +97,13 @@ export function syncSkills() {
     }
     throw error;
   }
-  rmSync(backup, { recursive: true, force: true });
+  try {
+    rmSync(backup, { recursive: true, force: true });
+  } catch {
+    console.warn(
+      `[athena-opencode] The plugin installed the skills but could not remove the backup tree: '${backup}'.`,
+    );
+  }
   return target;
 }
 

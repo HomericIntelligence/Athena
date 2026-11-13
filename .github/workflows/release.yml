@@ -113,11 +113,17 @@ jobs:
       # This gate blocks the release until that one-time action is done.
       - name: Verify the known-broken published versions are deprecated
         run: |
-          deprecated="$(npm view '@homericintelligence/athena-opencode@<0.6.0' \
-            deprecated)"
-          if [ -z "$deprecated" ]; then
-            echo "::error::The published 0.4.x and 0.5.x packages cannot load."
-            echo "::error::They are not deprecated. Run: npm deprecate" \
+          missing=""
+          for version in 0.4.4 0.5.0 0.5.1 0.5.2 0.5.3; do
+            if [ -z "$(npm view "@homericintelligence/athena-opencode@${version}" \
+              deprecated)" ]; then
+              missing="${missing} ${version}"
+            fi
+          done
+          if [ -n "${missing}" ]; then
+            echo "::error::The published packages cannot load on OpenCode 2" \
+              "and are not deprecated:${missing}."
+            echo "::error::Run: npm deprecate" \
               "'@homericintelligence/athena-opencode@<0.6.0'" \
               "'Cannot load on OpenCode 2; use 0.7.0 or later'"
             exit 1
