@@ -6,7 +6,6 @@ name: Required Checks
       full-tests:
         type: boolean
         default: false
-  workflow_dispatch: {}
   pull_request:
     branches: [main]
   push:
@@ -318,12 +317,8 @@ jobs:
             );
           }
           NODE
-          "${{ steps.syft.outputs.cmd }}" scan \
-            "$PI_RUNTIME_ROOT/package-lock.json" -o json \
-            > dist-internal/syft-pi-source.json
           "${{ steps.syft.outputs.cmd }}" scan "$PI_RUNTIME_ROOT" -o json \
             > dist-internal/syft-pi-subagents.json
-          test -s dist-internal/syft-pi-source.json
           test -s dist-internal/syft-pi-subagents.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -336,13 +331,28 @@ jobs:
             dist/athena-build-linux-64-*.spdx.json
             dist/athena-build-linux-64-*.spdx.json.sha256
           if-no-files-found: error
+      - name: Fetch the upstream Pi source and scan the full inventory
+        env:
+          PI_UPSTREAM_REPOSITORY: https://github.com/earendil-works/pi.git
+          PI_UPSTREAM_REF: main
+          PI_UPSTREAM_SOURCE_ROOT: ${{ runner.temp }}/athena-pi-upstream
+        run: |
+          mkdir -p "$PI_UPSTREAM_SOURCE_ROOT"
+          git -C "$PI_UPSTREAM_SOURCE_ROOT" init
+          git -C "$PI_UPSTREAM_SOURCE_ROOT" remote add origin "$PI_UPSTREAM_REPOSITORY"
+          git -C "$PI_UPSTREAM_SOURCE_ROOT" fetch --depth=1 origin "$PI_UPSTREAM_REF"
+          git -C "$PI_UPSTREAM_SOURCE_ROOT" checkout --detach FETCH_HEAD
+          mkdir -p dist-internal
+          "${{ steps.syft.outputs.cmd }}" scan "$PI_UPSTREAM_SOURCE_ROOT" -o json \
+            > dist-internal/syft-pi-source-full.json
+          test -s dist-internal/syft-pi-source-full.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: athena-sca-input
           path: |
             dist-internal/syft-environment.json
             dist-internal/syft-python-runtime.json
-            dist-internal/syft-pi-source.json
+            dist-internal/syft-pi-source-full.json
             dist-internal/syft-pi-subagents.json
           if-no-files-found: error
 
@@ -385,8 +395,8 @@ jobs:
             --report dist-internal/grype-python-runtime.json \
             --grype "${{ steps.grype.outputs.cmd }}"
           uv run python scripts/scan_vulnerabilities.py \
-            --inventory dist-internal/syft-pi-source.json \
-            --report dist-internal/grype-pi-source.json \
+            --inventory dist-internal/syft-pi-source-full.json \
+            --report dist-internal/grype-pi-source-full.json \
             --grype "${{ steps.grype.outputs.cmd }}"
           uv run python scripts/scan_vulnerabilities.py \
             --inventory dist-internal/syft-pi-subagents.json \
@@ -398,66 +408,6 @@ jobs:
         with:
           name: athena-grype-report
           path: dist-internal/grype-*.json
-          if-no-files-found: error
-
-  pi-upstream-inventory-watch:
-    name: security/pi-upstream-inventory-watch
-    needs: agent-contract
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    permissions:
-      contents: read
-      issues: read
-    env:
-      PI_UPSTREAM_REPOSITORY: https://github.com/earendil-works/pi.git
-      PI_UPSTREAM_REF: main
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version: "0.13.6"
-          enable-cache: true
-      - name: Install locked scan environment
-        run: uv sync --locked
-      - id: syft
-        uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
-        with:
-          syft-version: v1.46.0
-      - id: grype
-        uses: anchore/scan-action/download-grype@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
-        with:
-          grype-version: v0.115.0
-      - name: Fetch the upstream Pi source inventory
-        env:
-          PI_UPSTREAM_SOURCE_ROOT: ${{ runner.temp }}/athena-pi-upstream
-        run: |
-          mkdir -p "$PI_UPSTREAM_SOURCE_ROOT"
-          git -C "$PI_UPSTREAM_SOURCE_ROOT" init
-          git -C "$PI_UPSTREAM_SOURCE_ROOT" remote add origin "$PI_UPSTREAM_REPOSITORY"
-          git -C "$PI_UPSTREAM_SOURCE_ROOT" fetch --depth=1 origin "$PI_UPSTREAM_REF"
-          git -C "$PI_UPSTREAM_SOURCE_ROOT" checkout --detach FETCH_HEAD
-      - name: Scan the full upstream Pi source tree
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PI_UPSTREAM_SOURCE_ROOT: ${{ runner.temp }}/athena-pi-upstream
-        run: |
-          mkdir -p dist-internal
-          "${{ steps.syft.outputs.cmd }}" scan "$PI_UPSTREAM_SOURCE_ROOT" -o json \
-            > dist-internal/syft-pi-source-full.json
-          test -s dist-internal/syft-pi-source-full.json
-          uv run python scripts/scan_vulnerabilities.py \
-            --inventory dist-internal/syft-pi-source-full.json \
-            --report dist-internal/grype-pi-source-full.json \
-            --grype "${{ steps.grype.outputs.cmd }}"
-      - name: Retain the upstream vulnerability report
-        if: always() && hashFiles('dist-internal/*pi-source-full.json') != ''
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: athena-pi-upstream-inventory-watch
-          path: dist-internal/*pi-source-full.json
           if-no-files-found: error
 
   pr-policy:
