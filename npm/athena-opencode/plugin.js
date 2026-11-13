@@ -2,7 +2,9 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   statSync,
 } from "node:fs";
@@ -28,6 +30,20 @@ function installTarget() {
   return join(configBase(), "opencode", "skills", NAMESPACE);
 }
 
+export function loadedVersion() {
+  try {
+    const document = JSON.parse(
+      readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+    );
+    const version = document && document.version;
+    return typeof version === "string" && version.trim() !== ""
+      ? version
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function syncSkills() {
   const source = bundledSkillsRoot();
   const target = installTarget();
@@ -37,14 +53,61 @@ export function syncSkills() {
     );
   }
   mkdirSync(dirname(target), { recursive: true });
-  rmSync(target, { recursive: true, force: true });
-  cpSync(source, target, { recursive: true });
+  // Stage the new corpus next to the target and swap it in with renames.
+  // OpenCode watches the skills directory. A full remove followed by a copy
+  // leaves an empty tree that the watcher can observe mid-install.
+  const stamp = `${process.pid}-${Date.now()}`;
+  const staged = `${target}.staging-${stamp}`;
+  const backup = `${target}.backup-${stamp}`;
+  try {
+    cpSync(source, staged, { recursive: true });
+  } catch (error) {
+    // A partially staged tree keeps the errors it hit; the live target is untouched.
+    try {
+      rmSync(staged, { recursive: true, force: true });
+    } catch {
+      // Nothing was published. The caller still holds the original error.
+    }
+    throw error;
+  }
+  let hadPrevious = false;
+  try {
+    renameSync(target, backup);
+    hadPrevious = true;
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      try {
+        rmSync(staged, { recursive: true, force: true });
+      } catch {
+        // Nothing was published. The caller still holds the original error.
+      }
+      throw error;
+    }
+  }
+  try {
+    renameSync(staged, target);
+  } catch (error) {
+    if (hadPrevious) {
+      renameSync(backup, target);
+    }
+    try {
+      rmSync(staged, { recursive: true, force: true });
+    } catch {
+      // The live target was restored. The staged residue is harmless.
+    }
+    throw error;
+  }
+  rmSync(backup, { recursive: true, force: true });
   return target;
 }
 
 export default {
   id: "@homericintelligence/athena-opencode",
   setup() {
+    const version = loadedVersion();
+    if (version !== null) {
+      console.log(`[athena-opencode] loaded ${version}`);
+    }
     try {
       const target = syncSkills();
       console.log(
