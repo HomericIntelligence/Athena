@@ -135,8 +135,9 @@ sequentially with the current agent.
 
 Prerequisites are Git, uv, Just, and Python 3.12.3 or newer to run the packaged helpers. The checked-in
 `.python-version` file pins the default repository-tooling interpreter to Python 3.14.10.
-Set `UV_PYTHON` to another interpreter within the `>=3.12.3,<3.15` package contract for compatibility
-tests.
+The repository toolchain requires `>=3.14.10,<3.15` (see `pyproject.toml`); keep `UV_PYTHON` inside
+that range for repository work. Point `UV_PYTHON` at an older interpreter only for compatibility
+testing, not for the repository checks.
 [Full environment setup lives in CONTRIBUTING.md](CONTRIBUTING.md#environment-setup).
 
 ## Layout
