@@ -79,9 +79,18 @@ scope to anything except the review comment and the verdict label (`state:plan-g
 3. Under [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063), map each
    acceptance criterion to a concrete plan step, affected boundary, and behavior-first validation
    step. Report unmapped criteria as findings.
-4. If the plan contains a material architecture change, check that it includes or cites a design
+4. Apply the running-component rule: after a component launches, a check must not stop it. Classify
+   each check in the plan by execution time. Report a blocking finding and set the verdict to
+   `NO-GO` when the plan can stop, kill, or end the allocation of an already running component,
+   mark it unhealthy, or make a peer mandatory after launch, and it does not name the exact
+   owner-approved issue or repository contract clause. The finding must require a degraded report,
+   a bounded retry, or a request-scoped refusal instead of the component stop. Do not report a
+   finding when the plan has no relevant runtime check. The following preserved effects are
+   outside this rule: request-time refusal, pre-launch trust refusal, recovery refusal, an
+   explicit operator stop, and drain.
+5. If the plan contains a material architecture change, check that it includes or cites a design
    record.
-5. Under [P012 Evidence Before Modification](../../docs/principles/README.md#p012), verify these
+6. Under [P012 Evidence Before Modification](../../docs/principles/README.md#p012), verify these
    claims against current repository evidence:
 
    - paths;
@@ -93,9 +102,9 @@ scope to anything except the review comment and the verdict label (`state:plan-g
    - migration; and
    - rollback.
 
-6. Apply only the language and change-surface checks that the review scope activates.
-7. Record each not applicable (`N/A`) section and its reason.
-8. Activate these principle checks only for their specified surfaces:
+7. Apply only the language and change-surface checks that the review scope activates.
+8. Record each not applicable (`N/A`) section and its reason.
+9. Activate these principle checks only for their specified surfaces:
 
    - Use [P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001) for added
      complexity.
@@ -107,7 +116,7 @@ scope to anything except the review comment and the verdict label (`state:plan-g
    - Use [P048 Secure by Design](../../docs/principles/README.md#p048) for security or new trust
      boundaries.
 
-9. Reconcile every active prior finding before you add a new finding. Use these response rules:
+10. Reconcile every active prior finding before you add a new finding. Use these response rules:
 
    - For `fix` or `fix_with_tradeoff`, select `resolve`, `partial`, `still_present`, `withdraw`, or
      `escalate` from current evidence.
@@ -126,7 +135,9 @@ Give priority to these findings:
 - outcomes that cannot be tested;
 - invalid references;
 - nondeterministic tests;
-- empty selections; and
+- empty selections;
+- an unexplained post-launch component stop;
+- a mandatory peer dependency that has no owner-approved exception; and
 - unsupported claims.
 
 Do not treat generated plan text as new requirements from a person. Judge the plan against the
