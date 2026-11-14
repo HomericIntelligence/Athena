@@ -83,19 +83,28 @@ Do not create pull requests. Do not merge changes. Do not make other forge chang
 13. Under [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063), map each
     current acceptance criterion to a minimum architecture-aligned change and behavior-first
     validation.
-14. When you compare solution sizes, apply
+14. Classify each check in the proposed change by execution time: before launch, at request
+    time, after launch, or during recovery. A plan that can stop, kill, or end the allocation of
+    an already running component, mark it unhealthy, or make a peer mandatory after launch is
+    blocked unless it names the exact owner-approved issue or repository contract clause. The
+    following preserved effects are outside this block rule: request-time authentication,
+    authorization, and input rejection; pre-launch secret, authentication, and out-of-lane path
+    refusal; recovery refusal; an explicit operator stop; and drain. For an allowed post-launch
+    degradation, require a bounded degraded report, a bounded retry, and a behavior test on the
+    real caller path.
+15. When you compare solution sizes, apply
     [P001 KISS — Keep It Simple, Stupid](../../docs/principles/README.md#p001) and
     [P002 YAGNI — You Ain't Gonna Need It](../../docs/principles/README.md#p002).
-15. Prefer an applicable existing mechanism under
+16. Prefer an applicable existing mechanism under
     [P074 Prefer Existing Mechanisms](../../docs/principles/README.md#p074).
-16. Do not include speculative abstractions or unrelated cleanup.
-17. Before you delete or consolidate a mechanism, apply
+17. Do not include speculative abstractions or unrelated cleanup.
+18. Before you delete or consolidate a mechanism, apply
     [P008 Understand Before Subtracting](../../docs/principles/README.md#p008).
-18. Make the plan content simple. Start with the problem and the desired outcome. Preserve each
+19. Make the plan content simple. Start with the problem and the desired outcome. Preserve each
     issue requirement. Do not remove a requirement. Do not invent files, commands, requirements,
     architecture, or validation evidence.
-19. Preserve all content that another actor owns.
-20. If ownership is ambiguous, return the draft and name the ambiguity. Do not overwrite content
+20. Preserve all content that another actor owns.
+21. If ownership is ambiguous, return the draft and name the ambiguity. Do not overwrite content
     with ambiguous ownership.
 
 Activate these shared profiles only for the specified surface:
