@@ -603,6 +603,21 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                             },
                             "state": "OPEN",
                             "url": "https://github.com/owner/repository/pull/7",
+                            "comments": {
+                                "nodes": [
+                                    {
+                                        "author": {"login": "owner"},
+                                        "authorAssociation": "MEMBER",
+                                        "body": "Conversation note.",
+                                        "databaseId": "3991324290",
+                                        "id": "PC_conversation-note",
+                                        "lastEditedAt": None,
+                                        "publishedAt": "2026-01-01T00:00:03Z",
+                                        "viewerDidAuthor": False,
+                                    }
+                                ],
+                                "pageInfo": {"hasNextPage": False},
+                            },
                         }
                     }
                 }
@@ -2403,6 +2418,145 @@ class PrReviewGoDeliveryTests(unittest.TestCase):
                 for argument in call
             )
         )
+
+    def test_github_snapshot_parses_pull_request_conversation_comments(self) -> None:
+        document = json.loads(self.github_snapshot_json())
+        with patch.object(
+            self.delivery,
+            "_gh",
+            side_effect=lambda *args: json.dumps(document),
+        ):
+            parsed = self.delivery.GitHubForge(self.binding()).snapshot()
+
+        self.assertEqual(1, len(parsed.issue_comments))
+        comment = parsed.issue_comments[0]
+        self.assertEqual("3991324290", comment.id)
+        self.assertEqual("3991324290", comment.full_database_id)
+        self.assertEqual("owner", comment.author)
+        self.assertEqual("MEMBER", comment.author_association)
+        self.assertEqual("Conversation note.", comment.body)
+        self.assertEqual("2026-01-01T00:00:03Z", comment.published_at)
+        self.assertIsNone(comment.last_edited_at)
+        self.assertIsNone(comment.author_permission)
+
+    def test_github_snapshot_records_conversation_comment_authority_permission(
+        self,
+    ) -> None:
+        authority_body = self.authority_body(
+            action="human_decision",
+            exchange_id="exchange-7",
+            requirements_sha256="c" * 64,
+            prior_state_sha256="0" * 64,
+            supersedes_state_sha256=None,
+            decisions=[
+                {
+                    "finding_id": "F-001",
+                    "kind": "select_closure",
+                    "closure_condition": "Every commit is signed.",
+                }
+            ],
+        )
+        document = json.loads(self.github_snapshot_json())
+        comments = document["data"]["repository"]["pullRequest"]["comments"]["nodes"]
+        comments.append(
+            {
+                "author": {"login": "maintainer"},
+                "authorAssociation": "MEMBER",
+                "body": authority_body,
+                "databaseId": "3991324291",
+                "id": "PC_authority-comment",
+                "lastEditedAt": None,
+                "publishedAt": "2026-01-01T00:00:04Z",
+                "viewerDidAuthor": False,
+            }
+        )
+        calls: list[tuple[str, ...]] = []
+
+        def fake_gh(*arguments: str, **options: Any) -> str:
+            del options
+            calls.append(arguments)
+            if "graphql" in arguments:
+                return json.dumps(document)
+            return json.dumps({"permission": "maintain"})
+
+        with patch.object(self.delivery, "_gh", side_effect=fake_gh):
+            snapshot = self.delivery.GitHubForge(self.binding()).snapshot()
+
+        authority = next(
+            comment
+            for comment in snapshot.issue_comments
+            if comment.full_database_id == "3991324291"
+        )
+        self.assertEqual("MAINTAIN", authority.author_permission)
+        self.assertTrue(
+            any(
+                "collaborators/maintainer/permission" in argument
+                for call in calls
+                for argument in call
+            )
+        )
+
+    def test_authority_receipt_resolves_pull_request_conversation_comment(
+        self,
+    ) -> None:
+        authority_body = self.authority_body(
+            action="human_decision",
+            exchange_id="exchange-7",
+            requirements_sha256="c" * 64,
+            prior_state_sha256="0" * 64,
+            supersedes_state_sha256=None,
+            decisions=[
+                {
+                    "finding_id": "F-001",
+                    "kind": "select_closure",
+                    "closure_condition": "Every commit is signed.",
+                }
+            ],
+        )
+        document = json.loads(self.github_snapshot_json())
+        comments = document["data"]["repository"]["pullRequest"]["comments"]["nodes"]
+        comments.append(
+            {
+                "author": {"login": "maintainer"},
+                "authorAssociation": "MEMBER",
+                "body": authority_body,
+                "databaseId": "3991324292",
+                "id": "PC_authority-record",
+                "lastEditedAt": None,
+                "publishedAt": "2026-01-01T00:00:05Z",
+                "viewerDidAuthor": False,
+            }
+        )
+
+        with (
+            patch.object(
+                self.delivery, "_gh", side_effect=lambda *args: json.dumps(document)
+            ),
+            patch.object(
+                self.delivery.GitHubForge,
+                "_repository_permission",
+                return_value="MAINTAIN",
+            ),
+        ):
+            snapshot = self.delivery.GitHubForge(self.binding()).snapshot()
+
+        record = self.delivery._authority_forge_record(snapshot, "comment:3991324292")
+
+        self.assertEqual(authority_body, record.body)
+        self.assertEqual("MEMBER", record.author_association)
+
+    def test_authority_receipt_rejects_unresolvable_comment_reference(self) -> None:
+        document = json.loads(self.github_snapshot_json())
+
+        with patch.object(
+            self.delivery, "_gh", side_effect=lambda *args: json.dumps(document)
+        ):
+            snapshot = self.delivery.GitHubForge(self.binding()).snapshot()
+
+        with self.assertRaises(self.delivery.DeliveryError) as raised:
+            self.delivery._authority_forge_record(snapshot, "comment:1234567890")
+
+        self.assertIn("does not resolve", str(raised.exception))
 
     def test_github_adapter_rejects_incomplete_or_malformed_snapshots(self) -> None:
         cases: tuple[tuple[tuple[str | int, ...], object], ...] = (

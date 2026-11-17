@@ -343,7 +343,7 @@ def visible_manifest(visible: str) -> dict[str, Any] | None:
     if visible.count(MARKER) != 1:
         raise ValueError("The publication anchor annex is missing or ambiguous.")
     prefix, tail = visible.split(MARKER)
-    if prefix and not prefix.endswith("\n\n"):
+    if prefix and not prefix.endswith("\n"):
         raise ValueError("The publication anchor annex is not a separate section.")
     tail = tail.rstrip(" \t\r\n")
     if not tail.startswith("\n```json\n") or not tail.endswith("\n```"):

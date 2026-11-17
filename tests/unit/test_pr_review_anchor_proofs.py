@@ -925,3 +925,46 @@ def test_larger_patch_budget_does_not_expand_object_reads(
     head = git(root, "rev-parse", "HEAD")
     with pytest.raises(RuntimeError, match="byte limit"):
         anchors.GitSource(root).git("show", f"{head}:large.txt")
+
+
+def test_visible_manifest_accepts_annex_with_single_newline_prefix(
+    source: tuple[Path, str, str],
+) -> None:
+    delivery, _forge, _binding, proof, _manifest = future_case(source)
+    annex = delivery.anchor_proofs.prepare_manifest(
+        source[0], source[1], source[2], proof.state_envelope["state"]["findings"]
+    )
+    visible = (
+        "Factual source review.\n"
+        + delivery.anchor_proofs.MARKER
+        + "\n```json\n"
+        + delivery.anchor_proofs.canonical(annex)
+        + "\n```\n"
+    )
+
+    manifest = delivery.anchor_proofs.visible_manifest(visible)
+
+    assert manifest is not None
+    assert manifest["base_oid"] == annex["base_oid"]
+    assert manifest["head_oid"] == annex["head_oid"]
+
+
+def test_visible_manifest_rejects_annex_without_newline_prefix(
+    source: tuple[Path, str, str],
+) -> None:
+    delivery, _forge, _binding, proof, _manifest = future_case(source)
+    annex = delivery.anchor_proofs.prepare_manifest(
+        source[0], source[1], source[2], proof.state_envelope["state"]["findings"]
+    )
+    visible = (
+        "Factual source review."
+        + delivery.anchor_proofs.MARKER
+        + "\n```json\n"
+        + delivery.anchor_proofs.canonical(annex)
+        + "\n```\n"
+    )
+
+    with pytest.raises(
+        ValueError, match="The publication anchor annex is not a separate section."
+    ):
+        delivery.anchor_proofs.visible_manifest(visible)

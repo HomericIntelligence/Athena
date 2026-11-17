@@ -210,6 +210,7 @@ class PullRequestSnapshot:
     labels: frozenset[str]
     threads: tuple[ReviewThread, ...]
     reviews: tuple[ReviewRecord, ...] = ()
+    issue_comments: tuple[ReviewComment, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -3027,11 +3028,18 @@ def _authority_forge_record(
     if kind == "review":
         records.extend(review for review in snapshot.reviews if review.id == record_id)
     elif kind == "comment":
+
+        def matches(comment: ReviewComment) -> bool:
+            return comment.id == record_id or comment.full_database_id == record_id
+
         records.extend(
             comment
             for thread in snapshot.threads
             for comment in thread.comments
-            if comment.id == record_id
+            if matches(comment)
+        )
+        records.extend(
+            comment for comment in snapshot.issue_comments if matches(comment)
         )
     else:
         raise DeliveryError("The authority receipt must name a review or comment.")
@@ -5045,6 +5053,10 @@ class GitHubForge:
               submittedAt lastEditedAt
               commit { oid }
             } }
+            comments(first:100, orderBy: {field: CREATED_AT, direction: ASC}) { pageInfo { hasNextPage } nodes {
+              databaseId
+              id body publishedAt lastEditedAt author { login } authorAssociation viewerDidAuthor
+            } }
           } }
         }
         """
@@ -5223,10 +5235,58 @@ class GitHubForge:
                     last_edited_at=last_edited_at,
                 )
             )
+        raw_comments = pull_request.get("comments")
+        issue_comments: list[ReviewComment] = []
+        if _github_has_next_page(raw_comments, "pull-request comment pagination data"):
+            raise DeliveryError("GitHub pull-request comment coverage is incomplete.")
+        assert isinstance(raw_comments, dict)
+        comment_nodes = raw_comments.get("nodes")
+        if not isinstance(comment_nodes, list):
+            raise DeliveryError("GitHub returned invalid pull-request comment data.")
+        for raw_comment in comment_nodes:
+            if (
+                not isinstance(raw_comment, dict)
+                or not isinstance(raw_comment.get("id"), str)
+                or not isinstance(raw_comment.get("body"), str)
+            ):
+                raise DeliveryError(
+                    "GitHub returned invalid pull-request comment data."
+                )
+            author = raw_comment.get("author") or {}
+            database_id = _database_comment_id(raw_comment.get("databaseId"))
+            published_at = raw_comment.get("publishedAt")
+            last_edited_at = raw_comment.get("lastEditedAt")
+            if (
+                published_at is not None
+                and not isinstance(published_at, str)
+                or last_edited_at is not None
+                and not isinstance(last_edited_at, str)
+            ):
+                raise DeliveryError(
+                    "GitHub returned invalid pull-request comment metadata."
+                )
+            issue_comments.append(
+                ReviewComment(
+                    database_id,
+                    raw_comment["body"],
+                    str(author.get("login", "")),
+                    _github_boolean(
+                        raw_comment.get("viewerDidAuthor"),
+                        "pull-request comment ownership state",
+                    ),
+                    None,
+                    str(raw_comment.get("authorAssociation", "NONE")),
+                    None,
+                    published_at=published_at,
+                    last_edited_at=last_edited_at,
+                    full_database_id=database_id,
+                )
+            )
         authority_authors: set[str] = set()
         authority_records: list[ReviewComment | ReviewRecord] = [
             *(comment for thread in threads for comment in thread.comments),
             *reviews,
+            *issue_comments,
         ]
         for record in authority_records:
             try:
@@ -5259,6 +5319,10 @@ class GitHubForge:
             )
             for review in reviews
         ]
+        issue_comments = [
+            replace(comment, author_permission=permissions.get(comment.author))
+            for comment in issue_comments
+        ]
         raw_labels = pull_request.get("labels")
         if _github_has_next_page(raw_labels, "label pagination data"):
             raise DeliveryError("GitHub label coverage is incomplete.")
@@ -5285,6 +5349,7 @@ class GitHubForge:
             labels=labels,
             threads=tuple(threads),
             reviews=tuple(reviews),
+            issue_comments=tuple(issue_comments),
         )
 
     def reply(self, thread_id: str, body: str) -> None:
