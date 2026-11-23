@@ -27,6 +27,8 @@ technical-English, and governance contracts. Do not copy these contracts for eac
 - [`skills/TECHNICAL_ENGLISH.md`](../skills/TECHNICAL_ENGLISH.md): the required ASD-STE100
   technical-English policy
   for Athena instructions and output prose.
+- [`policies/agent-authority.md`](policies/agent-authority.md): the canonical authority, host
+  permission, and security-invariant policy.
 - [`policies/development.md`](policies/development.md): Git, pull-request, safety, and human-review
   rules.
 - [`policies/evidence-integrity.md`](policies/evidence-integrity.md): runnable evidence and truthful

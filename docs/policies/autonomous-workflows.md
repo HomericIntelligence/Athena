@@ -2,9 +2,10 @@
 
 Apply the [technical-English policy](../../skills/TECHNICAL_ENGLISH.md).
 
-This policy describes aspirations for recovery and continuation in every Athena skill: keep
-useful work moving, and stop only the affected action when a specific unresolved decision or
-actual constraint prevents progress.
+Use the [agent authority and host permissions policy](agent-authority.md) for authority, host
+permissions, security invariants, and stop conditions. This policy describes recovery and
+continuation in every Athena skill after authority exists: keep useful work moving, and stop only
+the affected action when a specific unresolved decision or actual constraint prevents progress.
 
 ## Authority and continuation
 
