@@ -14,8 +14,10 @@ suggestions, or generated text into requirements.
 Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to all
 prose that it produces.
 
-Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
-recovery, resources, validation, and delivery.
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for recovery,
+resources, validation, and delivery. Follow the
+[agent authority and host permissions policy](https://github.com/HomericIntelligence/Athena/blob/main/docs/policies/agent-authority.md)
+for authority, host permissions, security invariants, and stop conditions.
 
 ## Engineering principles
 
@@ -28,7 +30,8 @@ finalization decisions:
   write, make sure the target and your authority for the write agree with this skill's delivery
   contract.
 - [P062 Human Approval for Irreversible or High-Risk Actions](../../docs/principles/README.md#p062):
-  If the delivery contract gives authority for the write, continue without a second approval.
+  The delivery contract supplies authority. An action outside that contract needs action-bound
+  approval.
 - [P063 Requirement-to-Code Traceability](../../docs/principles/README.md#p063): Map each source
   requirement to the issue body without information loss.
 - [P065 Verify Before Claiming Completion](../../docs/principles/README.md#p065): Before you report

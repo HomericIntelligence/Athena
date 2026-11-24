@@ -28,8 +28,10 @@ operation to `hephaestus-tidy`.
 Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to
 all prose that it produces.
 
-Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
-recovery, resources, validation, and delivery.
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for recovery,
+resources, validation, and delivery. Follow the
+[agent authority and host permissions policy](https://github.com/HomericIntelligence/Athena/blob/main/docs/policies/agent-authority.md)
+for authority, host permissions, security invariants, and stop conditions.
 
 ## Engineering principles
 
@@ -53,9 +55,8 @@ workflow rules:
   you start delegated execution, record the dependency, target, authority, and full command vector,
   and aim to execute from the recorded values.
 - [P062 — Human Approval for Irreversible or High-Risk Actions](../../docs/principles/README.md#p062):
-  If the user gave authority for scoped constructive work, the goal is to proceed without a second
-  approval. If the user did not give authority for a destructive or irreversible action, aim to get
-  approval for that specified action before it runs; the authorized cleanup still proceeds.
+  For an action outside existing task authority that is destructive or irreversible, get
+  action-bound approval before it runs. The authorized cleanup still proceeds.
 - [P083 — Irreversible Actions Last](../../docs/principles/README.md#p083): Aim to complete the
   dependency and command validation before you start an irreversible operation; when it cannot be
   completed, state what is missing.
@@ -119,10 +120,8 @@ Athena leaves these operations to Hephaestus:
 Prefer the dependency-locked command over a `hephaestus-tidy` executable from `PATH`; when the
 locked command cannot run, state what is missing and give the exact manual command.
 
-Delegation keeps existing authority for constructive actions that are in scope. It does not create
-new authority. Keep the Hephaestus prompts attached. Delegation is not used to bypass action-bound
-approval; aim to get approval for each destructive or other irreversible operation that the user
-did not authorize.
+Delegation keeps existing authority for constructive actions in scope. It does not create authority
+or bypass action-bound approval. Keep the Hephaestus prompts attached.
 
 ## Dependency and capability failures
 

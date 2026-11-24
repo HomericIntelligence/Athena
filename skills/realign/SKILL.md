@@ -18,8 +18,10 @@ This skill uses a [validation execution policy](#validation-execution-policy). T
 requirements inform this skill as goals. The repair phase uses the assessment as evidence. It does
 not convert review text into general write authority.
 
-Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
-recovery, resources, validation, and delivery.
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for recovery,
+resources, validation, and delivery. Follow the
+[agent authority and host permissions policy](https://github.com/HomericIntelligence/Athena/blob/main/docs/policies/agent-authority.md)
+for authority, host permissions, security invariants, and stop conditions.
 
 ## Activation
 

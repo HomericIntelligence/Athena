@@ -14,8 +14,10 @@ complete the task clearly.
 Apply the [ASD-STE100 technical-English policy](../TECHNICAL_ENGLISH.md) to this skill and to
 all prose that it produces.
 
-Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for authority,
-recovery, resources, validation, and delivery.
+Use the [autonomous workflow policy](../../docs/policies/autonomous-workflows.md) for recovery,
+resources, validation, and delivery. Follow the
+[agent authority and host permissions policy](https://github.com/HomericIntelligence/Athena/blob/main/docs/policies/agent-authority.md)
+for authority, host permissions, security invariants, and stop conditions.
 
 ## Engineering principles
 
@@ -96,9 +98,11 @@ establish safe isolation, stop delegation. In that case, use the sequential fall
    - verification;
    - write-state status.
 
-5. If the host or task requires user approval, present the plan.
-6. Obtain each required approval before work.
-7. When all required approvals are in place, start safe work that is in scope.
+5. If an action is outside existing task authority, present the specific action and obtain
+   action-bound approval before it runs.
+6. If the host requires approval for a specific operation, obtain that approval.
+7. Start safe work that existing task authority covers. Do not ask again for authority that the
+   task already gives.
 8. Group work items that do not depend on each other into one wave.
 9. If the host supports it, start isolated subagents as background or concurrent tasks.
 10. Do not exceed the safe concurrency limit of the host.

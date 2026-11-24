@@ -188,21 +188,13 @@ recorded initial base keeps it independent of later `main` movement, and the con
 queue handles normal target integration and merge-group validation. If an allowed rebase or
 conflict resolution changes candidate content, review that changed content.
 
-Agents can do constructive Git, GitHub CLI, and Hephaestus operations in the requested scope. These
-operations include:
+Follow the canonical [agent authority and host permissions policy](docs/policies/agent-authority.md).
+That policy is the single source of truth for authority, host permissions, security invariants,
+and stop conditions. This repository adds the branch, merge-queue, and release rules in this
+document. Do not restate the canonical policy in a skill.
 
-- pushes;
-- pull requests;
-- publications;
-- releases;
-- merges;
-- deployments; and
-- safe force-with-lease updates.
-
-These operations do not need an additional approval prompt. Task scope still applies. An explicit
-cleanup request is a useful signal for removing verified merged branches and clean worktrees
-with no unique work. Preserve ambiguous or unique work. Destructive actions and discarded
-changes go best with explicit authority.
+The configured merge queue owns normal integration. Releases, publications, tags, and deployments
+follow the owning release page or the explicit task scope.
 
 ## Prohibited actions
 
@@ -272,6 +264,11 @@ Each skill links the canonical
 [`engineering principles catalog`](docs/principles/README.md). Identify only the stable `PNNN`
 principles that have a material effect on the workflow. Describe that effect. Outside the marked
 generated block in this file, the general principle definitions stay in the catalog.
+
+A skill that states authority, approval, permission, or destructive-action rules links the
+canonical [agent authority and host permissions policy](docs/policies/agent-authority.md). It states
+only the skill-specific outcome and stop condition. It does not restate the canonical policy or
+copy host flags and tool names.
 
 Follow the durable-artifact and behavior-test rules in
 [`docs/policies/development.md`](docs/policies/development.md). Avoid pinning prose with

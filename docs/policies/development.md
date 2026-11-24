@@ -6,7 +6,9 @@ Apply the [ASD-STE100 technical-English policy](../../skills/TECHNICAL_ENGLISH.m
 technical prose in this document. Keep technical, safety, and security requirements when you
 shorten text.
 
-Use the [autonomous workflow policy](autonomous-workflows.md) for recovery and continuation.
+Use the [agent authority and host permissions policy](agent-authority.md) for authority, host
+permissions, security invariants, and stop conditions. Use the
+[autonomous workflow policy](autonomous-workflows.md) for recovery and continuation.
 
 ## Git
 
@@ -58,11 +60,8 @@ Use the [autonomous workflow policy](autonomous-workflows.md) for recovery and c
 
 - Never commit credentials, tokens, `.env` files, private keys, or personal data.
 - Use existing explicit cleanup authority for verified merged branches and clean worktrees with no
-  unique work. Destructive actions and discarded changes go best with explicit authority.
+  unique work. Preserve ambiguous or unique work.
 - `git reset --hard` discards uncommitted work and is best avoided.
-- Constructive Git, GitHub command-line interface (CLI), and Hephaestus operations work well
-  within the scope of the requested task and a branch and worktree that fit the task.
-
 - For branch and worktree cleanup, prefer guarded Hephaestus tools.
 - Preserve unrelated worktree changes. Integrate compatible edits; conflicting writes are the ones
   to withhold.
