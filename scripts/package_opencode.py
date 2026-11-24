@@ -40,6 +40,7 @@ REQUIRED_SKILL_FILES: Final[tuple[PurePosixPath, ...]] = (
 STAGED_SUPPORT_ROOT: Final[PurePosixPath] = SKILLS_ROOT / "_support"
 SUPPORT_ROOTS: Final[tuple[PurePosixPath, ...]] = (
     PurePosixPath("docs") / "dependency-resolution.md",
+    PurePosixPath("docs") / "policies" / "agent-authority.md",
     PurePosixPath("docs") / "policies" / "autonomous-workflows.md",
     PurePosixPath("docs") / "policies" / "development.md",
     PurePosixPath("docs") / "policies" / "evidence-integrity.md",
