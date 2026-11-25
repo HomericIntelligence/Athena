@@ -22,7 +22,7 @@ import stat
 import sys
 import time
 from collections.abc import Callable, Iterable, Iterator
-from contextlib import closing
+from contextlib import closing, suppress
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
@@ -339,10 +339,9 @@ class Redactor:
             Path.home().name,
         ]
         found.append(socket.gethostname().split(".")[0])
-        try:
+        # An account without a passwd entry is normal in a container. Skip the name.
+        with suppress(KeyError, OSError):
             found.append(pwd.getpwuid(os.getuid()).pw_name)
-        except (KeyError, OSError):
-            pass
         return sorted({text for text in found if len(text) >= 3}, key=len, reverse=True)
 
     def redact(self, value: Any) -> Any:
